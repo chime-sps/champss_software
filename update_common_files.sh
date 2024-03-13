@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the files and directories to delete
-FILES_TO_DELETE=".mypy_cache/ .pytest_cache/ .venv/ .github/ .git/ .pre-commit-config.yaml .gitignore .dockerignore Dockerfile"
+FILES_TO_DELETE=".mypy_cache/ .pytest_cache/ .venv/ .github/ .git/ .DS_Store .pre-commit-config.yaml .gitignore .dockerignore Dockerfile"
 
 # Loop through each subdirectory
 for dir in ./monorepo_test/*; do
