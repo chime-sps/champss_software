@@ -1,0 +1,154 @@
+version: "3.8"
+
+# Prometheus Port: 9090
+# Pyroscope: 4040
+# Visualizer Port: 9099
+# Node Exporter Port: 9100
+# CAdvisor Port: 9101
+
+services:
+  prometheus:
+    image: prom/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/etc/prometheus/data"
+      - "--storage.tsdb.retention.time=720h0m0s"
+    volumes:
+      - prometheus-data:/etc/prometheus/data/
+    ports:
+      - "9090:9090"
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 15
+        window: 60s
+      replicas: 1
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2"
+        reservations:
+          memory: 2G
+          cpus: "1"
+      placement:
+        constraints:
+          - "node.role == manager"
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+        mode: 0444
+
+  pyroscope:
+    image: grafana/pyroscope
+    ports:
+      - target: 4040
+        published: 4040
+        mode: host
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 15
+        window: 60s
+      replicas: 1
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2"
+      placement:
+        constraints:
+          - "node.role == manager"
+
+  swarm-dashboard:
+    image: mohsenasm/swarm-dashboard:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - target: 9099
+        published: 9099
+        mode: host
+    environment:
+      PORT: 9099
+      ENABLE_AUTHENTICATION: "false"
+      ENABLE_HTTPS: "false"
+      NODE_EXPORTER_SERVICE_NAME_REGEX: "node-exporter"
+      CADVISOR_SERVICE_NAME_REGEX: "cadvisor"
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  node_exporter:
+    image: prom/node-exporter:latest
+    entrypoint: [ "/etc/node-exporter/entrypoint.sh" ]
+    volumes:
+      - /:/host:ro
+    command:
+      - '--path.rootfs=/host'
+    environment:
+      - NODE_ID={{.Node.ID}}
+      - NODE_NAME={{.Node.Hostname}}
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 15
+        window: 60s
+      mode: global
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.50'
+        reservations:
+          memory: 32M
+          cpus: '0.25'
+    ports:
+      - target: 9100
+        published: 9100
+        mode: host
+    configs:
+      - source: node_exporter_entrypoint
+        target: /etc/node-exporter/entrypoint.sh
+        mode: 0777
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    command:
+      - "--housekeeping_interval=30s"
+      - "--docker_only=true"
+      - "--disable_metrics=percpu,sched,tcp,udp,disk,diskIO,accelerator,hugetlb,referenced_memory,cpu_topology,resctrl"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /sys:/sys:ro
+      - /sys/fs/cgroup:/cgroup:ro
+      - /dev/disk/:/dev/disk:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - target: 8080
+        published: 9101
+        mode: host
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+configs:
+  node_exporter_entrypoint:
+    file: ./node-exporter-entrypoint.sh
+  prometheus_config:
+    file: ./prometheus.yml
+
+volumes:
+  prometheus-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/local/prometheus/data

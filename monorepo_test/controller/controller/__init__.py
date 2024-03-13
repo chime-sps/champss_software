@@ -1,0 +1,195 @@
+# Controller for the Slow Pulsar Search (SPS) L1 system.
+
+import logging
+import math
+import os
+import subprocess  # nosec
+from datetime import datetime
+from typing import Tuple, Union
+
+import click
+import trio
+
+from controller.l1_rpc import get_beam_ip, get_node_beams
+from controller.pointer import generate_pointings
+from controller.updater import SPS_DATA_DIR, pointing_beam_control
+
+log = logging.getLogger("spsctl")
+logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
+
+
+async def announce_pointing_done(pointing_done_listen):
+    """
+    Task that listens for pointing completed messages from the updater(s).
+
+    Parameters
+    ----------
+    pointing_done_listen: trio.ReceiveChannel
+
+        Trio channel on which `updater.pointing_beam_control()` sends "pointing
+        complete" messages. The channel can have multiple updater producers,
+        and the messages are a tuple of beam row and pointing id.
+    """
+    async with pointing_done_listen:
+        async for beam_row, pointing_id in pointing_done_listen:
+            print(f"  Row { beam_row } / pointing { pointing_id } DONE")
+
+
+async def entry_point(active_beams):
+    """
+    Parent for the pointer and updater tasks.
+
+    Parameters
+    ----------
+    active_beams: Set(int)
+        Beams for which to calculate pointings and send beam updates
+    """
+    pointing_done_announce, pointing_done_listen = trio.open_memory_channel(math.inf)
+    beam_schedule_channels = {}
+    async with trio.open_nursery() as nursery:
+        log.debug("strat: spawning announcer...")
+        nursery.start_soon(announce_pointing_done, pointing_done_listen)
+        for beam_id in active_beams:
+            new_pointing_announce, new_pointing_listen = trio.open_memory_channel(
+                math.inf
+            )
+            log.debug(f"strat: spawning controller for beam { beam_id }...")
+            nursery.start_soon(
+                pointing_beam_control,
+                new_pointing_listen,
+                pointing_done_announce.clone(),
+            )
+            beam_schedule_channels[beam_id] = new_pointing_announce
+        log.debug(f"strat: spawning pointer for { active_beams }...")
+        nursery.start_soon(generate_pointings, active_beams, beam_schedule_channels)
+
+
+def stop_beam(beam: int):
+    """
+    Stop beam acquisition.
+
+    Args:
+        beam (int): Beam number
+    """
+    try:
+        output: Union[subprocess.CompletedProcess[bytes], str] = subprocess.run(
+            [
+                f"rpc-client --spulsar-writer-params {beam} {0} 1024 5"
+                f" {SPS_DATA_DIR} tcp://{get_beam_ip(beam)}:5555"
+            ],
+            shell=True,  # nosec
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            # capture_output=True,
+            # text=True,
+            timeout=5,
+        )
+    except TimeoutError as e:
+        log.info(e)
+        output = f"Unable to run cli cmd rpc-client on {beam}"
+    except subprocess.TimeoutExpired as e:
+        log.info(e)
+        output = f"Unable to run cmd rpc-client on {beam}"
+    return output
+
+
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.option(
+    "--host",
+    multiple=True,
+    metavar="HOSTNAME",
+    help=(
+        "Generate the schedule only for beam(s) running on HOSTNAME(s). (Repeat to"
+        " include multiple hosts.)"
+    ),
+)
+@click.argument("rows", type=click.IntRange(min=0, max=223), nargs=-1, required=True)
+@click.option(
+    "--loglevel",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
+    default="INFO",
+    help="Set logging level.",
+)
+@click.option("--logtofile", is_flag=True, help="Enable file logging.")
+def cli(host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool):
+    """
+    L1 controller for Slow Pulsar Search.
+
+    ROW is the beam row(s) to record (in the range of 0-223), ints separated by spaces.
+    Default: all.
+
+    Can be cancelled with Ctrl-C, or with the stop_acq command for the appropriate beam
+    row(s).
+    """
+
+    if logtofile:
+        log_filename = f'./logs/spsctl_{datetime.now().strftime("%Y_%m_%d")}.log'
+        os.makedirs(os.path.dirname(log_filename), exist_ok=True)
+        logging.basicConfig(
+            filename=log_filename,
+            filemode="a",
+            format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
+            datefmt="%H:%M:%S",
+            level=loglevel,
+            force=True,
+        )
+
+    log.info("Starting controller...")
+    log.debug("Hosts: %s", host)
+    log.debug("Rows: %s", rows)
+    active_beams = {
+        x for r in [[r, r + 1000, r + 2000, r + 3000] for r in rows] for x in r
+    }
+    if host:
+        host_beams = set()
+        for h in host:
+            host_beams.update(get_node_beams(h))
+        active_beams.intersection_update(host_beams)
+    log.info("Controlling only beams: %s", sorted(list(active_beams)))
+
+    try:
+        trio.run(entry_point, active_beams)
+    except KeyboardInterrupt:
+        log.info("Keyboard interrupt received. Exiting...")
+    except Exception as err:
+        log.error("Unknown error detected: %s", err)
+    finally:
+        log.info("Stopping acquisition...")
+        for beam in active_beams:
+            output = stop_beam(beam)
+            log.info(output)
+
+
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.option(
+    "--host",
+    multiple=True,
+    metavar="HOSTNAME",
+    help=(
+        "Stop acquisition only for beam(s) running on HOSTNAME(s). (Repeat to include"
+        " multiple hosts.)"
+    ),
+)
+@click.argument("rows", type=click.IntRange(min=0, max=223), nargs=-1, required=True)
+@click.option("--debug", is_flag=True, help="Enable debug logging.")
+def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool):
+    if debug:
+        # Set logging level to debug
+        log.setLevel(logging.DEBUG)
+
+    log.info("Stopping acquisition using stop_acq...")
+    log.debug("Hosts: %s", host)
+    log.debug("Rows: %s", rows)
+    active_beams = {
+        x for r in [[r, r + 1000, r + 2000, r + 3000] for r in rows] for x in r
+    }
+    if host:
+        host_beams = set()
+        for h in host:
+            host_beams.update(get_node_beams(h))
+        active_beams.intersection_update(host_beams)
+    log.info("Stopping beams: %s", sorted(list(active_beams)))
+    for beam in sorted(list(active_beams)):
+        output = stop_beam(beam)
+        log.info(output)

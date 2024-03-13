@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  github-actions-runner:
+    image: myoung34/github-runner:latest
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.labels.compute == true
+    environment:
+      RUNNER_NAME: 'onsite-runner-{{.Node.Hostname}}'
+      RUNNER_WORKDIR: /github-actions-runner/work
+      RUNNER_SCOPE: 'org'
+      ORG_NAME: 'chime-sps'
+      ACCESS_TOKEN: ${GHPAT}
+      LABELS: linux,x64,avx2
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /github-actions-runner:/github-actions-runner

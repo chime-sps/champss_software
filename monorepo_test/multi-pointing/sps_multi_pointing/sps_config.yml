@@ -1,0 +1,29 @@
+---
+logging:
+  format: "%(asctime)s %(levelname)s >> %(message)s"
+  level: INFO
+
+grouper:
+  dbscan_min_samples: 1
+  dbscan_eps: 1.1
+  freq_scale: 1
+  dm_scale: 0.1
+
+sifter:
+  threshold: 0.997
+  ks_filters:
+    - ["compare_position", 1.0]
+    - ["compare_dm", 2.0]
+    - ["compare_frequency", 4.0]
+
+classifier:
+  active_classifiers:
+    # a class in sps_multi_pointing.classifier.classifier:
+    - DummyClassifier
+    #
+    # alternatively, a fully-qualified class name:
+    # - sps_multi_pointing.classifier.classifier.DummyClassifier
+    #
+    # if needing constructor arguments, use a dictionary:
+    # - SvmClassifier:
+    #     classifier_file: MODEL_FILE_NAME

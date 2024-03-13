@@ -1,0 +1,12 @@
+README.md
+setup.py
+spshuff/__init__.py
+spshuff/huff_utils.py
+spshuff/l1_io.py
+spshuff.egg-info/PKG-INFO
+spshuff.egg-info/SOURCES.txt
+spshuff.egg-info/dependency_links.txt
+spshuff.egg-info/requires.txt
+spshuff.egg-info/top_level.txt
+src/huffman.cpp
+src/spshuff.cpp

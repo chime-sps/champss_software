@@ -1,0 +1,41 @@
+[tool.poetry]
+name = "sps-multi-pointing"
+version = "0.1.4"
+description = "CHIME SPS Multi-Pointing Candidate Processor"
+authors = ["CHIME SPS <chime_spawg@physics.mcgill.>"]
+license = "MIT"
+readme = "README.md"
+exclude = [
+    "tests"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+spshuff = {path = "../spshuff"}
+sps-common = {path = "../sps-common"}
+sps-databases = {path = "../sps-databases"}
+attrs = "^22.2.0"
+click = "^8.1.4"
+matplotlib = "^3.7.1"
+numpy = "^1.24.3"
+omegaconf = "^2.3.0"
+pyyaml = "^6.0"
+scikit-learn = "^1.3.0"
+psrqpy = "^1.2.7"
+easydict = "^1.11"
+
+[tool.poetry.group.dev.dependencies]
+commitizen = "^3.4.0"
+mypy = "^1.4.0"
+pre-commit = "^3.3.3"
+pytest = "^7.3.2"
+
+[tool.poetry.scripts]
+spsmp = "sps_multi_pointing:cli"
+sps-simulate = "sps_multi_pointing.simulator.__main__:main"
+sps-relabel = "sps_multi_pointing.simulator.__main__:relabel"
+sps-train = "sps_multi_pointing.classifier.__main__:train_cands"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

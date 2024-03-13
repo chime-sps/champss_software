@@ -1,0 +1,49 @@
+#!/bin/bash
+# Start streaming an intensity acquisition on all four beams in a row (56-59)
+# `~/.local/share/virtualenvs/ctl`.
+
+if [[ $1 == "-h" ]]; then
+    echo "Usage: $0 [ROW] [NAME]"
+    echo "Starts a new intensity acquisition on all four beams of the given row."
+    echo
+    echo "ROW can be only in range 56-59 because the script hard-codes talk to L1 instances that process those beams"
+    echo "NAME is a legal name for a new directory for the acquisition that is created in in '/zfsPool0/chime/intensity/raw/acq_data'"
+    echo "(Mounted on frb-archiver5 as '/data/frb-archiver/chime/intensity/raw/acq_data'.)"
+    echo
+    echo "Default row: 59 (Crab); default name for the acquisition: 'sps_YYYYmmdd_HHMM'"
+    exit
+fi
+
+set -euo pipefail
+
+ROW=${1:-59}
+if (( ROW < 56 || ROW > 59 )); then
+    echo "ROW must be between 56 and 59, inclusive: $ROW"
+    exit 1
+fi
+
+NAME=${2:-sps_$(date -u +%Y%m%d-%H%M)}
+
+rpc_client.py \
+    --stream "${NAME}" \
+    --stream-base nfs \
+    --stream-beams "00${ROW}" \
+    tcp://10.6.201.17:5555
+
+rpc_client.py \
+    --stream "${NAME}" \
+    --stream-base nfs \
+    --stream-beams "10${ROW}" \
+    tcp://10.8.204.19:5555
+
+rpc_client.py \
+    --stream "${NAME}" \
+    --stream-base nfs \
+    --stream-beams "20${ROW}" \
+    tcp://10.8.208.11:5555
+
+rpc_client.py \
+    --stream "${NAME}" \
+    --stream-base nfs \
+    --stream-beams "30${ROW}" \
+    tcp://10.6.211.13:5555

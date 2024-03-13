@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "sps-common"
+version = "1.1.0"
+description = "CHIME SPS Common Code"
+authors = ["CHIME SPS <chime_spawg@physics.mcgill.>"]
+license = "MIT"
+readme = "README.md"
+exclude = [
+    "tests"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+spshuff = {path = "../spshuff"}
+astropy = "~5.2"
+attrs = "^22.2.0"
+h5py = "~3.9"
+matplotlib = "^3.7.1"
+pytz = "^2023.3"
+scipy = "^1.10.1"
+threadpoolctl = "^3.1.0"
+click = "^8.1.4"
+easydict = "^1.11"
+
+[tool.poetry.group.dev.dependencies]
+commitizen = "^3.4.0"
+mypy = "^1.4.0"
+pre-commit = "^3.3.3"
+pytest = "^7.3.2"
+
+[tool.poetry.scripts]
+plot_candidates = "sps_common.interfaces.single_pointing:plot_candidates"
+print_candidates = "sps_common.interfaces.single_pointing:print_candidates"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

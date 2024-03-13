@@ -1,0 +1,56 @@
+DM:
+  - feature: Mean
+  - feature: Mean
+    flags:
+      - weighted
+  - feature: StandardDeviation
+    flags:
+      - about_peak
+      - weighted
+  - feature: MAD
+    flags:
+      - weighted
+      - about_peak
+  - feature: Skewness
+    flags:
+      - weighted
+      - about_peak
+  - feature: Kurtosis
+    flags:
+      - weighted
+      - about_peak
+  - feature: Min
+  - feature: Max
+  - feature: Range
+
+#DCoverF:
+#  - feature: Variance
+
+# properties of a SinglePointingDectection
+Property:
+  - num_unique_freqs
+  - num_unique_dms
+  - size
+  - num_harmonics
+
+DM-Sigma:
+  - feature: FitGauss
+    flags:
+      - rel_err
+      - diff_from_detection
+      - ndof
+      - rms_err
+
+
+# add everything you want from, for example, DM under DM. If have two datacodes which are the same odd things will happen
+# (e.g. the dt_struct's in Features.from_config will overwrite each other)
+
+# Anything that's a child of Stat can have flags of
+#   weighted = uses sigma as weights
+#   about_peak = point at max sigma is the point about which stats are calculated
+
+# Anything that's a child of Fit can have flags of
+#   rel_err = output the relative error for all fitted parameters
+#   diff_from_detection = output <fitted_value> - <detection_value> for appropriate fitted parameters
+#   ndof = output the number of degrees of freedom
+#   rms_err = output the RMS error

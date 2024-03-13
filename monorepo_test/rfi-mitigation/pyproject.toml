@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "rfi-mitigation"
+version = "0.1.0"
+description = "CHIME SPS RFI Mitigation"
+authors = ["CHIME SPS <chime_spawg@physics.mcgill.>"]
+license = "MIT"
+readme = "README.md"
+exclude = [
+    "tests"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+spshuff = {path = "../spshuff"}
+sps-common = {path = "../sps-common"}
+astropy = "~5.2"
+h5py = "~3.9"
+jplephem = "^2.18"
+matplotlib = "^3.7.1"
+numpy = "^1.24.3"
+pyfftw = "^0.13.1"
+pyyaml = "^6.0"
+scipy = "^1.10.1"
+
+[tool.poetry.group.dev.dependencies]
+commitizen = "^3.4.0"
+mypy = "^1.4.0"
+pre-commit = "^3.3.3"
+pytest = "^7.3.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

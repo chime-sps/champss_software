@@ -1,0 +1,97 @@
+[tool.poetry]
+name = "monorepo-test"
+version = "1.0.0"
+description = "CHAMPS Codebase"
+authors = ["CHAMPS <chime_spawg@physics.mcgill.>"]
+license = "GPLv3"
+readme = "README.md"
+exclude = [
+    "tests"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
+beamformer = {path = "./monorepo_test/beamformer"}
+candidate-processor = {path = "./monorepo_test/candidate-processor"}
+chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
+controller = {path = "./monorepo_test/controller"}
+fdmt = {path = "./monorepo_test/fdmt"}
+folding = {path = "./monorepo_test/folding"}
+ps-processes = {path = "./monorepo_test/ps-processes"}
+rfi-mitigation = {path = "./monorepo_test/rfi-mitigation"}
+spshuff = {path = "./monorepo_test/spshuff"}
+sps-common = {path = "./monorepo_test/sps-common"}
+sps-databases = {path = "./monorepo_test/sps-databases"}
+sps-dedispersion = {path = "./monorepo_test/sps-dedispersion"}
+sps-multi-pointing = {path = "./monorepo_test/multi-pointing"}
+sps-ops = {path = "./monorepo_test/sps-ops"}
+astropy = "~5.2"
+async-exit-stack = "^1.0.1"
+attrs = "^22.2.0"
+click = "^8.1.4"
+colorcet = "^3.0.1"
+docker = "^6.1.3"
+easydict = "^1.11"
+filelock = "^3.12.4"
+h5py = "~3.9"
+jplephem = "^2.18"
+matplotlib = "^3.7.1"
+msgpack-python = "^0.5.6"
+numba = "^0.58"
+numpy = "^1.24.3"
+omegaconf = "^2.3.0"
+pandas = "^2.0.3"
+prometheus-client = "^0.17.1"
+prometheus-api-client = "^0.5.4"
+psrqpy = "^1.2.7"
+pyfftw = "^0.13.1"
+pymongo = "^4.4.0"
+pyroscope-io = "^0.8.5"
+pytz = "^2023.3"
+pyyaml = "^6.0"
+pyzmq = "^24.0.1"
+setuptools = "^65.6.3"
+slack-sdk = "^3.26.1"
+scikit-learn = "^1.3.0"
+scipy = "^1.10.1"
+threadpoolctl = "^3.1.0"
+trio = "^0.22.0"
+
+[tool.poetry.group.dev.dependencies]
+commitizen = "^3.4.0"
+mypy = "^1.4.0"
+pre-commit = "^3.3.3"
+pytest = "^7.3.2"
+
+[tool.poetry.scripts]
+run-pipeline = "sps_pipeline.pipeline:main"
+pointing-with-data = "sps_pipeline.pipeline:find_pointing_with_data"
+run-stack-search-pipeline = "sps_pipeline.pipeline:stack_and_search"
+find-all-processes = "sps_pipeline.pipeline:find_all_available_processes"
+run-all-processes = "sps_pipeline.pipeline:process_all_processes"
+start-continuous-daily-processing = "sps_pipeline.pipeline:start_continuous_daily_processing"
+clear-workflow-results = "sps_pipeline.clear_workflow:clear_workflow_results"
+clear-workflow-buckets = "sps_pipeline.clear_workflow:clear_workflow_buckets"
+clear-workflow = "sps_pipeline.clear_workflow:clear_workflow"
+clear-raw-data = "sps_pipeline.clear_raw_data:clear_raw_data"
+spsctl = "controller:cli"
+stopacq = "controller:stop_acq"
+rpc-client = "controller.rpc_client:main"
+sched-known-psrs = "scheduling.scheduleknownpulsars:main"
+schedule_rarange = "scheduling.schedule_rarange:main"
+spsmp = "sps_multi_pointing:cli"
+sps-simulate = "sps_multi_pointing.simulator.__main__:main"
+sps-relabel = "sps_multi_pointing.simulator.__main__:relabel"
+sps-train = "sps_multi_pointing.classifier.__main__:train_cands"
+run_ps_processes = "ps_processes.cli:main"
+plot_candidates = "sps_common.interfaces.single_pointing:plot_candidates"
+print_candidates = "sps_common.interfaces.single_pointing:print_candidates"
+delete-exited-pipeline-containers = "sps_ops.scripts.delete_exited_pipeline_containers:main"
+delete-stalling-pipeline-containers = "sps_ops.scripts.delete_stalling_pipeline_containers:main"
+delete-old-docker-images = "sps_ops.scripts.delete_old_docker_images:main"
+plot-processes-cadvisor-metrics = "sps_ops.scripts.plot_processes_cadvisor_metrics:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

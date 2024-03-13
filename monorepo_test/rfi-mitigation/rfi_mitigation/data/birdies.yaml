@@ -1,0 +1,50 @@
+# List of static topocentric frequencies to zap from all power spectra
+known_bad_frequencies:
+  b0: 
+    frequency: 1.5625
+    width: 0.01
+    int_nharm: 328
+    frac_nharm: 0
+    note: "LTE signal. Half of originally used Frequency."
+    
+  b1:
+    frequency: 25.0
+    width: 0.01
+    int_nharm: 20
+    frac_nharm: 0
+    note: "Dynamic Filter result. Possibly broader than this width."
+
+  b2:
+    frequency: 417.252
+    width: 0.01
+    int_nharm: 1
+    frac_nharm: 0
+    note: "PRESTO DM=0 topocentric cand search."
+
+  b3:
+    frequency: 17.253
+    width: 0.01
+    int_nharm: 8
+    frac_nharm: 0
+    note: "Candidates in stacked spectra."
+
+  b4:
+    frequency: 317.253
+    width: 0.01
+    int_nharm: 1
+    frac_nharm: 0
+    note: "Candidates in stacked spectra."
+
+  b5:
+    frequency: 367.253
+    width: 0.01
+    int_nharm: 1
+    frac_nharm: 0
+    note: "Candidates in stacked spectra."
+
+  b6:
+    frequency: 60
+    width: 0.01
+    int_nharm: 8
+    frac_nharm: 0
+    note: "Candidates in stacked spectra."

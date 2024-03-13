@@ -1,0 +1,77 @@
+#!/bin/bash
+# Stop an sps acquisition on all eight beams in rows 56-63.
+# TEMPORARY FIX : restart L1 nodes when we stop sps acquisition
+
+if [[ $1 == "-h" ]]; then
+    echo "Usage: $0"
+    echo "Stops an sps acquisition on all eight beams in rows 56-63."
+    echo
+    echo "This is done by restarting the relevant l1 nodes, use start-sps 0 to stop acquisition without restarting the nodes"
+    echo
+    echo "Data is written in '/data/chime/sps/raw/YYYY/mm/dd/BEAM'."
+    exit
+fi
+
+ssh l1operator@10.6.201.17 'sudo systemctl restart ch-frb-l1'
+#for beam in {56..59}; do
+#    rpc_client.py \
+#           --spulsar-writer-params "$beam" 0 1024 5 \
+#           /mnt/sps-data/rpchufftest \
+#           tcp://10.6.201.17:5555
+#done
+
+ssh l1operator@10.8.204.19 'sudo systemctl restart ch-frb-l1'
+#for beam in 10{56..59}; do
+#    rpc_client.py \
+#           --spulsar-writer-params "$beam" 0 1024 5 \
+#           /mnt/sps-data/rpchufftest \
+#           tcp://10.8.204.19:5555
+#done
+
+ssh l1operator@10.8.208.11 'sudo systemctl restart ch-frb-l1'
+#for beam in 20{56..59}; do
+#    rpc_client.py \
+#           --spulsar-writer-params "$beam" 0 1024 5 \
+#           /mnt/sps-data/rpchufftest \
+#           tcp://10.8.208.11:5555
+#done
+
+ssh l1operator@10.6.211.13 'sudo systemctl restart ch-frb-l1'
+#for beam in 30{56..59}; do
+#    rpc_client.py \
+#           --spulsar-writer-params "$beam" 0 1024 5 \
+#           /mnt/sps-data/rpchufftest \
+#           tcp://10.6.211.13:5555
+#done
+
+ssh l1operator@10.7.201.17 'sudo systemctl restart ch-frb-l1'
+#for beam in {60..63}; do
+#    rpc_client.py \
+#           --spulsar-writer-params "$beam" 0 1024 5 \
+#           /mnt/sps-data/rpchufftest \
+#           tcp://10.7.201.17:5555
+#done
+
+ssh l1operator@10.9.204.19 'sudo systemctl restart ch-frb-l1'
+#for beam in 10{60..63}; do
+#    rpc_client.py \
+#           --spulsar-writer-params "$beam" 0 1024 5 \
+#           /mnt/sps-data/rpchufftest \
+#           tcp://10.9.204.19:5555
+#done
+
+ssh l1operator@10.9.208.11 'sudo systemctl restart ch-frb-l1'
+#for beam in 20{60..63}; do
+#    rpc_client.py \
+#           --spulsar-writer-params "$beam" 0 1024 5 \
+#           /mnt/sps-data/rpchufftest \
+#           tcp://10.9.208.11:5555
+#done
+
+ssh l1operator@10.7.211.13 'sudo systemctl restart ch-frb-l1'
+#for beam in 30{60..63}; do
+#    rpc_client.py \
+#           --spulsar-writer-params "$beam" 0 1024 5 \
+#           /mnt/sps-data/rpchufftest \
+#           tcp://10.7.211.13:5555
+#done

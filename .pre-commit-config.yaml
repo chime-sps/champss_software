@@ -1,0 +1,132 @@
+exclude: ^(docs/.*|tests/.*|data/.*|.venv/.*)$
+repos:
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.3.1
+    hooks:
+      - id: pyupgrade
+        args:
+          - --py38-plus
+
+  - repo: https://github.com/MarcoGorelli/absolufy-imports
+    rev: v0.3.1
+    hooks:
+      - id: absolufy-imports
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args:
+          - --profile=black
+          - --verbose
+
+  - repo: https://github.com/pycqa/autoflake
+    rev: v2.2.0
+    hooks:
+      - id: autoflake
+        args:
+          - --in-place # Overwrite contents
+          - --remove-all-unused-imports
+
+  - repo: https://github.com/pycqa/docformatter
+    rev: v1.7.5
+    hooks:
+      - id: docformatter
+        args:
+          # Add a "--style=numpy" or "--style=google" once support is added
+          - --in-place
+          - --black # Wraps descriptions and summaries if over 88 length
+          - --pre-summary-newline
+          - --close-quotes-on-newline
+          # Avoid adding "--make-summary-multiline" to enforce no single-line docstrings
+          # as this conflicts with Black and causes perpetual formatting by both of them
+
+  - repo: https://github.com/psf/black
+    rev: 22.12.0
+    hooks:
+      - id: black
+        args:
+          - --preview # Allows Black to fix "line too long" issues in strings
+          - --verbose
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-ast
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-yaml
+      - id: debug-statements
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v0.991
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          # Add to these types as needed to allow for type checking, based on various module imports
+          - types-attrs
+          - types-pytz
+          - types-PyYAML
+          - types-requests
+          - types-setuptools
+          - types-toml
+        args:
+          # Add --strict after type-hinting addition first pass merged, to enforce everything is typed
+          - --ignore-missing-imports # mypy uses a local venv, so ignore the inevitable missing sps package import errors
+          - --follow-imports=skip # If you follow imports, mypy will check more than just the diff
+          - --no-strict-optional # Allows None to be a valid for every type
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+        additional_dependencies:
+          - flake8-bugbear==23.7.10
+        args:
+          # - --max-complexity=15 Too dificult to fix per pull-request, needs a separate code review
+          - --max-line-length=88 # To be equivalent to Black's format
+          - --extend-select=B950
+          - --extend-ignore=E203,E402,E731,E501,B0
+          # E501: Bugbear’s B950 will replace this, allowing Black’s 10% rule
+          # E402: There are many instances where we need to import SPS packages AFTER setting variables
+          # E203: Black formats in such a way that this error will always be triggered
+          # E731: Allow assigning of lambda expressions, they're useful
+          # B0: Ignore all other Bugbear errors (not needed)
+
+  - repo: https://github.com/pycqa/pydocstyle
+    rev: 6.3.0
+    hooks:
+      - id: pydocstyle
+        args:
+          - --convention=pep257 # Change to "numpy" or "google" once support is added to pycqa/docformatter
+          - --add-ignore=D400,D401
+          # - --add-ignre=D100,D101,D102,D103,D104,D105,D106,D107
+          # D1XX: the above argument, if uncommented, disables missing docstring errors
+          # D400/D401: semantic errors
+
+  - repo: https://github.com/pycqa/bandit
+    rev: 1.7.4
+    hooks:
+      - id: bandit
+        args:
+          - --skip=B101 # To allow usage of asserts
+
+  - repo: https://github.com/python-poetry/poetry
+    rev: 1.6.1
+    hooks:
+      - id: poetry-check
+      - id: poetry-lock
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.4.0
+    hooks:
+      - id: commitizen
+        stages:
+          - commit-msg # Enforce commitizen on commit message attempts

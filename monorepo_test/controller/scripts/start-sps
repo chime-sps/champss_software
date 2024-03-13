@@ -1,0 +1,82 @@
+#!/bin/bash
+# Start an sps acquisition on all eight beams in rows 56-63.
+
+if [[ $1 == "-h" ]]; then
+    echo "Usage: $0 [NCHAN]"
+    echo "Starts an sps acquisition at given channel depth on all eight beams in rows 56-63."
+    echo
+    echo "NCHAN is the target number of channels in spshuff, and must be a power of two in range 1024..16384"
+    echo "Data will be written in '/data/chime/sps/raw/YYYY/mm/dd/BEAM'."
+    echo
+    echo "Default nchan: 1024"
+    echo
+    echo "To stop the acquisition, run $0 0"
+    exit
+fi
+
+set -euo pipefail
+
+NCHAN=${1:-1024}
+case "$NCHAN" in
+    0 | 1024 | 2048 | 4096 | 8192 | 16384) : # ok
+        ;;
+    * ) echo "Not a valid NCHAN value: $NCHAN"
+        exit
+        ;;
+esac
+
+for beam in {56..59}; do
+    rpc_client.py \
+           --spulsar-writer-params "$beam" "$NCHAN" 1024 5 \
+           /mnt/sps-data/rpchufftest \
+           tcp://10.6.201.17:5555
+done
+
+for beam in 10{56..59}; do
+    rpc_client.py \
+           --spulsar-writer-params "$beam" "$NCHAN" 1024 5 \
+           /mnt/sps-data/rpchufftest \
+           tcp://10.8.204.19:5555
+done
+
+for beam in 20{56..59}; do
+    rpc_client.py \
+           --spulsar-writer-params "$beam" "$NCHAN" 1024 5 \
+           /mnt/sps-data/rpchufftest \
+           tcp://10.8.208.11:5555
+done
+
+for beam in 30{56..59}; do
+    rpc_client.py \
+           --spulsar-writer-params "$beam" "$NCHAN" 1024 5 \
+           /mnt/sps-data/rpchufftest \
+           tcp://10.6.211.13:5555
+done
+
+for beam in {60..63}; do
+    rpc_client.py \
+           --spulsar-writer-params "$beam" "$NCHAN" 1024 5 \
+           /mnt/sps-data/rpchufftest \
+           tcp://10.7.201.17:5555
+done
+
+for beam in 10{60..63}; do
+    rpc_client.py \
+           --spulsar-writer-params "$beam" "$NCHAN" 1024 5 \
+           /mnt/sps-data/rpchufftest \
+           tcp://10.9.204.19:5555
+done
+
+for beam in 20{60..63}; do
+    rpc_client.py \
+           --spulsar-writer-params "$beam" "$NCHAN" 1024 5 \
+           /mnt/sps-data/rpchufftest \
+           tcp://10.9.208.11:5555
+done
+
+for beam in 30{60..63}; do
+    rpc_client.py \
+           --spulsar-writer-params "$beam" "$NCHAN" 1024 5 \
+           /mnt/sps-data/rpchufftest \
+           tcp://10.7.211.13:5555
+done

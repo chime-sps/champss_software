@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "sps-ops"
+version = "0.4.5"
+description = "CHIME/SPS Operations"
+authors = ["CHIME SPS <chime_spawg@physics.mcgill.>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "sps_ops"}]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+docker = "^6.1.3"
+prometheus-api-client = "^0.5.4"
+click = "^8.1.4"
+matplotlib = "^3.7.5"
+pandas = "^2.0.3"
+pymongo = "^4.6.1"
+
+[tool.poetry.group.dev.dependencies]
+commitizen = "^3.4.0"
+mypy = "^1.4.0"
+pre-commit = "^3.3.3"
+pytest = "^7.3.2"
+
+[tool.poetry.scripts]
+delete-exited-pipeline-containers = "sps_ops.scripts.delete_exited_pipeline_containers:main"
+delete-stalling-pipeline-containers = "sps_ops.scripts.delete_stalling_pipeline_containers:main"
+delete-old-docker-images = "sps_ops.scripts.delete_old_docker_images:main"
+plot-processes-cadvisor-metrics = "sps_ops.scripts.plot_processes_cadvisor_metrics:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

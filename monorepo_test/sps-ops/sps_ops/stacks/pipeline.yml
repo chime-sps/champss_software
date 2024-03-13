@@ -1,0 +1,229 @@
+version: '3.8'
+
+# Arguments:
+#
+#   WORKFLOW_NAME:    Name of Workflow Buckets/Results DB to use, default: sps-processing
+#
+#   PIPELINE_VERSION: Name of pipeline_batch_db version/branch to pull
+#                     Docker Image from DockerHub, default: latest
+#
+#   STACKPATH:        Name of path to store stack files and anything the main pipeline
+#                     outputs, default /data/chime/sps/sps_processing
+#
+#   FOLDPATH:         Name of path to store result from folding jobs, default
+#                     /data/chime/sps/archives
+#
+#   START_DATE:       Start date string to commence background daily continuous processing
+#                     on
+#
+#   DB_NAMESPACE:     Namespace of default MongoDB host:port to use, default sps-processing
+
+services:
+  tiny:
+    image: chimefrb/pipeline_batch_db:${PIPELINE_VERSION:-latest}
+    command: workflow run ${WORKFLOW_NAME:-'sps-processing'} --tag tiny --site chime --lifetime 1
+    environment:
+      CONTAINER_NAME: '{{.Task.Name}}'
+      NODE_NAME: '{{.Node.Hostname}}'
+    deploy:
+      restart_policy:
+        condition: none
+      mode: replicated
+      replicas: 0
+      placement:
+        constraints:
+          - node.labels.compute == true
+      resources:
+        #limits:
+        #  memory: 15G
+        reservations:
+          memory: 15G
+    volumes:
+      - /data/chime/sps/raw:/data/chime/sps/raw
+      - ${FOLDPATH:-/data/chime/sps/archives}:${FOLDPATH:-/data/chime/sps/archives}
+      - ${STACKPATH:-/data/chime/sps/sps_processing}:${STACKPATH:-/data/chime/sps/sps_processing}
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+           size: 15000000000
+    networks:
+      - pipeline-network
+  small:
+    image: chimefrb/pipeline_batch_db:${PIPELINE_VERSION:-latest}
+    command: workflow run ${WORKFLOW_NAME:-'sps-processing'} --tag small --site chime --lifetime 1
+    environment:
+      CONTAINER_NAME: '{{.Task.Name}}'
+      NODE_NAME: '{{.Node.Hostname}}'
+    deploy:
+      restart_policy:
+        condition: none
+      mode: replicated
+      replicas: 0
+      placement:
+        constraints:
+          - node.labels.compute == true
+      resources:
+        #limits:
+        #  memory: 25G
+        reservations:
+          memory: 25G
+    volumes:
+      - /data/chime/sps/raw:/data/chime/sps/raw
+      - ${FOLDPATH:-/data/chime/sps/archives}:${FOLDPATH:-/data/chime/sps/archives}
+      - ${STACKPATH:-/data/chime/sps/sps_processing}:${STACKPATH:-/data/chime/sps/sps_processing}
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+           size: 25000000000
+    networks:
+      - pipeline-network
+  medium:
+    image: chimefrb/pipeline_batch_db:${PIPELINE_VERSION:-latest}
+    command: workflow run ${WORKFLOW_NAME:-'sps-processing'} --tag medium --site chime --lifetime 1
+    environment:
+      CONTAINER_NAME: '{{.Task.Name}}'
+      NODE_NAME: '{{.Node.Hostname}}'
+    deploy:
+      restart_policy:
+        condition: none
+      mode: replicated
+      replicas: 0
+      placement:
+        constraints:
+          - node.labels.compute == true
+      resources:
+        #limits:
+        #  memory: 45G
+        reservations:
+          memory: 45G
+    volumes:
+      - /data/chime/sps/raw:/data/chime/sps/raw
+      - ${FOLDPATH:-/data/chime/sps/archives}:${FOLDPATH:-/data/chime/sps/archives}
+      - ${STACKPATH:-/data/chime/sps/sps_processing}:${STACKPATH:-/data/chime/sps/sps_processing}
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+           size: 45000000000
+    networks:
+      - pipeline-network
+  large:
+    image: chimefrb/pipeline_batch_db:${PIPELINE_VERSION:-latest}
+    command: workflow run ${WORKFLOW_NAME:-'sps-processing'} --tag large --site chime --lifetime 1
+    environment:
+      CONTAINER_NAME: '{{.Task.Name}}'
+      NODE_NAME: '{{.Node.Hostname}}'
+    deploy:
+      restart_policy:
+        condition: none
+      mode: replicated
+      replicas: 0
+      placement:
+        constraints:
+          - node.labels.compute == true
+      resources:
+        #limits:
+        #  memory: 65G
+        reservations:
+          memory: 65G
+    volumes:
+      - /data/chime/sps/raw:/data/chime/sps/raw
+      - ${FOLDPATH:-/data/chime/sps/archives}:${FOLDPATH:-/data/chime/sps/archives}
+      - ${STACKPATH:-/data/chime/sps/sps_processing}:${STACKPATH:-/data/chime/sps/sps_processing}
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+           size: 65000000000
+    networks:
+      - pipeline-network
+  huge:
+    image: chimefrb/pipeline_batch_db:${PIPELINE_VERSION:-latest}
+    command: workflow run ${WORKFLOW_NAME:-'sps-processing'} --tag huge --site chime --lifetime 1
+    environment:
+      CONTAINER_NAME: '{{.Task.Name}}'
+      NODE_NAME: '{{.Node.Hostname}}'
+    deploy:
+      restart_policy:
+        condition: none
+      mode: replicated
+      replicas: 0
+      placement:
+        constraints:
+          - node.labels.compute == true
+      resources:
+        #limits:
+        #  memory: 85G
+        reservations:
+          memory: 85G
+    volumes:
+      - /data/chime/sps/raw:/data/chime/sps/raw
+      - ${FOLDPATH:-/data/chime/sps/archives}:${FOLDPATH:-/data/chime/sps/archives}
+      - ${STACKPATH:-/data/chime/sps/sps_processing}:${STACKPATH:-/data/chime/sps/sps_processing}
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+           size: 85000000000
+    networks:
+      - pipeline-network
+  manager:
+    image: chimefrb/pipeline_batch_db:${PIPELINE_VERSION:-latest}
+    command: start-continuous-daily-processing --start-date ${START_DATE} --db-name ${DB_NAMESPACE:-'sps-processing'}
+    deploy:
+      restart_policy:
+        condition: none
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    volumes:
+      - /data/chime/sps/raw:/data/chime/sps/raw
+      - ${FOLDPATH:-/data/chime/sps/archives}:${FOLDPATH:-/data/chime/sps/archives}
+      - ${STACKPATH:-/data/chime/sps/sps_processing}:${STACKPATH:-/data/chime/sps/sps_processing}
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - pipeline-network
+  raw-data-cleanup:
+    image: chimefrb/pipeline_batch_db:${PIPELINE_VERSION:-latest}
+    command: sh -c "sleep 3600 && clear-raw-data --start-date ${START_DATE} --db-name ${DB_NAMESPACE:-'sps-processing'}"
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    volumes:
+      - /data/chime/sps/raw:/data/chime/sps/raw
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - pipeline-network
+  delete-exited-pipeline-containers:
+    image: chimefrb/sps-ops:${OPS_VERSION:-latest}
+    command: delete-exited-pipeline-containers
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.labels.compute == true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  delete-stalling-pipeline-containers:
+    image: chimefrb/sps-ops:${OPS_VERSION:-latest}
+    command: delete-stalling-pipeline-containers
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.labels.compute == true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  delete-old-docker-images:
+    image: chimefrb/sps-ops:${OPS_VERSION:-latest}
+    command: delete-old-docker-images
+    deploy:
+      mode: global
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+networks:
+  pipeline-network:
+    external: true

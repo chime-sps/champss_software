@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "sps-databases"
+version = "0.1.0"
+description = "CHIME SPS Database Layer"
+authors = ["CHIME SPS <chime_spawg@physics.mcgill.>"]
+license = "Apache"
+readme = "README.md"
+exclude = [
+    "tests"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+spshuff = {path = "../spshuff"}
+sps-common = {path = "../sps-common"}
+attrs = "^22.2.0"
+pymongo = "^4.4.0"
+pytz = "^2023.3"
+
+
+[tool.poetry.group.dev.dependencies]
+commitizen = "^3.4.0"
+mypy = "^1.4.0"
+pre-commit = "^3.3.3"
+pytest = "^7.3.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
