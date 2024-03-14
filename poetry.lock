@@ -563,13 +563,13 @@ tests-extra = ["colorcet[tests]", "pytest-mpl"]
 
 [[package]]
 name = "commitizen"
-version = "3.18.0"
+version = "3.18.3"
 description = "Python commitizen client tool"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "commitizen-3.18.0-py3-none-any.whl", hash = "sha256:7e3272725216aa3049e258bb438e0097e07607712325f5ce71d9a0bdf7805370"},
-    {file = "commitizen-3.18.0.tar.gz", hash = "sha256:42c1d29ba6a64ddbc6d9952f4bcc2ac7094956e27e47e96c931895e2659e6cee"},
+    {file = "commitizen-3.18.3-py3-none-any.whl", hash = "sha256:864abe3a68328ba16cac5bc2bc9f8225b973bd14957d12716641c5da8dc36d18"},
+    {file = "commitizen-3.18.3.tar.gz", hash = "sha256:980eb09abfb27d0d16960a6ca9e40c78b8608205987d8b012e3c09347bc4d35d"},
 ]
 
 [package.dependencies]
@@ -1195,13 +1195,13 @@ testing = ["flufl.flake8", "importlib-resources (>=1.3)", "packaging", "pyfakefs
 
 [[package]]
 name = "importlib-resources"
-version = "6.1.3"
+version = "6.3.0"
 description = "Read resources from Python packages"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "importlib_resources-6.1.3-py3-none-any.whl", hash = "sha256:4c0269e3580fe2634d364b39b38b961540a7738c02cb984e98add8b4221d793d"},
-    {file = "importlib_resources-6.1.3.tar.gz", hash = "sha256:56fb4525197b78544a3354ea27793952ab93f935bb4bf746b846bb1015020f2b"},
+    {file = "importlib_resources-6.3.0-py3-none-any.whl", hash = "sha256:783407aa1cd05550e3aa123e8f7cfaebee35ffa9cb0242919e2d1e4172222705"},
+    {file = "importlib_resources-6.3.0.tar.gz", hash = "sha256:166072a97e86917a9025876f34286f549b9caf1d10b35a1b372bffa1600c6569"},
 ]
 
 [package.dependencies]
@@ -1780,13 +1780,13 @@ PyYAML = ">=5.1.0"
 
 [[package]]
 name = "openai"
-version = "1.13.3"
+version = "1.14.0"
 description = "The official Python library for the openai API"
 optional = false
 python-versions = ">=3.7.1"
 files = [
-    {file = "openai-1.13.3-py3-none-any.whl", hash = "sha256:5769b62abd02f350a8dd1a3a242d8972c947860654466171d60fb0972ae0a41c"},
-    {file = "openai-1.13.3.tar.gz", hash = "sha256:ff6c6b3bc7327e715e4b3592a923a5a1c7519ff5dd764a83d69f633d49e77a7b"},
+    {file = "openai-1.14.0-py3-none-any.whl", hash = "sha256:5c9fd3a59f5cbdb4020733ddf79a22f6b7a36d561968cb3f3dd255cdd263d9fe"},
+    {file = "openai-1.14.0.tar.gz", hash = "sha256:e287057adf0ec3315abc32ddcc968d095879abd9b68bf51c0402dab13ab5ae9b"},
 ]
 
 [package.dependencies]
@@ -1817,13 +1817,13 @@ attrs = ">=19.2.0"
 
 [[package]]
 name = "packaging"
-version = "23.2"
+version = "24.0"
 description = "Core utilities for Python packages"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "packaging-23.2-py3-none-any.whl", hash = "sha256:8c491190033a9af7e1d931d0b5dacc2ef47509b34dd0de67ed209b5203fc88c7"},
-    {file = "packaging-23.2.tar.gz", hash = "sha256:048fb0e9405036518eaaf48a55953c750c11e1a1b68e0dd1a9d62ed0c092cfc5"},
+    {file = "packaging-24.0-py3-none-any.whl", hash = "sha256:2ddfb553fdf02fb784c234c7ba6ccc288296ceabec964ad2eae3777778130bc5"},
+    {file = "packaging-24.0.tar.gz", hash = "sha256:eb82c5e3e56209074766e6885bb04b8c38a0c015d0a30036ebe7ece34c9989e9"},
 ]
 
 [[package]]
@@ -3454,13 +3454,13 @@ watchdog = ["watchdog (>=2.3)"]
 
 [[package]]
 name = "wheel"
-version = "0.42.0"
+version = "0.43.0"
 description = "A built-package format for Python"
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = [
-    {file = "wheel-0.42.0-py3-none-any.whl", hash = "sha256:177f9c9b0d45c47873b619f5b650346d632cdc35fb5e4d25058e09c9e581433d"},
-    {file = "wheel-0.42.0.tar.gz", hash = "sha256:c45be39f7882c9d34243236f2d63cbd58039e360f85d0913425fbd7ceea617a8"},
+    {file = "wheel-0.43.0-py3-none-any.whl", hash = "sha256:55c570405f142630c6b9f72fe09d9b67cf1477fcf543ae5b8dcb1f5b7377da81"},
+    {file = "wheel-0.43.0.tar.gz", hash = "sha256:465ef92c69fa5c5da2d1cf8ac40559a8c940886afcef87dcf14b9470862f1d85"},
 ]
 
 [package.extras]
@@ -3468,18 +3468,18 @@ test = ["pytest (>=6.0.0)", "setuptools (>=65)"]
 
 [[package]]
 name = "zipp"
-version = "3.17.0"
+version = "3.18.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "zipp-3.17.0-py3-none-any.whl", hash = "sha256:0e923e726174922dce09c53c59ad483ff7bbb8e572e00c7f7c46b88556409f31"},
-    {file = "zipp-3.17.0.tar.gz", hash = "sha256:84e64a1c28cf7e91ed2078bb8cc8c259cb19b76942096c8d7b84947690cabaf0"},
+    {file = "zipp-3.18.0-py3-none-any.whl", hash = "sha256:c1bb803ed69d2cce2373152797064f7e79bc43f0a3748eb494096a867e0ebf79"},
+    {file = "zipp-3.18.0.tar.gz", hash = "sha256:df8d042b02765029a09b157efd8e820451045890acc30f8e37dd2f94a060221f"},
 ]
 
 [package.extras]
-docs = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (<7.2.5)", "sphinx (>=3.5)", "sphinx-lint"]
-testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "pytest (>=6)", "pytest-black (>=0.3.7)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-ignore-flaky", "pytest-mypy (>=0.9.1)", "pytest-ruff"]
+docs = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-lint"]
+testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-ignore-flaky", "pytest-mypy", "pytest-ruff (>=0.2.1)"]
 
 [metadata]
 lock-version = "2.0"
