@@ -1,1 +1,1 @@
-# CHAMPS Codebase
+# CHAMPSS Codebase
