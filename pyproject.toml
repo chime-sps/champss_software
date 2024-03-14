@@ -26,6 +26,7 @@ sps-databases = {path = "./monorepo_test/sps-databases"}
 sps-dedispersion = {path = "./monorepo_test/sps-dedispersion"}
 sps-multi-pointing = {path = "./monorepo_test/multi-pointing"}
 sps-ops = {path = "./monorepo_test/sps-ops"}
+sps_pipeline = {path = "./monorepo_test/pipeline_batch_db"}
 astropy = "~5.2"
 async-exit-stack = "^1.0.1"
 attrs = "^22.2.0"
