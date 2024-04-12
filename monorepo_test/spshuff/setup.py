@@ -1,54 +1,41 @@
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, Extension
+import os
 
-# Available at setup time due to pyproject.toml
-from pybind11.setup_helpers import Pybind11Extension
-from pybind11 import get_cmake_dir
+extra_compile_args = ['-std=c++11',]
+extra_link_args = ['-std=c++11',]
 
-import sys
-
-__version__ = "0.0.1"
-
-# The main interface is through Pybind11Extension.
-# * You can add cxx_std=11/14/17, and then build_ext can be removed.
-# * You can set include_pybind11=false to add the include directory yourself,
-#   say from a submodule.
-#
-# Note:
-#   Sort input source files if you glob sources to ensure bit-for-bit
-#   reproducible builds (https://github.com/pybind/python_example/pull/53)
-
-__version__ = "1.1"
-
-ext_modules = [
-    Pybind11Extension(
-        "spshuff.huffman",
-        ["src/huffman.cpp"],
-        cxx_std=11,
-        extra_compile_args=["-g", "-O3", "-march=native"],
-        define_macros=[
-            ("VERSION_INFO", __version__),
-            ("MAJOR_VERSION", "1"),
-            ("MINOR_VERSION", "1"),
-        ],
-    ),
-]
-# package_contents = ['huff_utils', 'l1_io', 'test_huff']
+package_contents = ['huff_utils', 'l1_io', 'test_huff']
 
 
-setup(
-    name="spshuff",
-    version=__version__,
-    description="CIRADA/CHIME Slow Pulsar Search compression and file io",
-    author="Alexander Roman",
-    author_email="aroman@perimeterinstitue.ca",
-    url="https://github.com/chime-sps/spshuff",
-    long_description="""
+class get_pybind_include(object):
+    def __str__(self):
+        import pybind11
+        return pybind11.get_include()
+
+
+module1 = Extension('spshuff.huffman',
+                    language = 'c++',
+                    define_macros = [('MAJOR_VERSION', '1'),
+                                     ('MINOR_VERSION', '0')],
+                    include_dirs = ['/usr/local/include', '/usr/include',
+                                     get_pybind_include()],
+                    libraries = [],
+                    library_dirs = ['/usr/local/lib', '/usr/lib', 'src'],
+                    sources = ['src/huffman.cpp'],
+                    extra_compile_args = extra_compile_args,
+                    extra_link_args = extra_link_args)
+
+
+setup(name = 'spshuff',
+       version = '1.0',
+       description = 'CIRADA/CHIME Slow Pulsar Search compression and file io',
+       author = 'Alexander Roman',
+       author_email = 'aroman@perimeterinstitue.ca',
+       url = 'https://github.com/chime-sps/spshuff',
+       long_description = '''
         A huffman compression library for the CIRADA/CHIME Slow Pulsar Search (SPS).
-        """,
-    packages=find_packages(exclude=["docs", "tests"]),
-    install_requires=["numpy"],
-    ext_modules=ext_modules,
-    extras_require={"test": "pytest"},
-    zip_safe=False,
-    python_requires=">=3.6",
-)
+        ''',
+       packages = find_packages(),
+       install_requires = ['pybind11', 'numpy'],
+       ext_modules = [module1,],
+       python_requires = '>=3.6')

@@ -7,7 +7,7 @@ from spshuff.huff_utils import quantize_dequantize, feq, data_dtype, summary_dty
 						check_eof
 
 
-THIS_VERSION = 5
+THIS_VERSION = 3
 
 
 file_dt = np.dtype([('beam_number', np.uint16),
@@ -30,7 +30,6 @@ class FileHeader:
 		self.nbins = file_header['nbins']
 		self.start = file_header['start']
 		self.end = file_header['end']
-		self.version = file_header['version']
 
 
 	def to_file(self, f):
@@ -52,8 +51,8 @@ class FileHeader:
 
 
 	def __str__(self):
-		return 'FileHeader\n\tbeam {}\n\tnbins {}\n\tstart {}\n\tend {}\n\tversion {}\n'.format(self.beam_number,
-														self.nbins, self.start, self.end, self.version)
+		return 'FileHeader\n\tbeam {}\n\tnbins {}\n\tend {}'.format(self.beam_number,
+														self.nbins, self.end)
 
 
 	def __eq__(self, other):
@@ -61,12 +60,11 @@ class FileHeader:
 
 
 	@classmethod
-	def from_file(cls, f, check_version=True):
+	def from_file(cls, f):
 		file_header = np.fromfile(f, dtype=file_dt, count=1)[0]
 		fversion = file_header['version']
-		if check_version:
-			assert fversion == THIS_VERSION, \
-			f'Must use compatible spshuff version. File is version {fversion}, spshuff is version {THIS_VERSION}'
+		assert fversion == THIS_VERSION, \
+		f'Must use compatible spshuff version. File is version {fversion}, spshuff is version {THIS_VERSION}'
 		return cls(file_header)
 
 
@@ -103,7 +101,6 @@ class ChunkHeader:
 		self.chunk_header = chunk_header
 		self.nfreq = chunk_header['nfreq']
 		self.ntime = chunk_header['ntime']
-
 		self.shape = np.array((self.nfreq, self.ntime), dtype=int)
 
 		self.frame0_nano = chunk_header['frame0_nano']
@@ -129,7 +126,7 @@ class ChunkHeader:
 
 
 	def __str__(self):
-		return 'ChunkHeader:\n\tnfreq {}\n\tntime {}\n\tframe0_nano {}\n\tfpgaN {}\n\tfpga0 {}'.format(self.nfreq, 
+		return 'ChunkHeader:\n\tnfreq {}\n\tntime {}\n\tframe0_nano{}\n\tfpgaN{}\n\tfpga0{}'.format(self.nfreq, 
 															 self.ntime, self.frame0_nano, self.fpgaN, self.fpga0)
 
 
@@ -161,97 +158,11 @@ def test_chunk_header():
 	assert ch == ch2
 
 
-# Takes a uint8_t array and unpacks into an 8x larger bool array
-def unpack_mask_reference(intmask):
-	ilen = np.prod(intmask.shape)
-	imask = intmask.reshape(ilen)
-	assert intmask.dtype is np.dtype(np.uint8)
-
-	ret = np.empty(ilen * 8, dtype=np.bool)
-	for i in range(ilen):
-		val = imask[i]
-		imin = 8 * i
-		for j in range(7, -1, -1):
-			div = 2**j
-			d = val // div
-			ret[imin + j] = d
-			val -= d * div
-
-	return ret
-
-# Takes a uint8_t array and unpacks into an 8x larger bool array
-def unpack_mask(intmask):
-	return np.unpackbits(intmask, bitorder='little')
-
-def test_unpack():
-	ar = np.empty(4, dtype=np.uint8)
-	ar[0] = 254
-	ar[1] = 64
-	ar[2] = 123
-	ar[3] = 0
-
-	bools = unpack_mask(ar)
-	assert np.all(bools[:8] == np.array([False, True, True, True, True, True, True, True]))
-	assert np.all(bools[8:16] == np.array([False, False, False, False, False, False, True, False]))
-	assert np.all(bools[16:24] == np.array([True, True, False, True, True, True, True, False]))
-	assert np.all(bools[24:] == np.array([False, False, False, False, False, False, False, False]))
-
-
-# packs a bool mask into uint8
-def pack_mask_reference(bool_mask):
-	mlen = np.prod(bool_mask.shape)
-	bmask = bool_mask.reshape(mlen)
-	assert bmask.dtype is np.dtype(np.bool)
-	assert (mlen % 8) == 0
-	rlen = mlen // 8
-	ret = np.empty(rlen, dtype=np.uint8)
-
-	for i in range(rlen):
-		v = 0
-		exp = 1
-		imin = 8 * i
-		for j in range(8):
-			v += int(bmask[imin + j]) * exp
-			exp *= 2
-		ret[i] = v
-
-	return ret
-	# TODO: add packing logic
-
-def pack_mask(bool_mask):
-	return np.packbits(bool_mask, bitorder='little')
-
-def test_pack():
-	bools = np.empty(32, dtype=np.bool)
-	bools[:8] = np.array([False, True, True, True, True, True, True, True])
-	bools[8:16] = np.array([False, False, False, False, False, False, True, False])
-	bools[16:24] = np.array([True, True, False, True, True, True, True, False])
-	bools[24:] = np.array([False, False, False, False, False, False, False, False])
-
-	ar = pack_mask(bools)
-	assert ar[0] == 254
-	assert ar[1] == 64
-	assert ar[2] == 123
-	assert ar[3] == 0
-
-
-def downsample(ar, nds):
-	nds = np.array(nds)
-	tmp = ar.copy()
-	for i in range(int(np.log2(nds[0]))):
-		tmp = 0.5 * (tmp[0::2, :] + tmp[1::2, :])
-
-	for j in range(int(np.log2(nds[1]))):
-		tmp = 0.5 * (tmp[:,0::2] + tmp[:,1::2])
-
-	assert np.all(tmp.shape == ar.shape / nds)
-	return tmp
-
 # In this paradigm, we leave all chunk object data uncompressed in memory,
 # but compress upon file write and decompress upon file read
 class Chunk:
 	def __init__(self, chunk_header, means, variance, 
-						bad_mask, data, quantize_now=False, shape=None):
+						bad_mask, data, quantize_now=False):
 		mydat = data.astype(data_dtype)
 		self.chunk_header = chunk_header
 		nfreq, ntime = self.chunk_header.shape
@@ -271,109 +182,29 @@ class Chunk:
 			nfreq, ntime = self.chunk_header.shape
 			self.data = quantize_dequantize(mydat.reshape(nfreq * ntime)).reshape((nfreq, ntime))
 		else:
-			self.data = mydat.copy()
+			self.data = mydat
+
 
 	@classmethod
 	def min_size(cls):
 		return chunk_dt.itemsize + 2 * summary_dtype.itemsize \
 					+ 2 * data_dtype.itemsize
 
+
 	@classmethod
-	def from_file(cls, f, shape=None):
+	def from_file(cls, f):
 		chunk_header = ChunkHeader.from_file(f) 
-
 		nfreq, ntime = chunk_header.shape
-		nsamp = nfreq * ntime
-		assert (nsamp % 8) == 0
-		nmask = nsamp // 8
-
-		# if only a 1-D downsample is requested (e.g., only time or only frequency)
-		# then the other shape member will probably be None, so we should replace
-		# that intelligently.
-		nds = None
-		if shape is not None:
-			# This ensures that the shape tuple has valid values for each dimension
-			tmp_shape = list(shape)
-			if tmp_shape[0] is None:
-				tmp_shape[0] = nfreq
-			if tmp_shape[1] is None:
-				tmp_shape[1] = ntime
-
-			# ensure downsampled shape is never larger than native chunk dims
-			shape = np.minimum(tmp_shape, chunk_header.shape)
-
-			assert np.log2(shape[0]) % 1. == 0.
-			assert np.log2(shape[1]) % 1. == 0.
-			nds = (chunk_header.shape / shape).astype(int)
-			assert np.log2(nds[0]) % 1. == 0.
-			assert np.log2(nds[1]) % 1. == 0.
-
-			downsample_required = shape[0] != nfreq or shape[1] != ntime
-
 		means = np.fromfile(f, count=nfreq, dtype=summary_dtype)
 		variance = np.fromfile(f, count=nfreq, dtype=summary_dtype)
-		bad_mask_tight = np.fromfile(f, count=nmask, dtype=np.uint8)
+		bad_mask = np.fromfile(f, count=nfreq * ntime, dtype=bool).reshape((nfreq, ntime))
 
-		# make the bool bad mask from the tight packed bad mask
-		bad_mask = unpack_mask(bad_mask_tight).reshape((nfreq, ntime))
-
-		if shape is not None and downsample_required:
-			bad_mask2 = downsample(bad_mask, nds).astype(int).astype(bool)
-			assert np.all(bad_mask2.shape == shape)
-		nenc = np.fromfile(f, count=1, dtype=int)[0] # encoded length (32 bit words)
+		n_enc = np.fromfile(f, count=1, dtype=int)[0]
 
 		ndat = nfreq * ntime
-		indat = np.fromfile(f, count=nenc, dtype=np.uint32)
-		# indat = np.zeros(nenc//4,dtype=np.uint32)
-		data = decode(indat, ndat)
+		data = decode(np.fromfile(f, count=n_enc, dtype=np.uint32), ndat)
 		data = data.reshape((nfreq, ntime))
-
-		if shape is not None and downsample_required:
-			data2 = downsample(data * np.sqrt(variance)[:,None] + means[:,None], nds)
-			vars2 = np.var(data2, axis=1)
-			means2 = np.mean(data2, axis=1)
-			data2_scaled = (data2 - means2[:,None]) / np.sqrt(vars2)[:,None]
-
-			assert np.all(data2_scaled.shape == shape)
-			chunk_header.shape = shape.copy()
-			chunk_header.nfreq = shape[0]
-			chunk_header.ntime = shape[1]
-
-			return cls(chunk_header, means2, vars2, bad_mask2, data2_scaled, quantize_now=True)
-		else:
-			return cls(chunk_header, means, variance, bad_mask, data)
-
-
-	def to_file(self, f):
-		self.chunk_header.to_file(f)
-		self.means.tofile(f)
-		self.variance.tofile(f)
-		pack_mask(self.bad_mask).tofile(f) # consider compression
-
-		nfreq, ntime = self.shape
-		data_enc = encode(self.data.reshape(nfreq * ntime))
-		n_enc = len(data_enc)
-		np.array([n_enc,], dtype=int).tofile(f)
-		data_enc.tofile(f)
-
-	def get_unix_start_time(self):
-		return self.chunk_header.frame0_nano * 1e-9 + self.chunk_header.fpga0 * 2.56e-6
-
-	def get_data(self, apply_mask=False):
-		"""Return a copy of the data as recorded in L1, with mean added, i.e. we undo the compression normalization
-		:param apply_mask: masking flag
-		:type apply_mask: bool
-
-		:return: the chunk data, as described
-		:rtype: ndarray
-		"""
-		
-		nfreq, ntime = self.shape
-		ret = self.data * np.tile(np.sqrt(self.variance)[:,None], (1, ntime)) + np.tile(self.means[:,None], (1, ntime))
-		if apply_mask:
-			ret *= self.bad_mask
-
-		return ret
+		return cls(chunk_header, means, variance, bad_mask, data)
 
 
 	def __eq__(self, other):
@@ -406,12 +237,21 @@ class Chunk:
 		return ret
 
 
+	def to_file(self, f):
+		self.chunk_header.to_file(f)
+		self.means.tofile(f)
+		self.variance.tofile(f)
+		self.bad_mask.tofile(f) # consider compression
+
+		nfreq, ntime = self.shape
+		data_enc = encode(self.data.reshape(nfreq * ntime))
+		n_enc = len(data_enc)
+		np.array([n_enc,], dtype=int).tofile(f)
+		data_enc.tofile(f)
+
+
 def write_bytes(ar, f):
 	f.write(f)
-
-
-def close_enough(a, b, eps=1.1):
-	return np.all(np.abs(a - b) <= eps)
 
 
 def test_chunk():
@@ -436,20 +276,12 @@ def test_chunk():
 	with open('chunk_test.dat', 'r') as f:
 		chunk2 = Chunk.from_file(f)
 
-	chunk3 = None
-	newshape = np.array((4096,512))
-	with open('chunk_test.dat', 'r') as f:
-		chunk3 = Chunk.from_file(f, shape=newshape)
-
-	nds = ref_dequant.shape // newshape
-
-	assert(close_enough(chunk3.get_data(), downsample(ref_dequant, nds)))
 	assert(np.all(chunk2.data == ref_dequant))
 	assert(chunk2 == chunk)
 
 
 class IntensityFile:
-	def __init__(self, fh, chunks = [], file=None, read_now=False, ds_shape=None):
+	def __init__(self, fh, chunks = [], file=None, read_now=False):
 		"""The high-level intensity file object. This represents either an in-memory chunked intensity file without an optional file reference for reads/writes
 		
 		:param fh: file header
@@ -460,13 +292,10 @@ class IntensityFile:
 		:type file: file object, optional
 		:param read_now: flag for immediate read (appends to chunks list), defaults to False
 		:type read_now: bool, optional
-		:param ds_shape: shape to downsample if additional downsampling is desired
-		:type ds_shape: list (nfreq, ntime), optional
 		"""
 		self.file = file
 		self.fh = fh
 		self.chunks = chunks.copy()
-		self.ds_shape = ds_shape
 
 		if read_now:
 			self.read_chunks()
@@ -519,7 +348,7 @@ class IntensityFile:
 		assert self.file is not None
 
 		if self.has_chunks():
-			this_chunk = Chunk.from_file(self.file, shape=self.ds_shape)
+			this_chunk = Chunk.from_file(self.file)
 			self.chunks.append(this_chunk)
 			return this_chunk
 		else:
@@ -531,7 +360,7 @@ class IntensityFile:
 		assert self.file is not None
 
 		while self.has_chunks():
-			this_chunk = Chunk.from_file(self.file, shape=self.ds_shape)
+			this_chunk = Chunk.from_file(self.file)
 			self.chunks.append(this_chunk)
 
 
@@ -574,7 +403,7 @@ class IntensityFile:
 		ret += indent(self.fh.__str__(), '\t') + '\n'
 
 		for c in self.chunks:
-			ret += indent(c.__str__(), '\t') + '\n'
+			ret += indent(c, '\t') + '\n'
 
 		return ret
 
@@ -586,7 +415,7 @@ class IntensityFile:
 			return False
 
 		# verify chunk-wise equality
-		for a,b in zip(self.chunks, other.chunks):
+		for a,b in zip(self, other):
 			if a != b:
 				return False
 
@@ -594,16 +423,14 @@ class IntensityFile:
 
 
 	@classmethod
-	def from_file(cls, f, shape=None):
+	def from_file(cls, f):
 		"""Construct an :class:`.IntensityFile` object from a file object
 
 		:param f: an open file object (note: must open in binary read 'rb' mode!)
 		:type f: file object
-		:param shape: shape to downsample each chunk if additional downsampling is desired
-		:type shape: list (nfreq, ntime), optional
 		"""
 		fh = FileHeader.from_file(f)
-		int_file = IntensityFile(fh, file=f, ds_shape=shape)
+		int_file = IntensityFile(fh, file=f)
 		int_file.read_chunks()
 		return int_file
 
@@ -624,38 +451,21 @@ def get_test_chunk(nfreq=16*1024, ntime=1024, frame0_nano=0,
 
 
 def test_file():
-	beam_number = 1012
-	nbins = 5
-	start = 0
-	end = 1
-	fh = FileHeader.from_fields(beam_number, nbins, start, end)
-	nfreq = 16 * 1024
-	ntime = 1024
-
-	nfreq_ds = 1024
-	ntime_ds = 2048 # test "upsampling" ignore 
-
-	in_shape = np.array((nfreq, ntime))	
-	ds_shape = np.array((nfreq_ds, ntime_ds))
-	out_shape = np.minimum(in_shape, ds_shape)
-
-	chunk0, ref0 = get_test_chunk(nfreq, ntime)
-	chunk1, ref1 = get_test_chunk(nfreq, ntime)
-	chunks = [chunk0, chunk1]
-	int_file = IntensityFile(fh, chunks)
 
 	with open('intensity.dat', 'w') as f:
+		beam_number = 1012
+		nbins = 5
+		start = 0
+		end = 1
+		fh = FileHeader.from_fields(beam_number, nbins, start, end)
+		chunk0, ref0 = get_test_chunk()
+		chunk1, ref1 = get_test_chunk()
+		chunks = [chunk0, chunk1]
+
+		int_file = IntensityFile(fh, chunks)
 		int_file.to_file(file=f)
 
 	with open('intensity.dat', 'rb') as f:
-		int_file_recovered_ds = IntensityFile.from_file(f, shape=ds_shape)
-		int_file_recovered_ds.read_chunks()
-
-	with open('intensity.dat', 'rb') as f:
 		int_file_recovered = IntensityFile.from_file(f)
-		int_file_recovered.read_chunks()
 
-	assert np.all(int_file_recovered_ds.chunks[0].shape == np.array((nfreq_ds, ntime)))
 	assert int_file == int_file_recovered
-	assert int_file != int_file_recovered_ds
-	assert int_file_recovered != int_file_recovered_ds
