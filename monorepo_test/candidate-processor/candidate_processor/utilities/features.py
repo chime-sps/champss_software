@@ -1,11 +1,8 @@
-from attr import attrs, attrib
-import numpy as np
 import logging
-from typing import ClassVar, Tuple, List
-import yaml
-import sys
-from sps_common.interfaces.single_pointing import SinglePointingCandidate
-from scipy.special import erf
+from typing import ClassVar, List
+
+import numpy as np
+from attr import attrib, attrs
 from scipy.optimize import curve_fit
 
 log = logging.getLogger(__name__)
@@ -17,7 +14,7 @@ log = logging.getLogger(__name__)
 @attrs
 class Stat:
     """
-    Parent class for features which are statistics
+    Parent class for features which are statistics.
 
     Attributes
     ----------
@@ -35,7 +32,7 @@ class Stat:
 
     @classmethod
     def compute(cls, data, weights, point, **kwargs):
-        """Compute statistic from data, using weights, about point"""
+        """Compute statistic from data, using weights, about point."""
         raise NotImplementedError("Subclasses must implement this method")
 
 
@@ -59,7 +56,7 @@ class Variance(Stat):
 
 @attrs
 class MAD(Stat):
-    """Mean Absolute Deviation"""
+    """Mean Absolute Deviation."""
 
     @classmethod
     def compute(cls, data, weights, point, **kwargs):
@@ -133,7 +130,8 @@ class Range(Stat):
 
 @attrs
 class Fit:
-    """Parent class for features which are from a fit
+    """
+    Parent class for features which are from a fit.
 
     Attributes:
     -----------
@@ -152,8 +150,6 @@ class Fit:
         and you would want to compare amplitude to the sigma of the detection,
         mu to the dm of the detection, and gauss_sigma to nothing, so in that case
         compare_pars_to would be [detection_sigma, dection_dm, NaN]
-
-
     """
 
     pars: np.ndarray = attrib()
@@ -165,18 +161,18 @@ class Fit:
 
     @classmethod
     def fit(cls, xdata, ydata, **kwargs):
-        """Fit a function to x- and ydata"""
+        """Fit a function to x- and ydata."""
         raise NotImplementedError("Subclasses must implement this method")
 
     def output(self, do_rel_err, do_diff, do_ndof, do_rms_err):
-        """Output desired values
-        do_rel_err => also output relative error on fit parameters
-        do_diff => also output the difference between the fitted value and that
-            of the detection (where applicable)
-        do_ndof => also output the reduced chisquared for the fit (and the
-            number of degrees of freedom)
-            NB the reduced chisquared may need to be taken with a giant grain of
-            salt, not checking that its assumptions are true.
+        """
+        Output desired values do_rel_err => also output relative error on fit parameters
+        do_diff => also output the difference between the fitted value and that of the
+        detection (where applicable) do_ndof => also output the reduced chisquared for
+        the fit (and the number of degrees of freedom) NB the reduced chisquared may
+        need to be taken with a giant grain of salt, not checking that its assumptions
+        are true.
+
         do_rms_err => also output the root mean square error from the fit
         """
         out_vals = list(self.pars)
@@ -228,14 +224,9 @@ class FitGauss(Fit):
         par_names = ["amplitude", "mu", "gauss_sigma"]
         # compare_point is in the format x_value_to_compare, y_value_to_compare
         # need to reshuffle so compare amplitude to y, mu to x
-        compare_pars_to = np.array(
-            [
-                compare_point[1],
-                compare_point[0],
-                np.NaN,
-            ]
-        )
-        init_pars = np.array([ydata.max(), xdata.mean(), 1])
+        compare_pars_to = np.array([compare_point[1], compare_point[0], np.NaN])
+
+        init_pars = np.array([compare_point[1], compare_point[0], np.ptp(xdata) / 5])
         numpars = init_pars.shape[0]
         ndof = len(xdata) - numpars
 
@@ -244,12 +235,88 @@ class FitGauss(Fit):
                 raise AttributeError(
                     "number of degrees of freedom <= 0; not enough data for fit"
                 )
-            pars, covs = curve_fit(gauss, xdata, ydata, p0=init_pars)
-            sum_sq_err = np.sum((ydata - gauss(xdata, pars[0], pars[1], pars[2])) ** 2)
+            pars, covs = curve_fit(
+                gauss,
+                xdata,
+                ydata,
+                p0=init_pars,
+                bounds=(
+                    [
+                        compare_point[1] * 0.9,
+                        max(compare_point[0] - np.ptp(xdata) / 3, 0),
+                        0,
+                    ],
+                    [
+                        compare_point[1] * 1.5,
+                        compare_point[0] + np.ptp(xdata) / 3,
+                        np.inf,
+                    ],
+                ),
+            )
+            sum_sq_err = np.sum((ydata - gauss(xdata, *pars)) ** 2)
             rms_err = np.sqrt(sum_sq_err / ndof)
         except Exception as ex:
             log.info("FitGauss failed due to the following Exception")
             log.info(ex)
+            pars = np.empty((numpars,))
+            pars[:] = np.NaN
+            covs = np.empty((numpars, numpars))
+            covs[:] = np.NaN
+            rms_err = np.NaN
+
+        init_dict = dict(
+            pars=pars,
+            par_names=par_names,
+            covs=covs,
+            ndof=ndof,
+            rms_err=rms_err,
+            compare_pars_to=compare_pars_to,
+        )
+        return cls(**init_dict)
+
+
+############ Fit to a Gaussian (only the width) #############
+
+
+@attrs
+class FitGaussWidth(Fit):
+    """
+    Fit to a Gaussian via scipy's curve_fit (non-linear least squares)
+
+    Fits for:
+    gauss_sigma (since sigma is already used elsewhere)
+    """
+
+    @classmethod
+    def fit(cls, xdata, ydata, compare_point):
+        par_names = ["gauss_sigma"]
+        # compare_point is in the format x_value_to_compare, y_value_to_compare
+        # need to reshuffle so compare amplitude to y, mu to x
+        compare_pars_to = np.array(
+            [
+                np.NaN,
+            ]
+        )
+
+        init_pars = np.array([np.ptp(xdata) / 5])
+        numpars = init_pars.shape[0]
+        ndof = len(xdata) - numpars
+        gauss_width = lambda x, sigma: gauss(
+            x, A=compare_point[1], mu=compare_point[0], sigma=sigma
+        )
+
+        try:
+            if ndof <= 0:
+                raise AttributeError(
+                    "number of degrees of freedom <= 0; not enough data for fit"
+                )
+            pars, covs = curve_fit(gauss_width, xdata, ydata, p0=init_pars)
+            sum_sq_err = np.sum((ydata - gauss_width(xdata, *pars)) ** 2)
+            rms_err = np.sqrt(sum_sq_err / ndof)
+        except Exception as ex:
+            log.info("FitGauss failed due to the following Exception")
+            log.info(ex)
+            print(ex)
             pars = np.empty((numpars,))
             pars[:] = np.NaN
             covs = np.empty((numpars, numpars))

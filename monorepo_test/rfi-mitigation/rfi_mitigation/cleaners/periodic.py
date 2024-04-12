@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import logging
 from typing import List
-import yaml
+
 import numpy as np
-import scipy.stats as stats
-from scipy.stats import expon
+import yaml
+from scipy.optimize import curve_fit
+from scipy.signal import find_peaks
 from sps_common.barycenter import bary_from_topo_freq, topo_from_bary_freq
 from sps_databases import db_api
-from scipy.signal import find_peaks
-from scipy.optimize import curve_fit
-
 
 # import location for data files to exist so that importlib can correctly find them
-from .. import data as rfi_mitigation_data
+from rfi_mitigation import data as rfi_mitigation_data
 
 try:
     import importlib.resources as pkg_resources
@@ -27,24 +24,38 @@ log = logging.getLogger(__name__)
 
 
 class StaticPeriodicFilter:
-    def __init__(self):
-        self.known_birdies = None
+    def __init__(self, birdies=None):
+        self.known_birdies = birdies
 
-        # read the birdies from the YAML file
-        with pkg_resources.path(rfi_mitigation_data, "birdies.yaml") as p:
-            # the variable `p` is a PosixPath object, so we still need to open it
-            log.debug(f"Accessing known birdies list from {str(p)}")
-            self.known_birdies = yaml.load(
-                open(p, "r"),
-                Loader=yaml.FullLoader,
-            )
+        if self.known_birdies is None:
+            # read the birdies from the YAML file
+            with pkg_resources.path(rfi_mitigation_data, "birdies.yaml") as p:
+                # the variable `p` is a PosixPath object, so we still need to open it
+                log.debug(f"Accessing known birdies list from {str(p)}")
+                self.known_birdies = yaml.load(
+                    open(p),
+                    Loader=yaml.FullLoader,
+                )
+    
+    @classmethod
+    def from_ks_list(cls, ks_list):
+        ks_birdies = {}
+        for source in ks_list:
+            source_dict = {
+            "frequency": 1/source.spin_period_s, 
+            "width": getattr(source, "filter_width", 0.01),
+            "int_nharm": getattr(source, "filter_int_nharm", None),
+            "frac_nharm": getattr(source, "filter_frac_nharm", 0)}
+            ks_birdies[f"{source.source_name}"] = source_dict
+        birdie_dict = {"known_bad_frequencies": ks_birdies}
+        return cls(birdies=birdie_dict)
+
 
     def apply_static_mask(self, ps_freqs: np.ndarray, beta: float = 0) -> List[int]:
         """
-        For a list of power spectrum frequencies, flag those indices that
-        should be ignored due to known periodic signals. Freuqencies are
-        assumed to be topocentric, thus a barycentric correction is made if
-        `beta` is non-zero.
+        For a list of power spectrum frequencies, flag those indices that should be
+        ignored due to known periodic signals. Freuqencies are assumed to be
+        topocentric, thus a barycentric correction is made if `beta` is non-zero.
 
         Parameters
         ----------
@@ -59,7 +70,6 @@ class StaticPeriodicFilter:
         :return bad_indices: A list of integers representing the frequency bins
         to be flagged when searching power spectra.
         :rtype: List[int]
-
         """
         log.info(
             "Gathering known bad frequencies (birdies), barycentering, "
@@ -103,7 +113,7 @@ class StaticPeriodicFilter:
                 # frequency end entirely, which isn't ideal
                 nharm_fractional = 8
 
-            log.info(f"Topo. freq. = {bird['frequency']} Hz " f"Bary. freq. = {bf} Hz")
+            log.info(f"Topo. freq. = {bird['frequency']} Hz Bary. freq. = {bf} Hz")
             log.info(f"Num. integer harmonics to flag = {nharm_integer}")
             log.info(f"Num. fractional harmonics to flag = {nharm_fractional}")
 
@@ -136,17 +146,17 @@ class StaticPeriodicFilter:
         bad_indices = sorted(set(bad_indices))
         n_bad_indices = len(bad_indices)
         log.info(
-            f"Fraction of FFT bins removed = {n_bad_indices / nfreqs:g} ({100 * n_bad_indices / nfreqs:g}%)"
+            "Fraction of FFT bins removed ="
+            f" {n_bad_indices / nfreqs:g} ({100 * n_bad_indices / nfreqs:g}%)"
         )
         return bad_indices
 
 
 class DynamicPeriodicFilter:
     """
-    Inspect the power spectrum values to determine obviously bad frequency
-    bins and flag them for downstream processes via the function
-    excise_by_identifying_outliers.
-    The output of the bad indices via DynamicPeriodicFilter are TOPOCENTRIC.
+    Inspect the power spectrum values to determine obviously bad frequency bins and flag
+    them for downstream processes via the function excise_by_identifying_outliers. The
+    output of the bad indices via DynamicPeriodicFilter are TOPOCENTRIC.
 
     Parameters
     ----------
@@ -288,7 +298,8 @@ class DynamicPeriodicFilter:
         np.place(ps, ps == 0, [1])
         log_ps = np.log10(ps)
         log.debug(
-            f"normallising the log of power spectra to zero mean and unit standard deviation"
+            f"normallising the log of power spectra to zero mean and unit standard"
+            f" deviation"
         )
 
         # replace NaNs and infs with 0
@@ -314,7 +325,8 @@ class DynamicPeriodicFilter:
             )
 
             log.debug(
-                f"the covariance values for fitting the part of power spetcra affected by red noise {cov}"
+                "the covariance values for fitting the part of power spetcra affected"
+                f" by red noise {cov}"
             )
 
             # some type of warning message if the covariance values are abnormal
@@ -393,7 +405,8 @@ class DynamicPeriodicFilter:
                 if num < 6:
                     pointing = db_api.get_pointing(observ.pointing_id)
                     log.info(
-                        f"length of birdies index array  {len(observ.birdies_position) }"
+                        "length of birdies index array "
+                        f" {len(observ.birdies_position) }"
                     )
                     log.info(
                         f"length of birdies height array  {len(observ.birdies_height) }"
@@ -445,12 +458,13 @@ class DynamicPeriodicFilter:
         )
         length = [len(birdies_height), len(birdies)]
 
-        log.info(f"len of birdies {length}")
+        log.info(
+            f"Birdie count: {len(birdies_height)}; Strong birdies:"
+            f" {len(strong_birdies_indices)}"
+        )
         # Only take ps mean and std outside rednoise fitting bins
         if self.update_db:
-            log.info(
-                f"Updating the database with observation id for the pointing or beam"
-            )
+            log.info(f"Updating birdie information in database.")
             self.update_database(
                 obs_id,
                 birdies_height,
@@ -470,8 +484,8 @@ class DynamicPeriodicFilter:
         birdies_right_freq,
     ):
         """
-        Update sps-databases with the properties of the birdies computed
-        from excise_by_identifying_outliers.
+        Update sps-databases with the properties of the birdies computed from
+        excise_by_identifying_outliers.
 
         Parameters
         ----------
@@ -491,21 +505,18 @@ class DynamicPeriodicFilter:
 
         :param birdies_right_freq: List of rightmost frequency of the birdies.
         :type birdies_right_freq: List[float]
-
         """
         payload = dict(
             birdies_position=bad_freqs,
             birdies_height=bad_freq_peak,
             birdies_left_freq=birdies_left_freq,
             birdies_right_freq=birdies_right_freq,
+            birdie_file=None,
         )
         db_api.update_observation(obs_id, payload)
 
 
 def fourth_order_polynomial(x, e, a, b, c, d):
-    """
-    function to return value for a
-    general fourth order polynomial
-    """
+    """Function to return value for a general fourth order polynomial."""
 
     return e * x**4 + a * x**3 + b * x**2 + c * x + d

@@ -101,6 +101,7 @@ def run_interface(
     ps_detection_clusters,
     pointing,
     stack_path,
+    cand_path,
     cands_processor,
     power_spectra=None,
     plot=False,
@@ -133,7 +134,10 @@ def run_interface(
     """
     log.info(f"Candidate Processor of stack ({pointing.ra :.2f} {pointing.dec :.2f})")
     stack_root_folder = stack_path.rsplit("/stack/")[0]
-    candidate_folder = f"{stack_root_folder}/candidates"
+    if cand_path is None:
+        candidate_folder = f"{stack_root_folder}/candidates"
+    else:
+        candidate_folder = f"{cand_path}/candidates"
     if "cumulative" in stack_path.rsplit("/stack/")[1]:
         candidate_folder += "_cumul/"
     else:
@@ -146,7 +150,7 @@ def run_interface(
         f"_{len(power_spectra.datetimes)}_candidates.npz"
     )
 
-    with cand_ps_processing_time.labels(pointing.pointing_id, pointing.beam_row).time():
+    with cand_ps_processing_time.labels(pointing._id, pointing.beam_row).time():
         psdc = ps_detection_clusters
         spcc = cands_processor.fg.make_single_pointing_candidate_collection(
             psdc, power_spectra
@@ -158,7 +162,10 @@ def run_interface(
         }
         db_api.append_ps_stack(pointing.pointing_id, payload)
         if plot:
-            plot_folder = f"{stack_root_folder}/plots"
+            if cand_path is None:
+                plot_folder = f"{stack_root_folder}/plots"
+            else:
+                plot_folder = f"{cand_path}/plots"
             if "cumulative" in stack_path.rsplit("/stack/")[1]:
                 plot_folder += "_cumul/"
             else:

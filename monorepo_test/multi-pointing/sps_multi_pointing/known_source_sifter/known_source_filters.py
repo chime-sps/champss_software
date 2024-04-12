@@ -213,7 +213,7 @@ def compare_frequency(
     num_harms = np.arange(1, max_harm + 1)
     harms = np.concatenate((frac_harms, num_harms))
     bayes_factor = np.zeros(len(known_sources))
-    cand_nharm = candidate.summary["features"]["nharm"][0]
+    cand_nharm = candidate.best_nharm
     if candidate.delta_freq == 0:
         used_delta_freq = 9.70127682e-04 / cand_nharm
     else:

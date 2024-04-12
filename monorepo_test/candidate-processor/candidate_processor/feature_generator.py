@@ -185,14 +185,26 @@ class StatDataGetter(DataGetter):
 
 @attrs
 class FitDataGetter(DataGetter):
-    datacode: str = attrib(validator=in_(["DM-Sigma"]))
+    datacode: str = attrib(
+        validator=in_(
+            [
+                "dm_sigma",
+                "freq_sigma",
+            ]
+        )
+    )
 
     def get(self, hrc):
-        if self.datacode == "DM-Sigma":
-            idx = np.where(np.isclose(hrc.main_cluster["freq"], hrc.freq, rtol=0))
-            xdata = hrc.main_cluster["dm"][idx]
-            ydata = hrc.main_cluster["sigma"][idx]
+        if self.datacode == "dm_sigma":
+            best_2d_freq = (np.abs(hrc.dm_freq_sigma["freqs"] - hrc.freq)).argmin()
+            xdata = hrc.dm_freq_sigma["dms"]
+            ydata = hrc.dm_freq_sigma["sigmas"][:, best_2d_freq]
             compare_point = [hrc.dm, hrc.sigma]  # x, y
+        if self.datacode == "freq_sigma":
+            best_2d_dm = (np.abs(hrc.dm_freq_sigma["dms"] - hrc.dm)).argmin()
+            xdata = hrc.dm_freq_sigma["freqs"]
+            ydata = hrc.dm_freq_sigma["sigmas"][best_2d_dm, :]
+            compare_point = [hrc.freq, hrc.sigma]  # x, y
         return xdata, ydata, compare_point
 
     def make_name(self):
@@ -340,7 +352,11 @@ class FitGenerator(FeatureGenerator):
             "FitGauss": {
                 "base": ["amplitude", "mu", "gauss_sigma"],
                 "diff": ["amplitude-detection", "mu-detection"],
-            }
+            },
+            "FitGaussWidth": {
+                "base": ["gauss_sigma"],
+                "diff": [],
+            },
         }
 
         name = self.fitclass.__name__
@@ -630,6 +646,8 @@ class Features:
             cluster, full_harm_bins, power_spectra, pspec_meta_data
         )
 
+        cluster.dm_freq_sigma = dm_freq_sigma_dict
+
         # get a value and dtype for each feature
         vals = []
         dts = []
@@ -645,7 +663,7 @@ class Features:
                 else:
                     log.warning(
                         "Skipping feature - number of returned values did not match"
-                        f" the length of _dtype_structure: {_dtype_structure[i]}"
+                        f" the length of _dtype_structure: {self._dtype_structure[i]}"
                     )
             else:  # normal case of a single-valued feature
                 vals.append(val)
@@ -845,10 +863,24 @@ class Features:
                         dm_freq_sigma_full[:, :, harm_index] = sigma
 
                     dm_freq_sigma = np.nanmax(dm_freq_sigma_full, 2)
+                    try:
+                        dm_freq_nharm = used_harmonics[
+                            np.nanargmax(dm_freq_sigma_full, 2)
+                        ]
+                    except ValueError:
+                        # When slice contains only nan
+                        dm_freq_nharm = np.full(dm_freq_sigma.shape, np.nan)
+                        dm_freq_nharm[~np.isnan(dm_freq_sigma)] = used_harmonics[
+                            np.nanargmax(
+                                dm_freq_sigma_full[~np.isnan(dm_freq_sigma)], 1
+                            )
+                        ]
+
                     dm_freq_sigma_dict = {
-                        "sigmas": dm_freq_sigma,
+                        "sigmas": dm_freq_sigma.astype(np.float16),
                         "dms": dm_labels_sigma,
                         "freqs": freq_labels_sigma,
+                        "nharm": np.nan_to_num(dm_freq_nharm).astype(np.int8),
                     }
 
                     # Now write out the 1d dm series
@@ -883,7 +915,7 @@ class Features:
 
                     dm_sigma_1d = np.nanmax(dm_sigma_full, 1)
                     dm_sigma_1d_dict = {
-                        "sigmas": dm_sigma_1d,
+                        "sigmas": dm_sigma_1d.astype(np.float16),
                         "dms": dm_labels_1d,
                     }
 
@@ -904,26 +936,29 @@ class Features:
                     sigmas_weighted = sigma_sum_powers(harmonic_sums, weighted_nsum)
                     weight_fraction = weighted_nsum / unweighted_nsum
                     pad_length = len(self.allowed_harmonics) - len(used_harmonics)
+
                     sigmas_per_harmonic_sum_dict = {
                         "sigmas_unweighted": np.pad(
                             sigmas_unweighted, (0, pad_length), constant_values=np.nan
-                        ),
+                        ).astype(np.float16),
                         "sigmas_weighted": np.pad(
                             sigmas_weighted, (0, pad_length), constant_values=np.nan
-                        ),
+                        ).astype(np.float16),
                         "nsum": np.pad(
-                            weighted_nsum, (0, pad_length), constant_values=np.nan
-                        ),
+                            np.nan_to_num(weighted_nsum),
+                            (0, pad_length),
+                            constant_values=0,
+                        ).astype(np.uint16),
                         "weight_fraction": np.pad(
                             weight_fraction, (0, pad_length), constant_values=np.nan
                         ),
                     }
 
             raw_harmonic_powers_array_dict = {
-                "powers": raw_harmonic_powers_array,
+                "powers": raw_harmonic_powers_array.astype(np.float16),
                 "dms": dm_labels,
                 "freqs": freq_labels,
-                "freq_bins": freq_bins,
+                "freq_bins": freq_bins.astype(np.uint32),
             }
 
             return (

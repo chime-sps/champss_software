@@ -278,6 +278,7 @@ class SinglePointingCandidateGroup:
             "datetimes": datetimes,
             "summed_raw_harmonic_powers": summed_raw_harmonic_powers,
             "all_summaries": sorted_members,
+            "best_nharm": max_sigma_cand["nharm"],
         }
 
         self.group_summary.update(reduced_summary)

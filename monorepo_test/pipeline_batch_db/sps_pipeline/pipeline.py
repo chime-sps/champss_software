@@ -13,13 +13,12 @@ from contextlib import nullcontext
 from glob import glob
 
 import click
-import docker
 import numpy as np
 import pyroscope
 import pytz
 from omegaconf import OmegaConf
 from prometheus_api_client import PrometheusConnect
-from slack_sdk import WebClient
+
 
 # Careful disabling HDF5 file locking: can lead to stack corruption
 # if two processes write to the same file concurrently (as
@@ -34,8 +33,6 @@ log = logging.getLogger(__name__)
 from beamformer import NoSuchPointingError
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
-from chime_frb_api.workflow import Work
-from folding.schedule_workflow import find_and_run_all_folding_processes
 from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.ps_pipeline import PowerSpectraPipeline
 from sps_common.interfaces import DedispersedTimeSeries
@@ -155,18 +152,6 @@ def dbexcepthook(type, value, tb):
     )
 
 
-def message_slack(
-    slack_message,
-    slack_channel="#slow-pulsar-alerts",
-    slack_token="xoxb-194910630096-6273790557189-FKbg9w1HwrJYqGmBRY8DF0te",
-):
-    slack_client = WebClient(token=slack_token)
-    slack_request = slack_client.chat_postMessage(
-        channel=slack_channel,
-        text=slack_message,
-    )
-
-
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--date",
@@ -253,17 +238,14 @@ def message_slack(
     ),
 )
 @click.option(
-    "--use-pyroscope",
+    "--using-pyroscope/--not-using-pyroscope",
     default=False,
-    help=(
-        "Whether to send this run's profiling to the Pyroscope service to view on"
-        " its UI"
-    ),
+    help="Whether to profile this function using Pyroscope or not"
 )
 @click.option(
     "--using-docker/--not-using-docker",
     default=False,
-    help="Whether this run is being used with Workflow + Docker Swarm",
+    help="Whether this run is being used with Workflow + Docker Swarm or not"
 )
 def main(
     date,
@@ -281,7 +263,7 @@ def main(
     db_name,
     basepath,
     stackpath,
-    use_pyroscope,
+    using_pyroscope,
     using_docker,
 ):
     """
@@ -322,17 +304,23 @@ def main(
                 break
             except ValueError:
                 continue
-
-    if use_pyroscope:
+            
+    date_string = date.strftime('%Y/%m/%d')
+            
+    if using_pyroscope:
         pyroscope.configure(
-            application_name=f"pipeline-pyroscope-{ra}-{dec}-{date}",
+            application_name="pipeline",
             server_address="http://sps-archiver.chime:4040",
-            detect_subprocesses=True,
-            tags={"pointing": f"{ra}-{dec}-{date.strftime('%Y/%m/%d')}"},
+            detect_subprocesses=True, # Include multiprocessing pools
+            sample_rate=100, # In milliseconds
+            oncpu=False, # Include idle CPU time
+            gil_only=False, # Include threads not managed by Python's GIL
+            enable_logging=True
         )
+
     with (
-        pyroscope.tag_wrapper({"run1": "pyroscope test"})
-        if use_pyroscope
+        pyroscope.tag_wrapper({"pointing": f"{ra}-{dec}-{date_string}"})
+        if using_pyroscope
         else nullcontext()
     ):
         sys.excepthook = dbexcepthook
@@ -343,17 +331,19 @@ def main(
 
         config = load_config()
         now = dt.datetime.utcnow()
+        processing_failed = False
 
         if not date:
             date = dt.datetime(year=now.year, month=now.month, day=now.day)
         if stackpath:
             config.ps.ps_stack_config.basepath = stackpath
+        basepath = os.path.abspath(basepath)
 
-        log_path = basepath + "/logs/"
+        log_path = basepath + f"/logs/{date.strftime('%Y/%m/%d')}/"
 
         log_name = (
-            f"run_pipeline_{date.strftime('%Y-%m-%d')}_{round(ra, 2)}_"
-            f"{round(dec, 2)}_{now.strftime('%Y-%m-%dT%H-%M-%S')}"
+            f"run_pipeline_{date.strftime('%Y-%m-%d')}_{ra :.02f}_"
+            f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}"
         )
         if using_docker:
             # So that we can trace Grafana container metrics to a log file
@@ -396,7 +386,9 @@ def main(
         if len(obs_id_files) > 0:
             data_list = []
             # Just updating an existing observation
-            strat = PointingStrategist(create_db=False, split_long_pointing=True)
+            strat = PointingStrategist(
+                create_db=False, split_long_pointing=True, basepath=basepath
+            )
             active_pointings = strat.active_pointing_from_pointing(
                 closest_pointing, date
             )
@@ -425,7 +417,7 @@ def main(
                 obs_folder,
                 exist_ok=True,
             )
-            strat = PointingStrategist(split_long_pointing=True)
+            strat = PointingStrategist(split_long_pointing=True, basepath=basepath)
             active_pointings = strat.active_pointing_from_pointing(
                 closest_pointing, date
             )
@@ -484,6 +476,9 @@ def main(
                 active_pointings[0]
             )
             db_api.update_process(active_process.id, {"status": 4})
+            db_api.update_observation(
+                active_pointing.obs_id, {"status": 4, "log_file": log_file}
+            )
             if not components or "all" in components:
                 components = set(components) | {
                     "rfi",
@@ -496,7 +491,9 @@ def main(
 
             dedisp_ts = None
             ps_detections = None
-            prefix = f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}_{active_pointing.sub_pointing}"
+            prefix = (
+                f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}_{active_pointing.sub_pointing}"
+            )
 
             # Compute number of threads required. Currently based on the number of channels of the input data
 
@@ -522,21 +519,35 @@ def main(
                 fdmt = False
             if "beamform" in components:
                 beamformer = beamform.initialise(config, rfi_beamform, basepath)
-                skybeam = beamform.run(
+                skybeam, spectra_shared = beamform.run(
                     active_pointing, beamformer, fdmt, num_threads, basepath
                 )
-                if db_api.get_observation(active_pointing.obs_id).mask_fraction == 1.0:
-                    log.warning(
-                        "Beamformed spectra are completely masked. Will proceed with"
-                        " cleanup."
-                    )
+                if skybeam is not None:
+                    if (
+                        db_api.get_observation(active_pointing.obs_id).mask_fraction
+                        == 1.0
+                    ):
+                        log.warning(
+                            "Beamformed spectra are completely masked. Will proceed"
+                            " with cleanup."
+                        )
+                        spectra_shared.close()
+                        spectra_shared.unlink()
+                        components = ["cleanup"]
+                        processing_failed = True
+                else:
+                    spectra_shared.close()
+                    spectra_shared.unlink()
                     components = ["cleanup"]
+                    processing_failed = True
             if "dedisp" in components:
                 if fdmt:
                     dedisp_ts = dedisp.run_fdmt(
                         active_pointing, skybeam, config, num_threads
                     )
                     # remove skybeam from memory
+                    spectra_shared.close()
+                    spectra_shared.unlink()
                     del skybeam
                     gc.collect()
                 else:
@@ -545,6 +556,10 @@ def main(
                 dedisp_ts = DedispersedTimeSeries.from_presto_datfiles(
                     obs_folder, active_pointing.obs_id, prefix=prefix
                 )
+            else:
+                if "beamform" in components:
+                    spectra_shared.close()
+                    spectra_shared.unlink()
             if "ps" in components:
                 # splitting the FFT for power spectra and search/stack process, so
                 # that we can delete dedispersed time series from memory first
@@ -612,16 +627,20 @@ def main(
                         active_pointing.max_beams,
                     )
             # finishing the observation -- update its status to completed
+            if processing_failed:
+                final_status = models.ObservationStatus.failed.value
+            else:
+                final_status = models.ObservationStatus.complete.value
             obs_final_dict = db_api.update_observation(
                 active_pointing.obs_id,
-                {"status": models.ObservationStatus.complete.value},
+                {"status": final_status},
             )
             obs_final = models.Observation.from_db(obs_final_dict)
             is_in_stack = db_api.obs_in_stack(obs_final)
 
             new_process = {
                 "status": 2,
-                "obs_status": 2,
+                "obs_status": final_status,
                 "quality_label": obs_final.add_to_stack,
                 "is_in_stack": is_in_stack,
             }
@@ -648,7 +667,10 @@ def main(
                     start_time = end_time - dt.timedelta(
                         minutes=pipeline_execution_time
                     )
-                    step_size = 30
+                    # Use higher step size on testbed for benchmarking,
+                    # but not for CHIME, to avoid Prometheus overload
+                    # during processing at the telescope
+                    step_size = 10 if db_host == "ss1" else 30
                     memory_query = (
                         f"container_memory_usage_bytes{{name='{container_name}'}}"
                     )
@@ -750,6 +772,12 @@ def main(
         " used."
     ),
 )
+@click.option(
+    "--cand-path",
+    default=None,
+    type=str,
+    help="Path where the candidates are created",
+)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -760,6 +788,7 @@ def stack_and_search(
     db_host,
     db_name,
     path_cumul_stack,
+    cand_path,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -813,14 +842,15 @@ def stack_and_search(
             ps_detections_monthly,
             power_spectra_monthly,
         ) = ps_cumul_stack_processor.pipeline.load_and_search_monthly(
-            closest_pointing.pointing_id
+            closest_pointing._id
         )
-        ps_stack = db_api.get_ps_stack(closest_pointing.pointing_id)
+        ps_stack = db_api.get_ps_stack(closest_pointing._id)
         if ps_detections_monthly:
             cands.run_interface(
                 ps_detections_monthly,
                 closest_pointing,
                 ps_stack.datapath_month,
+                cand_path,
                 cands_processor,
                 power_spectra_monthly,
                 plot,
@@ -843,11 +873,12 @@ def stack_and_search(
                         "Candidate creation requires access to the power spectra."
                     )
                 else:
-                    ps_stack = db_api.get_ps_stack(closest_pointing.pointing_id)
+                    ps_stack = db_api.get_ps_stack(closest_pointing._id)
                     cands.run_interface(
                         ps_detections,
                         closest_pointing,
                         ps_stack.datapath_cumul,
+                        cand_path,
                         cands_processor,
                         power_spectra,
                         plot,
@@ -976,802 +1007,6 @@ def run_quant(utc_start, utc_end, beam_row, nchan):
         log.error("`ch_frb_l1` is a required dependency for quantization this step.")
         sys.exit(1)
     quant.run(utc_start, utc_end, beam_row, nchan)
-
-
-@click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option(
-    "--db-host",
-    default="sps-archiver",
-    type=str,
-    help="Host used for the mongodb database.",
-)
-@click.option(
-    "--db-port",
-    default=27017,
-    type=int,
-    help="Port used for the mongodb database.",
-)
-@click.option(
-    "--db-name",
-    default="sps-processing",
-    type=str,
-    help="Namespace used for the mongodb database.",
-)
-@click.option(
-    "--start-date",
-    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
-    required=True,
-    help="First date to start continuous processing on.",
-)
-@click.option(
-    "--number-of-days",
-    default=-1,
-    type=int,
-    help="Number of days to perform continuous processing on. -1 (default) for forever",
-)
-@click.option(
-    "--basepath",
-    default="/data/chime/sps/sps_processing",
-    type=str,
-    help="Path for created files. Default './'",
-)
-@click.option(
-    "--min-ra",
-    default=0,
-    type=float,
-    help="Minimum ra to process.",
-)
-@click.option(
-    "--max-ra",
-    default=360,
-    type=float,
-    help="Maximum ra to process.",
-)
-@click.option(
-    "--min-dec",
-    default=-30,
-    type=float,
-    help="Minimum dec to process.",
-)
-@click.option(
-    "--max-dec",
-    default=90,
-    type=float,
-    help="Maximum dec to process.",
-)
-@click.option(
-    "--workflow-name",
-    default="sps-processing",
-    type=str,
-    help="Which Worklow DB to create/use.",
-)
-def start_continuous_daily_processing(
-    db_host,
-    db_port,
-    db_name,
-    start_date,
-    number_of_days,
-    basepath,
-    min_ra,
-    max_ra,
-    min_dec,
-    max_dec,
-    workflow_name,
-):
-    log.setLevel(logging.INFO)
-
-    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
-
-    start_date = start_date.replace(tzinfo=pytz.UTC)
-
-    date_to_process = start_date
-
-    client = docker.from_env()
-
-    service_tiers = [
-        "tiny",
-        "small",
-        "medium",
-        "large",
-        "huge",
-    ]
-
-    def wait_for_no_running_tasks():
-        is_a_task_running = True
-        while is_a_task_running is True:
-            is_a_task_running = False
-            # Re-fetch Docker Swarm Service states
-            services_all_tiers = [
-                service
-                for service in client.services.list()
-                if service.name.split("_")[1] in service_tiers
-            ]
-            for service in services_all_tiers:
-                for task in service.tasks():
-                    if task["Status"]["State"] == "running":
-                        is_a_task_running = True
-                        log.info("A task is still running. Will check again.")
-                        break
-                if is_a_task_running is True:
-                    break
-
-    number_of_days_processed = 0
-
-    def loop_condition():
-        if number_of_days != -1:
-            return number_of_days_processed < number_of_days
-        else:
-            return True
-
-    while loop_condition():
-        try:
-            present_date = dt.datetime.now(dt.timezone.utc)
-            yesterday_date = present_date - dt.timedelta(days=1)
-
-            if date_to_process <= yesterday_date:
-                log.info(
-                    f"{date_to_process} should be done recording data (24 hours have"
-                    " passed)."
-                )
-            else:
-                time_left = date_to_process - yesterday_date
-                seconds_left = time_left.total_seconds()
-                hours_left = seconds_left / 3600
-
-                log.info(
-                    f"{date_to_process} is not at least 24 hours before"
-                    " the present date. Data may not be ready. Sleeping for"
-                    f" {hours_left} (that's the hours left until its ready)..."
-                )
-
-                time.sleep(seconds_left)
-
-            find_all_available_processes(
-                [
-                    "--db-host",
-                    db_host,
-                    "--db-port",
-                    db_port,
-                    "--db-name",
-                    db_name,
-                    "--date",
-                    date_to_process,
-                ],
-                standalone_mode=False,
-            )
-
-            date_string = date_to_process.strftime("%Y/%m/%d")
-            total_processes = db["processes"].count_documents({"date": date_string})
-
-            present_date = dt.datetime.now(dt.timezone.utc)
-
-            time_passed = present_date - (date_to_process + dt.timedelta(days=1))
-            seconds_passed = time_passed.total_seconds()
-            hours_passed = seconds_passed / 3600
-
-            beginning_message = (
-                f"Starting processing for {date_string} \n"
-                f"{total_processes} total processes\n"
-                f"{hours_passed:.2f} hours passed since data recording was complete"
-            )
-            message_slack(beginning_message)
-
-            start_time_of_processing = time.time()
-
-            process_all_processes(
-                [
-                    "--db-host",
-                    db_host,
-                    "--db-port",
-                    db_port,
-                    "--db-name",
-                    db_name,
-                    "--date",
-                    date_to_process,
-                    "--min-ra",
-                    min_ra,
-                    "--max-ra",
-                    max_ra,
-                    "--min-dec",
-                    min_dec,
-                    "--max-dec",
-                    max_dec,
-                    "--basepath",
-                    basepath,
-                    "--stackpath",
-                    basepath,
-                    "--workflow-name",
-                    workflow_name,
-                ],
-                standalone_mode=False,
-            )
-
-            wait_for_no_running_tasks()
-
-            end_time_of_processing = time.time()
-
-            overall_time_of_processing = (
-                end_time_of_processing - start_time_of_processing
-            ) / 60
-            average_time_of_processing = (
-                overall_time_of_processing / total_processes
-            ) * 60
-
-            completed_processes = db["processes"].count_documents(
-                {
-                    "date": date_string,
-                    "status": 2,
-                }
-            )
-            rfi_processeses = db["processes"].count_documents(
-                {"date": date_string, "status": 2, "is_in_stack": False}
-            )
-
-            observations = list(
-                db["observations"].find(
-                    {
-                        "datetime": {
-                            "$gte": date_to_process,
-                            "$lte": date_to_process + dt.timedelta(days=1),
-                        }
-                    },
-                    {"num_detections": 1},
-                )
-            )
-            observations = np.array(
-                [
-                    obs["num_detections"]
-                    for obs in observations
-                    if obs["num_detections"] is not None
-                ]
-            )
-
-            if len(observations) > 0:
-                mean_detections = round(np.mean(observations))
-            else:
-                mean_detections = 0
-
-            processes = list(
-                db["processes"].find(
-                    {
-                        "datetime": {
-                            "$gte": date_to_process,
-                            "$lte": date_to_process + dt.timedelta(days=1),
-                        }
-                    },
-                    {"process_time": 1, "nchan": 1},
-                )
-            )
-
-            time_per_nchan = {
-                1024: {"total": 0, "count": 0},
-                2048: {"total": 0, "count": 0},
-                4096: {"total": 0, "count": 0},
-                8192: {"total": 0, "count": 0},
-                16384: {"total": 0, "count": 0},
-            }
-
-            for process in processes:
-                nchan = process["nchan"]
-                process_time = process["process_time"]
-                if process_time is not None and nchan in time_per_nchan:
-                    time_per_nchan[nchan]["total"] += process_time
-                    time_per_nchan[nchan]["count"] += 1
-
-            slack_message = (
-                f"For {date_string}:\n"
-                f"{completed_processes} / {total_processes} finished successfully\n"
-                f"Of those, {rfi_processeses} were rejected by quality metrics\n"
-                f"Mean number of detections: {mean_detections}\n"
-                f"Overall processing time: {overall_time_of_processing:.2f} minutes ({average_time_of_processing:.2f} seconds per process average)"
-            )
-
-            for nchan in time_per_nchan.keys():
-                time_of_nchan = time_per_nchan[nchan]
-                if time_of_nchan["count"] > 0:
-                    average_time = round(
-                        time_of_nchan["total"] / time_of_nchan["count"]
-                    )
-                    slack_message += f"\nMean process time for nchan {nchan}: {average_time} seconds ({average_time / 60:.2f} minutes)"
-
-            message_slack(slack_message)
-
-            find_and_run_all_folding_processes(
-                date=date_to_process,
-                db_host=db_host,
-                db_port=db_port,
-                db_name=db_name,
-                workflow_name=workflow_name,
-            )
-
-            number_of_days_processed = number_of_days_processed + 1
-
-            wait_for_no_running_tasks()
-
-            date_to_process = date_to_process + dt.timedelta(days=1)
-
-        except Exception as error:
-            log.error(error)
-
-
-@click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option(
-    "--full-transit/--no-full-transit",
-    default=True,
-    help=(
-        "Only process pointings whose full transit fall within the specified utc range"
-    ),
-)
-@click.option(
-    "--db-port",
-    default=27017,
-    type=int,
-    help="Port used for the mongodb database.",
-)
-@click.option(
-    "--db-host",
-    default="localhost",
-    type=str,
-    help="Host used for the mongodb database.",
-)
-@click.option(
-    "--db-name",
-    default="sps",
-    type=str,
-    help="Name used for the mongodb database.",
-)
-@click.option(
-    "--complete/--no-complete",
-    default=False,
-    help=(
-        "Rerun creation of all processes. Alternatively will start with last day where"
-        " processes exist. NOT IMPLEMENTED YET"
-    ),
-)
-@click.option(
-    "--date",
-    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
-    required=False,
-    help=(
-        "First date for which processes are created. Default = All days. All days will"
-        " take quite a long time."
-    ),
-)
-@click.option(
-    "--ndays",
-    default=1,
-    type=int,
-    help=(
-        "Number of days for which processes are created when --date is used for the"
-        " first day."
-    ),
-)
-def find_all_available_processes(
-    full_transit, db_port, db_host, db_name, complete, date, ndays
-):
-    """Find all available processes and add them to the database."""
-    log.setLevel(logging.INFO)
-    db_utils.connect(host=db_host, port=db_port, name=db_name)
-    strat = PointingStrategist(create_db=False)
-    if not date:
-        all_days = glob(os.path.join(datpath, "*/*/*"))
-    else:
-        all_days = []
-        for day in range(ndays):
-            all_days.extend(
-                glob(
-                    os.path.join(
-                        datpath, (date + dt.timedelta(days=day)).strftime("%Y/%m/%d")
-                    )
-                )
-            )
-    log.info(f"Number of days: {len(all_days)}")
-    total_processes = 0
-    for day in all_days:
-        log.info(f"Creating processes for {day}.")
-        beam = np.arange(0, 224)
-        total_processes_day = 0
-        try:
-            first_coordinates = None
-            last_coordinates = None
-            for b in beam:
-                datlist = sorted(glob(os.path.join(day, str(b).zfill(4), "*.dat")))[:]
-                start_times, end_times = utils.get_pointings_from_list(datlist)
-                for i in range(len(start_times)):
-                    active_pointings = strat.get_pointings(
-                        start_times[i], end_times[i], np.asarray([b])
-                    )
-                    if full_transit:
-                        new_active_pointings = []
-                        for ap in active_pointings:
-                            if (
-                                ap.max_beams[0]["utc_start"] >= start_times[i]
-                                and ap.max_beams[-1]["utc_end"] <= end_times[i]
-                            ):
-                                new_active_pointings.append(ap)
-                        active_pointings = new_active_pointings
-                    if len(active_pointings) >= 1:
-                        first_coordinates = (
-                            active_pointings[0].ra,
-                            active_pointings[0].dec,
-                        )
-                        last_coordinates = (
-                            active_pointings[-1].ra,
-                            active_pointings[-1].dec,
-                        )
-                        for ap in active_pointings:
-                            db_api.get_process_from_active_pointing(ap)
-                            total_processes_day += 1
-            total_processes += total_processes_day
-            log.info(f"{total_processes_day} available processes created for {day}.")
-            log.info(f"First coordinates : {first_coordinates}")
-            log.info(f"Last coordinates : {last_coordinates}")
-        except Exception as error:
-            log.error(error)
-            log.info(f"Can't create processes for {day}")
-    log.info(f"{total_processes} available processes in total.")
-
-
-@click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option(
-    "--db-port",
-    default=27017,
-    type=int,
-    help="Port used for the mongodb database.",
-)
-@click.option(
-    "--db-host",
-    default="localhost",
-    type=str,
-    help="Host used for the mongodb database.",
-)
-@click.option(
-    "--db-name",
-    default="sps",
-    type=str,
-    help="Name used for the mongodb database.",
-)
-@click.option(
-    "--date",
-    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
-    required=False,
-    help="First date of data to process. Default = All days.",
-)
-@click.option(
-    "--ndays",
-    default=1,
-    type=int,
-    help="Number of days to process when --date is used for the first day.",
-)
-@click.option(
-    "--workers",
-    default=1,
-    type=int,
-    help="Number of parallel processes that are executed.",
-)
-@click.option(
-    "--min-ra",
-    default=0,
-    type=float,
-    help="Minimum ra to process.",
-)
-@click.option(
-    "--max-ra",
-    default=360,
-    type=float,
-    help="Maximum ra to process.",
-)
-@click.option(
-    "--min-dec",
-    default=-30,
-    type=float,
-    help="Minimum dec to process.",
-)
-@click.option(
-    "--max-dec",
-    default=90,
-    type=float,
-    help="Maximum dec to process.",
-)
-@click.option(
-    "--dry-run/--no-dry-run",
-    default=False,
-    help="Only print commands without actually running processes.",
-)
-@click.option(
-    "--basepath",
-    default="./",
-    type=str,
-    help="Path for created files. Default './'",
-)
-@click.option(
-    "--stackpath",
-    default=None,
-    type=str,
-    help="Path for the monthly stack. As default the basepath from the config is used.",
-)
-@click.option(
-    "--workflow-name",
-    default="",
-    type=str,
-    help="Which Worklow DB to create/use.",
-)
-def process_all_processes(
-    db_port,
-    db_host,
-    db_name,
-    date,
-    ndays,
-    workers,
-    min_ra,
-    max_ra,
-    min_dec,
-    max_dec,
-    dry_run,
-    basepath,
-    stackpath,
-    workflow_name,
-):
-    """Process all unprocessed processes in the database for a given range."""
-    log.setLevel(logging.INFO)
-    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
-    query = {
-        "ra": {"$gte": min_ra, "$lte": max_ra},
-        "dec": {"$gte": min_dec, "$lte": max_dec},
-        #    "status": 1,   For now grad all processes which are not
-        #                   in stack and also not are considered RFI
-        "$and": [{"is_in_stack": False}, {"quality_label": {"$ne": False}}],
-        "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
-    }
-    if date:
-        query["datetime"] = {"$gte": date, "$lte": date + dt.timedelta(days=ndays)}
-    all_processes = list(db.processes.find(query))
-    if dry_run:
-        log.info("Will only print out processes commands without running them.")
-    log.info(f"{len(all_processes)} process found.")
-
-    all_processes = sorted(
-        all_processes,
-        key=lambda process: (process["date"], process["ra"], process["dec"]),
-    )
-
-    for process_index, process_dict in enumerate(all_processes):
-        process = models.Process.from_db(process_dict)
-        log.info(
-            f"Will process pointing ({process.ra}, {process.dec}) for date"
-            f" {process.date}"
-        )
-        try:
-            cmd_string_list = (
-                f"--date {process.date} --db-port {db_port} --db-host {db_host} --stack"
-                " --fdmt --rfi-beamform".split(" ")
-            )
-            if basepath:
-                cmd_string_list.extend(["--basepath", f"{basepath}"])
-            if stackpath:
-                cmd_string_list.extend(["--stackpath", f"{stackpath}"])
-            cmd_string_list.extend(
-                [
-                    f" {process.ra}",
-                    f" {process.dec}",
-                    "all",
-                ]
-            )
-
-            log.info(f"Running command: run-pipeline {' '.join(cmd_string_list)}")
-            if not dry_run:
-                if workflow_name:
-                    log.info(
-                        f"Scheduling Workflow job for {process} "
-                        f"on {db_host}:{db_port}:{db_name} MongoDB to "
-                        f"{workflow_name} Workflow DB"
-                    )
-                    schedule_workflow_job(
-                        db_host=db_host,
-                        db_port=db_port,
-                        db_name=db_name,
-                        basepath=basepath,
-                        stackpath=stackpath,
-                        date=process.date,
-                        ra=process.ra,
-                        dec=process.dec,
-                        nchan=process.nchan,
-                        ntime=process.ntime,
-                        workflow_name=workflow_name,
-                    )
-                else:
-                    main(cmd_string_list, standalone_mode=False)
-
-                    log.info(
-                        f"Finished processing pointing ({process.ra}, {process.dec})"
-                        f" for date {process.date}"
-                    )
-        except Exception as error:
-            log.error(error)
-            if not dry_run:
-                db_api.update_process(process.id, {"status": 3})
-    log.info(f"{len(all_processes)} process found.")
-
-
-def schedule_workflow_job(
-    db_port,
-    db_host,
-    db_name,
-    basepath,
-    stackpath,
-    date,
-    ra,
-    dec,
-    nchan,
-    ntime,
-    workflow_name,
-):
-    """Deposit Work and scale Docker Service, as node resources are free."""
-    client = docker.from_env()
-
-    service_tiers = [
-        "tiny",
-        "small",
-        "medium",
-        "large",
-        "huge",
-    ]
-
-    if ntime <= 2**20:
-        ntime_factor = 1
-    elif ntime > 2**20 and ntime <= 2**21:
-        ntime_factor = 2
-    else:
-        # capped, since longer pointings broken into chunks of 2^22
-        ntime_factor = 4
-    i_tier = int(np.log2(nchan // 1024 * ntime_factor))
-
-    tags = ["pipeline"]
-    if i_tier < len(service_tiers):
-        tags.append(service_tiers[i_tier])
-    else:
-        log.error(
-            f"nchan {nchan} ntime {ntime} does not correspond into an existing Docker"
-            " Swarm Service"
-        )
-        return
-
-    service_attrs = [
-        service
-        for service in client.services.list()
-        if service.name == f"pipeline_{tags[1]}"
-    ][0].attrs
-
-    def get_resource(attrs, cap_type, resource_type):
-        return attrs["Spec"]["TaskTemplate"]["Resources"][cap_type][resource_type] / 1e9
-
-    # Available CPU cores is approx. 1/2 of available GB of RAM on-site, and
-    # max_overall_threads == total_cpu_cores is optimal performance unless
-    # mutliprocesses are often blocked by sync events (I/O, network, etc) which
-    # in our case are not. Although n threads does not equal n cores being 100% used,
-    # so more can be used if shown to be beneficial.
-    threads_needed = int(
-        get_resource(service_attrs, "Reservations", "MemoryBytes") // 2
-    )
-
-    work = Work(pipeline=f"{workflow_name}", site="chime", user="SPAWG")
-    work.function = "sps_pipeline.pipeline.main"
-    work.parameters = {
-        "stack": True,
-        "fdmt": True,
-        "rfi_beamform": True,
-        "plot": True,
-        "plot_threshold": 8.0,
-        "components": ["all"],
-        "num_threads": threads_needed,
-        "ra": ra,
-        "dec": dec,
-        "date": date,
-        "db_port": db_port,
-        "db_host": db_host,
-        "db_name": db_name,
-        "basepath": basepath,
-        "stackpath": stackpath,
-        "use_pyroscope": False,
-        "using_docker": True,
-    }
-    work.tags = tags
-    work.config.archive.results = True
-    work.config.archive.plots = "pass"
-    work.config.archive.products = "pass"
-    work.retries = 0
-
-    docker_swarm_pending_states = [
-        "new",
-        "pending",
-        "assigned",
-        "accepted",
-        "ready",
-        "preparing",
-        "starting",
-    ]
-    docker_swarm_running_states = ["running"]
-    docker_swarm_finished_states = [
-        "complete",
-        "failed",
-        "shutdown",
-        "rejected",
-        "orphaned",
-        "remove",
-    ]
-
-    # 15 minutes from now timeout. Sometimes a Docker Swarm task
-    # gets stuck in pending state indefinitely for unknown reasons...
-    timeout = time.time() + (60 * 15)  # 15 minutes from now
-    is_timeout_reached = False
-
-    # Docker Swarm can be freeze if too many tasks are in pending state concurrently.
-    # Additionally, Docker Swarm deqeues pending jobs in random order, so we need to
-    # only have one pending job at a time, to maintain ordering
-    is_a_task_pending = True
-    while is_a_task_pending is True and is_timeout_reached is False:
-        is_a_task_pending = False
-        # Re-fetch Docker Swarm Service states
-        services_all_tiers = [
-            service
-            for service in client.services.list()
-            if service.name.split("_")[1] in service_tiers
-        ]
-        for service in services_all_tiers:
-            if time.time() > timeout:
-                is_timeout_reached = True
-                break
-
-            for task in service.tasks():
-                task_state = task["Status"]["State"]
-                task_id = task["ID"]
-                if (task_state not in docker_swarm_finished_states) and (
-                    task_state not in docker_swarm_running_states
-                ):
-                    log.info(
-                        f"Unfinished, non-running task {task_id} is in state {task_state}"
-                    )
-                    if task_state in docker_swarm_pending_states:
-                        is_a_task_pending = True
-                        break
-            if is_a_task_pending is True:
-                break
-
-    if is_timeout_reached is True:
-        log.info(
-            (
-                "A task is stuck in pending state, timeout reached."
-                "Scaling down Docker Swarm Services..."
-            )
-        )
-        services_all_tiers = [
-            service
-            for service in client.services.list()
-            if service.name.split("_")[1] in service_tiers
-        ]
-        for service in services_all_tiers:
-            service.scale(0)
-
-    log.info("Depositing Workflow Work object...")
-
-    work.deposit()
-
-    service_this_tier_name = f"pipeline_{tags[1]}"
-    service_this_tier = [
-        service
-        for service in client.services.list()
-        if service.name == service_this_tier_name
-    ][0]
-
-    log.info("Scaling Docker Swarm Service Workflow runner...")
-
-    service_this_tier.scale(
-        service_this_tier.attrs["Spec"]["Mode"]["Replicated"]["Replicas"] + 1
-    )
-
-    # Wait a second before querying Docker Swarm for next task
-    time.sleep(1)
-
 
 if __name__ == "__main__":
     main()

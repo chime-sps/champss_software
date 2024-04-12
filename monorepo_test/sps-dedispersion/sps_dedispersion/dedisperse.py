@@ -2,9 +2,7 @@ import numpy as np
 from sps_common.interfaces import SkyBeam, DedispersedTimeSeries
 from sps_common.conversion import unix_to_mjd
 from sps_common.constants import DM_CONSTANT, TSAMP
-
-from fdmt.cpu_fdmt import FDMT
-
+from sps_dedispersion.fdmt.cpu_fdmt import FDMT
 
 def simple_dedisperse(fdmt, skybeam, dm_step=1):
     """Dedisperse the skybeam into a collection of dedispersed
@@ -21,7 +19,7 @@ def simple_dedisperse(fdmt, skybeam, dm_step=1):
     """
     # Delete the first maxdm samples, because 
     # data from some frequencies are missing for these samples
-    dedisp = fdmt.fdmt(skybeam.spectra[::-1], retDMT=True, frontpadding=False)[::dm_step]
+    dedisp = fdmt.fdmt(skybeam.spectra[::-1], frontpadding=False)[::dm_step]
 
     # At this point the entire returned array should still be in memory...
     # since the above line should only return a view, not a copy
@@ -93,7 +91,7 @@ def dedisperse(fdmt, skybeam, chunk_size, dm_step=1):
             # Don't add first fdmt.maxDT time samples because not
             # all frequencies are available for those time samples
             np.add(dedisp_chunk,
-                   fdmt.fdmt(spectra_chunk, retDMT=True, padding=True,
+                   fdmt.fdmt(spectra_chunk, padding=True,
                              frontpadding=False)[::dm_step],
                    out=dedisp_chunk)
         else:
@@ -102,7 +100,7 @@ def dedisperse(fdmt, skybeam, chunk_size, dm_step=1):
 
             spectra_chunk = spectra[:, idx*chunk_size : (idx+1)*chunk_size]
             np.add(dedisp_chunk,
-                   fdmt.fdmt(spectra_chunk, retDMT=True, padding=True)[::dm_step],
+                   fdmt.fdmt(spectra_chunk, padding=True)[::dm_step],
                     out=dedisp_chunk)
 
         idx += 1
@@ -113,7 +111,7 @@ def dedisperse(fdmt, skybeam, chunk_size, dm_step=1):
     spectra_chunk = spectra[:, idx*chunk_size:]
 
     np.add(dedisp_chunk,
-           fdmt.fdmt(spectra_chunk, retDMT=True, padding=False)[::dm_step],
+           fdmt.fdmt(spectra_chunk, padding=False)[::dm_step],
            out=dedisp_chunk)
 
     dms = (np.arange(0, fdmt.maxDT, dm_step) /

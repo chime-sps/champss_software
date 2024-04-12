@@ -37,7 +37,7 @@ def run(pointing, ps_cumul_stack_processor, monthly_power_spectra=None):
             f" {pointing.ra:.2f} {pointing.dec:.2f}"
         )
     ps_detections, power_spectra = ps_cumul_stack_processor.pipeline.stack_and_search(
-        pointing.pointing_id, monthly_power_spectra
+        pointing._id, monthly_power_spectra
     )
     return ps_detections, power_spectra
 

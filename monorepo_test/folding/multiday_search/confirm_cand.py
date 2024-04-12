@@ -22,6 +22,8 @@ from phase_aligned_search import *
 @click.option("--f0", type=float, required=True, help="F0")
 @click.option("--ra", type=float, required=True, help="RA")
 @click.option("--dec", type=float, required=True, help="DEC")
+@click.option("--phase_accuracy", type=float, default=1./64,
+              help="required accuracy in pulse phase, which determines step size")
 @click.option(
     "--load_only",
     is_flag=True,
@@ -37,45 +39,59 @@ from phase_aligned_search import *
     is_flag=True,
     help="Don't perform P0/P1 search",
 )
+def main(ra, dec, dm, f0, phase_accuracy, load_only=False, full_plot=False, no_search=False):
 
-
-def main(ra, dec, dm, f0, load_only=False, full_plot=False, no_search=False):
-    DM_incoherent = dm
-    F0_incoherent = f0
-    RA = ra
-    DEC = dec
-    directory = '/data/chime/sps/archives/candidates/' + f'{round(RA,2)}' + '_' +  f'{round(DEC,2)}'
+    # Find values directly from par file
+    directory = '/data/chime/sps/archives/candidates/' + f'{round(ra,2)}' + '_' +  f'{round(dec,2)}'
     print(f"Searching in directory {directory}...")
+    #par_file = find_oldest_obs(directory, f0, dm, message=False)
+    par_file = find_central_obs(directory, f0, dm, message=False)
+    par_vals = read_par(par_file)
+    
+    DM_incoherent = par_vals["DM"]
+    F0_incoherent = par_vals["F0"]
     P0_incoherent = 1/F0_incoherent
+    RA = par_vals["RAJD"]
+    DEC = par_vals["DECJD"]
 
     if not no_search:
         data = load_profiles(directory, F0_incoherent, DM_incoherent, RA, DEC, load_only)
-    
-        P0_min = P0_incoherent - 15e-6
-        P0_max = P0_incoherent + 15e-6
-        P1_min = 1e-15
-        P1_max = 1e-11
-        P0_lims = (P0_min, P0_max)
-        P1_lims = (P1_min, P1_max)
-        P0_points = 1000
-        P1_points = 100
-        
-        explore_grid = ExploreGrid(data, P0_lims, P1_lims, P0_points, P1_points)
-        P0s, P1s, SNRs_peak_sums, optimal_parameters, observations  = explore_grid.output()
-        
+
+        # Eventually delta f0_max will be determined using power vs. freq plot
+        f0_min = F0_incoherent - 15e-6
+        f0_max = F0_incoherent + 15e-6
+        f0_lims = (f0_min, f0_max)
+        delta_f0max = f0_max - f0_min
+
+        f1_max = 1e-13 # Upper limit based on known pulsars, or expected barycentric shift
+        f1_lims = (-f1_max, f1_max) # Negative or positive to account for position error
+        delta_f1max = 2*f1_max
+
+        T = data['T'] # Time from first observation to last observation
+        npbin = data['npbin'] # Number of phase bins
+        M_f0 = int(npbin*phase_accuracy)
+        # factor of 2, since we reference to central observation
+        f0_points = 2*int(delta_f0max * T * npbin / M_f0)
+        f1_points = 2*int(0.5 * delta_f1max * T**2 * npbin / M_f0)
+
+        print(f"Running search with {f0_points} f0 bins, {f1_points} f1 bins") 
+
+        explore_grid = ExploreGrid(data, f0_lims, f1_lims, f0_points, f1_points)
+        f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
+
+        np.savez(directory + '/explore_grid.npz', f0s=f0s, f1s=f1s, chi2_grid=chi2_grid)
+
         explore_grid.plot(squeeze=False)
-    
     
     if full_plot:
     
         # Rewrite new ephemeris using new P0 and P1
         
-        P0_optimal = optimal_parameters[0][0] 
-        P1_optimal = optimal_parameters[1][0] 
-        F0_optimal = 1 / P0_optimal
-        F1_optimal = -1 / (P0_optimal**2) * P1_optimal
+        f0_optimal = optimal_parameters[0] + F0_incoherent
+        print(f0_optimal)
+        f1_optimal = optimal_parameters[1] 
         
-        first_obs_par = find_oldest_obs(directory, F0_optimal, DM_incoherent)
+        first_obs_par = find_oldest_obs(directory, F0_incoherent, DM_incoherent)
         optimal_par_file = directory + "/" + "optimal_par"
         
         with open(first_obs_par, "r") as input:
@@ -83,8 +99,8 @@ def main(ra, dec, dm, f0, load_only=False, full_plot=False, no_search=False):
                 for line in input:
                     if line.strip("\n")[0:2] != "F0":
                         output.write(line)
-                output.write("\t".join(["F0", str(F0_optimal)]) + "\n")
-                output.write("\t".join(["F1", str(-F1_optimal)]) + "\n")
+                output.write("\t".join(["F0", str(f0_optimal)]) + "\n")
+                output.write("\t".join(["F1", str(-f1_optimal)]) + "\n")
         
         subprocess.run(["pam", "-E", optimal_par_file, "-m", "cand*.newar"], cwd=directory)
         

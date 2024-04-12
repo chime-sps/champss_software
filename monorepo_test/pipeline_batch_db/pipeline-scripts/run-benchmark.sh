@@ -1,6 +1,8 @@
 ADDITIONAL_PIPELINE_PARAMS="$1" # First argument
 ADDITIONAL_STACK_PARAMS="$2" # Second argument
 
+rm -r /data/chime/sps/benchmark/stack /data/chime/sps/benchmark/candidates_cumul /data/chime/sps/benchmark/candidates_monthly /data/chime/sps/benchmark/2022
+
 run-pipeline $ADDITIONAL_PIPELINE_PARAMS --date 20220618 --stack --db-host ss1 --db-name sps_benchmark --basepath /data/chime/sps/benchmark --stackpath /data/chime/sps/benchmark 317.21 50.01
 run-pipeline $ADDITIONAL_PIPELINE_PARAMS --date 20220619 --stack --db-host ss1 --db-name sps_benchmark --basepath /data/chime/sps/benchmark --stackpath /data/chime/sps/benchmark 317.21 50.01
 run-pipeline $ADDITIONAL_PIPELINE_PARAMS --date 20220620 --stack --db-host ss1 --db-name sps_benchmark --basepath /data/chime/sps/benchmark --stackpath /data/chime/sps/benchmark 317.21 50.01

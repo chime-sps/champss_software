@@ -1,13 +1,10 @@
 #!/usr/bin/env python
-from attr import attrs, attrib
 import numpy as np
-from astropy.time import Time, TimeDelta
-from ..constants import TSAMP
-from ..conversion import (
-    convert_intensity_to_hdf5,
-    read_intensity_hdf5,
-    read_huff_msgpack,
-)
+from astropy.time import Time
+from attr import attrib, attrs
+
+from sps_common.constants import TSAMP
+from sps_common.conversion import convert_intensity_to_hdf5, read_intensity_hdf5
 
 
 @attrs
@@ -15,6 +12,8 @@ class SlowPulsarIntensityChunk:
     """
     A chunk of intensity data that has been quantized and potentially downsampled. It is
     both the input and output structure of the RFI cleaning pipeline.
+
+    This class is not used in the current loading scheme.
 
     Attributes:
         spectra (np.ma.MaskedArray): The raw intensity data with whatever previous
@@ -88,15 +87,15 @@ class SlowPulsarIntensityChunk:
         if value not in choices:
             raise ValueError(
                 f"The CHIME/FRB beam number specified ({attribute.name}={value}) is "
-                f"invalid. Should be something like N[000-255] where N = [0, 3] and "
-                f"leading zeros are truncated."
+                "invalid. Should be something like N[000-255] where N = [0, 3] and "
+                "leading zeros are truncated."
             )
 
     @classmethod
     def read(cls, fname: str):
         """
-        Read a HDF5 that is assumed to be formatted as if it had been written
-        by another SlowPulsarIntensityChunk instance. See `write_hdf5_file`.
+        Read a HDF5 that is assumed to be formatted as if it had been written by another
+        SlowPulsarIntensityChunk instance. See `write_hdf5_file`.
 
         Parameters
         ----------
@@ -125,8 +124,8 @@ class SlowPulsarIntensityChunk:
 
     def write(self, odir: str = None, tsamp: float = TSAMP) -> str:
         """
-        Take the current RFIPipeline state and write the intensity and masking data to
-        a HDF5 file, including useful metadata for downstream processes.
+        Take the current RFIPipeline state and write the intensity and masking data to a
+        HDF5 file, including useful metadata for downstream processes.
 
         Parameters
         ----------
@@ -145,9 +144,9 @@ class SlowPulsarIntensityChunk:
             end=self.start_unix_time + self.ntime * tsamp,
             cleaned=self.cleaned,
         )
-        fname = "{0:.0f}_{1:.0f}.hdf5".format(metadata["start"], metadata["end"])
+        fname = "{:.0f}_{:.0f}.hdf5".format(metadata["start"], metadata["end"])
         if odir is not None:
-            fname = "{0}/{1}".format(odir, fname)
+            fname = f"{odir}/{fname}"
         convert_intensity_to_hdf5(self.spectra.data, self.spectra.mask, fname, metadata)
 
         return fname
@@ -165,7 +164,7 @@ class SlowPulsarIntensityChunk:
 
     def get_mask(self) -> np.ndarray:
         """
-        Return the current working intensity mask
+        Return the current working intensity mask.
 
         Returns
         -------
@@ -176,7 +175,7 @@ class SlowPulsarIntensityChunk:
 
     def get_masked_data(self) -> np.ma.MaskedArray:
         """
-        Return the current working masked intensity data as a np.ma.MaskedArray
+        Return the current working masked intensity data as a np.ma.MaskedArray.
 
         Returns
         -------

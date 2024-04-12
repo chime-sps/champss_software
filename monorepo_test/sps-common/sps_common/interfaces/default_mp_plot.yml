@@ -46,6 +46,7 @@ panels:
   - 0
   - 1
   type: plot_dm_freq_3
+  plot_fit: False
 - col_range:
   - 0
   - 1
