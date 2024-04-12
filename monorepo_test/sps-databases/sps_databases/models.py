@@ -2,6 +2,7 @@ import datetime as dt
 import enum
 import logging
 
+import numpy as np
 from attr import Factory, asdict, attrib, attrs, converters, validators
 from attr.setters import convert, validate
 from bson.objectid import ObjectId
@@ -28,6 +29,7 @@ class ProcessStatus(enum.Enum):
     failed = 3
     incomplete = 4
     blocked = 5
+
 
 @attrs
 class Pointing:
@@ -117,53 +119,63 @@ class Observation:
     )
     birdies = attrib(
         default=None,
+        converter=converters.optional(np.asarray),
         validator=validators.optional(
             validators.deep_iterable(
-                member_validator=validators.instance_of(int),
-                iterable_validator=validators.instance_of(list),
+                member_validator=validators.instance_of(np.int64),
+                iterable_validator=validators.instance_of(np.ndarray),
             )
         ),
         on_setattr=validate,  # type: ignore
     )
     birdies_position = attrib(
         default=None,
+        converter=converters.optional(np.asarray),
         validator=validators.optional(
             validators.deep_iterable(
-                member_validator=validators.instance_of(int),
-                iterable_validator=validators.instance_of(list),
+                member_validator=validators.instance_of(np.int64),
+                iterable_validator=validators.instance_of(np.ndarray),
             )
         ),
         on_setattr=validate,  # type: ignore
     )
     birdies_height = attrib(
         default=None,
+        converter=converters.optional(np.asarray),
         validator=validators.optional(
             validators.deep_iterable(
                 member_validator=validators.instance_of(float),
-                iterable_validator=validators.instance_of(list),
+                iterable_validator=validators.instance_of(np.ndarray),
             )
         ),
         on_setattr=validate,  # type: ignore
     )
     birdies_left_freq = attrib(
         default=None,
+        converter=converters.optional(np.asarray),
         validator=validators.optional(
             validators.deep_iterable(
                 member_validator=validators.instance_of(float),
-                iterable_validator=validators.instance_of(list),
+                iterable_validator=validators.instance_of(np.ndarray),
             )
         ),
         on_setattr=validate,  # type: ignore
     )
     birdies_right_freq = attrib(
         default=None,
+        converter=converters.optional(np.asarray),
         validator=validators.optional(
             validators.deep_iterable(
                 member_validator=validators.instance_of(float),
-                iterable_validator=validators.instance_of(list),
+                iterable_validator=validators.instance_of(np.ndarray),
             )
         ),
         on_setattr=validate,  # type: ignore
+    )
+    birdie_file = attrib(
+        default=None,
+        converter=converters.optional(str),
+        on_setattr=convert,  # type: ignore
     )
     compared_obs = attrib(
         default=None,
@@ -240,6 +252,11 @@ class Observation:
         converter=converters.optional(int),
         on_setattr=convert,  # type: ignore
     )
+    log_file = attrib(
+        default=None,
+        converter=converters.optional(str),
+        on_setattr=convert,  # type: ignore
+    )
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )
@@ -258,13 +275,22 @@ class Observation:
         """Create an `Observation` instance from a MongoDB document."""
         try:
             doc["status"] = ObservationStatus(doc["status"])
+            birdie_file = doc.get("birdie_file", None)
+            if birdie_file is not None:
+                try:
+                    birdie_info = np.load(birdie_file)
+                    doc.update(birdie_info.items())
+                except FileNotFoundError as e:
+                    log.warning(f"Could not load birdie_file at {birdie_file}.")
+                    log.warning(e)
             filtered_doc = filter_class_dict(cls, doc)
+
             obj = cls(**filtered_doc)
-            return obj
         except TypeError as e:
             log.warning(f"Could not load observation with dic {doc}.")
             log.warning(e)
             return None
+        return obj
 
     def to_db(self):
         """Return a MongoDB document version of this instance."""
@@ -521,7 +547,7 @@ class PsStack:
 
     # pointing = relationship("Pointing", back_populates="ps_stack")
     def pointing(self, db):
-        return Pointing.from_db(db.pointings.find(ObjectId(self.pointing_id)))
+        return Pointing.from_db(db.pointings.find_one(ObjectId(self.pointing_id)))
 
 
 @attrs
@@ -582,7 +608,7 @@ class HhatStack:
 
     # pointing = relationship("Pointing", back_populates="hhat_stack")
     def pointing(self, db):
-        return Pointing.from_db(db.pointings.find(ObjectId(self.pointing_id)))
+        return Pointing.from_db(db.pointings.find_one(ObjectId(self.pointing_id)))
 
 
 @attrs
@@ -604,6 +630,63 @@ class KnownSource:
     spin_period_derivative_error = attrib(default=0, converter=float, type=float)
     spin_period_epoch = attrib(default=0, converter=float, type=float)
     detection_history = attrib(default=[], type=list)
+    last_changed = attrib(
+        validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
+    )
+    _id = attrib(
+        default=None,
+        alias="_id",
+        converter=converters.optional(str),
+        on_setattr=convert,  # type: ignore
+    )
+
+    @property
+    def id(self):
+        return self._id
+
+    @classmethod
+    def from_db(cls, doc):
+        """Create a `KnownSource` instance from a MongoDB document."""
+        filtered_doc = filter_class_dict(cls, doc)
+        obj = cls(**filtered_doc)
+        return obj
+
+    def to_db(self):
+        """Return a MongoDB document version of this instance."""
+        doc = asdict(self)
+        doc["_id"] = ObjectId(self.id)
+        return doc
+
+
+@attrs
+class FollowUpSource:
+    # "source_type of 'known_source', 'sd_candidate', 'md_candidate', governing followup plan"
+    source_type = attrib(converter=str)
+    source_name = attrib(converter=str)
+    ra = attrib(converter=float)
+    dec = attrib(converter=float)
+    dm = attrib(converter=float)
+    f0 = attrib(converter=float)
+    dm_galactic_ne_2001_max = attrib(converter=float)
+    dm_galactic_ymw_2016_max = attrib(converter=float)
+    pepoch = attrib(default=0, converter=float, type=float)
+    candidate_sigma = attrib(default=0, converter=float, type=float)
+    folding_history = attrib(default=[], type=list)
+    followup_duration = attrib(default=1, converter=int, type=int)
+    path_to_ephemeris = attrib(
+        default=None, converter=converters.optional(str), type=str
+    )
+    path_to_candidates = attrib(
+        default=[],
+        validator=validators.optional(
+            validators.deep_iterable(
+                member_validator=validators.instance_of(str),
+                iterable_validator=validators.instance_of(list),
+            )
+        ),
+        on_setattr=validate,
+    )
+    active = attrib(default=True, converter=bool, type=bool)
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )

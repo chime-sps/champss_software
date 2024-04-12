@@ -74,7 +74,7 @@ ps:
             upper_percentile_cut: null
           qc_tests:
             - metric: ksdist # This defined which value in the output of the qc_test is used
-              upper_limit: 0.0037 # Based on November 2023 data this would exclude 5 percent
+              upper_limit: 0.0049 # Based on March 2024 data this would exclude 5 percent
               upper_limit_dynamic: 3 # This defines how many median absolute deviations above the median the limit is
 # The final limits are max(upper_limit, upper_limit_dynamic) and min(lower_limit, lower_limit_dynamic)
         ks_test_chan10:
@@ -127,7 +127,7 @@ ps:
             - num_clusters
           qc_tests:
             - metric: num_detections
-              upper_limit: 60000 # This is somewhat arbitrary for now at two times the ndetections of the clustering
+              upper_limit: 30000 # In March 2024 data this would exclude 4%
               upper_limit_dynamic: 3
             - metric: num_clusters
     stack_nbit: 16
@@ -142,6 +142,7 @@ ps:
     cluster_scale_factor: 10
     dbscan_min_samples: 5
     filter_by_nharm: False
+    clustering_max_ndetect: 50000
 
 cands:
   harmonics: {}
@@ -152,6 +153,30 @@ cands:
       - ndetections
       - nharm
       - log_p_dm
+    dm_sigma:
+      - feature: FitGaussWidth
+        flags:
+          - rel_err
+          - ndof
+          - rms_err
+      - feature: FitGauss
+        flags:
+          - rel_err
+          - ndof
+          - rms_err
+          - diff_from_detection
+    freq_sigma:
+      - feature: FitGaussWidth
+        flags:
+          - rel_err
+          - ndof
+          - rms_err
+      - feature: FitGauss
+        flags:
+          - rel_err
+          - ndof
+          - rms_err
+          - diff_from_detection
   arrays:
     pool_bins: 0
     period_factors: 1
@@ -263,10 +288,11 @@ ps_cumul_stack:
     delete_monthly_stack: True
   ps_search_config:
     num_harm: 32
-    sigma_min: 5.0
+    sigma_min: 6.0
     precompute_harms: True
     use_nsum_per_bin: True
     dbscan_eps: 1
     cluster_scale_factor: 10
     dbscan_min_samples: 5
     filter_by_nharm: False
+    clustering_max_ndetect: 100000

@@ -26,6 +26,9 @@ mypy = "^1.4.0"
 pre-commit = "^3.3.3"
 pytest = "^7.3.2"
 
+[tool.poetry.scripts]
+fold_candidate = "folding.fold_candidate:main"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

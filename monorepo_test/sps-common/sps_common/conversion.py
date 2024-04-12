@@ -1,19 +1,19 @@
-import numpy as np
-import copy
-from itertools import groupby
-from scipy.signal import detrend
-from astropy.time import Time, TimeDelta
-from astropy.coordinates import SkyCoord
-from astropy import units as u
-import h5py
-from spshuff import l1_io
-from .filterbank import write_to_filterbank
 import importlib
-import sys
 import re
-from threadpoolctl import threadpool_limits
+import sys
 
-from .constants import TSAMP
+import h5py
+import numpy as np
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.time import Time, TimeDelta
+from spshuff import l1_io
+
+from sps_common.constants import TSAMP
+from sps_common.filterbank import write_to_filterbank
+
+# import line_profiler
+# profiler = line_profiler.LineProfiler()
 
 # Conditional import for beam_model
 if importlib.util.find_spec("beam_model"):
@@ -22,7 +22,7 @@ if importlib.util.find_spec("beam_model"):
 
 def convert_ra_dec(ra_deg, dec_deg):
     """
-    Converts RA and Dec from degrees to hhmmss.ss format readable by filterbank files
+    Converts RA and Dec from degrees to hhmmss.ss format readable by filterbank files.
 
     Parameters
     =======
@@ -68,7 +68,7 @@ def convert_ra_dec(ra_deg, dec_deg):
 
 def unix_to_mjd(unix_time):
     """
-    Converts unix utc time to MJD
+    Converts unix utc time to MJD.
 
     Parameters
     =======
@@ -79,7 +79,6 @@ def unix_to_mjd(unix_time):
     =======
     time.mjd: float
         UTC time in MJD
-
     """
     time = Time(unix_time, format="unix")
     return time.mjd
@@ -87,7 +86,7 @@ def unix_to_mjd(unix_time):
 
 def load_presto_dat(dat, bit):
     """
-    Loads a presto dedispersed timeseries in .dat format
+    Loads a presto dedispersed timeseries in .dat format.
 
     Parameters
     =======
@@ -100,12 +99,11 @@ def load_presto_dat(dat, bit):
     =======
     timeseries: ndarray
         1-D array of the dedispersed time series
-
     """
     if bit >= 32:
-        dtype = "float{}".format(bit)
+        dtype = f"float{bit}"
     else:
-        dtype = "uint{}".format(bit)
+        dtype = f"uint{bit}"
 
     with open(dat, "rb") as datfile:
         timeseries = np.fromfile(datfile, dtype=dtype)
@@ -127,7 +125,6 @@ def read_hdf5_dataset(h5f, dataset_key="0"):
     =======
     data: np.ndarray
         dataset from the hdf5 file
-
     """
     data = np.ones(h5f[dataset_key].shape)
     h5f[dataset_key].read_direct(data)
@@ -154,7 +151,6 @@ def read_hhat_hdf5(filename):
         duty cycle labels
     sliced_by: str
         parameter that the data was sliced by : 'dm' or 'dc'
-
     """
     h5f = h5py.File(filename, "r")
     dcl = np.ones(h5f["dc_labels"].shape)
@@ -173,7 +169,8 @@ def write_hhat_hdf5(
     data, dc_labels, dm_labels, freq_labels, filename, slice_param="dc"
 ):
     """
-    Write hhat array to hdf5 file sliced by either DM ('DM', 'dm') or duty cycle ('DC', 'dc').
+    Write hhat array to hdf5 file sliced by either DM ('DM', 'dm') or duty cycle ('DC',
+    'dc').
 
     Parameters
     ==========
@@ -193,7 +190,6 @@ def write_hhat_hdf5(
     Returns
     =======
     None
-
     """
     assert slice_param in ["dm", "dc", "DC", "DM"]
     with h5py.File(filename, "w") as h5f:
@@ -203,15 +199,15 @@ def write_hhat_hdf5(
         h5f.attrs["sliced_by"] = slice_param.lower()
         if slice_param in ["dm", "DM"]:
             for i, dml in enumerate(dm_labels):
-                h5f.create_dataset("{}".format(i), data=data[i, :, :])
+                h5f.create_dataset(f"{i}", data=data[i, :, :])
         if slice_param in ["dc", "DC"]:
             for i, dcl in enumerate(dc_labels):
-                h5f.create_dataset("{}".format(i), data=data[:, :, i])
+                h5f.create_dataset(f"{i}", data=data[:, :, i])
 
 
 def subband(intensity, nsub):
     """
-    Subbands the data to a specified number of subbands
+    Subbands the data to a specified number of subbands.
 
     Parameters
     ----------
@@ -245,6 +241,8 @@ def read_huff_msgpack(filename, channel_downsampling_factor=1):
 
     The output is essentially a list of dictionaries, where each dictionary
     contains all the data and metadata associated with a single contiguous subfile.
+
+    This function is superseeded by the new reading function contained in beamformer.
 
     Parameters
     ==========
@@ -370,14 +368,13 @@ def convert_intensity_to_filterbank(
     Returns
     =======
     None.
-
     """
 
     # check if beam model is imported
     if "beam_model" not in sys.modules:
         sys.exit(
-            "ImportError: Using convert_intensity_to_filterbank() function requires FRB beam_model."
-            " Please install beam_model if you plan to use this function."
+            "ImportError: Using convert_intensity_to_filterbank() function requires FRB"
+            " beam_model. Please install beam_model if you plan to use this function."
         )
 
     nchan = 16384 // channel_downsampling_factor
@@ -404,11 +401,11 @@ def convert_intensity_to_filterbank(
 
     # outfilename -> start_time + end_time + beam no
     if opath:
-        oname = opath + "{0:d}_{1:d}_beam_{2:04d}.fil".format(
+        oname = opath + "{:d}_{:d}_beam_{:04d}.fil".format(
             start_unix_time, end_unix_time, beam
         )
     else:
-        oname = filelist[0][:-25] + "{0:d}_{1:d}_beam_{2:04d}.fil".format(
+        oname = filelist[0][:-25] + "{:d}_{:d}_beam_{:04d}.fil".format(
             start_unix_time, end_unix_time, beam
         )
 
@@ -433,12 +430,11 @@ def convert_intensity_to_filterbank(
 
 def convert_intensity_to_hdf5(spec, mask, fname, metadata):
     """
-    Take the spectra intensity and mask (separately) and write the data to a HDF5 file with 'intensity' and 'mask'
-    datasets. To read the data, one would need to do something like:
-        >>> import h5py
-        >>> h5f = h5py.File(fname, 'r')
-        >>> intensity = h5f['intensity']  # 2D array
-        >>> mask = h5f['mask']  # 2D array, (0 = not masked, 1 = masked)
+    Take the spectra intensity and mask (separately) and write the data to a HDF5 file
+    with 'intensity' and 'mask' datasets. To read the data, one would need to do
+    something like: >>> import h5py >>> h5f = h5py.File(fname, 'r') >>> intensity =
+    h5f['intensity']  # 2D array >>> mask = h5f['mask']  # 2D array, (0 = not masked, 1
+    = masked)
 
     Parameters
     ----------
@@ -468,7 +464,8 @@ def convert_intensity_to_hdf5(spec, mask, fname, metadata):
 
 def read_intensity_hdf5(fname):
     """
-    Take the hdf5 file and extract the datasets 'intensity' and 'mask' into numpy arrays of intensity and mask values.
+    Take the hdf5 file and extract the datasets 'intensity' and 'mask' into numpy arrays
+    of intensity and mask values.
 
     Parameters
     ----------
@@ -495,145 +492,11 @@ def read_intensity_hdf5(fname):
     return i, m, metadata
 
 
-def fill_and_norm(
-    data,
-    nchan,
-    ntime,
-    nsamp,
-    nsub=256,
-    block_size=1024,
-    detrend_data=False,
-    detrend_nsamp=None,
-    add_local_median=False,
-    return_median=False,
-):
-    """
-    When converting the RFIPipeline spectra to a form to be written to a file, we need to fill in the masked data with
-    a reasonable alternative. The code now gives several options in forming the masked data. The current default is to
-    replace the masked values with a local median over a nsamp segment and then set the local median to zero
-
-    There are options to apply a linear detrending of the data and to retain the local median values instead.
-
-    Parameters
-    =======
-    data: np.ma.MaskedArray
-        A masked array of shape (nchan, ntime)
-
-    nchan: int
-        Number of frequency channels (for looping purposes)
-
-    ntime: int
-        Number of total time samples (for looping purposes). Must be a multiple of block_size.
-
-    nsamp: int
-        Minimum number of time samples for each individual segment to process. Must be equal or multiple of the
-        block_size.
-
-    nsub: int
-        Number of subbands to divide the data by for processing. Default = 256
-
-    block_size: int
-        Size of a single block of samples that has to be processed together. Default = 1024
-
-    detrend_data: bool
-        Whether to detrend the data after masking. Default = False
-
-    detrend_nsamp: int or None
-        The number of samples to detrend together. Default = None (equal to the size of data chunk being processed)
-
-    add_local_median: bool
-        Whether to add local median to the detrended data. Default = False
-
-    return_median: bool
-        Whether to return the median of each channel. Default = False
-
-    Returns
-    -------
-    new_data: np.ndarray
-        The data attribute of the normalised and filled masked spectra
-
-    channel_median: np.ndarray or None
-        The median of each channel of the data block processed, if return_median = True. Otherwise, return None.
-    """
-    with threadpool_limits(limits=1, user_api="blas"):
-        data_ndim = data.ndim
-        if data_ndim == 1:
-            data = np.ma.array([data])
-        new_data = np.zeros(data.shape)
-        if return_median:
-            medians = np.zeros(nchan)
-        # determine sets of blocks to process
-        # ntime must be a multiple of block_size
-        assert ntime % block_size == 0, "ERROR : ntime must be a multiple of block_size"
-
-        if nsamp < block_size:
-            print(
-                "WARNING : nsamp must be equal or larger than block_size, setting nsamp = block_size..."
-            )
-            nsamp = block_size
-        # nsamp must be a multiple of block_size as well
-        assert nsamp % block_size == 0, "ERROR : nsamp must be a multiple of block_size"
-        num_blocks = ntime // nsamp
-        if num_blocks == 0:
-            block_starts = [0, ntime]
-        else:
-            block_starts = [
-                int(round((ntime / block_size) * (b / num_blocks)) * block_size)
-                for b in range(num_blocks + 1)
-            ]
-        for chan in range(nsub):
-            _local_chan = slice(chan * (nchan // nsub), (chan + 1) * (nchan // nsub))
-            for j in range(len(block_starts) - 1):
-                _local = slice(block_starts[j], block_starts[j + 1])
-                local_median = np.ma.median(data[_local_chan, _local])
-                new_data[_local_chan, _local] = np.ma.filled(
-                    data[_local_chan, _local], fill_value=local_median
-                )
-                if (
-                    not detrend_nsamp
-                    or detrend_nsamp > new_data[_local_chan, _local].shape[1]
-                ):
-                    detrend_nsamp = new_data[_local_chan, _local].shape[1]
-                if detrend_data and add_local_median:
-                    new_data[_local_chan, _local] = (
-                        detrend(
-                            new_data[_local_chan, _local],
-                            axis=1,
-                            type="linear",
-                            bp=np.arange(
-                                0, new_data[_local_chan, _local].shape[1], detrend_nsamp
-                            ),
-                        )
-                        + local_median
-                    )
-                elif detrend_data and not add_local_median:
-                    new_data[_local_chan, _local] = detrend(
-                        new_data[_local_chan, _local],
-                        axis=1,
-                        type="linear",
-                        bp=np.arange(
-                            0, new_data[_local_chan, _local].shape[1], detrend_nsamp
-                        ),
-                    )
-                elif not detrend_data and not add_local_median:
-                    new_data[_local_chan, _local] -= local_median
-                else:
-                    pass
-            if return_median:
-                medians[_local_chan] = np.median(new_data[_local_chan])
-        if data_ndim == 1:
-            new_data = new_data[0]
-        if return_median:
-            return (new_data, medians)
-        else:
-            return (new_data, None)
-
-
 def write_spectrum_to_hdf5(
     spectrum, freq_labels, dm, num_days, beta, bad_freq_indices, filename
 ):
     """
-    Write a power spectrum into a hdf5 file
+    Write a power spectrum into a hdf5 file.
 
     Parameters
     =======
@@ -672,7 +535,7 @@ def write_spectrum_to_hdf5(
         h5f.attrs["num_days"] = num_days
         if beta is None:
             # no barycentric correction set/required
-            print("WARNING: berycentric correction not set, " "writing empty attribute")
+            print("WARNING: berycentric correction not set, writing empty attribute")
             h5f.attrs.create("beta", data=None, dtype="f")
         else:
             h5f.attrs["beta"] = beta
@@ -680,7 +543,7 @@ def write_spectrum_to_hdf5(
 
 def read_hdf5_spectrum(filename):
     """
-    Read the power spectrum saved
+    Read the power spectrum saved.
 
     Parameters
     =======
@@ -737,7 +600,7 @@ def read_hdf5_spectrum(filename):
 
 def write_cands_to_hdf5(cand_list, cand_labels, freq_spacing, filename):
     """
-    Write power spectrum search candidate list into a hdf5 file
+    Write power spectrum search candidate list into a hdf5 file.
 
     Parameters
     =======
@@ -762,7 +625,7 @@ def write_cands_to_hdf5(cand_list, cand_labels, freq_spacing, filename):
 
 def read_hdf5_cands(filename):
     """
-    Read the power spectrum search candidate list in hdf5 format
+    Read the power spectrum search candidate list in hdf5 format.
 
     Parameters
     =======

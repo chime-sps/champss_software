@@ -99,9 +99,14 @@ def sigma_sum_powers(power, nsum, max_iter=20):
             The approximate equivalent Gaussian sigma.
             If the output would be smaller than ~-8, it will result in np.inf.
     """
-    sigma = equivalent_gaussian_sigma(prob_sum_powers(power, nsum))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sigma = equivalent_gaussian_sigma(prob_sum_powers(power, nsum))
+    # sigma > ~38.4: np,nan
+    # sigma > ~38: slightly deviates from log_prob_sum_powers_asymptotic result
+    # sigma < ~-8: -np.inf
+    # power=nsum=0: np.nan
     if np.isscalar(sigma):
-        if np.isnan(sigma) or sigma > 38:
+        if (np.isnan(sigma) and power != 0) or sigma > 38:
             power = float(power)
             return extended_equiv_gaussian_sigma(
                 log_prob_sum_powers_asymptotic(power, nsum)
@@ -109,7 +114,9 @@ def sigma_sum_powers(power, nsum, max_iter=20):
         else:
             return sigma
     else:
-        case_array = np.logical_or(np.isnan(sigma), sigma > 38)
+        case_array = np.logical_or(
+            np.logical_and(np.isnan(sigma), power != 0), sigma > 38
+        )
         # equivalent_gaussian_sigma only works up to ~38.45 sigma
         # at the end of this range the results slightly deviate from
         # the method using log_prob_sum_powers_asymptotic

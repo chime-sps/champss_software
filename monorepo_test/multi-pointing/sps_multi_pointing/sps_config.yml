@@ -2,6 +2,7 @@
 logging:
   format: "%(asctime)s %(levelname)s >> %(message)s"
   level: INFO
+  file_logging: True
 
 grouper:
   dbscan_min_samples: 1

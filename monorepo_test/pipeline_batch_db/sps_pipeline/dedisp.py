@@ -4,10 +4,10 @@ import os
 
 import docker
 import numpy as np
-from fdmt.cpu_fdmt import FDMT
 from prometheus_client import Summary
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_dedispersion.dedisperse import dedisperse
+from sps_dedispersion.fdmt.cpu_fdmt import FDMT
 
 from sps_pipeline import utils
 

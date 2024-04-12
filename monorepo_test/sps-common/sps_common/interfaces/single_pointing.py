@@ -255,7 +255,11 @@ class SinglePointingCandidate:
     @property
     def nharm(self):
         """Return nharm of the main cluster."""
-        return self.harmonics_info["nharm"][0]
+        if self.harmonics_info is not None:
+            # Older version
+            return self.harmonics_info["nharm"][0]
+        else:
+            return self.features["nharm"][0]
 
     @property
     def dm_max_curve(self):
@@ -469,7 +473,8 @@ class SinglePointingCandidateCollection:
                 cand_dict["harmonics_info"] = dummy_harm_info
             # Allow backwards compability
             cand_dict = filter_class_dict(SinglePointingCandidate, cand_dict)
-            cand_list.append(SinglePointingCandidate(**cand_dict))
+            sp_cand = SinglePointingCandidate(**cand_dict)
+            cand_list.append(sp_cand)
 
         if verbose:
             log.info(f"Read {len(cand_list)} candidates from {filename}")

@@ -7,6 +7,7 @@ import numpy as np
 from scipy.special import gamma, gammainc
 from scipy.optimize import newton
 from itertools import groupby, count
+import warnings
 
 from sps_common.constants import L1_NCHAN
 
@@ -128,6 +129,7 @@ def generalised_spectral_kurtosis(
     # over the power measurements and their square over the M time samples
     s1_sq = np.nansum(spec, axis=1) ** 2
     s2 = np.nansum(spec**2, axis=1)
+    warnings.filterwarnings('ignore')
     gsk = ((m * delta + 1) / float(m - 1)) * (m * (s2 / s1_sq) - 1)
 
     return gsk

@@ -1,22 +1,24 @@
+"""Class for forming the Skybeam."""
+
 import datetime
 import logging
 from functools import partial
-from itertools import repeat
-from multiprocessing import Pool
+from itertools import product
+from multiprocessing import Pool, set_start_method, shared_memory
 
 import attr
 import numpy as np
+from astropy.time import Time, TimeDelta
 from attr.validators import deep_iterable, instance_of
 from rfi_mitigation.pipeline import RFIPipeline
+from scipy.signal import detrend
 from sps_common.constants import TSAMP
-from sps_common.conversion import fill_and_norm, read_huff_msgpack, subband
-from sps_common.filterbank import get_dtype
 from sps_common.interfaces.beamformer import SkyBeam
-from sps_common.interfaces.rfi_mitigation import SlowPulsarIntensityChunk
 from sps_databases import db_api
+from spshuff import l1_io
+from threadpoolctl import threadpool_limits
 
-from beamformer import NotEnoughDataError
-from beamformer.utilities.common import get_data_list, get_intensity_set
+from beamformer.utilities.common import get_data_list
 
 log = logging.getLogger(__name__)
 
@@ -160,6 +162,7 @@ class SkyBeamFormer:
             assert v in [0, 1, 2, 3], "the active beams must be either 0, 1, 2 or 3"
 
     def __attrs_post_init__(self):
+        """Create RFIPipeline instance."""
         if self.run_rfi_mitigation:
             self.rfi_pipeline = RFIPipeline(self.masking_dict, make_plots=False)
 
@@ -168,7 +171,7 @@ class SkyBeamFormer:
         Beamform a given active pointing.
 
         Parameter
-        =======
+        =========
         active_pointing: ActivePointing
             Active pointing class containing the required properties to beamform the pointing.
 
@@ -180,7 +183,10 @@ class SkyBeamFormer:
         skybeam: SkyBeam
             SkyBeam object containing the spectra and related properties of the beamformed data.
         """
+        # Fixes some unexpected behaviour with shared memory
+        set_start_method("forkserver", force=True)
         pool = Pool(num_threads)
+        spec_dtype = f"float{self.nbits}"
         if self.active_beams != [0, 1, 2, 3]:
             new_max_beams = []
             for max_beam in active_pointing.max_beams:
@@ -197,170 +203,170 @@ class SkyBeamFormer:
                 * 40
             )
         utc_start = active_pointing.max_beams[0]["utc_start"]
+        beams_start = [beam["utc_start"] for beam in active_pointing.max_beams]
+        beams_end = [beam["utc_end"] for beam in active_pointing.max_beams]
+
+        beams_start_idx = [round((time - utc_start) / TSAMP) for time in beams_start]
+        beams_end_idx = [round((time - utc_start) / TSAMP) for time in beams_end]
+        beam_slices = [
+            slice(start, end) for (start, end) in zip(beams_start_idx, beams_end_idx)
+        ]
         data_list = get_data_list(
             active_pointing.max_beams,
             basepath=self.basepath,
             extn=self.extn,
             per_beam_list=True,
         )
-        spectra = np.zeros(
-            shape=(active_pointing.nchan, active_pointing.ntime),
-            dtype=get_dtype(self.nbits),
+        spectra_shape = (active_pointing.nchan, active_pointing.ntime)
+        buffer_size_spectra = int(spectra_shape[0] * spectra_shape[1] * self.nbits / 8)
+        spectra_shared = shared_memory.SharedMemory(
+            create=True, size=buffer_size_spectra
         )
-        rfi_mask = np.ones(shape=spectra.shape, dtype=bool)
-        processed_count = 0
-        return_median = False
-        if self.beam_to_normalise is not None:
-            return_median = True
-            sorted_beam_list = [0, 1, 2, 3]
-            sorted_beam_list[self.beam_to_normalise], sorted_beam_list[0] = (
-                sorted_beam_list[0],
-                sorted_beam_list[self.beam_to_normalise],
+        spectra = np.ndarray(spectra_shape, dtype=spec_dtype, buffer=spectra_shared.buf)
+        buffer_size_mask = int(spectra_shape[0] * spectra_shape[1] * 1)
+        mask_shared = shared_memory.SharedMemory(create=True, size=buffer_size_mask)
+        rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=mask_shared.buf)
+        # Arrays are filled with 0 or False
+        rfi_mask[:] = True
+        # Set to True to properly account for missing data
+
+        log.info("Created arrays.")
+
+        flattened_data_list = [
+            [file, beam_start_idx, beam_end_idx]
+            for (beam, beam_start_idx, beam_end_idx) in zip(
+                data_list, beams_start_idx, beams_end_idx
             )
-            data_list = [data_list[i] for i in sorted_beam_list]
-            channel_medians = None
-        for i, beam_path in enumerate(data_list):
-            if not beam_path:
-                # Sometimes there are no beamformed data for a given beam
-                log.info(
-                    "There are no beamformed data for beam"
-                    f' {active_pointing.max_beams[i]["beam"]}'
-                )
-                continue
-            intensity_set = get_intensity_set(
-                beam_path, min_set_length=self.masking_timescale, tsamp=self.tsamp
-            )
-            for intensities in intensity_set:
-                if len(intensities) == 1:
-                    intensity = self.read_and_rfi(
-                        intensities[0], 16384 // active_pointing.nchan
-                    )
-                else:
-                    intensity = self.get_combined_intensity(
-                        intensities, active_pointing, pool
-                    )
-                active_beam = None
-                for beam in active_pointing.max_beams:
-                    if beam["beam"] == intensity.beam_number:
-                        active_beam = beam
-                if not active_beam:
-                    log.info("Current beam is not used by this sky beam")
-                    continue
-                log.info(
-                    "Processing {:.3f}s of data from beam {}".format(
-                        intensity.ntime * self.tsamp, intensity.beam_number
-                    )
-                )
-                if num_threads == 1:
-                    masked_intensity, medians = fill_and_norm(
-                        intensity.get_masked_data(),
-                        intensity.nchan,
-                        intensity.ntime,
-                        self.masking_timescale,
-                        nsub=np.min([self.nsub, intensity.nchan]),
-                        block_size=self.block_size,
-                        detrend_data=self.detrend_data,
-                        detrend_nsamp=self.detrend_nsamp,
-                        add_local_median=self.add_local_median,
-                        return_median=return_median,
-                    )
-                else:
-                    if self.nsub >= intensity.nchan:
-                        masked_subbands, subbands_medians = list(
-                            zip(
-                                *pool.map(
-                                    partial(
-                                        fill_and_norm,
-                                        nchan=1,
-                                        ntime=intensity.ntime,
-                                        nsamp=self.masking_timescale,
-                                        nsub=1,
-                                        block_size=self.block_size,
-                                        detrend_data=self.detrend_data,
-                                        detrend_nsamp=self.detrend_nsamp,
-                                        add_local_median=self.add_local_median,
-                                        return_median=return_median,
-                                    ),
-                                    intensity.get_masked_data(),
-                                )
-                            )
-                        )
-                        masked_intensity = np.vstack(masked_subbands)
-                        if self.beam_to_normalise is not None:
-                            medians = np.hstack(subbands_medians)
-                    else:
-                        subbands = intensity.get_masked_data().reshape(
-                            self.nsub, intensity.nchan // self.nsub, intensity.ntime
-                        )
-                        masked_subbands, subbands_medians = list(
-                            zip(
-                                *pool.map(
-                                    partial(
-                                        fill_and_norm,
-                                        nchan=subbands.shape[1],
-                                        ntime=intensity.ntime,
-                                        nsamp=self.masking_timescale,
-                                        nsub=1,
-                                        block_size=self.block_size,
-                                        detrend_data=self.detrend_data,
-                                        detrend_nsamp=self.detrend_nsamp,
-                                        add_local_median=self.add_local_median,
-                                        return_median=return_median,
-                                    ),
-                                    subbands,
-                                )
-                            )
-                        )
-                        masked_intensity = np.vstack(masked_subbands).reshape(
-                            -1, intensity.ntime
-                        )
-                        if self.beam_to_normalise is not None:
-                            medians = np.hstack(subbands_medians)
-                if self.beam_to_normalise is not None:
-                    log.info(
-                        "Normalise data to the beam response of beam"
-                        f" {self.beam_to_normalise}"
-                    )
-                    if channel_medians is None:
-                        channel_medians = medians
-                    else:
-                        masked_intensity *= channel_medians[:, None]
-                        masked_intensity /= medians[:, None]
-                spectra, rfi_mask, processed_count = self.append_intensity_chunk(
-                    spectra,
-                    rfi_mask,
-                    utc_start,
-                    active_beam,
-                    masked_intensity,
-                    intensity.get_mask(),
-                    intensity.start_unix_time,
-                    intensity.start_unix_time + intensity.ntime * self.tsamp,
-                    processed_count,
-                )
-                if processed_count >= active_pointing.ntime:
-                    break
-            if processed_count >= active_pointing.ntime:
-                break
-        if processed_count / active_pointing.ntime < self.min_data_frac:
-            raise NotEnoughDataError(
-                f"Only {processed_count / active_pointing.ntime * 100:.1f}% of data is"
-                f" available.A minimum of {self.min_data_frac * 100:.1f}% of data is"
-                " required to beamformthe pointing."
-            )
-        log.info("Beamforming completed")
-        spectra, rfi_mask = self.zero_replace_spectra(
-            spectra,
-            rfi_mask,
-            nsub=np.min(
-                [self.nsub, spectra.shape[0]],
+            for file in beam
+        ]
+        pool.starmap(
+            partial(
+                self.read_to_shared_spectra,
+                spectra_shared.name,
+                mask_shared.name,
+                spectra_shape,
+                spec_dtype,
+                16384 // active_pointing.nchan,
+                utc_start,
             ),
-            flatten_bandpass=self.flatten_bandpass,
+            flattened_data_list,
         )
+        log.info("Finished loading.")
+
+        # Here I use data fraction as the fraction of time steps which are present at the start.
+        # This does not take into account values whether these values
+        # are masked or not in the RFI mask.
+        data_fraction = np.count_nonzero(spectra.max(0)) / spectra_shape[1]
+        log.info(f"Data fraction: {data_fraction}")
+        if self.min_data_frac > data_fraction:
+            mask_shared.close()
+            mask_shared.unlink()
+            log.error(f"Data Fraction below {self.min_data_frac}")
+            return None, spectra_shared
+
+        # For now separate the spectrum that each thread gets one part
+        # Splitting it too small might increase memory usage
+        # Can set minimal length here
+        rfi_scale = max(
+            int(np.ceil(spectra_shape[1] / num_threads / 1024) * 1024), 1024 * 1
+        )
+        log.info(
+            "Start RFI cleaning. Current Masking fraction ="
+            f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+        )
+        if rfi_scale >= spectra_shape[1]:
+            self.rfi_pipeline.clean(
+                spectra_shared.name,
+                mask_shared.name,
+                spectra_shape,
+                spec_dtype,
+                slice(0, spectra_shape[1]),
+            )
+        else:
+            start_idxs = np.arange(0, spectra_shape[1], rfi_scale)
+            end_idxs = np.roll(start_idxs, -1)
+            end_idxs[-1] = spectra_shape[1]
+            slices = [
+                slice(start_idx, end_idx)
+                for start_idx, end_idx in zip(start_idxs, end_idxs)
+            ]
+            log.info(f"Spectra are split into {len(slices)} chunks for RFI cleaning.")
+            pool.map(
+                partial(
+                    self.rfi_pipeline.clean,
+                    spectra_shared.name,
+                    mask_shared.name,
+                    spectra_shape,
+                    spec_dtype,
+                ),
+                slices,
+            )
+        log.info(
+            "RFI cleaning finished. New masking Fraction:"
+            f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+        )
+        log.info("Start filling and normalization.")
+        used_nsub = np.min([self.nsub, spectra_shape[0]])
+        chan_per_nsub = spectra_shape[0] // used_nsub
+        nsub_slices = [
+            slice(start_idx, end_idx)
+            for start_idx, end_idx in zip(
+                range(0, spectra_shape[0] + 1 - chan_per_nsub, chan_per_nsub),
+                range(chan_per_nsub, spectra_shape[0] + 2, chan_per_nsub),
+            )
+        ]
+        fill_slices = product(nsub_slices, beam_slices)
+        pool.starmap(
+            partial(
+                self.fill_and_norm_shared_spectra,
+                spectra_shared.name,
+                mask_shared.name,
+                spectra_shape,
+                spec_dtype,
+                self.masking_timescale,
+                detrend_data=self.detrend_data,
+                detrend_nsamp=self.detrend_nsamp,
+                add_local_median=self.add_local_median,
+            ),
+            fill_slices,
+        )
+        # Not getting medians from fill_and_norm_shared_spectra because of a weird crash
+        if self.beam_to_normalise is not None:
+            pool.map(
+                partial(
+                    self.norm_channels_to_beam,
+                    spectra_shared.name,
+                    spectra_shape,
+                    spec_dtype,
+                    self.beam_to_normalise,
+                    beam_slices,
+                ),
+                nsub_slices,
+            )
+        log.info("Finished filling and normalization.")
+        pool.map(
+            partial(
+                self.zero_replace_shared_spectra,
+                spectra_shared.name,
+                mask_shared.name,
+                spectra_shape,
+                spec_dtype,
+                flatten_bandpass=self.flatten_bandpass,
+            ),
+            nsub_slices,
+        )
+        completely_masked_channels = rfi_mask.min(axis=1).sum()
+        log.info(
+            "Fraction of completely masked channels:"
+            f" {(completely_masked_channels / rfi_mask.shape[0]):.3f}"
+        )
+
         if self.update_db:
             log.info("Updating Database")
             self.update_database(active_pointing.obs_id, rfi_mask, utc_start)
         pool.close()
         pool.join()
+
         skybeam = SkyBeam(
             spectra=spectra,
             ra=active_pointing.ra,
@@ -373,272 +379,22 @@ class SkyBeamFormer:
             obs_id=active_pointing.obs_id,
             nbits=self.nbits,
         )
-        return skybeam
+        mask_shared.close()
+        mask_shared.unlink()
+        log.info("Beamforming finished.")
+        return skybeam, spectra_shared
 
-    def append_intensity_chunk(
+    def zero_replace_shared_spectra(
         self,
-        spectra,
-        rfi_mask,
-        spectra_utc_start,
-        beam_start_end,
-        intensity,
-        intensity_mask,
-        intensity_utc_start,
-        intensity_utc_end,
-        processed_count,
+        spectra_shared_name,
+        mask_shared_name,
+        spectra_shape,
+        spec_dtype,
+        current_freq_slice,
+        flatten_bandpass=False,
     ):
         """
-        Filter and apply the intensity data for the chunk used to skybeam.
-
-        Parameters
-        =======
-        spectra: np.ndarray
-            The 2-D spectra where the beamformed skybeam is stored
-
-        rfi_mask: np.ndarray
-            The rfi mask of the skybeam
-
-        spectra_utc_start: float
-            The utc start time of the skybeam spectra
-
-        beam_start_end: dict
-            The dict containing the start and end time of the intensity data
-            of the beam to process
-
-        intensity: np.ndarray
-            The masked intensity data.
-
-        intensity_mask: np.ndarray
-            The masking information of the intensity data
-
-        intensity_utc_start: float
-            The start time of the intensity data in unix utc
-
-        intensity_utc_end: float
-            The end time of the intensity data in unix utc
-
-        processed_count: int
-            The counter to track if the beamforming process is completed
-
-        Return
-        =======
-        spectra: ndarray
-            The updated 2-D spectra where the beamformed skybeam is stored
-
-        rfi_mask: ndarray or None
-            The updated rfi mask of the skybeam
-
-        processed_count: int
-            The updated counter to track if the beamforming process is completed
-        """
-        if (
-            intensity_utc_end < beam_start_end["utc_start"]
-            or intensity_utc_start > beam_start_end["utc_end"]
-        ):
-            return spectra, rfi_mask, processed_count
-        if intensity_utc_start < beam_start_end["utc_start"]:
-            start_chunk = int(
-                round((beam_start_end["utc_start"] - intensity_utc_start) / self.tsamp)
-            )
-            intensity_utc_start += start_chunk * self.tsamp
-            intensity = intensity[:, start_chunk:]
-            intensity_mask = intensity_mask[:, start_chunk:]
-        if intensity_utc_end > beam_start_end["utc_end"]:
-            from_end_chunk = int(
-                round((intensity_utc_end - beam_start_end["utc_end"]) / self.tsamp)
-            )
-            intensity_utc_end -= from_end_chunk * self.tsamp
-            intensity = intensity[:, :-from_end_chunk]
-            intensity_mask = intensity_mask[:, :-from_end_chunk]
-        spectra, rfi_mask, processed_count = self.append_intensity(
-            spectra,
-            rfi_mask,
-            spectra_utc_start,
-            intensity,
-            intensity_mask,
-            intensity_utc_start,
-            intensity_utc_end,
-            processed_count,
-        )
-        return spectra, rfi_mask, processed_count
-
-    def append_intensity(
-        self,
-        spectra,
-        rfi_mask,
-        spectra_utc_start,
-        intensity,
-        intensity_mask,
-        intensity_utc_start,
-        intensity_utc_end,
-        processed_count,
-    ):
-        """
-        Append intensity data chunk to spectra.
-
-        Append the beamformer spectra with the intensity data from the FRB beam with a
-        start time for the intensity data chunk.
-
-        Parameters
-        =======
-        spectra: np.ndarray
-            The 2-D spectra where the beamformed skybeam is stored
-
-        rfi_mask: np.ndarray
-            The rfi mask of the skybeam
-
-        spectra_utc_start: float
-            The utc start time of the skybeam spectra
-
-        intensity: np.ndarray
-            The masked intensity data.
-
-        intensity_mask: np.ndarray
-            The masking information of the intensity data
-
-        intensity_utc_start: float
-            The start time of the intensity data in unix utc
-
-        intensity_utc_end: float
-            The end time of the intensity data in unix utc
-
-        processed_count: int
-            The counter to track if the beamforming process is completed
-
-        Return
-        =======
-        spectra: ndarray
-            The updated 2-D spectra where the beamformed skybeam is stored
-
-        rfi_mask: ndarray or None
-            The updated rfi mask of the skybeam
-
-        processed_count: int
-            The updated counter to track if the beamforming process is completed
-        """
-        if intensity.shape[0] > spectra.shape[0]:
-            intensity = subband(intensity, spectra.shape[0])
-            intensity_mask = subband(intensity_mask, spectra.shape[0]).astype(bool)
-        time_diff = intensity_utc_start - spectra_utc_start
-        intensity_length = int(
-            round((intensity_utc_end - intensity_utc_start) / self.tsamp)
-        )
-        ichunk = int(round(time_diff / self.tsamp))
-        if ichunk > spectra.shape[1]:
-            return spectra, rfi_mask, processed_count
-        if ichunk < 0:
-            spectra[:, 0 : ichunk + intensity_length] = intensity[
-                :, -ichunk:intensity_length
-            ]
-            processed_count += ichunk + intensity_length
-            rfi_mask[:, 0 : ichunk + intensity_length] = intensity_mask[
-                :, -ichunk:intensity_length
-            ]
-        elif ichunk + intensity_length > spectra.shape[1]:
-            spectra[:, ichunk:] = intensity[:, : (spectra.shape[1] - ichunk)]
-            processed_count += spectra.shape[1] - ichunk
-            rfi_mask[:, ichunk:] = intensity_mask[:, : (spectra.shape[1] - ichunk)]
-        else:
-            spectra[:, ichunk : ichunk + intensity_length] = intensity[
-                :, :intensity_length
-            ]
-            processed_count += intensity.shape[1]
-            rfi_mask[:, ichunk : ichunk + intensity_length] = intensity_mask[
-                :, :intensity_length
-            ]
-        return spectra, rfi_mask, processed_count
-
-    def get_combined_intensity(self, data_set, active_pointing, pool=None):
-        """
-        Get combined intensities from a list of files.
-
-        Load several intensity data and combine them together to form a longer intensity
-        chunk.
-
-        Parameters
-        =======
-        data_set: List(str)
-            A list of intensity data to combine.
-
-        active_pointing: ActivePointing
-            The ActivePointing object of the pointing to be beamformed. It will be used
-            to determine the number of channels for the output intensity chunk.
-
-        pool: multiprocessing.pool
-            Pool used for multiprocessing
-
-        Returns
-        =======
-        spichunk: SlowPulsarIntensityChunk
-             The SlowPulsarIntensityChunk object of the combined intensity data.
-        """
-        start_time = int(data_set[0].split("/")[-1].split("_")[0])
-        end_time = int(data_set[-1].split("/")[-1].split("_")[1].split(".")[0]) + 1
-        spectra = np.zeros(
-            shape=(active_pointing.nchan, int(1024 * (end_time - start_time)))
-        )
-        rfi_mask = np.ones(
-            shape=(active_pointing.nchan, int(1024 * (end_time - start_time)))
-        ).astype(bool)
-        channel_downsampling_factor = 16384 // active_pointing.nchan
-        if pool is not None:
-            intensities = pool.starmap(
-                self.read_and_rfi, zip(data_set, repeat(channel_downsampling_factor))
-            )
-            found_start = False
-            for intensity in intensities:
-                if intensity is not None:
-                    if not found_start:
-                        start_unix_time = intensity.start_unix_time
-                        start_mjd = intensity.start_mjd
-                        beam_number = intensity.beam_number
-                        cleaned = intensity.cleaned
-                        found_start = True
-                    spectra, rfi_mask, processed_count = self.append_intensity(
-                        spectra,
-                        rfi_mask,
-                        start_unix_time,
-                        intensity.spectra.data,
-                        intensity.spectra.mask,
-                        intensity.start_unix_time,
-                        intensity.start_unix_time + intensity.ntime * self.tsamp,
-                        0,
-                    )
-        else:
-            found_start = False
-            for i, datapath in enumerate(data_set):
-                intensity = self.read_and_rfi(datapath, channel_downsampling_factor)
-                if not found_start:
-                    start_unix_time = intensity.start_unix_time
-                    start_mjd = intensity.start_mjd
-                    beam_number = intensity.beam_number
-                    cleaned = intensity.cleaned
-                    found_start = True
-                spectra, rfi_mask, processed_count = self.append_intensity(
-                    spectra,
-                    rfi_mask,
-                    start_unix_time,
-                    intensity.spectra.data,
-                    intensity.spectra.mask,
-                    intensity.start_unix_time,
-                    intensity.start_unix_time + intensity.ntime * self.tsamp,
-                    0,
-                )
-
-        return SlowPulsarIntensityChunk(
-            spectra=np.ma.array(spectra, mask=rfi_mask),
-            nchan=active_pointing.nchan,
-            ntime=spectra.shape[1],
-            nsamp=spectra.size,
-            start_unix_time=start_unix_time,
-            start_mjd=start_mjd,
-            beam_number=beam_number,
-            cleaned=cleaned,
-        )
-
-    def zero_replace_spectra(self, spectra, rfi_mask, nsub=256, flatten_bandpass=False):
-        """
-        Maske zeroes, fully mask channels and flatten bandpass.
+        Mask zeroes, fully mask channels and flatten bandpass.
 
         Replacing the zeroes in each channel of the spectra with the median of the non
         zero parts. The function also zeroes out the channels where more than 75% of the
@@ -646,71 +402,69 @@ class SkyBeamFormer:
         sps_common.conversion.fil_and_norm function is called earlier.
 
         Parameters
-        =======
-        spectra: np.ndarray
-            A 2D np array of the beamformed spectra
+        ==========
+        spectra_shared_name: str
+            Name of shared spectra
 
-        rfi_mask: np.ndarrau
-            A 2D boolean array with the masking information of the spectra
+        mask_shared_name: str
+            Name of shared mask
 
-        nsub: int
-            Number of subbands used. Default: 256
+        spectra_shape: tuple(int)
+            Shape of spectra
+
+        spec_dtype:
+            dtype of spectra
+
+        current_freq_slice: slice
+            Slice of frequencies that are processed in this function
 
         flatten_bandpass: bool
             Whether to flatten the bandpass by normalising each channel by subtracting the mean
             and dividing by the standard deviation. Default: False.
-
-        Return
-        =======
-        spectra: np.ndarray
-            A 2D np array of the beamformed spectra, with zeroes being replaced by
-            channel median and extra masked data
-
-        rfi_mask: np.ndarrau
-            A 2D boolean array with the updated masking information of the spectra
         """
-        log.info("Replacing zeroes in spectra and masking partially removed channels.")
-        masked_subbands = []
-        for i in range(nsub):
-            _local_chan = slice(
-                i * (spectra.shape[0] // nsub), (i + 1) * (spectra.shape[0] // nsub)
-            )
-            # We will mask all channels that contain any nans
-            # If we fully understand how nans come to be to this may be changed
-            _contains_nan = np.isnan(np.min(spectra[_local_chan]))
-            _masked_frac = rfi_mask[_local_chan].mean()
-            _contains_nan = np.isnan(np.min(spectra[_local_chan]))
-            _local_max = np.max(spectra[_local_chan])
-            if _masked_frac > 0.75 or _contains_nan or _local_max == 0:
-                log.debug(
-                    "removing channels {}-{}".format(
-                        i * (spectra.shape[0] // nsub),
-                        (i + 1) * (spectra.shape[0] // nsub) - 1,
-                    )
-                )
-                spectra[_local_chan] = 0
-                rfi_mask[_local_chan] = 1
-                masked_subbands.append(i)
-                continue
+        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        spectra_full = np.ndarray(
+            spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
+        )
+        spectra = spectra_full[current_freq_slice, :]
+
+        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        rfi_mask_full = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
+        rfi_mask = rfi_mask_full[current_freq_slice, :]
+        mask_fraction = rfi_mask.sum() / rfi_mask.size
+        if mask_fraction == 1.0:
+            shared_spectra.close()
+            shared_mask.close()
+            return
+        _contains_nan = np.isnan(np.min(spectra))
+        _masked_frac = rfi_mask.mean()
+        _contains_nan = np.isnan(np.min(spectra))
+        _local_max = np.max(spectra)
+        if _masked_frac > 0.75 or _contains_nan or _local_max == 0:
+            spectra[:] = 0
+            rfi_mask[:] = True
+        else:
+            _zero_vals = spectra == 0
+            _zero_count = _zero_vals.sum()
+            if _zero_count > 0:
+                # This happens if one channel is completely for one beam
+                # but not for the others
+                if flatten_bandpass:
+                    # Perform this here to not unnessecary slicing in the normal case
+                    spectra[~_zero_vals] = (
+                        spectra[~_zero_vals] - spectra[~_zero_vals].mean()
+                    ) / spectra[~_zero_vals].std()
+                    spectra[_zero_vals] = 0
+                else:
+                    _local_median = np.median(spectra[~_zero_vals])
+                    spectra[~_zero_vals] = _local_median
             else:
-                _zero_count = (spectra[_local_chan] == 0).sum()
-                # The fill_and_norm could have masked zeroes already
-                if _zero_count > 0:
-                    _local_median = np.median(
-                        spectra[_local_chan][spectra[_local_chan] != 0]
-                    )
-                    spectra[_local_chan][spectra[_local_chan] == 0] = _local_median
                 if flatten_bandpass:
                     # In an earlier version the mean and std was computed using only the
                     # nonzero values but nothing should be 0 at this point
-                    spectra[_local_chan] = (
-                        spectra[_local_chan] - spectra[_local_chan].mean()
-                    ) / spectra[_local_chan].std()
-        log.info(f"Masked subbands with indices: {masked_subbands}")
-        log.info(
-            f"Fraction of completely masked subbands: {len(masked_subbands)/nsub} "
-        )
-        return spectra, rfi_mask
+                    spectra[:] = (spectra - spectra.mean()) / spectra.std()
+        shared_spectra.close()
+        shared_mask.close()
 
     def update_database(self, obs_id, rfi_mask, utc_start):
         """
@@ -719,7 +473,7 @@ class SkyBeamFormer:
         Only works if the SkyBeam object has an associated obs_id.
 
         Parameters
-        =======
+        ==========
         obs_id: ObjectID or str
             The observation id of the sky beam.
 
@@ -742,38 +496,337 @@ class SkyBeamFormer:
                 "RFI mask is empty, this implies skybeam has not been formed"
             )
 
-    def read_and_rfi(self, file_name, channel_downsampling_factor):
+    def read_to_shared_spectra(
+        self,
+        spectra_shared_name,
+        mask_shared_name,
+        spectra_shape,
+        spec_dtype,
+        channel_downsampling_factor,
+        utc_start,
+        file_name,
+        beam_start_idx,
+        beam_end_idx,
+    ):
         """
-        Wrapper function for reading and cleaning files used for parallel processing.
+        Class for reading raw files directly to shared spectra.
+
+        Based on the sps_common.conversion.read_huff_msgpack
 
         Parameters
         ==========
-        file_name: str
-            The file name to be loaded.
+        spectra_shared_name: str
+            Name of shared spectra
+
+        mask_shared_name: str
+            Name of shared mask
+
+        spectra_shape: tuple(int)
+            Shape of spectra
+
+        spec_dtype:
+            dtype of spectra
 
         channel_downsampling_factor: int
-            Downsampling used in the raw data file.
+            Channel downsampling factor relative to 16k channels.
+            (i.e., the number of channels requested is 16384 // channel_downsampling_factor)
 
-        Return
-        =======
-        intensity: SlowPulsarIntensityChunk
-            The cleaned intensity.
+        utc_start: int
+            Unix utc stamp at the start of the observation
+
+        file_name: str
+            File that is being read.
+
+        beam_start_idx: int
+            Index of the time step where this beam should start
+
+        beam_end_idx: int
+            Index of the time step where this beam should start
         """
+        subfiles = []
         try:
-            raw_intensity = [
-                SlowPulsarIntensityChunk(**o)
-                for o in read_huff_msgpack(
-                    file_name,
-                    channel_downsampling_factor=channel_downsampling_factor,
+            with open(file_name, "rb") as f:
+                int_file = l1_io.IntensityFile.from_file(
+                    f, shape=(16384 // channel_downsampling_factor, None)
                 )
-            ]
-        except Exception as e:
-            log.warning(f"Error Reading file {file_name}, will skip the file...")
-            log.warning(e)
+                sps_chunks = int_file.get_chunks()
+        except IndexError:
+            log.error(f"File {file_name} defect.")
             return
-        if self.run_rfi_mitigation:
-            log.debug("Running RFI mitigation on raw .dat files")
-            intensity = self.rfi_pipeline.clean(raw_intensity)[0]
-        else:
-            intensity = raw_intensity[0]
-        return intensity
+        last_fpga0 = 0
+        last_nfreq = 0
+        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        spectra = np.ndarray(spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf)
+        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
+
+        if spectra.shape[0] != sps_chunks[0].chunk_header.nfreq:
+            log.error("Shape mismatch between spectra and file.")
+            return
+
+        utc_start_obj = Time(utc_start, format="unix", scale="utc")
+        # sort the chunks by start time to loop through
+        for i, chunk in enumerate(
+            sorted(sps_chunks, key=lambda x: x.chunk_header.fpga0)
+        ):
+            chunk_header = chunk.chunk_header
+            if i == 0:
+                subfiles.append([chunk])
+                last_fpga0 = chunk_header.fpga0
+                last_nfreq = chunk_header.nfreq
+                continue
+            # split into different subfiles if nchan is different, or they are not contiguous
+            # (can be tuned to be not contiguous by n chunks and still be processed together)
+            not_contiguous = (
+                round((chunk_header.fpga0 - last_fpga0) * 2.56e-6 / TSAMP) != 1024
+            )
+            different_nchan = chunk_header.nfreq != last_nfreq
+            if not_contiguous or different_nchan:
+                subfiles.append([chunk])
+            else:
+                subfiles[-1].extend([chunk])
+            last_fpga0 = chunk_header.fpga0
+            last_nfreq = chunk_header.nfreq
+
+        for subfile in subfiles:
+            for i, chunk in enumerate(subfile):
+                current_time = Time(
+                    subfile[i].chunk_header.frame0_nano * 1e-9,
+                    format="unix",
+                    scale="utc",
+                ) + TimeDelta(
+                    0.0, subfile[i].chunk_header.fpga0 * 2.56e-6, format="sec"
+                )
+                # Expect indices without cuts
+                start_idx = round(
+                    (current_time - utc_start_obj).to_value("sec") / TSAMP
+                )
+                end_idx = start_idx + chunk.chunk_header.ntime
+
+                actual_start_idx = max(start_idx, beam_start_idx, 0)
+                actual_end_idx = min(end_idx, beam_end_idx, spectra_shape[1])
+
+                if (actual_end_idx - actual_start_idx) < 1:
+                    continue
+                else:
+                    start_offset = actual_start_idx - start_idx
+                    end_offset = actual_end_idx - end_idx
+                    spec_slice = slice(actual_start_idx, actual_end_idx)
+                    chunk_slice = slice(
+                        start_offset, chunk.chunk_header.ntime + end_offset
+                    )
+                    chunk_intensity = chunk.data[:, chunk_slice]
+                    chunk_mask = chunk.bad_mask[:, chunk_slice].astype(bool)
+                    chunk_intensity *= np.sqrt(chunk.variance)[:, np.newaxis]
+                    chunk_intensity += chunk.means[:, np.newaxis]
+                    spectra[:, spec_slice] = chunk_intensity
+
+                    zero_mask = np.zeros_like(chunk_intensity, dtype=bool)
+                    zero_mask[chunk_intensity <= 0] = True
+                    zero_mask[~np.isfinite(chunk_intensity)] = True
+                    full_mask = np.logical_or(zero_mask, ~chunk_mask)
+                    rfi_mask[:, spec_slice] = full_mask
+        shared_spectra.close()
+        shared_mask.close()
+
+    def fill_and_norm_shared_spectra(
+        self,
+        spectra_shared_name,
+        mask_shared_name,
+        spectra_shape,
+        spec_dtype,
+        nsamp,
+        current_freq_slice,
+        current_time_slice,
+        detrend_data=False,
+        detrend_nsamp=None,
+        add_local_median=False,
+    ):
+        """
+        Fill and detrend spectra.
+
+        When converting the RFIPipeline spectra to a form to be written to a file, we
+        need to fill in the masked data with a reasonable alternative. The code now
+        gives several options in forming the masked data. The current default is to
+        replace the masked values with a local median over a nsamp segment and then set
+        the local median to zero.
+
+        There are options to apply a linear detrending of the data and to retain the
+        local median values instead.
+
+        Parameters
+        ==========
+        spectra_shared_name: str
+            Name of shared spectra
+
+        mask_shared_name: str
+            Name of shared mask
+
+        spectra_shape: tuple(int)
+            Shape of spectra
+
+        spec_dtype:
+            dtype of spectra
+
+        nsamp: int
+            Minimum number of time samples for each individual segment to process.
+            Must be equal or multiple of the
+            block_size.
+
+        current_freq_slice: slice
+            Slice of frequencies that are processed in this function
+
+        current_freq_slice: slice
+            Slice of time steps that are processed in this function
+
+        detrend_data: bool
+            Whether to detrend the data after masking. Default = False
+
+        detrend_nsamp: int or None
+            The number of samples to detrend together. Default = None (equal to the size of
+            data chunk being processed)
+
+        add_local_median: bool
+            Whether to add local median to the detrended data. Default = False
+        """
+        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        spectra_full = np.ndarray(
+            spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
+        )
+        spectra = spectra_full[current_freq_slice, current_time_slice]
+        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        rfi_mask_full = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
+        rfi_mask = rfi_mask_full[current_freq_slice, current_time_slice]
+        mask_fraction = rfi_mask.sum() / rfi_mask.size
+        if mask_fraction == 1.0:
+            spectra[:] = 0
+            shared_spectra.close()
+            shared_mask.close()
+            return
+
+        spectra_masked = np.ma.masked_array(spectra, mask=rfi_mask)
+        ntime = spectra.shape[1]
+        with threadpool_limits(limits=1, user_api="blas"):
+            # determine sets of blocks to process
+            num_blocks = ntime // nsamp
+
+            if num_blocks <= 1:
+                used_block = ntime
+                local_median = np.ma.median(spectra_masked)
+                filled_local_medians = local_median
+                spectra[rfi_mask] = filled_local_medians
+            else:
+                if (spectra_masked.shape[0] % num_blocks) == 0:
+                    # Solution when shapes are divisible
+                    spectra_masked_block = spectra_masked.reshape(
+                        spectra_masked.shape[0], num_blocks, -1
+                    )
+                    used_block = spectra_masked_block.shape[2]
+                    local_medians = np.ma.median(spectra_masked_block, axis=2)
+                    filled_local_medians = np.repeat(local_medians, used_block, axis=1)
+                else:
+                    # Slower solution if shapes are not compatible
+                    # Current settings num_block==0, but code could be optimised
+                    # when actually being used
+                    for block_index in range(num_blocks):
+                        start_index = block_index * nsamp
+                        if block_index == (num_blocks - 1):
+                            end_index = spectra_masked.shape[1]
+                        else:
+                            end_index = (block_index + 1) * nsamp
+                        used_block = end_index - start_index
+                        local_median = np.ma.median(
+                            spectra_masked[:, start_index:end_index], axis=1
+                        )
+                        current_filled_medians = np.full(
+                            (spectra_masked.shape[0], used_block), local_median
+                        )
+                        if block_index == 0:
+                            filled_local_medians = current_filled_medians
+                        else:
+                            filled_local_medians = np.concatenate(
+                                [filled_local_medians, current_filled_medians], axis=1
+                            )
+                spectra[rfi_mask] = filled_local_medians[rfi_mask]
+
+            # Only tested the first case for now
+            if detrend_data and add_local_median:
+                spectra[:] = (
+                    detrend(
+                        spectra,
+                        axis=1,
+                        type="linear",
+                        bp=np.arange(0, spectra.shape[1], detrend_nsamp),
+                    )
+                    + filled_local_medians
+                )
+                # Detrending will introduce trend to masked values
+                # Could at one point use detrending method that uses masked
+                # arrays which this function does
+                if num_blocks <= 1:
+                    spectra[rfi_mask] = filled_local_medians
+                else:
+                    spectra[rfi_mask] = filled_local_medians[rfi_mask]
+            elif detrend_data and not add_local_median:
+                spectra[:] = detrend(
+                    spectra,
+                    axis=1,
+                    type="linear",
+                    bp=np.arange(0, spectra.shape[1], detrend_nsamp),
+                )
+                spectra[rfi_mask] = 0
+            elif not detrend_data and not add_local_median:
+                spectra[:] -= filled_local_medians
+            else:
+                pass
+            shared_spectra.close()
+            shared_mask.close()
+            return
+
+    def norm_channels_to_beam(
+        self,
+        spectra_shared_name,
+        spectra_shape,
+        spec_dtype,
+        beam_to_norm,
+        beam_slices,
+        current_freq_slice,
+    ):
+        """
+        Normalize the channels to the median of one chosen beam.
+
+        Parameters
+        ==========
+        spectra_shared_name: str
+            Name of shared spectra
+
+        mask_shared_name: str
+            Name of shared mask
+
+        spectra_shape: tuple(int)
+            Shape of spectra
+
+        spec_dtype:
+            dtype of spectra
+
+        beam_to_norm: int
+            Beam number whihc should be used as basis for the normalisation.
+
+        beam_slices: list(slice)
+            List of slices of the different beams
+
+        current_freq_slice: slice
+            Slice of frequencies that are processed in this function
+        """
+        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        spectra_full = np.ndarray(
+            spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
+        )
+        spectra = spectra_full[current_freq_slice, :]
+        norm_medians = np.median(spectra[:, beam_slices[beam_to_norm]])
+        if norm_medians != 0:
+            for current_beam, beam_slice in enumerate(beam_slices):
+                if beam_to_norm != current_beam:
+                    current_medians = np.median(spectra[:, beam_slice])
+                    if (norm_medians != 0) and (current_medians != 0):
+                        spectra[:, beam_slice] *= norm_medians / current_medians

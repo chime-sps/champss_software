@@ -44,41 +44,118 @@ def plot_text(fig, panel, grid_points, candidate):
 def plot_dm_freq_3(fig, panel, grid_points, candidate):
     dm_vals = candidate.dm_freq_sigma["dms"]
     freq_vals = candidate.dm_freq_sigma["freqs"]
-    sgs = grid_points.subgridspec(1, 3)
+    sgs = grid_points.subgridspec(1, 4)
 
-    ax_2d = fig.add_subplot(sgs[0])
+    current_subplot_index = 0
+    ax_2d = fig.add_subplot(sgs[current_subplot_index])
     ax_2d.imshow(
-        candidate.dm_freq_sigma["sigmas"],
+        candidate.dm_freq_sigma["sigmas"].astype(float),
         aspect="auto",
         origin="lower",
         extent=[freq_vals.min(), freq_vals.max(), dm_vals.min(), dm_vals.max()],
     )
+    if "nharm" in candidate.dm_freq_sigma:
+        current_subplot_index += 1
+        alpha_nharm = np.clip(
+            candidate.dm_freq_sigma["sigmas"] / np.nanmax(candidate.dm_freq_sigma["sigmas"]),
+            0,
+            1,
+        ).astype(float)
+        alpha_nharm = np.nan_to_num(alpha_nharm)
+        ax_2d_nharm = fig.add_subplot(sgs[current_subplot_index])
+        ax_2d_nharm.imshow(
+            candidate.dm_freq_sigma["nharm"].astype(int),
+            aspect="auto",
+            origin="lower",
+            extent=[freq_vals.min(), freq_vals.max(), dm_vals.min(), dm_vals.max()],
+            vmin=0,
+            vmax=32,
+            cmap="Reds",
+            alpha=alpha_nharm,
+        )
+        ax_2d_nharm.set_title("Best Harmonic", fontsize=10)
+        ax_2d_nharm.set_xlabel("Frequency (Hz)", fontsize=8)
+        ax_2d_nharm.set_ylabel("DM", fontsize=8)
+        ax_2d_nharm.xaxis.set_tick_params(rotation=30, labelsize=8)
 
-    ax_dm = fig.add_subplot(sgs[1])
+    current_subplot_index += 1
+    ax_dm = fig.add_subplot(sgs[current_subplot_index])
     ax_dm.plot(dm_vals, candidate.dm_max_curve, "--", c="grey")
     ax_dm.plot(dm_vals, candidate.dm_best_curve, c="black")
     ax_dm.grid()
     ax_dm.ticklabel_format(useOffset=False)
 
-    ax_freq = fig.add_subplot(sgs[2])
+    current_subplot_index += 1
+    ax_freq = fig.add_subplot(sgs[current_subplot_index])
     ax_freq.plot(freq_vals, candidate.freq_max_curve, "--", c="grey")
     ax_freq.plot(freq_vals, candidate.freq_best_curve, c="black")
     ax_freq.grid()
     ax_dm.ticklabel_format(useOffset=False)
 
-    ax_2d.set_xlabel("Frequency (Hz)")
-    ax_2d.set_ylabel("DM")
-    ax_dm.set_xlabel("DM")
-    ax_dm.set_ylabel("Sigma")
-    ax_freq.set_xlabel("Frequency (Hz)")
-    ax_freq.set_ylabel("Sigma")
+    if panel.get("plot_fit", False):
+        if "dm_sigma_FitGaussWidth_gauss_sigma" in candidate.features.dtype.names:
+            ax_dm.plot(
+                dm_vals,
+                gauss(
+                    dm_vals,
+                    candidate.sigma,
+                    candidate.dm,
+                    candidate.features["dm_sigma_FitGaussWidth_gauss_sigma"][0],
+                ),
+                c="red",
+                alpha=1,
+            )
+        if "freq_sigma_FitGaussWidth_gauss_sigma" in candidate.features.dtype.names:
+            ax_freq.plot(
+                freq_vals,
+                gauss(
+                    freq_vals,
+                    candidate.sigma,
+                    candidate.freq,
+                    candidate.features["freq_sigma_FitGaussWidth_gauss_sigma"][0],
+                ),
+                c="red",
+                alpha=1,
+            )
+        if "dm_sigma_FitGauss_gauss_sigma" in candidate.features.dtype.names:
+            ax_dm.plot(
+                dm_vals,
+                gauss(
+                    dm_vals,
+                    candidate.features["dm_sigma_FitGauss_amplitude"][0],
+                    candidate.features["dm_sigma_FitGauss_mu"][0],
+                    candidate.features["dm_sigma_FitGauss_gauss_sigma"][0],
+                ),
+                c="blue",
+                alpha=1,
+            )
+        if "freq_sigma_FitGauss_gauss_sigma" in candidate.features.dtype.names:
+            ax_freq.plot(
+                freq_vals,
+                gauss(
+                    freq_vals,
+                    candidate.features["freq_sigma_FitGauss_amplitude"][0],
+                    candidate.features["freq_sigma_FitGauss_mu"][0],
+                    candidate.features["freq_sigma_FitGauss_gauss_sigma"][0],
+                ),
+                c="blue",
+                alpha=1,
+            )
+
+    ax_2d.set_title("Sigma", fontsize=10)
+
+    ax_2d.set_xlabel("Frequency (Hz)", fontsize=8)
+    ax_2d.set_ylabel("DM", fontsize=8)
+    ax_dm.set_xlabel("DM", fontsize=8)
+    ax_dm.set_ylabel("Sigma", fontsize=8)
+    ax_freq.set_xlabel("Frequency (Hz)", fontsize=8)
+    ax_freq.set_ylabel("Sigma", fontsize=8)
     ax_dm.ticklabel_format(useOffset=False)
 
     ax_2d.xaxis.set_tick_params(rotation=30, labelsize=8)
     ax_dm.xaxis.set_tick_params(rotation=30, labelsize=8)
     ax_freq.xaxis.set_tick_params(rotation=30, labelsize=8)
 
-    # Uncomment this to share the y axis between the two 1d plots
     ax_dm.sharey(ax_freq)
 
 
@@ -262,3 +339,7 @@ def plot_candidate(
     fig.savefig(file_name)
     plt.close()
     return file_name
+
+
+def gauss(x, A, mu, sigma):
+    return A * np.exp(-((x - mu) ** 2) / (2 * sigma**2))

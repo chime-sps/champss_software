@@ -1,6 +1,7 @@
 """Class for creating power spectra."""
 
 import logging
+import os
 import time
 from functools import partial
 from multiprocessing import Pool, shared_memory
@@ -195,6 +196,7 @@ class PowerSpectraCreation:
             The PowerSpectra class as defined in the interface
         """
         pool = Pool(self.num_threads)
+        observation = db_api.get_observation(dedisp_time_series.obs_id)
         pointing_id = self.get_pointing_id_from_observation_id(
             dedisp_time_series.obs_id
         )
@@ -213,8 +215,8 @@ class PowerSpectraCreation:
             if self.clean_rfi:
                 log.info("Running Periodic RFI Cleaning")
                 # Current we only masked specific frequencies so this works
-                bad_freq_indices, compared_obs = self.flag_periodic_rfi(
-                    dedisp_time_series, freq_labels, beta
+                bad_freq_indices, compared_obs, birdies_inf = self.flag_periodic_rfi(
+                    dedisp_time_series, freq_labels, beta, observation
                 )
                 nbins_flagged = len(bad_freq_indices)
                 log.info(
@@ -257,13 +259,14 @@ class PowerSpectraCreation:
             # update the observation database
             if self.update_db:
                 self.update_database(
-                    dedisp_time_series.obs_id,
+                    observation,
                     power_spectra[0],
                     bad_freq_indices,
                     beta,
                     self.barycentring_mode,
                     self.barycentric_cleaning,
                     compared_obs,
+                    birdies_inf,
                 )
         datetimes = Time(dedisp_time_series.start_mjd, format="mjd").datetime.replace(
             tzinfo=pytz.utc
@@ -576,25 +579,43 @@ class PowerSpectraCreation:
 
     def update_database(
         self,
-        obs_id,
+        observation,
         power_spectrum,
         bad_freq_indices,
         beta,
         barycentring_mode,
         barycentric_cleaning,
         compared_obs,
+        birdies_inf,
     ):
         """Prepare and deliver the payload to the observation database."""
+
+        birdie_path = f"{os.path.abspath(observation.datapath)}/birdie_info.npz"
+        np.savez(
+            birdie_path,
+            birdies=bad_freq_indices,
+            birdies_position=birdies_inf.position,
+            birdies_height=birdies_inf.height,
+            birdies_left_freq=birdies_inf.left,
+            birdies_right_freq=birdies_inf.right,
+        )
+        log.info(f"Wrote out birdie info to {birdie_path}")
+
         payload = dict(
             mean_power=float(power_spectrum.mean()),
             std_power=float(power_spectrum.std()),
-            birdies=bad_freq_indices,
+            birdies=None,
+            birdies_position=None,
+            birdies_height=None,
+            birdies_left_freq=None,
+            birdies_right_freq=None,
+            birdie_file=birdie_path,
             beta=beta,
             barycentring_mode=barycentring_mode,
             barycentric_cleaning=barycentric_cleaning,
             compared_obs=compared_obs,
         )
-        db_api.update_observation(obs_id, payload)
+        db_api.update_observation(observation._id, payload)
 
     def run_rfft(self, dedisp_ts):
         """
@@ -646,7 +667,7 @@ class PowerSpectraCreation:
         freq_labels = np.fft.rfftfreq(self.padded_length, d=self.tsamp * (1 + beta))
         return freq_labels[:-1]
 
-    def flag_periodic_rfi(self, dedisp_time_series, freq_labels, beta):
+    def flag_periodic_rfi(self, dedisp_time_series, freq_labels, beta, observation):
         """
         Flag periodic RFI by comparing birdies with adjacent observations.
 
@@ -668,6 +689,8 @@ class PowerSpectraCreation:
             List of power spectrum bins that correspond to known RFI signals
         compared_obs: List[str]
             The observation id's that are used for the comparison
+        birdies: np.recarray
+            Birdie infromation sa returned by the DynamicPeriodicFilter
         """
         bad_freq_indices = []
         if self.run_static_filter and self.barycentring_mode != "Topocentric":
@@ -721,7 +744,7 @@ class PowerSpectraCreation:
                     left_freqs,
                     right_freqs,
                     compared_obs,
-                ) = self.common_birdies(dedisp_time_series.obs_id, freq_labels[1])
+                ) = self.common_birdies(observation, freq_labels[1], birdies)
             else:
                 log.info(
                     "Using the dynamic birdies list generated for the observation on"
@@ -771,7 +794,7 @@ class PowerSpectraCreation:
             bad_freq_indices = sorted(set(bad_freq_indices).union(strong_periodic_rfi))
             bad_freq_indices = sorted(set(bad_freq_indices).union(common_birdies))
 
-        return bad_freq_indices, compared_obs
+        return bad_freq_indices, compared_obs, birdies
 
     def compare_birdies(
         self,
@@ -852,7 +875,7 @@ class PowerSpectraCreation:
                     )
             return counter_arr >= len(other_birdies_left) * self.common_birdie_fraction
 
-    def common_birdies(self, observation_id, freq_spacing):
+    def common_birdies(self, observation, freq_spacing, birdies):
         """
         Retrieve common birdies with adjacent observations.
 
@@ -878,16 +901,15 @@ class PowerSpectraCreation:
         compared_obs: List[str]
             The observation id's that are used for the comparison
         """
-        observation = db_api.get_observation(observation_id)
-        birdies_array_list = observation.birdies_position
-        if not birdies_array_list:
+        birdies_array_list = birdies.position
+        if not len(birdies_array_list):
             log.info(
-                f"The observation {observation_id} has no birdies."
+                f"The observation {observation.id} has no birdies."
                 "Returning an empty birdies list"
             )
             return np.array([]), np.array([]), []
-        birdies_left_freq_list = np.asarray(observation.birdies_left_freq)
-        birdies_right_freq_list = np.asarray(observation.birdies_right_freq)
+        birdies_left_freq_list = np.asarray(birdies.left)
+        birdies_right_freq_list = np.asarray(birdies.right)
 
         # surround_observations = db_api.get_observations_around_observation(
         #    observation,
@@ -903,10 +925,10 @@ class PowerSpectraCreation:
         surrounding_birdies_right = []
 
         for observ in surround_observations:
-            if observation_id != observ._id:
-                compared_obs.append(observ._id)
-                if observ.birdies_position:
+            if observation._id != observ._id:
+                if observ.birdies_position is not None:
                     if len(observ.birdies_position) > 0:
+                        compared_obs.append(observ._id)
                         current_birdies_left_freqs = np.asarray(
                             observ.birdies_left_freq
                         )
@@ -925,10 +947,12 @@ class PowerSpectraCreation:
         if not surrounding_birdies_left:
             log.info(
                 "There are no birdies to compare with the observation"
-                f" {observation_id}Returning the birdies left and right frequencies of"
-                " the current observation"
+                f" {observation._id}. Returning the birdies left and right frequencies"
+                " of the current observation"
             )
             return birdies_left_freq_list, birdies_right_freq_list, compared_obs
+
+        log.info(f"Using {len(compared_obs)} observations for birdie comparison.")
 
         birdies_left_indices = np.floor(birdies_left_freq_list / freq_spacing).astype(
             int

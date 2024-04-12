@@ -10,7 +10,7 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from sps_common import constants
 from sps_common.interfaces.beamformer import Pointing
-from sps_databases import db_utils
+from sps_databases import db_utils, models
 
 from beamformer import CURRENT_POINTING_MAP, NoSuchPointingError
 
@@ -115,10 +115,8 @@ def find_closest_pointing(ra, dec, mode="database"):
         p_coords[i, :] = [ra, dec]
     catalogue = SkyCoord(ra=p_coords[:, 0] * u.degree, dec=p_coords[:, 1] * u.degree)
     pointing = pointings[np.argmin(catalogue.separation(coord))]
-    pointing["pointing_id"] = pointing.pop("_id", None)
-    pointing.pop("search_algorithm", None)
 
-    return Pointing(**pointing)
+    return models.Pointing.from_db(pointing)
 
 
 def get_data_list(max_beams, basepath, extn, per_beam_list=False, max_file_length=120):

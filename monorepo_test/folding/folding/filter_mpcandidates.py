@@ -1,0 +1,325 @@
+import math
+import numpy as np
+import datetime as dt
+import pandas as pd
+
+from sps_databases import db_api, db_utils
+
+def add_candidate_to_fsdb(date_str, ra, dec, f0, dm, sigma, cand_path):
+    """
+    Create a payload for a candidate to be input in the followup sources database.
+    """
+    from beamformer.utilities.dm import DMMap
+    dmm = DMMap()
+    db = db_utils.connect()
+
+    name = f"{date_str}_sd_{ra}_{dec}_{f0}_{dm}"
+
+    payload = {
+        "source_type": 'sd_candidate',
+        "source_name": name,
+        "ra": ra,
+        "dec": dec,
+        "f0": f0,
+        "dm": dm,
+        "candidate_sigma": sigma,
+        "followup_duration": 1,
+        "active": True,
+        "path_to_candidates": [cand_path],
+    }
+
+    payload["dm_galactic_ne_2001_max"] = float(
+        dmm.get_dm_ne2001(payload["dec"], payload["ra"])
+    )
+    payload["dm_galactic_ymw_2016_max"] = float(
+        dmm.get_dm_ymw16(payload["dec"], payload["ra"])
+    )
+
+    db_api.create_followup_source(payload)
+
+
+def get_indices_within_radius(lati, loni, latitude, longitude, rad_deg):
+    indices = []
+    for i in range(len(latitude)):
+        lat = latitude[i]
+        lon = longitude[i]
+        dist_deg = haversine_distance(lat, lon, lati, loni)
+        if dist_deg <= rad_deg:
+            indices.append(i)
+    return indices
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    # Convert latitude and longitude to radians
+    lat1_rad = math.radians(lat1)
+    lon1_rad = math.radians(lon1)
+    lat2_rad = math.radians(lat2)
+    lon2_rad = math.radians(lon2)
+
+    # Calculate the differences between the latitudes and longitudes
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
+
+    # Calculate the haversine formula
+    a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
+    dist_rad = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    dist_deg = dist_rad*180/np.pi
+    
+    return dist_deg
+
+def find_cand_pointings(ra, dec):
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+
+    db = db_utils.connect()
+    pointings = list(db.pointings.find())
+    pointing_ras = np.zeros(len(pointings))
+    pointing_decs = np.zeros(len(pointings))
+    for i,p in enumerate(pointings):
+        pointing_ras[i] = p['ra']
+        pointing_decs[i] = p['dec']
+    pointing_coords = SkyCoord(ra=pointing_ras * u.deg, dec=pointing_decs * u.deg)
+
+    cand_pointings = np.zeros((len(ra), 2))
+    for j in range(len(ra)):
+        cand_coord = SkyCoord(ra[j]*u.deg, dec[j]*u.deg)
+        index_pointing = np.argmin(pointing_coords.separation(cand_coord))
+        cand_pointings[j, 0] = pointing_ras[index_pointing]
+        cand_pointings[j, 1] = pointing_decs[index_pointing]
+
+    return cand_pointings
+
+
+def Filter(cand_obs_date, min_sigma=7., min_dm=2., min_f0=1e-2, save_candidates=True, 
+           db_port=27017, db_host="sps-archiver", db_name="sps", write_to_db=False):
+    """
+    Read a day's worth of multi-pointing candidates, retrieve a set of the most promising candidates to fold. 
+    Filters based on a set of DM, F0, sigma, and spatial tests.
+
+    Args:
+        cand_obs_date (datetime): The observation date.
+        min_sigma (float, optional): The minimum sigma threshold for filtering candidates. Defaults to 7.0.
+        min_dm (float, optional): The minimum DM threshold for filtering candidates. Defaults to 2.0 pc/cm^3.
+        min_f0 (float, optional): The minimum F0 threshold for filtering candidates. Defaults to 0.01 Hz.
+        save_candidates (bool, optional): Whether to save the filtered candidates to a npz file. Defaults to True.
+        db_port (int, optional): The port number for the database connection
+        db_host (str, optional): The host name for the database connection
+        db_name (str, optional): The name of the database
+        write_to_db (bool, optional): Whether to write the candidates to the FollowUpSources database. Defaults to False.
+
+    Notes:
+        - This function reads a CSV file containing candidate data for a specific observation date.
+        - It applies several filters based on DM, F0, sigma, and spatial tests to select the most promising candidates.
+        - The filtered candidates are saved to a npz file and/or written to a database if specified.
+
+    """
+
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+
+    date_str = cand_obs_date.strftime("%Y%m%d")
+    fname = f'/data/chime/sps/sps_processing/mp_runs/daily_{date_str}/all_mp_cands.csv'
+    df = pd.read_csv(fname)
+
+    SNthresh = min_sigma
+    DMthresh = min_dm
+    F0cut = min_f0
+
+    i_SNcutabove = np.argwhere(df['sigma']>SNthresh).squeeze()
+    i_DMcutabove = np.argwhere(df['mean_dm']>DMthresh).squeeze()
+
+    # Filter on known_sources
+    ra = df['ra']
+    dec = df['dec']
+
+    i_ks = np.argwhere(df['known_source_label'] > 0.5).squeeze()
+    dDMtol = 0.1
+    i_ksclusters = []
+
+    for j in range(len(i_ks)):
+
+        rai = ra[i_ks[j]]
+        deci = dec[i_ks[j]]
+
+        i_nearks = get_indices_within_radius(rai, deci, ra, dec, rad_deg=1)
+        dm_ks = df['known_source_dm'][i_ks[j]]
+        f0_ks = 1/df['known_source_p0'][i_ks[j]]
+        source = df['known_source_name'][i_ks[j]]
+        
+        i_dmmatch = np.argwhere( np.abs(df['mean_dm']-dm_ks)/dm_ks < dDMtol).squeeze()
+        i_ksmatch = np.intersect1d(i_nearks, i_dmmatch)
+        
+        i_ksclusters = np.concatenate((i_ksclusters, i_ksmatch))
+
+    i_ksclusters = np.array(i_ksclusters)
+    i_ksclusters = np.unique(i_ksclusters)
+
+    # Filter on position spread
+    dra = df['delta_ra']
+
+    i_posspread = np.argwhere(dra > 5).squeeze()
+    i_posspread = np.intersect1d(i_posspread, i_SNcutabove)
+    i_sndmposcut = np.intersect1d(i_posspread, i_DMcutabove)
+    fsub = df['mean_freq'][i_sndmposcut].values
+    dmsub = df['mean_dm'][i_sndmposcut].values
+
+    #Uniform bins of .5%
+    #perhaps better to do iteratively?
+
+    bins = []
+    bini = 10**(-2)
+    bins.append(bini)
+    binmax = 1e2
+    stepsize = 0.01
+    step = 1 + stepsize
+
+    while bini < binmax:
+        bini = bini * step
+        bins.append(bini)
+
+    hist_f0clusters = np.histogram(fsub, bins=bins)
+    histbins = hist_f0clusters[1]
+    bincounts = hist_f0clusters[0]
+
+    i_f0cluster = np.argwhere(bincounts>2).squeeze()
+    birdie_cands = []
+
+    # Flag narrow freq bins with large DM spread of candidates
+    for i in i_f0cluster:
+        bclow = histbins[i]
+        bchigh = histbins[i+1]
+        bcmid = (bchigh + bclow)/2.
+        bcwidth = (bchigh - bclow)/2.
+
+        isub = np.argwhere(np.abs(fsub-bcmid) <= bcwidth).squeeze()
+        dDM = np.std(dmsub[isub]) / np.mean(dmsub[isub])
+        if dDM > dDMtol:
+            birdie = (bcmid, bcwidth)
+            birdie_cands.append(birdie)
+        
+    # Zap these bins for all candidates
+    birdie_cands = np.array(birdie_cands)
+    i_birdies = []
+    for i in range(birdie_cands.shape[0]):
+        birdie = birdie_cands[i]
+        f0 = birdie[0]
+        fwidth = birdie[1]
+        i_birdie = np.argwhere( np.abs(df['mean_freq']-f0) < fwidth ).squeeze()
+        i_birdies = np.concatenate((i_birdies, i_birdie))
+    i_birdies = i_birdies.astype('int')
+
+    # Combine all filters, indeces of candidates to remove
+    i_SNcutbelow = np.argwhere(df['sigma']<SNthresh).squeeze()
+    i_DMcutbelow = np.argwhere(df['mean_dm']<DMthresh).squeeze()
+    i_F0cut = np.argwhere(df['mean_freq'] < F0cut).squeeze()
+
+    i_bad = []
+    for i_cut in [i_SNcutbelow, i_DMcutbelow, i_F0cut, i_ksclusters, i_ks, i_birdies, i_posspread]:
+        i_bad = np.concatenate((i_bad, i_cut))
+
+    i_bad = np.unique(i_bad).astype('int')
+    i_good = np.arange(len(df['mean_freq'].values))
+    i_good = np.delete(i_good, i_bad)
+
+    # New dataframe for Candidates that pass all filters
+    df1 = df.iloc[i_good]
+
+    # Restrict to only one candidate per pointing
+    cand_ra = df1['ra'].values
+    cand_dec = df1['dec'].values
+    cand_sigma = df1['sigma'].values
+    cand_pointings = find_cand_pointings(cand_ra, cand_dec)
+    i_matched = []
+    for i in range(len(cand_ra)):
+        rai = cand_pointings[i,0]
+        deci = cand_pointings[i,1]
+        i_match = np.argwhere( (cand_pointings[:,0]==rai) & (cand_pointings[:,1]==deci) )
+        if i_match.shape[0] > 1:
+            i_match = i_match.squeeze()
+            sigma_sub = cand_sigma[i_match]
+            isub_brightest = np.argmax(sigma_sub)
+            i_matched.append(i_match[isub_brightest])
+        else:
+            i_matched.append(int(i_match.squeeze()))
+            
+    i_matched = np.unique(i_matched)
+
+    # Final dataframe
+    print(f"{len(i_matched)} candidates after filtering, from {len(df)} candidates before filtering.")
+    df_filtered = df1.iloc[i_matched]
+    ras = df_filtered['ra'].values
+    decs = df_filtered['dec'].values
+    f0s = df_filtered['mean_freq'].values
+    dms = df_filtered['mean_dm'].values
+    sigmas = df_filtered['sigma'].values
+    known = df_filtered['known_source_name'].values
+    cand_paths = df_filtered['file_name'].values
+
+    if write_to_db:
+        print("Writing candidates to FollowUpSource database...")
+        for i in range(len(decs)):
+            add_candidate_to_fsdb(date_str, ras[i], decs[i], f0s[i], dms[i], sigmas[i], cand_paths[i])
+
+    npz_filename = f"/data/chime/sps/archives/candidates/filtered_cands/cands_{date_str}_filtered"
+    if save_candidates:
+        print("Saving filtered data...")
+        np.savez(npz_filename,sigmas=sigmas,dms=dms,ras=ras,decs=decs,f0s=f0s, known=known)
+
+import click
+@click.command()
+@click.option(
+    "--date",
+    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
+    required=True,
+    help="Date of data to process. Default = Today in UTC",
+)
+@click.option(
+    "--min_sigma",
+    type=float,
+    default=7.,
+    help="Minimum sigma to filter candidates. Default = 10",
+)
+@click.option(
+    "--min_dm",
+    type=float,
+    default=2.,
+    help="Minimum DM to filter candidates. Default = 2",
+)
+@click.option(
+    "--min_f0",
+    type=float,
+    default=0.01,
+    help="Minimum F0 to filter candidates. Default = 0.01",
+)
+@click.option(
+    "--save_candidates",
+    type=bool,
+    default=True,
+    help="Save filtered candidates to npz file. Default = True",
+)
+@click.option(
+    "--db-port",
+    default=27017,
+    type=int,
+    help="Port used for the mongodb database.",
+)
+@click.option(
+    "--db-host",
+    default="sps-archiver",
+    type=str,
+    help="Host used for the mongodb database.",
+)
+@click.option(
+    "--db-name",
+    default="sps",
+    type=str,
+    help="Name used for the mongodb database.",
+)
+@click.option(
+    "--write-to-db",
+    is_flag=True,
+    help="Update FollowUpSources Database with new candidates. Default = False",
+)
+def main(date, min_sigma, min_dm, min_f0, save_candidates, db_port, db_host, db_name, write_to_db):
+    Filter(date, min_sigma, min_dm, min_f0, save_candidates, db_port, db_host, db_name, write_to_db)
+
+if __name__ == '__main__':
+    main()

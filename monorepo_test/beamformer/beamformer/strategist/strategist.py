@@ -168,7 +168,7 @@ class PointingStrategist:
                         max_beams=split_max_beams[i],
                         beam_row=pointing.beam_row,
                         sub_pointing=i,
-                        pointing_id=pointing.pointing_id,
+                        pointing_id=pointing._id,
                     )
                 )
         else:
@@ -181,7 +181,7 @@ class PointingStrategist:
                     maxdm=pointing.maxdm,
                     max_beams=max_beams,
                     beam_row=pointing.beam_row,
-                    pointing_id=pointing.pointing_id,
+                    pointing_id=pointing._id,
                 )
             ]
         if self.create_db:

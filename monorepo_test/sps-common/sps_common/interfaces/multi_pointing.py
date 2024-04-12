@@ -222,6 +222,7 @@ class MultiPointingCandidate:
     summed_raw_harmonic_powers = attrib(type=np.ndarray)
     all_summaries = attrib(type=list)
     best_candidate_object = attrib(type=SinglePointingCandidate, default=None)
+    best_nharm = attrib(converter=int, default=None)
     classification: CandidateClassification = attrib(default=None)
     known_source: KnownSourceClassification = attrib(default=None)
     datetimes = attrib(
@@ -411,6 +412,7 @@ class MultiPointingCandidate:
             all_sigmas=self.all_sigmas,
             all_summaries=self.all_summaries,
             datetimes=self.datetimes,
+            best_nharm=self.best_nharm,
         )
         return cand_dict
 

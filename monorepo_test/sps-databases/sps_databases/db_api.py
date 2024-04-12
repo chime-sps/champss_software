@@ -9,6 +9,7 @@ from sps_common.constants import SIDEREAL_S
 from sps_databases import db_utils
 from sps_databases.models import (
     Candidate,
+    FollowUpSource,
     HhatStack,
     KnownSource,
     Observation,
@@ -235,17 +236,31 @@ def get_observations_around_observation(observation, ra_range, dec_range):
     ra_min = pointing["ra"] - ra_range
     if ra_min < 0:
         ra_min += 360
+        lower_edge = True
+    else:
+        lower_edge = False
     ra_max = pointing["ra"] + ra_range
     if ra_max > 360:
         ra_max -= 360
+        upper_edge = True
+    else:
+        upper_edge = False
+
+    if lower_edge or upper_edge:
+        ra_query = {"$or": [{"ra": {"$gte": ra_min}}, {"ra": {"$lte": ra_max}}]}
+    else:
+        ra_query = {
+            "ra": {
+                "$gte": ra_min,
+                "$lte": ra_max,
+            }
+        }
+
     surrounding_pointings = [
         ObjectId(p["_id"])
         for p in db.pointings.find(
             {
-                "ra": {
-                    "$gte": ra_min,
-                    "$lte": ra_max,
-                },
+                **ra_query,
                 "dec": {
                     "$gte": pointing["dec"] - dec_range,
                     "$lte": pointing["dec"] + dec_range,
@@ -301,19 +316,33 @@ def get_observations_before_observation(
     if ra_before < 0:
         ra_before += 360
     ra_min = ra_before - 2.5
+    ra_query = {}
     if ra_min < 0:
         ra_min += 360
+        lower_edge = True
+    else:
+        lower_edge = False
     ra_max = ra_before + 2.5
     if ra_max > 360:
         ra_max -= 360
+        upper_edge = True
+    else:
+        upper_edge = False
+    if lower_edge or upper_edge:
+        ra_query = {"$or": [{"ra": {"$gte": ra_min}}, {"ra": {"$lte": ra_max}}]}
+    else:
+        ra_query = {
+            "ra": {
+                "$gte": ra_min,
+                "$lte": ra_max,
+            }
+        }
+
     earlier_pointings = [
         ObjectId(p["_id"])
         for p in db.pointings.find(
             {
-                "ra": {
-                    "$gte": ra_min,
-                    "$lte": ra_max,
-                },
+                **ra_query,
                 "beam_row": {
                     "$gte": pointing["beam_row"] - num_rows + row_offset,
                     "$lte": pointing["beam_row"] + num_rows + row_offset,
@@ -820,6 +849,100 @@ def get_detections_by_date(datetime):
     return detecs
 
 
+def create_followup_source(payload):
+    """
+    Create a `FollowUpSource` instance and inserts it into the database.
+
+    Parameters
+    ----------
+    payload: dict
+        dictionary of attributes for the stack, as expected by `models.FollowUpSource`
+
+    Returns
+    -------
+    followup_source: sps_database.models.FollowUpSource
+        the new instance, including the created MongoDB document id
+    """
+    db = db_utils.connect()
+    followup_source = FollowUpSource(**payload)
+    doc = followup_source.to_db()
+    del doc["_id"]
+    query = {k: doc[k] for k in doc.keys() & {"source_name"}}
+    rc = db.followup_sources.find_one_and_replace(
+        query, doc, upsert=True, return_document=pymongo.ReturnDocument.AFTER
+    )
+    followup_source._id = rc["_id"]
+    return followup_source
+
+
+def get_followup_source(followup_source_id):
+    """
+    Find a `FollowUpSource` instance with the given id.
+
+    Parameters
+    ----------
+    followup_source_id: bson.objectid.ObjectId or string
+        key for the id lookup in the "followup_sources" collection,
+        as expected by pymongo.collection.Collection.find()
+
+    Returns
+    -------
+    followup_source: sps_database.models.FollowUpSource
+        the followup source instance with the given id
+
+    Exceptions
+    ----------
+    Raises a runtime exception if the followup source id does not exist
+    """
+    db = db_utils.connect()
+    if isinstance(followup_source_id, str):
+        followup_source_id = ObjectId(followup_source_id)
+    return FollowUpSource.from_db(db.followup_sources.find_one(followup_source_id))
+
+
+def update_followup_source(id, payload):
+    """
+    Updates a followup_source with the given attribute and values as a dict.
+
+    Parameters
+    ----------
+    id: str or ObjectId
+        The id of the followup source to be updated
+
+    payload: dict
+        The dict of the attributes and values to be updated
+
+    Returns
+    -------
+    followup_source: dict
+        The dict of the updated followup source
+    """
+    db = db_utils.connect()
+    payload["last_changed"] = dt.datetime.now()
+    if isinstance(id, str):
+        id = ObjectId(id)
+    return db.followup_sources.find_one_and_update(
+        {"_id": id},
+        {"$set": payload},
+        return_document=pymongo.ReturnDocument.AFTER,
+    )
+
+
+def delete_followup_source(fs_id):
+    """
+    Deletes the followup source with the given id.
+
+    Parameters
+    ----------
+    fs_id: str or ObjectId
+        The objectid of the FollowUpSource to be deleted.
+    """
+    db = db_utils.connect()
+    if isinstance(fs_id, str):
+        fs_id = ObjectId(fs_id)
+    return db.followup_sources.find_one_and_delete({"_id": fs_id})
+
+
 def create_process(payload):
     """
     Create an `Process` instance and inserts it into the database.
@@ -1035,3 +1158,28 @@ def obs_in_stack(observation):
             if observation.datetime in ps_stack.datetimes_cumul:
                 is_in_stack = True
         return is_in_stack
+
+
+def get_dates(obs_id_list):
+    """
+    Get dates for multiple observations.
+
+    Get sorted datetimes for a list of obs_ids. May fail if the not connected to the
+    correct database.
+
+    Parameters
+    ----------
+    obs_id_list: list(obs_id)
+        The list of obsevrations ids.
+
+    Returns
+    -------
+    sorted_dates: list(datetime.datetime)
+        The datetimes of the observations.
+    """
+    dates = []
+    for obs_id in obs_id_list:
+        cand = get_observation(obs_id)
+        dates.append(cand.datetime)
+    sorted_dates = sorted(dates)
+    return sorted_dates

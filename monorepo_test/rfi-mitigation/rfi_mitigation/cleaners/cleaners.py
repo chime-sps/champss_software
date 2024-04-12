@@ -24,12 +24,12 @@ class Cleaner(object):
     among all methods.
     """
 
-    def __init__(self, spectra: np.ndarray):
-        self.spectra = spectra  # assumes shape is (nchan, ntime)
-        self.nchan = spectra.shape[0]
-        self.ntime = spectra.shape[1]
-        self.nsamp = spectra.size
-        self.cleaner_mask = np.zeros_like(spectra, dtype=bool)
+    def __init__(self, spectra_shape):
+        #self.spectra = spectra  # assumes shape is (nchan, ntime)
+        self.nchan = spectra_shape[0]
+        self.ntime = spectra_shape[1]
+        self.nsamp = spectra_shape[0] * spectra_shape[1]
+        self.cleaner_mask = np.zeros(spectra_shape, dtype=bool)
         self.cleaned = False
 
     def get_mask(self):
@@ -328,12 +328,12 @@ class SpectralKurtosisCleaner(Cleaner):
 
     def __init__(
         self,
-        spectra: np.ndarray,
+        spectra_shape,
         scales=None,
         rfi_threshold_sigma=None,
         plot_diagnostics: bool = False,
     ):
-        super(SpectralKurtosisCleaner, self).__init__(spectra)
+        super(SpectralKurtosisCleaner, self).__init__(spectra_shape)
 
         # set the scale on which the SK cleaner operates
         if scales is None:
@@ -390,25 +390,24 @@ class SpectralKurtosisCleaner(Cleaner):
             cleaned=self.cleaned,
         )
 
-    def clean(self):
+    def clean(self, spectra, rfi_mask):
         log.info("Running Spectral Kurtosis cleaner")
-        self.clean_all_scales()
+        self.clean_all_scales(spectra, rfi_mask)
         self.cleaned = True
 
-    def clean_all_scales(self):
+    def clean_all_scales(self, spectra, rfi_mask):
         for s in self.scales:
             log.info(f"scale, M = {s} ({self.ntime // s} chunks)")
-            self.clean_single_scale(s)
+            self.clean_single_scale(s, spectra, rfi_mask)
 
-    def clean_single_scale(self, scale: int):
+    def clean_single_scale(self, scale: int, spectra, rfi_mask):
         n_chan_scrunch = L1_NCHAN / self.nchan
         log.debug(f"Channel downsample factor: {n_chan_scrunch}")
-
         for ichunk in range(self.ntime // scale):
             start_idx = ichunk * scale
             end_idx = (ichunk + 1) * scale
-            spec_chunk = self.spectra[:, start_idx:end_idx]
-            current_mask_frac = self.spectra.mask[:, start_idx:end_idx].mean()
+            spec_chunk = spectra[:, start_idx:end_idx]
+            current_mask_frac = rfi_mask[:, start_idx:end_idx].mean()
 
             # generalized spectral kurtosis estimator
             # (Nita, Gary & Hellbourg 2017, eq. 5)
@@ -418,7 +417,7 @@ class SpectralKurtosisCleaner(Cleaner):
             n = 96 * n_chan_scrunch
             delta = d * n
             spec_sk = generalised_spectral_kurtosis(
-                spec_chunk.data, m=scale, delta=delta
+                spec_chunk, m=scale, delta=delta
             )
 
             scl, loc, a, b = get_pdf_transforms(scale, n, d, ret_ab=True)
