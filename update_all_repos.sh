@@ -31,7 +31,7 @@ SUBREPO_URLS=(
 )
 
 # Files to delete from the subrepos after they are added to the monorepo
-FILES_TO_DELETE=".mypy_cache/ .pytest_cache/ .venv/ .github/ .git/ .DS_Store .pre-commit-config.yaml .gitignore .dockerignore Dockerfile poetry.lock"
+FILES_TO_DELETE=".mypy_cache/ .pytest_cache/ .venv/ .github/ .git/ .DS_Store .pre-commit-config.yaml .gitignore .dockerignore Dockerfile poetry.lock LICENSE CHANGELOG.md MANIFEST.in"
 
 # A global variable to contain all of the subrepo branches per subrepo
 SUBREPO_BRANCHES=()
@@ -91,6 +91,8 @@ do
 
   cd ../..
 done
+
+poetry lock
 
 git add .
 git commit -n -m "Adding updated poetry.lock files now that pyproject.toml dependency paths have been updated for each subrepo"

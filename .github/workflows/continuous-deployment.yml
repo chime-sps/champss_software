@@ -1,0 +1,59 @@
+name: Continuous Deployment
+
+on:
+  # When pushing to any branch
+  push:
+    branches:
+      - '*'
+  # When closing/merging a pull request
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+  # When deleting a branch
+  delete:
+
+jobs:
+  # GitHub Actions fails if any "with" parameter is empty, so needs || fallbacks
+  # due to this workflow having multiple varying triggers!
+  release:
+    uses: chime-sps/sps-ops/.github/workflows/release.yml@main
+    secrets: inherit
+    with:
+      ref_name: ${{ github.ref_name || 'none' }}
+      event_name: ${{ github.event_name || 'none'}}
+      event_repository: ${{ github.event.repository.name || 'none' }}
+  info:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "GitHub Actor: ${{ github.actor || 'none'}}"
+          echo "GitHub Event Name: ${{ github.event_name || 'none' }}"
+          echo "GitHub Event Repository: ${{ github.event.repository.name || 'none' }}"
+          echo "GitHub Event Ref: ${{ github.event.ref || 'none' }}"
+          echo "GitHub Base Ref: ${{ github.base_ref || 'none' }}"
+          echo "GitHub Head Ref: ${{ github.head_ref || 'none' }}"
+          echo "GitHub Ref Name: ${{ github.ref_name || 'none'}}"
+          echo "GitHub Ref Type: ${{ github.ref_type || 'none'}}"
+          echo "Release Tag: ${{ needs.release.outputs.release_tag || 'none' }}"
+          echo "Release Created: ${{ needs.release.outputs.release_created || 'false' }}"
+          echo "Merged: ${{ github.event.pull_request.merged || false }}"
+  image:
+    needs: release
+    uses: chime-sps/sps-ops/.github/workflows/image.yml@main
+    secrets: inherit
+    with:
+      actor: ${{ github.actor || 'none'}} # Who is running the action? Bot name, user name, etc?
+      event_name: ${{ github.event_name || 'none' }} # "push", "pull-request", etc.
+      event_repository: ${{ github.event.repository.name || 'none' }} # The repository name that triggered the action
+      event_ref: ${{ github.event.ref || 'none' }} # Alternative of head_ref
+      base_ref: ${{ github.base_ref || 'none' }} # Name of branch being merged into, e.g. main
+      head_ref: ${{ github.head_ref || 'none' }} # Name of branch being merged from, e.g. development-branch
+      ref_name: ${{ github.ref_name || 'none'}} # Alternative of base_ref
+      ref_type: ${{ github.ref_type || 'none'}} # What is being affected, "branch", "tag", etc.
+      release_tag: ${{ needs.release.outputs.release_tag || 'none' }} # E.g. v1.0.0, only set if merging automated release PR
+      release_created: ${{ needs.release.outputs.release_created || 'false' }} # true if merging automated release PR
+      merged: ${{ github.event.pull_request.merged || false }} # true if merging a branch
+

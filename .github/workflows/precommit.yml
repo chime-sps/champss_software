@@ -1,0 +1,37 @@
+name: Precommit
+
+on:
+  workflow_call:
+
+jobs:
+  perform-precommit-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Code Repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+      - name: Setup Python 3.8
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+      # Precommit has to download all the hooks it uses, so we cache them instead of downloading them every time
+      - name: Load Cached Precommit Dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/precommit
+          key: precommit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+      # Only run precommit on files that have changed
+      - name: Get All Changed Files
+        id: get-changed-files
+        uses: tj-actions/changed-files@v36
+      # For private repository dependencies, need SSH key:
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.4.1
+        with:
+            ssh-private-key: ${{ secrets.SPS_SSH_ID }}
+      - name: Perform Precommit Checks
+        run: |
+            pip install pre-commit
+            pre-commit run --files ${{ steps.get-changed-files.outputs.all_changed_files }}
