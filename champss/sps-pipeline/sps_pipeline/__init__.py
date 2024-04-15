@@ -1,1 +1,0 @@
-"""CHIME SPS Pipeline Package."""

@@ -1,2 +1,0 @@
-chime-frb-l1 @ git+ssh://git@github.com/CHIMEFRB/ch_frb_l1_utils.git
--r requirements.txt

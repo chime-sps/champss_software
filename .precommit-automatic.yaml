@@ -1,0 +1,62 @@
+repos:
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.3.1
+    hooks:
+      - id: pyupgrade
+        args:
+          - --py38-plus
+
+  - repo: https://github.com/MarcoGorelli/absolufy-imports
+    rev: v0.3.1
+    hooks:
+      - id: absolufy-imports
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args:
+          - --profile=black
+          - --verbose
+
+  - repo: https://github.com/pycqa/autoflake
+    rev: v2.2.0
+    hooks:
+      - id: autoflake
+        args:
+          - --in-place # Overwrite contents
+          - --remove-all-unused-imports
+
+  - repo: https://github.com/pycqa/docformatter
+    rev: v1.7.5
+    hooks:
+      - id: docformatter
+        args:
+          # Add a "--style=numpy" or "--style=google" once support is added
+          - --in-place
+          - --black # Wraps descriptions and summaries if over 88 length
+          - --pre-summary-newline
+          - --close-quotes-on-newline
+          # Avoid adding "--make-summary-multiline" to enforce no single-line docstrings
+          # as this conflicts with Black and causes perpetual formatting by both of them
+
+  - repo: https://github.com/psf/black
+    rev: 22.12.0
+    hooks:
+      - id: black
+        args:
+          - --preview # Allows Black to fix "line too long" issues in strings
+          - --verbose
+
+  - repo: https://github.com/python-poetry/poetry
+    rev: 1.6.1
+    hooks:
+      - id: poetry-check
+      - id: poetry-lock
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.4.0
+    hooks:
+      - id: commitizen
+        stages:
+          - commit-msg # Enforce commitizen on commit message attempts

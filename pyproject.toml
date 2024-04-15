@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "champss"
-version = "0.13.0"
-description = "CHAMPSS Codebase"
+version = "1.0.0"
+description = "CHAMPSs Codebase"
 authors = ["CHAMPSS <chime_spawg@physics.mcgill.>"]
 license = "GPLv3"
 readme = "README.md"
@@ -10,25 +10,23 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
-beamformer = {path = "./champss/beamformer", develop=true}
-candidate-processor = {path = "./champss/candidate-processor", develop=true}
-controller = {path = "./champss/controller", develop=true}
-dmt = {git = "https://github.com/chime-sps/dmt.git"}
-folding = {path = "./champss/folding", develop=true}
-ps-processes = {path = "./champss/ps-processes", develop=true}
-rfi-mitigation = {path = "./champss/rfi-mitigation", develop=true}
-scheduler = {path = "./champss/scheduler", develop=true}
-spshuff = {path = "./champss/spshuff", develop=true}
-sps-common = {path = "./champss/sps-common", develop=true}
-sps-databases = {path = "./champss/sps-databases", develop=true}
-sps-dedispersion = {path = "./champss/sps-dedispersion", develop=true}
-sps-multi-pointing = {path = "./champss/multi-pointing", develop=true}
-sps_pipeline = {path = "./champss/sps-pipeline", develop=true}
-beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model", optional=true}
-
-[tool.poetry.extras]
-beam-model = ["beam-model"]
+python = ">=3.8,<3.12"
+beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
+beamformer = {path = "./monorepo_test/beamformer"}
+candidate-processor = {path = "./monorepo_test/candidate-processor"}
+chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
+controller = {path = "./monorepo_test/controller"}
+fdmt = {path = "./monorepo_test/fdmt"}
+folding = {path = "./monorepo_test/folding"}
+ps-processes = {path = "./monorepo_test/ps-processes"}
+rfi-mitigation = {path = "./monorepo_test/rfi-mitigation"}
+spshuff = {path = "./monorepo_test/spshuff"}
+sps-common = {path = "./monorepo_test/sps-common"}
+sps-databases = {path = "./monorepo_test/sps-databases"}
+sps-dedispersion = {path = "./monorepo_test/sps-dedispersion"}
+sps-multi-pointing = {path = "./monorepo_test/multi-pointing"}
+sps-ops = {path = "./monorepo_test/sps-ops"}
+sps_pipeline = {path = "./monorepo_test/pipeline_batch_db"}
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
