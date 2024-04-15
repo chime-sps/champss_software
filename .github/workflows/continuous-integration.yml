@@ -1,0 +1,14 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  precommit:
+    uses: chime-sps/sps-ops/.github/workflows/precommit.yml@main
+    secrets: inherit

@@ -1,0 +1,22 @@
+name: Dispatch Tests
+
+on:
+  workflow_call:
+    inputs:
+      actor:
+        type: string
+      ref_name:
+        type: string
+      event_name:
+        type: string
+
+jobs:
+  dispatch-tests-on-pipeline:
+    # Avoid doble dispatch of tests from automated release PR
+    if: ${{ inputs.actor != 'github-actions' && inputs.event_name == 'push' && inputs.ref_name == 'main'}}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          gh workflow run run-tests.yml -R chime-sps/pipeline_batch_db -r main
+        env:
+          GH_TOKEN: ${{ secrets.SPS_PIPELINE_WORKFLOW_DISPATCH }}

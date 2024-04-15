@@ -1,2 +1,11 @@
 docs/*
+.github/*
+.gitignore
+.dockerignore
+.precommit-automatic.yaml
+.precommit-manual.yaml
+Dockerfile
+LICENSE
+README.md
+poetry.lock
 .venv/*
