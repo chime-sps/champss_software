@@ -114,13 +114,18 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Name used for the mongodb database.",
 )
 @click.option(
+        "--basepath", type=str, default='/data/chime/sps/raw/',
+        help="Base directory for raw data",
+)
+@click.option(
     "--write-to-db",
     is_flag=True,
     help="Set folded_status to True in the processes database.",
 )
 @click.option(
-        "--basepath", type=str, default='/data/chime/sps/raw/',
-        help="Base directory for raw data",
+    "--overwrite-folding",
+    is_flag=True,
+    help="Re-run folding even if already folded on this date.",
 )
 def main(
     date,
@@ -138,6 +143,7 @@ def main(
     basepath,
     write_to_db=False,
     using_workflow=False,
+    overwrite_folding=False,
 ):
     """
     Perform the main processing steps for folding a candidate or known source.  It can be called for
@@ -184,6 +190,12 @@ def main(
     if fs_id:
         source = db_api.get_followup_source(fs_id)
         source_type = source.source_type
+        if source.folding_history:
+            fold_dates = [entry["date"].date() for entry in source.folding_history]
+            if not overwrite_folding and date.date() in fold_dates:
+                log.info(f"Already folded on {date.date()}, skipping...")
+                return
+            
         f0 = source.f0
         ra = source.ra
         dec = source.dec
@@ -359,14 +371,19 @@ def main(
     log.info(f"SN of folded profile: {SN_arr}")
 
     if fs_id and write_to_db:
-        log.info("UpdatingFollowUpSource with folding history")
+        log.info("Updating FollowUpSource with folding history")
         folding_history = source.folding_history
         fold_details = {
             "date": date,
             "archive_fname": archive_fname,
             "SN": float(SN_arr),
         }
-        folding_history.append(fold_details)
+        fold_dates = [entry["date"].date() for entry in folding_history]
+        if date.date() in fold_dates:
+            index = fold_dates.index(date.date())
+            folding_history[index] = fold_details
+        else:
+            folding_history.append(fold_details)
         db_api.update_followup_source(fs_id, {"folding_history": folding_history})
         if len(folding_history) >= source.followup_duration:
             log.info("Finished follow-up duration of {0} days, setting active = False".format(source.followup_duration))

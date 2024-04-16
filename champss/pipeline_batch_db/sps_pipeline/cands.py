@@ -160,7 +160,7 @@ def run_interface(
             "path_candidate_file": path.abspath(ps_candidates),
             "num_total_candidates": len(spcc.candidates),
         }
-        db_api.append_ps_stack(pointing.pointing_id, payload)
+        db_api.append_ps_stack(pointing._id, payload)
         if plot:
             if cand_path is None:
                 plot_folder = f"{stack_root_folder}/plots"

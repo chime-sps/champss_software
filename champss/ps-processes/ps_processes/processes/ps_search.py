@@ -124,6 +124,7 @@ class PowerSpectraSearch:
     clustering_ignore_nharm1: bool = attribute(default=False)
     filter_by_nharm: bool = attribute(default=False)
     use_nsum_per_bin: bool = attribute(default=False)
+    mp_chunk_size: bool = attribute(default=0)
     full_harm_bins = attribute(init=False)
     update_db = attribute(default=True, validator=instance_of(bool))
 
@@ -253,7 +254,25 @@ class PowerSpectraSearch:
         # Alternatively the search_candidates function could be rewritten
         # to work with shared and non-shared memory
         pspec.move_to_shared_memory()
-        detection_list = pool.map(
+        if self.mp_chunk_size == 1:
+            map_input = enumerate(pspec.dms)
+        if not self.mp_chunk_size:
+            self.mp_chunk_size = len(pspec.dms) // self.num_threads + 1
+        log.info(
+            f"Number of dm trials in single multi processing job: {self.mp_chunk_size}"
+        )
+
+        dm_split = [
+            pspec.dms[i : i + self.mp_chunk_size]
+            for i in range(0, len(pspec.dms), self.mp_chunk_size)
+        ]
+        full_indices = np.arange(len(pspec.dms))
+        dm_indices = [
+            full_indices[i : i + self.mp_chunk_size]
+            for i in range(0, len(pspec.dms), self.mp_chunk_size)
+        ]
+
+        detection_list = pool.starmap(
             partial(
                 self.search_candidates,
                 pspec.power_spectra_shared.name,
@@ -265,7 +284,7 @@ class PowerSpectraSearch:
                 nsum_per_harmonic,
                 power_cutoff_per_harmonic,
             ),
-            enumerate(pspec.dms),
+            zip(dm_indices, dm_split),
         )
         pool.close()
         pool.join()
@@ -323,7 +342,7 @@ class PowerSpectraSearch:
                     "num_clusters": len(clusters),
                     "detection_threshold": clustering_sigma_min,
                 }
-    
+
                 db_api.update_observation(pspec.obs_id[0], payload)
 
         return (
@@ -351,7 +370,8 @@ class PowerSpectraSearch:
         freq_labels,
         nsum_per_harmonic,
         power_cutoff_per_harmonic,
-        dm_tuple,
+        dm_indices,
+        dms,
     ):
         """
         Search in a single dm trial.
@@ -403,97 +423,83 @@ class PowerSpectraSearch:
             A list of tuples containing the properties of the individual detections
             made in the search process.
         """
-        dm_index = dm_tuple[0]
-        dm = dm_tuple[1]
-        log.debug(f"Working on DM={dm} with {num_harm} harmonics")
+        # log.debug(f"Working on DM={dm} with {num_harm} harmonics")
         shared_spectra = shared_memory.SharedMemory(name=shared_spectra_name)
         power_spectra = np.ndarray(
             shared_spectra_shape, dtype=shared_spectra_type, buffer=shared_spectra.buf
         )
-        power_spectrum = power_spectra[dm_index, :]
         detection_list = []
-        power_spectrum = power_spectrum[: len(full_harm_bins[0])]
+        power_spectra = power_spectra[: len(full_harm_bins[0])]
         freq_labels = freq_labels[: len(full_harm_bins[0])]
-        for idx_harm, harm in enumerate([1, 2, 4, 8, 16, 32]):
-            harm_start = time.time()
-            if harm > num_harm:
-                continue
-            log.debug(f"Working on the harmonic={harm} sum")
-            harm_bins = full_harm_bins[:harm]
-            harm_sum_powers = power_spectrum[harm_bins].sum(0)
-            power_cutoff = power_cutoff_per_harmonic[idx_harm]
-            used_nsum = nsum_per_harmonic[idx_harm]
-            detection_idx = np.where(harm_sum_powers > power_cutoff)[0]
-            last_detection_freq = None
-            last_detection_sigma = None
-            try:
-                if type(used_nsum) == np.ndarray:
-                    used_nsum_detec = used_nsum[detection_idx]
-                else:
-                    used_nsum_detec = used_nsum
-                sigmas = sigma_sum_powers(
-                    harm_sum_powers[detection_idx], used_nsum_detec
-                )
-            except Exception as e:
-                # I am not sure if there are any failure modes in the new algorithm
-                # so this is for safety
-                log.error(
-                    f"{e}: Sigma calculation failed for array input during search"
-                )
-                sigmas = None
-            for idx_count, idx in enumerate(detection_idx):
-                replace_last = False
-                detection_freq = freq_labels[idx] / harm
-                # skipping candidates with period less than 10 time samples
-                if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (0.1 / TSAMP):
+        for dm_index, dm in zip(dm_indices, dms):
+            power_spectrum = power_spectra[dm_index, :]
+            for idx_harm, harm in enumerate([1, 2, 4, 8, 16, 32]):
+                harm_start = time.time()
+                if harm > num_harm:
                     continue
-                if sigmas is None:
+                log.debug(f"Working on the harmonic={harm} sum")
+                harm_bins = full_harm_bins[:harm]
+                harm_sum_powers = power_spectrum[harm_bins].sum(0)
+                power_cutoff = power_cutoff_per_harmonic[idx_harm]
+                used_nsum = nsum_per_harmonic[idx_harm]
+                detection_idx = np.where(harm_sum_powers > power_cutoff)[0]
+                last_detection_freq = None
+                last_detection_sigma = None
+                try:
                     if type(used_nsum) == np.ndarray:
-                        used_nsum_detec_loop = used_nsum[idx]
+                        used_nsum_detec = used_nsum[detection_idx]
                     else:
-                        used_nsum_detec_loop = used_nsum
-                    sigma = sigma_sum_powers(harm_sum_powers[idx], used_nsum_detec_loop)
-                else:
-                    sigma = sigmas[idx_count]
-                    if np.isnan(sigma):
+                        used_nsum_detec = used_nsum
+                    sigmas = sigma_sum_powers(
+                        harm_sum_powers[detection_idx], used_nsum_detec
+                    )
+                except Exception as e:
+                    # I am not sure if there are any failure modes in the new algorithm
+                    # so this is for safety
+                    log.error(
+                        f"{e}: Sigma calculation failed for array input during search"
+                    )
+                    sigmas = None
+                for idx_count, idx in enumerate(detection_idx):
+                    replace_last = False
+                    detection_freq = freq_labels[idx] / harm
+                    # skipping candidates with period less than 10 time samples
+                    if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (
+                        0.1 / TSAMP
+                    ):
+                        continue
+                    if sigmas is None:
                         if type(used_nsum) == np.ndarray:
                             used_nsum_detec_loop = used_nsum[idx]
                         else:
                             used_nsum_detec_loop = used_nsum
-                        # Array input should work properly
-                        log.error("Sigma calculation for array produced nan")
                         sigma = sigma_sum_powers(
                             harm_sum_powers[idx], used_nsum_detec_loop
                         )
-                if (
-                    last_detection_freq
-                    and np.abs(detection_freq - last_detection_freq)
-                    < MIN_SEARCH_FREQ * 1.1
-                ):
-                    if sigma < last_detection_sigma:
-                        continue
                     else:
-                        replace_last = True
-                sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
-                if replace_last:
-                    detection_list[-1] = (
-                        detection_freq,
-                        dm,
-                        harm,
-                        tuple(
-                            np.pad(sorted_harm_bins, (0, 32 - len(sorted_harm_bins)))
-                        ),
-                        tuple(
-                            np.pad(
-                                power_spectrum[sorted_harm_bins],
-                                (0, 32 - len(sorted_harm_bins)),
+                        sigma = sigmas[idx_count]
+                        if np.isnan(sigma):
+                            if type(used_nsum) == np.ndarray:
+                                used_nsum_detec_loop = used_nsum[idx]
+                            else:
+                                used_nsum_detec_loop = used_nsum
+                            # Array input should work properly
+                            log.error("Sigma calculation for array produced nan")
+                            sigma = sigma_sum_powers(
+                                harm_sum_powers[idx], used_nsum_detec_loop
                             )
-                        ),
-                        sigma,
-                    )
-                else:
-                    detection_list.append(
-                        (
+                    if (
+                        last_detection_freq
+                        and np.abs(detection_freq - last_detection_freq)
+                        < MIN_SEARCH_FREQ * 1.1
+                    ):
+                        if sigma < last_detection_sigma:
+                            continue
+                        else:
+                            replace_last = True
+                    sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
+                    if replace_last:
+                        detection_list[-1] = (
                             detection_freq,
                             dm,
                             harm,
@@ -510,11 +516,33 @@ class PowerSpectraSearch:
                             ),
                             sigma,
                         )
-                    )
-                last_detection_freq = detection_freq
-                last_detection_sigma = sigma
-            harm_end = time.time()
-            log.debug(f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum")
+                    else:
+                        detection_list.append(
+                            (
+                                detection_freq,
+                                dm,
+                                harm,
+                                tuple(
+                                    np.pad(
+                                        sorted_harm_bins,
+                                        (0, 32 - len(sorted_harm_bins)),
+                                    )
+                                ),
+                                tuple(
+                                    np.pad(
+                                        power_spectrum[sorted_harm_bins],
+                                        (0, 32 - len(sorted_harm_bins)),
+                                    )
+                                ),
+                                sigma,
+                            )
+                        )
+                    last_detection_freq = detection_freq
+                    last_detection_sigma = sigma
+                harm_end = time.time()
+                log.debug(
+                    f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum"
+                )
         return detection_list
 
     def summarise(self, clusters, cluster_harm_idx):

@@ -38,16 +38,15 @@ SUBREPO_BRANCHES=()
 
 for SUBREPO_URL in "${SUBREPO_URLS[@]}"
 do
-  SUBREPO_URL_WITHOUT_BRANCH=$(echo "$SUBREPO_URL" | sed 's/#.*//')
   SUBREPO_BRANCH=$(echo "$SUBREPO_URL" | awk -F'#' '{print $2}')
+  SUBREPO_URL_WITHOUT_BRANCH=$(echo "$SUBREPO_URL" | sed 's/#.*//')
   SUBREPO_NAME=$(basename "$SUBREPO_URL_WITHOUT_BRANCH" .git)
-  echo $SUBREPO_URL_WITHOUT_BRANCH
   echo $SUBREPO_BRANCH
+  echo $SUBREPO_URL_WITHOUT_BRANCH
   echo $SUBREPO_NAME
 
-  rm -rf "$MONOREPO_NAME/$SUBREPO_NAME"
-
   cd "$MONOREPO_NAME"
+  rm -rf "$SUBREPO_NAME"
   git clone $SUBREPO_URL_WITHOUT_BRANCH
 
   cd "$SUBREPO_NAME"
@@ -74,10 +73,6 @@ do
   cd ../..
 done
 
-git add .
-git commit -n -m "Adding all modified versions of each subrepo's desired main branches to your monorepo branch: $MONOREPO_BRANCH"
-git push
-
 for SUBREPO_URL in "${SUBREPO_URLS[@]}"
 do
   SUBREPO_URL_WITHOUT_BRANCH=$(echo "$SUBREPO_URL" | sed 's/#.*//')
@@ -100,7 +95,7 @@ rm -f poetry.lock
 poetry lock
 
 git add .
-git commit -n -m "Adding updated poetry.lock files now that pyproject.toml dependency paths have been updated for each subrepo"
+git commit -n -m "Adding all modified versions of each subrepo's desired main branches to your monorepo branch: $MONOREPO_BRANCH"
 git push
 
 for ((index=0; index<${#SUBREPO_BRANCHES_PER_SUBREPO[@]}; index++))
@@ -115,7 +110,7 @@ do
   SUBREPO_BRANCHES=${SUBREPO_BRANCHES_PER_SUBREPO[index]}
   echo $SUBREPO_BRANCHES
 
-  for SUBREPO_BRANCH in $SUBREPO_BRANCHES:
+  for SUBREPO_BRANCH in $SUBREPO_BRANCHES
   do
     git checkout $MONOREPO_BRANCH
 
@@ -128,7 +123,7 @@ do
     git push --set-upstream origin "$NEW_BRANCH"
 
     cd "$MONOREPO_NAME"
-    rm -rf $SUBREPO_NAME
+    rm -rf "$SUBREPO_NAME"
     git clone $SUBREPO_URL_WITHOUT_BRANCH
 
     cd "$SUBREPO_NAME"

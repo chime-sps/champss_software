@@ -17,6 +17,12 @@ def feq(a, b, eps=1e-6):
 	return np.all(np.abs(a - b) <= np.maximum(np.abs(a), np.abs(b)) * eps)
 
 
+# here, the frac denotes the tolerable fraction of values that aren't
+# epsilon-equal. Useful for unstable calculations.
+def feq_frac(a, b, eps=1e-6, frac=0.0001):
+	return np.sum(np.abs(a - b) > np.maximum(np.abs(a), np.abs(b)) * eps) <= frac * np.prod(a.shape)
+
+
 def get_level(val):
 	for ilevel in range(5):
 		if val < edges5[ilevel]:

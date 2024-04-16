@@ -1,5 +1,0 @@
-global-exclude *.py[cod]
-recursive-exclude tests *
-recursive-exclude beamformer.egg-info *
-recursive-include beamformer *.py *.json *.npy
-include README.md LICENSE

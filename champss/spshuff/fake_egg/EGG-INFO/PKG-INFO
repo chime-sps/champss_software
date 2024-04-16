@@ -1,0 +1,13 @@
+Metadata-Version: 1.2
+Name: spshuff
+Version: 1.1
+Summary: CIRADA/CHIME Slow Pulsar Search compression and file io
+Home-page: https://github.com/chime-sps/spshuff
+Author: Alexander Roman
+Author-email: aroman@perimeterinstitue.ca
+License: UNKNOWN
+Description: 
+                A huffman compression library for the CIRADA/CHIME Slow Pulsar Search (SPS).
+                
+Platform: UNKNOWN
+Requires-Python: >=3.6
