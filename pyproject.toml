@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "champss"
 version = "1.0.0"
-description = "CHAMPSs Codebase"
+description = "CHAMPSS Codebase"
 authors = ["CHAMPSS <chime_spawg@physics.mcgill.>"]
 license = "GPLv3"
 readme = "README.md"

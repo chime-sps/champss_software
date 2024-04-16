@@ -4,7 +4,7 @@
 # THIS WILL RESET THE ENTIRE MONOREPO TO THE STATE ALL OF THE SUBREPOS' BRANCHES ARE IN!
 
 # The name of the monorepo module
-MONOREPO_NAME="monorepo_test"
+MONOREPO_NAME="champss"
 
 # The name of your current branch in the monorepo to add the subrepos's main branches to
 MONOREPO_BRANCH="setup-monorepo"
@@ -92,6 +92,7 @@ do
   cd ../..
 done
 
+rm -f poetry.lock
 poetry lock
 
 git add .
@@ -140,6 +141,8 @@ do
     sed -i.bak '/chime-sps/ s|git = "ssh://git@github.com/chime-sps/\(.*\)".*|path = "../\1"|; s/, rev = "[^"]*"//g' pyproject.toml
     sed -i.bak '/path = /s/$/}/' pyproject.toml
     rm -f pyproject.toml.bak
+
+    poetry lock
 
     cd ../..
 
