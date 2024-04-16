@@ -92,6 +92,10 @@ do
   cd ../..
 done
 
+sed -i.bak '/chime-sps/ s|git = "ssh://git@github.com/chime-sps/\(.*\)".*|path = "../\1"|; s/, rev = "[^"]*"//g' pyproject.toml
+sed -i.bak '/path = /s/$/}/' pyproject.toml
+rm -f pyproject.toml.bak
+
 rm -f poetry.lock
 poetry lock
 
