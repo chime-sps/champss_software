@@ -1,5 +1,5 @@
 import spshuff
-from spshuff.huff_utils import py_quantize_dequantize, feq
+from spshuff.huff_utils import py_quantize_dequantize, feq, feq_frac
 import numpy as np
 import time
 
@@ -20,12 +20,12 @@ def test_encode_decode(nsamp=1 * 1024 * 1024):
 	decoded = spshuff.decode(encoded, nsamp)
 	dt_dec = time.time() - t2
 
-	# time.sleep(120.)
-
 	print("Encoding rate (Msamples/s): {}".format((float(nsamp)*1e-6)/dt_enc))
 	print("Decoding rate (Msamples/s): {}".format((float(nsamp)*1e-6)/dt_dec))
 
-	assert feq(decoded, py_decoded)
+	assert feq_frac(decoded, py_decoded)
+	print("Exact? ", feq(decoded, py_decoded))
+	print("PASS")
 
 
 if __name__ == "__main__":

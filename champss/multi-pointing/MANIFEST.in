@@ -1,3 +1,0 @@
-include sps_multi_pointing/sps_config.yml
-include sps_multi_pointing/simulator/*.npy
-include sps_multi_pointing/known_source_sifter/*.npy

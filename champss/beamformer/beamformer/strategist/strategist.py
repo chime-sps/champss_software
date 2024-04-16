@@ -7,8 +7,8 @@ import numpy as np
 import pytz
 import sps_databases.models as spsdb_models
 from sps_common import constants
-from sps_common.interfaces.beamformer import ActivePointing, Pointing
-from sps_databases import db_api, db_utils
+from sps_common.interfaces.beamformer import ActivePointing
+from sps_databases import db_api, db_utils, models
 
 from beamformer import CURRENT_POINTING_MAP
 from beamformer.utilities.common import (
@@ -40,11 +40,11 @@ class PointingStrategist:
         The base path to the location to process the pointings. Default: './'
 
     split_long_pointing: bool
-        Whether to split long pointings into smaller sub pointings to be processed independently. 
+        Whether to split long pointings into smaller sub pointings to be processed independently.
         Default: False
 
     max_length: int
-        Max length of a pointing in number of samples to be processed. 
+        Max length of a pointing in number of samples to be processed.
         Default: 2*22 (65.5 minutes, highest factor of 2 which easily fits in memory)
     """
 
@@ -126,7 +126,8 @@ class PointingStrategist:
 
     def active_pointing_from_pointing(self, pointing, date):
         """
-        Get an ActivePointing instance from a Pointing dictionary obtained from the pointing map
+        Get an ActivePointing instance from a Pointing dictionary obtained from the
+        pointing map.
 
         Parameters
         ==========
@@ -142,7 +143,6 @@ class PointingStrategist:
 
         active_pointing: ActivePointing
             The active pointing as class instances with ra, dec, nchan, ntime, maxdm, max_beams, beam_row and obs_id
-
         """
         date_utc = date.replace(tzinfo=pytz.utc).timestamp()
         max_beams = self.get_max_beam_list(
@@ -191,7 +191,7 @@ class PointingStrategist:
 
     def pointings_from_map(self, utc_start, utc_end, beam_row):
         """
-        Obtain the list of active pointings to process from the local database
+        Obtain the list of active pointings to process from the local database.
 
         Parameters
         =======
@@ -210,7 +210,6 @@ class PointingStrategist:
 
         pointings_to_process: list(ActivePointing)
             The list of active pointings to process as class instances with ra, dec, nchan, ntime, maxdm, max_beams, beam_row and obs_id
-
         """
         with open(CURRENT_POINTING_MAP) as infile:
             pointings = json.load(infile)
@@ -276,7 +275,7 @@ class PointingStrategist:
 
     def pointings_from_db(self, utc_start, utc_end, beam_row):
         """
-        Obtain the list of active pointings to process from sps-databases
+        Obtain the list of active pointings to process from sps-databases.
 
         Parameters
         =======
@@ -293,7 +292,6 @@ class PointingStrategist:
         =======
         pointings_to_process: list(ActivePointing)
             The list of active pointings to process as class instances with ra, dec, nchan, ntime, maxdm, max_beams, beam_row and obs_id
-
         """
         db = db_utils.connect()
         pointings_to_process = []
@@ -327,9 +325,9 @@ class PointingStrategist:
                 ]})
                 # fmt: on
             for p in qs:
-                p["pointing_id"] = p.pop("_id", None)
-                p.pop("search_algorithm", None)
-                pointing = Pointing(**p)
+                # p["pointing_id"] = p.pop("_id", None)
+                # p.pop("search_algorithm", None)
+                pointing = models.Pointing.from_db(p)
                 max_beams = self.get_max_beam_list(
                     pointing.ra,
                     pointing.dec,
@@ -353,7 +351,7 @@ class PointingStrategist:
                                 max_beams=split_max_beams[i],
                                 beam_row=pointing.beam_row,
                                 sub_pointing=i,
-                                pointing_id=pointing.pointing_id,
+                                pointing_id=pointing._id,
                             )
                             if self.create_db:
                                 active_pointing = self.create_database_entry(
@@ -369,7 +367,7 @@ class PointingStrategist:
                             maxdm=pointing.maxdm,
                             max_beams=max_beams,
                             beam_row=pointing.beam_row,
-                            pointing_id=pointing.pointing_id,
+                            pointing_id=pointing._id,
                         )
                         if self.create_db:
                             active_pointing = self.create_database_entry(
@@ -451,9 +449,9 @@ class PointingStrategist:
 
     def get_max_beam_list(self, ra, dec, ntime, beam_row, ref_time):
         """
-        Function to compute the FRB beam used to beamform the pointing across the transit.
-        The output is saved in max_beam. The FRB beam to used is computed on 10 second
-        intervals.
+        Function to compute the FRB beam used to beamform the pointing across the
+        transit. The output is saved in max_beam. The FRB beam to used is computed on 10
+        second intervals.
 
         Parameters
         =======

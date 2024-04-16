@@ -184,7 +184,7 @@ def schedule_workflow_job(
         "command": f"workflow run {workflow_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site {workflow_site} --lifetime 1 --sleep-time 0",
         # Using template Docker variables as in-container environment variables
         # that allow us this access out-of-container information
-        "env": ["CONTAINER_NAME={{.Service.Name}}", "NODE_NAME={{.Node.Hostname}}"],
+        "env": ["CONTAINER_NAME={{.Task.Name}}", "NODE_NAME={{.Node.Hostname}}"],
         # This is neccessary to allow Pyroscope (py-spy) to work in Docker
         # 'cap_add': ['SYS_PTRACE'],
         # Again, using one-shot Docker Service tasks too

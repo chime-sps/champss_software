@@ -142,6 +142,7 @@ class PowerSpectraCreation:
     update_db = attribute(validator=instance_of(bool), default=True)
     nbit = attribute(validator=instance_of(int), default=32)
     num_threads = attribute(validator=instance_of(int), default=8)
+    mp_chunk_size: bool = attribute(default=0)
     static_filter = attribute(init=False)
     dynamic_filter = attribute(init=False)
 
@@ -224,7 +225,9 @@ class PowerSpectraCreation:
                     f" {nbins_flagged} ({nbins_flagged/len(freq_labels):.6f} of data)"
                 )
             # Pool method to run parallel jobs on the FFT to form power spectra
-            log.info(f"Number of threads used : {self.num_threads}")
+            log.info(
+                f"Number of threads used for power spectra creation: {self.num_threads}"
+            )
             target_shape = (
                 dedisp_time_series.dedisp_ts.shape[0],
                 int(self.padded_length // 2),
@@ -236,7 +239,31 @@ class PowerSpectraCreation:
             power_spectra = np.ndarray(
                 target_shape, dtype=f"float{self.nbit}", buffer=power_spectra_shared.buf
             )
-            pool.map(
+
+            if not self.mp_chunk_size:
+                self.mp_chunk_size = (
+                    dedisp_time_series.dedisp_ts.shape[0] // self.num_threads + 1
+                )
+            log.info(
+                "Number of dm trials in single multi processing job:"
+                f" {self.mp_chunk_size}"
+            )
+
+            dedisp_series_list = [
+                dedisp_time_series.dedisp_ts[i : i + self.mp_chunk_size]
+                for i in range(
+                    0, dedisp_time_series.dedisp_ts.shape[0], self.mp_chunk_size
+                )
+            ]
+            full_indices = np.arange(dedisp_time_series.dedisp_ts.shape[0])
+            dm_indices = [
+                full_indices[i : i + self.mp_chunk_size]
+                for i in range(
+                    0, dedisp_time_series.dedisp_ts.shape[0], self.mp_chunk_size
+                )
+            ]
+
+            pool.starmap(
                 partial(
                     self.transform_data,
                     normalise=self.normalise,
@@ -252,10 +279,11 @@ class PowerSpectraCreation:
                     shared_target_name=power_spectra_shared.name,
                     target_shape=power_spectra.shape,
                 ),
-                enumerate(dedisp_time_series.dedisp_ts),
+                zip(dm_indices, dedisp_series_list),
             )
             pool.close()
             pool.join()
+            log.info("Power spectra creation successful.")
             # update the observation database
             if self.update_db:
                 self.update_database(
@@ -287,7 +315,8 @@ class PowerSpectraCreation:
 
     @staticmethod
     def transform_data(
-        dts_tuple,
+        dm_indices,
+        dm_series_list,
         normalise=False,
         barycentring_mode="Fourier",
         beta=0,
@@ -355,71 +384,68 @@ class PowerSpectraCreation:
         power_spectrum: np.ndarray
             The power spectrum form from the FFT of the dedispersed time series.
         """
-        dm_index = dts_tuple[0]
-        dts = dts_tuple[1]
-        if normalise:
-            ts_mean = np.mean(dts)
-            ts_std = np.std(dts)
-            dts = (dts - ts_mean) / ts_std
-        if barycentring_mode == "Time":
-            # barycenter the time series before forming the power spectrum
-            dts = barycenter_timeseries(dts, beta)
-        n_to_pad = int(padded_length - dts.size)
-        if normalise:
-            dts = np.pad(dts, (0, n_to_pad), mode="constant", constant_values=0)
-        else:
-            dts = np.pad(dts, (0, n_to_pad), mode="median", stat_length=4096)
-
-        log.debug("Computing power spectrum and corresponding frequency labels")
-        spectrum = pyfftw.interfaces.numpy_fft.rfft(dts)
-        spectrum[0] = 0
-        spectrum = spectrum[:-1]
-        power_spectrum = np.abs(spectrum) ** 2
-        power_spectrum = power_spectrum.astype(f"float{nbit}")
-
-        if barycentring_mode == "Fourier":
-            # target labels are the frequencies we want our label to have
-            # initial labels are the barycentric frequencies that are actually recorded
-            # only the relation between the labels is used so we assume tsamp=1 here
-            target_labels = np.arange(len(power_spectrum))
-            initial_labels = target_labels * (1 - beta)
-            power_spectrum = interp1d(
-                initial_labels,
-                power_spectrum,
-                kind="nearest",
-                bounds_error=False,
-                fill_value=0,
-            )(target_labels)
-
-        # normalise power spectrum
-        if clean_rfi:
-            power_spectrum[bad_freq_indices] = np.nan
-        if remove_rednoise:
-            log.debug("Normalising power spectrum with rednoise removal")
-            power_spectrum[1:] = rednoise_normalise(
-                power_spectrum[1:], **rednoise_config
-            )
-        else:
-            log.debug("Normalising power spectrum")
-            power_spectrum[1:] = power_spectrum[1:] / (
-                np.nanmedian(power_spectrum[1:]) / np.log(2)
-            )
-        if clean_rfi:
-            if zero_replace:
-                power_spectrum[bad_freq_indices] = 0
+        shared_spectra = shared_memory.SharedMemory(name=shared_target_name)
+        power_spectra = np.ndarray(
+            target_shape, dtype=f"float{nbit}", buffer=shared_spectra.buf
+        )
+        for dm_index, dts in zip(dm_indices, dm_series_list):
+            if normalise:
+                ts_mean = np.mean(dts)
+                ts_std = np.std(dts)
+                dts = (dts - ts_mean) / ts_std
+            if barycentring_mode == "Time":
+                # barycenter the time series before forming the power spectrum
+                dts = barycenter_timeseries(dts, beta)
+            n_to_pad = int(padded_length - dts.size)
+            if normalise:
+                dts = np.pad(dts, (0, n_to_pad), mode="constant", constant_values=0)
             else:
-                power_spectrum[bad_freq_indices] = (
-                    np.random.chisquare(2, len(bad_freq_indices)) / 2
+                dts = np.pad(dts, (0, n_to_pad), mode="median", stat_length=4096)
+
+            log.debug("Computing power spectrum and corresponding frequency labels")
+            spectrum = pyfftw.interfaces.numpy_fft.rfft(dts)
+            spectrum[0] = 0
+            spectrum = spectrum[:-1]
+            power_spectrum = np.abs(spectrum) ** 2
+            power_spectrum = power_spectrum.astype(f"float{nbit}")
+
+            if barycentring_mode == "Fourier":
+                # target labels are the frequencies we want our label to have
+                # initial labels are the barycentric frequencies that are actually recorded
+                # only the relation between the labels is used so we assume tsamp=1 here
+                target_labels = np.arange(len(power_spectrum))
+                initial_labels = target_labels * (1 - beta)
+                power_spectrum = interp1d(
+                    initial_labels,
+                    power_spectrum,
+                    kind="nearest",
+                    bounds_error=False,
+                    fill_value=0,
+                )(target_labels)
+
+            # normalise power spectrum
+            if clean_rfi:
+                power_spectrum[bad_freq_indices] = np.nan
+            if remove_rednoise:
+                log.debug("Normalising power spectrum with rednoise removal")
+                power_spectrum[1:] = rednoise_normalise(
+                    power_spectrum[1:], **rednoise_config
                 )
-        if shared_target_name is None:
-            return power_spectrum
-        else:
-            shared_spectra = shared_memory.SharedMemory(name=shared_target_name)
-            power_spectra = np.ndarray(
-                target_shape, dtype=f"float{nbit}", buffer=shared_spectra.buf
-            )
+            else:
+                log.debug("Normalising power spectrum")
+                power_spectrum[1:] = power_spectrum[1:] / (
+                    np.nanmedian(power_spectrum[1:]) / np.log(2)
+                )
+            if clean_rfi:
+                if zero_replace:
+                    power_spectrum[bad_freq_indices] = 0
+                else:
+                    power_spectrum[bad_freq_indices] = (
+                        np.random.chisquare(2, len(bad_freq_indices)) / 2
+                    )
+
             power_spectra[dm_index, :] = power_spectrum
-            shared_spectra.close()
+        shared_spectra.close()
 
     def get_pointing_id_from_observation_id(self, obs_id):
         """Get the corresponding pointing ID from the observation ID."""

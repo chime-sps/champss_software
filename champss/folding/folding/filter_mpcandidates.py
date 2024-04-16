@@ -198,13 +198,14 @@ def Filter(cand_obs_date, min_sigma=7., min_dm=2., min_f0=1e-2, save_candidates=
     # Zap these bins for all candidates
     birdie_cands = np.array(birdie_cands)
     i_birdies = []
-    for i in range(birdie_cands.shape[0]):
-        birdie = birdie_cands[i]
-        f0 = birdie[0]
-        fwidth = birdie[1]
-        i_birdie = np.argwhere( np.abs(df['mean_freq']-f0) < fwidth ).squeeze()
-        i_birdies = np.concatenate((i_birdies, i_birdie))
-    i_birdies = i_birdies.astype('int')
+    if birdie_cands.shape[0] > 0:
+        for i in range(birdie_cands.shape[0]):
+            birdie = birdie_cands[i]
+            f0 = birdie[0]
+            fwidth = birdie[1]
+            i_birdie = np.argwhere( np.abs(df['mean_freq']-f0) < fwidth ).squeeze()
+            i_birdies = np.concatenate((i_birdies, i_birdie))
+        i_birdies = i_birdies.astype('int')
 
     # Combine all filters, indeces of candidates to remove
     i_SNcutbelow = np.argwhere(df['sigma']<SNthresh).squeeze()

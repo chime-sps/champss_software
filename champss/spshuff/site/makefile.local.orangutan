@@ -1,0 +1,8 @@
+# set to your preferred lib/home dirs
+LIBDIR=$(HOME)/lib
+INCDIR=$(HOME)/include
+PYTHON_SITE=$(HOME)/venv3.7/lib/python3.7/site-packages
+
+# Python linker argument; select your python version e.g. -lpython3.6m
+# if you use python 3.6
+PYTHON_LINK=-lpython3.7m
