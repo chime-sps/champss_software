@@ -1,5 +1,6 @@
 docs/*
 .github/*
+.git/*
 .gitignore
 .dockerignore
 .precommit-automatic.yaml

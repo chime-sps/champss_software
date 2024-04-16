@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  # GitHub Actions fails if any "with" parameter is empty, so needs || fallbacks
+  # GitHub Actions fails if any "with" parameter is empty when using reusable workflows, so needs || fallbacks
   check-release:
     uses: chime-sps/champss/.github/workflows/release.yml@main
     secrets: inherit
@@ -18,7 +18,7 @@ jobs:
     secrets: inherit
     with:
       image_tag: 'latest'
-      build_locally: 'false'
+      build_locally: false
   version-image:
     needs: check-release
     if: ${{ needs.release.outputs.release_created == 'true' }}
@@ -27,5 +27,5 @@ jobs:
     with:
       # E.g. v1.0.0, only set if merging automated release PR
       image_tag: ${{ needs.release.outputs.release_tag || 'none' }}
-      build_locally: 'false'
+      build_locally: false
 
