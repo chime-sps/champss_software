@@ -1,14 +1,19 @@
 name: Continuous Integration
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
 
 jobs:
+  # Avoid double checks from bot's automated release PR
   precommit:
-    uses: chime-sps/sps-ops/.github/workflows/precommit.yml@main
+    if: ${{ github.actor != 'github-actions' }}
+    uses: chime-sps/champss/.github/workflows/precommit.yml@main
     secrets: inherit
+  benchmark:
+    if: ${{ github.actor != 'github-actions' }}
+    uses: chime-sps/champss/.github/workflows/benchmark.yml@main
+    secrets: inherit
+    with:
+      branch_name: ${{ github.head_ref || 'none' }}
