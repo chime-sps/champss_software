@@ -8,30 +8,30 @@ on:
 
 jobs:
   update-image:
-   # Create an image of your branch
+   # Create an image of your branch with the branch name as tag, and save it locally on the testbed since it'll only run there
     uses: chime-sps/sps-ops/.github/workflows/image.yml@main
     secrets: inherit
     with:
       image_tag: ${{ inputs.branch_name || 'none' }}
-      build_locally: 'true'
+      build_locally: true
   run-tests:
     needs: update-image
-    runs-on: testbed # Needs to run on testbed to not interfere with processing
+    runs-on: testbed # Needs to run on testbed to not interfere with processing, and the image is only saved there
     steps:
-      - uses: docker/login-action@v1
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
       - run:
           mkdir /data/chime/sps/benchmark/${{ inputs.branch_name }}
       - uses: addnab/docker-run-action@v3
         with:
-            image: champss:${{ inputs.branch_name }}
-            options: --rm --name champss-${{ inputs.branch_name }} -v /data/chime/sps/raw:/data/chime/sps/raw -v /data/chime/sps/benchmark/${{ inputs.head_ref }}:/data/chime/sps/benchmark -v /dev/shm:/dev/shm --shm-size=100gb
+            image: chimefrb/champss:${{ inputs.branch_name }}
+            options: --rm --name champss-${{ inputs.branch_name }} -v /data/chime/sps/raw:/data/chime/sps/raw -v /data/chime/sps/benchmark/${{ inputs.branch_name }}:/data/chime/sps/benchmark -v /dev/shm:/dev/shm --shm-size=100gb
             # The following is only needed if running inside a Docker container
             run: |
               export NODE_NAME='ss1'
               export CONTAINER_NAME='champss-${{ inputs.branch_name }}'
               chmod +x /module/pipeline-scripts/run-benchmark.sh
               ./pipeline-scripts/run-benchmark.sh '--using-docker'
+      - run: |
+          docker image rmi chimefrb/champss:${{ inputs.branch_name }}
+          docker builder prune -f
+
 
