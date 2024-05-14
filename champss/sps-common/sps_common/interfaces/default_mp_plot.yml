@@ -1,0 +1,95 @@
+figure:
+  figsize:
+  - 10
+  - 10
+  grid:
+    height_ratios:
+    - 2
+    - 1
+    - 1
+    - 2
+    ncols: 2
+    nrows: 4
+    width_ratios:
+    - 2
+    - 1
+panels:
+- cand_type: single
+  col_range:
+  - 1
+  - 2
+  row_range:
+  - 0
+  - 1
+  type: plot_text
+  values:
+  - ra
+  - dec
+  - ra_hms
+  - dec_hms
+  - sigma
+  - sigma_unweighted
+  - freq
+  - period
+  - dm
+  - num_days
+  - masked_fraction_at_best_sigma
+  - masked_harmonics
+  - best_harmonic_sum
+  - strongest_harmonic_frequency
+  - strongest_harmonic_period
+  - ndetections
+- col_range:
+  - 0
+  - 1
+  row_range:
+  - 0
+  - 1
+  type: plot_dm_freq_3
+  plot_fit: False
+- col_range:
+  - 0
+  - 1
+  row_range:
+  - 2
+  - 3
+  type: plot_raw_harm_1d
+- col_range:
+  - 1
+  - 2
+  row_range:
+  - 1
+  - 3
+  type: plot_raw_harm_all
+- col_range:
+  - 0
+  - 1
+  row_range:
+  - 1
+  - 2
+  type: plot_dm_sigma_1d
+- cand_type: multi
+  col_range:
+  - 0
+  - 1
+  row_range:
+  - 3
+  - 4
+  type: plot_scatter_positions
+- cand_type: multi
+  col_range:
+  - 1
+  - 2
+  row_range:
+  - 3
+  - 4
+  type: plot_text
+  values:
+  - ra
+  - dec
+  - mean_freq
+  - mean_dm
+  - delta_dm
+  - delta_freq
+  - num_candidates
+  - known_source_string
