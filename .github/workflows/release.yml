@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  workflow_call:
+    outputs:
+      release_created:
+        value: ${{ jobs.create-release-pull-request.outputs.release_created }}
+      release_tag: 
+        value: ${{ jobs.create-release-pull-request.outputs.release_tag }}
+        
+
+jobs:
+  create-release-pull-request:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.set-release.outputs.release_created }}
+      release_tag: ${{ steps.set-release.outputs.tag_name }}
+    steps:
+      - id: set-release
+        # Note: will only create automated release PR if the sqaush commit message
+        # of the merge contains a "fix" or "feat" Commitzen message
+        uses: google-github-actions/release-please-action@v4
+        with:
+          release-type: python
+          repo-url: chime-sps/champss_software
+          path: "."

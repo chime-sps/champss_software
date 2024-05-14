@@ -1,0 +1,42 @@
+[tool.poetry]
+name = "controller"
+version = "0.1.3"
+description = "CHIME SPS Controller"
+authors = ["CHIME SPS <chime_spawg@physics.mcgill.>"]
+readme = "README.md"
+exclude = [
+    "tests"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+beamformer = {path = "../beamformer"}
+beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
+spshuff = {path = "../spshuff"}
+sps-common = {path = "../sps-common"}
+sps-databases = {path = "../sps-databases"}
+async-exit-stack = "^1.0.1"
+click = "^8.1.4"
+msgpack-python = "^0.5.6"
+numpy = "^1.24.3"
+pytz = "^2023.3"
+pyzmq = "^24.0.1"
+setuptools = "^65.6.3"
+trio = "^0.22.0"
+
+[tool.poetry.group.dev.dependencies]
+commitizen = "^3.4.0"
+mypy = "^1.4.0"
+pre-commit = "^3.3.3"
+pytest = "^7.3.2"
+
+[tool.poetry.scripts]
+spsctl = "controller:cli"
+stopacq = "controller:stop_acq"
+rpc-client = "controller.rpc_client:main"
+sched-known-psrs = "scheduling.scheduleknownpulsars:main"
+schedule_rarange = "scheduling.schedule_rarange:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
