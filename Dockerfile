@@ -36,8 +36,7 @@ RUN set -ex \
     && chmod 700 Miniconda3-py311_24.1.2-0-Linux-x86_64.sh \
     && bash Miniconda3-py311_24.1.2-0-Linux-x86_64.sh -b -p ./miniconda3 \
     && source ./miniconda3/bin/activate \
-    && conda install -c conda-forge dspsr \
-    && conda install poetry
+    && conda install -c conda-forge dspsr
 
 # Stage 3: Install Pip dependencies
 FROM miniconda as pip
