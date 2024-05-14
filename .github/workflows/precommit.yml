@@ -1,0 +1,35 @@
+name: Precommit
+
+on:
+  workflow_call:
+
+jobs:
+  perform-precommit-checks:
+    runs-on: ubuntu-latest
+    steps:
+      # Get the codebase
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+      # Use the same Python version we use in production (from the Dockerfile)
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      # Download all the Precommit hooks from cache, instead of downloading them every time
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/precommit
+          key: precommit-${{ runner.os }}-${{ hashFiles('.precommit-manual.yaml') }}
+      # Only run Precommit on files that have changed
+      - id: get-changed-files
+        uses: tj-actions/changed-files@v36
+      # For private repository dependencies, need SSH key:
+      - uses: webfactory/ssh-agent@v0.4.1
+        with:
+            ssh-private-key: ${{ secrets.SPS_SSH_ID }}
+      # Run the Precommit checks for the changed files using the config file that requires manual changes
+      # (the automatic changes are done locally before commiting)
+      - run: |
+            pip install pre-commit
+            pre-commit run --files ${{ steps.get-changed-files.outputs.all_changed_files }} --config .precommit-manual.yaml
