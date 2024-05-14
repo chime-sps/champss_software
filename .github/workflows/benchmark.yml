@@ -18,8 +18,6 @@ jobs:
     needs: update-image
     runs-on: testbed # Image is only saved here
     steps:
-      - run:
-          mkdir /data/chime/sps/benchmark/${{ inputs.branch_name }}
       - uses: addnab/docker-run-action@v3
         with:
             image: chimefrb/champss_software:${{ inputs.branch_name }}
