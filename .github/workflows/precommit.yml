@@ -28,7 +28,7 @@ jobs:
       - uses: webfactory/ssh-agent@v0.4.1
         with:
             ssh-private-key: ${{ secrets.SPS_SSH_ID }}
-      # Run the Precommit checks for the changed files using the config file that requires manual changes
+      # Run the Precommit checks for the changed files, using the config file that requires manual changes
       # (the automatic changes are done locally before commiting)
       - run: |
             pip install pre-commit

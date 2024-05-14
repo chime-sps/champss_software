@@ -3,7 +3,7 @@ name: Continuous Deployment
 on:
   push:
     branches:
-      - main
+      - test-actions
 
 jobs:
   # GitHub Actions fails if any "with" parameter is empty when using reusable workflows, so needs || fallbacks

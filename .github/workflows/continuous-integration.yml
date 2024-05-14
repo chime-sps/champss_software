@@ -1,6 +1,9 @@
 name: Continuous Integration
 
 on:
+  push:
+    branches:
+      - test-actions
   pull_request:
     branches:
       - main

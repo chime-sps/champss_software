@@ -16,7 +16,7 @@ jobs:
       build_locally: true
   run-tests:
     needs: update-image
-    runs-on: testbed # Needs to run on testbed to not interfere with processing, and the image is only saved there
+    runs-on: testbed # Image is only saved here
     steps:
       - run:
           mkdir /data/chime/sps/benchmark/${{ inputs.branch_name }}
