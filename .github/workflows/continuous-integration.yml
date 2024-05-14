@@ -16,7 +16,7 @@ jobs:
     secrets: inherit
   benchmark:
     if: ${{ github.actor != 'github-actions' }}
-    uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
+    uses: chime-sps/champss_software/.github/workflows/benchmark.yml@test-actions
     secrets: inherit
     with:
       branch_name: ${{ github.head_ref || 'none' }}
