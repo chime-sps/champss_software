@@ -95,6 +95,8 @@ class SinglePointingCandidate:
     detections (np.ndarray): Array decribing the raw detections.
         Saving those can be turned off.
 
+    injection (bool): bool describing whether or not a given candidate is an injection.
+
     ndetections (int): Number of detections clusterered in this candidate.
 
     unique_freq (np.ndarray): Array containing the unique frequencies.
@@ -170,7 +172,7 @@ class SinglePointingCandidate:
     harmonics_info = attrib(type=np.ndarray)
     rfi = attrib(converter=bool, default=False)
     detections = attrib(type=np.ndarray, default=None)
-
+    injection = attrib(type=bool, default=False)
     pspec_freq_resolution = attrib(converter=float, default=0.0009701276818911235)
     ndetections = attrib(converter=converters.optional(int), default=None)
     unique_freqs = attrib(type=np.ndarray, default=None)

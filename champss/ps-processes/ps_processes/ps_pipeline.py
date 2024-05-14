@@ -77,6 +77,7 @@ class PowerSpectraPipeline:
     write_ps_raw_detections = attribute(validator=instance_of(bool), default=False)
     num_threads = attribute(validator=instance_of(int), default=8)
     update_db = attribute(validator=instance_of(bool), default=True)
+    known_source_threshold = attribute(validator=instance_of(float), default=np.inf)
     # private class attributes to store the initialised class objects to run the
     # various power spectra process
     _ps_search = attribute(init=False)
@@ -107,6 +108,7 @@ class PowerSpectraPipeline:
                 **self.ps_search_config,
                 num_threads=self.num_threads,
                 update_db=self.update_db,
+                known_source_threshold=self.known_source_threshold,
             )
 
     def process(self, power_spectra=None, basepath="./", subdir="", prefix=""):
@@ -185,7 +187,12 @@ class PowerSpectraPipeline:
 
         return power_spectra_to_search
 
-    def power_spectra_search(self, power_spectra_to_search, filepath="./", prefix=""):
+    def power_spectra_search(
+        self,
+        power_spectra_to_search,
+        filepath="./",
+        prefix="",
+    ):
         (
             power_spectra_detection_clusters,
             power_spectra_detections,
@@ -264,6 +271,7 @@ class StackSearchPipeline:
     write_ps_raw_detections = attribute(validator=instance_of(bool), default=False)
     num_threads = attribute(validator=instance_of(int), default=8)
     update_db = attribute(validator=instance_of(bool), default=True)
+    known_source_threshold = attribute(validator=instance_of(float), default=np.inf)
     # private class attributes to store the initialised class objects to run the
     # various power spectra process
     _ps_search = attribute(init=False)
@@ -290,7 +298,9 @@ class StackSearchPipeline:
         if self.run_ps_search or self.run_ps_search_monthly:
             self.ps_search_config.pop("num_threads", None)
             self._ps_search = PowerSpectraSearch(
-                **self.ps_search_config, num_threads=self.num_threads
+                **self.ps_search_config,
+                num_threads=self.num_threads,
+                known_source_threshold=self.known_source_threshold,
             )
 
     def load_and_search_monthly(self, pointing_id):

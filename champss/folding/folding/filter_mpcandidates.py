@@ -66,29 +66,6 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     
     return dist_deg
 
-def find_cand_pointings(ra, dec):
-    from astropy.coordinates import SkyCoord
-    import astropy.units as u
-
-    db = db_utils.connect()
-    pointings = list(db.pointings.find())
-    pointing_ras = np.zeros(len(pointings))
-    pointing_decs = np.zeros(len(pointings))
-    for i,p in enumerate(pointings):
-        pointing_ras[i] = p['ra']
-        pointing_decs[i] = p['dec']
-    pointing_coords = SkyCoord(ra=pointing_ras * u.deg, dec=pointing_decs * u.deg)
-
-    cand_pointings = np.zeros((len(ra), 2))
-    for j in range(len(ra)):
-        cand_coord = SkyCoord(ra[j]*u.deg, dec[j]*u.deg)
-        index_pointing = np.argmin(pointing_coords.separation(cand_coord))
-        cand_pointings[j, 0] = pointing_ras[index_pointing]
-        cand_pointings[j, 1] = pointing_decs[index_pointing]
-
-    return cand_pointings
-
-
 def Filter(cand_obs_date, min_sigma=7., min_dm=2., min_f0=1e-2, save_candidates=True, 
            db_port=27017, db_host="sps-archiver", db_name="sps", write_to_db=False):
     """
@@ -127,8 +104,8 @@ def Filter(cand_obs_date, min_sigma=7., min_dm=2., min_f0=1e-2, save_candidates=
     i_DMcutabove = np.argwhere(df['mean_dm']>DMthresh).squeeze()
 
     # Filter on known_sources
-    ra = df['ra']
-    dec = df['dec']
+    ra = df['best_ra']
+    dec = df['best_dec']
 
     i_ks = np.argwhere(df['known_source_label'] > 0.5).squeeze()
     dDMtol = 0.1
@@ -143,18 +120,20 @@ def Filter(cand_obs_date, min_sigma=7., min_dm=2., min_f0=1e-2, save_candidates=
         dm_ks = df['known_source_dm'][i_ks[j]]
         f0_ks = 1/df['known_source_p0'][i_ks[j]]
         source = df['known_source_name'][i_ks[j]]
+        print(source, dm_ks, f0_ks)
         
         i_dmmatch = np.argwhere( np.abs(df['mean_dm']-dm_ks)/dm_ks < dDMtol).squeeze()
         i_ksmatch = np.intersect1d(i_nearks, i_dmmatch)
-        
         i_ksclusters = np.concatenate((i_ksclusters, i_ksmatch))
 
-    i_ksclusters = np.array(i_ksclusters)
-    i_ksclusters = np.unique(i_ksclusters)
+    i_ksclusters = np.unique(np.array(i_ksclusters))
 
-    # Filter on position spread
-    dra = df['delta_ra']
+    # Filter on position spread.
+    # Currently only filtering on weighted RA spread, since we have limited beams
+    dra = df['std_ra']
 
+    # Arbitrary, but tested that only RFI and extremely bright known sources 
+    # (e.g. B0329+54, B2217+47) are above this threshold
     i_posspread = np.argwhere(dra > 5).squeeze()
     i_posspread = np.intersect1d(i_posspread, i_SNcutabove)
     i_sndmposcut = np.intersect1d(i_posspread, i_DMcutabove)
@@ -163,7 +142,6 @@ def Filter(cand_obs_date, min_sigma=7., min_dm=2., min_f0=1e-2, save_candidates=
 
     #Uniform bins of .5%
     #perhaps better to do iteratively?
-
     bins = []
     bini = 10**(-2)
     bins.append(bini)
@@ -224,15 +202,14 @@ def Filter(cand_obs_date, min_sigma=7., min_dm=2., min_f0=1e-2, save_candidates=
     df1 = df.iloc[i_good]
 
     # Restrict to only one candidate per pointing
-    cand_ra = df1['ra'].values
-    cand_dec = df1['dec'].values
+    cand_ra = df1['best_ra'].values
+    cand_dec = df1['best_dec'].values
     cand_sigma = df1['sigma'].values
-    cand_pointings = find_cand_pointings(cand_ra, cand_dec)
     i_matched = []
     for i in range(len(cand_ra)):
-        rai = cand_pointings[i,0]
-        deci = cand_pointings[i,1]
-        i_match = np.argwhere( (cand_pointings[:,0]==rai) & (cand_pointings[:,1]==deci) )
+        rai = cand_ra[i]
+        deci = cand_dec[i]
+        i_match = np.argwhere( (cand_ra==rai) & (cand_dec==deci) )
         if i_match.shape[0] > 1:
             i_match = i_match.squeeze()
             sigma_sub = cand_sigma[i_match]
@@ -246,8 +223,8 @@ def Filter(cand_obs_date, min_sigma=7., min_dm=2., min_f0=1e-2, save_candidates=
     # Final dataframe
     print(f"{len(i_matched)} candidates after filtering, from {len(df)} candidates before filtering.")
     df_filtered = df1.iloc[i_matched]
-    ras = df_filtered['ra'].values
-    decs = df_filtered['dec'].values
+    ras = df_filtered['best_ra'].values
+    decs = df_filtered['best_dec'].values
     f0s = df_filtered['mean_freq'].values
     dms = df_filtered['mean_dm'].values
     sigmas = df_filtered['sigma'].values
@@ -276,7 +253,7 @@ import click
     "--min_sigma",
     type=float,
     default=7.,
-    help="Minimum sigma to filter candidates. Default = 10",
+    help="Minimum sigma to filter candidates. Default = 7, apparent inflection point in Ncands",
 )
 @click.option(
     "--min_dm",
@@ -292,8 +269,7 @@ import click
 )
 @click.option(
     "--save_candidates",
-    type=bool,
-    default=True,
+    is_flag=True,
     help="Save filtered candidates to npz file. Default = True",
 )
 @click.option(

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "sps-pipeline"
-version = "1.4.2"
+version = "1.5.2"
 description = "CHIME SPS Pipeline"
 authors = ["CHIME SPS <chime_spawg@physics.mcgill.>"]
 license = "GPLv3"

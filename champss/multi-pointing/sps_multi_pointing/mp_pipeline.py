@@ -318,7 +318,7 @@ def cli(
                 }
                 for c in cand.known_source.matches:
                     pulsar = c["source_name"]
-                    ks = db_api.get_known_source_by_name(pulsar)[0]
+                    ks = db_api.get_known_source_by_names(pulsar)[0]
                     pre_exist = False
                     new_index = 0
                     for i, b in reversed(list(enumerate(ks.detection_history))):
@@ -338,6 +338,19 @@ def cli(
                         ks.detection_history.insert(new_index, detection_dict)
                         payload = {"detection_history": vars(ks)["detection_history"]}
                         db_api.update_known_source(ks._id, payload)
+                    # Updated strongest detection in pointings
+                    for summary in cand.all_summaries:
+                        obs_id = summary["obs_id"]
+                        if len(obs_id) == 1:
+                            #M May want to include the pointing id in the summaries?
+                            pointing_id = db_api.get_observation(obs_id[0]).pointing_id
+                            pointing_dict = {"obs_id": obs_id,
+                                             "sigma": summary["sigma"],
+                                             "freq": summary["freq"],
+                                             "dm": summary["dm"]}
+                            updated_pointing = db_api.update_pulsars_in_pointing(pointing_id,
+                                                              pulsar,
+                                                              pointing_dict)
         """
         I don't think  in the current state without filtering
         we want to write candidates to the database.

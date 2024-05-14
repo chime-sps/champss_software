@@ -42,6 +42,14 @@ class Pointing:
     maxdm = attrib(converter=float)
     nchans = attrib(converter=int)
     search_algorithm = attrib(validator=validators.in_(SearchAlgorithm))
+    # Strongest pulsars in a single day observations
+    strongest_pulsar_detections = attrib(
+        default={},
+        converter=dict,
+    )
+    last_changed = attrib(
+        validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
+    )
     _id = attrib(
         default=None,
         alias="_id",

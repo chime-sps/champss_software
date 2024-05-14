@@ -34,6 +34,7 @@ docker_swarm_finished_states = [
 
 perpetual_processing_services = ["processing-manager", "processing-cleanup"]
 
+
 def message_slack(
     slack_message,
     slack_channel="#slow-pulsar-alerts",
@@ -50,15 +51,16 @@ def message_slack(
     except Exception as error:
         log.info(error)
 
+
 def wait_for_no_tasks_in_states(states_to_wait_for_none):
     log.setLevel(logging.INFO)
-    
+
     docker_client = docker.from_env()
-    
+
     # Sometimes a Docker Swarm task gets stuck in pending/running state
     # indefinitely for unknown reasons...
-    task_timeout_seconds = 60 * 35 # 35 minutes from now
-    
+    task_timeout_seconds = 60 * 35  # 35 minutes from now
+
     is_task_in_state = True
 
     # For pending:
@@ -76,54 +78,75 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
             [
                 service
                 for service in docker_client.services.list()
-                if "processing" in service.name and service.name not in perpetual_processing_services
+                if "processing" in service.name
+                and service.name not in perpetual_processing_services
             ],
             # Sort from oldest to newest to find finished services to remove
             key=lambda service: dt.datetime.strptime(
                 # datetime does not support more than 6 decimals in seconds field
-                service.attrs["CreatedAt"][:-5], "%Y-%m-%dT%H:%M:%S.%f"
+                service.attrs["CreatedAt"][:-5],
+                "%Y-%m-%dT%H:%M:%S.%f",
             ),
         )
 
         for service in processing_services:
             service_created_at = dt.datetime.strptime(
                 # datetime does not support more than 6 decimals in seconds field
-                service.attrs["CreatedAt"][:-5], "%Y-%m-%dT%H:%M:%S.%f"
+                service.attrs["CreatedAt"][:-5],
+                "%Y-%m-%dT%H:%M:%S.%f",
             )
-            
-            for task in service.tasks():
-                task_state = task["Status"]["State"]
-                task_id = task["ID"]
-                
-                if task_state in docker_swarm_finished_states:
-                    log.info(
-                        f"Removing finished service {service.name} in state {task_state}."
-                    )
-                    try:
-                        service.remove()
-                        pass
-                    except Exception as error:
-                        log.info(f"Error removing service {service.name}: {error}")
-                else:
-                    if task_state in docker_swarm_running_states:
-                        if (dt.datetime.now() - service_created_at).total_seconds() > task_timeout_seconds:
-                            message_slack(f"Approaching Workflow timeout for stuck service {service.name}, {task_timeout_seconds / 60} minutes in state {task_state} (if reached, will try once more).")
-                        elif states_to_wait_for_none == docker_swarm_running_states:
-                            is_task_in_state = True
-                            break
-                    elif task_state in docker_swarm_pending_states:
-                        if (dt.datetime.now() - service_created_at).total_seconds() > task_timeout_seconds:
-                            message_slack(f"Removing stuck task {service.name}:{task_id}, {task_timeout_seconds / 60} minutes in state {task_state}.")
-                            try:
-                                service.remove()
-                            except Exception as error:
-                                message_slack(f"Error removing service {service.name} with stuck task {task_id}: {error}")
-                        elif states_to_wait_for_none == docker_swarm_pending_states:
-                            is_task_in_state = True
-                            break
+
+            try:
+                for task in service.tasks():
+                    task_state = task["Status"]["State"]
+                    task_id = task["ID"]
+
+                    if task_state in docker_swarm_finished_states:
+                        log.info(
+                            f"Removing finished service {service.name} in state {task_state}."
+                        )
+                        try:
+                            service.remove()
+                            pass
+                        except Exception as error:
+                            log.info(
+                                f"Error removing service {service.name}: {error} (will skip gracefully)."
+                            )
+                    else:
+                        if task_state in docker_swarm_running_states:
+                            if (
+                                dt.datetime.now() - service_created_at
+                            ).total_seconds() > task_timeout_seconds:
+                                log.info(
+                                    f"Approaching Workflow timeout for stuck service {service.name}, {task_timeout_seconds / 60} minutes in state {task_state} (if reached, will try once more)."
+                                )
+                            elif states_to_wait_for_none == docker_swarm_running_states:
+                                is_task_in_state = True
+                                break
+                        elif task_state in docker_swarm_pending_states:
+                            if (
+                                dt.datetime.now() - service_created_at
+                            ).total_seconds() > task_timeout_seconds:
+                                message_slack(
+                                    f"Removing stuck task {service.name}:{task_id}, {task_timeout_seconds / 60} minutes in state {task_state}."
+                                )
+                                try:
+                                    service.remove()
+                                except Exception as error:
+                                    message_slack(
+                                        f"Error removing service {service.name} with stuck task {task_id}: {error} (will skip gracefully)."
+                                    )
+                            elif states_to_wait_for_none == docker_swarm_pending_states:
+                                is_task_in_state = True
+                                break
+            except Exception as error:
+                log.info(
+                    f"Error checking tasks for service {service.name}: {error} (will skip gracefully)."
+                )
 
             if is_task_in_state is True:
                 break
+
 
 def schedule_workflow_job(
     docker_image,
@@ -140,9 +163,9 @@ def schedule_workflow_job(
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
-    
+
     docker_client.login(username="chimefrb", password=docker_password)
-    
+
     workflow_site = "chime"
     workflow_user = "CHAMPSS"
 
@@ -154,26 +177,31 @@ def schedule_workflow_job(
     work.config.archive.plots = "pass"
     work.config.archive.products = "pass"
     work.retries = 1
-    work.timeout = 60 * 40 # 40 minutes timeout
+    work.timeout = 60 * 40  # 40 minutes timeout
 
     wait_for_no_tasks_in_states(docker_swarm_pending_states)
 
     work_id = work.deposit(return_ids=True)
 
-    docker_volumes = [docker.types.Mount(
+    docker_volumes = [
+        docker.types.Mount(
             # Only way I know of to add custom shared memory size allocations with Docker Swarm
             target="/dev/shm",
-            source="", # Source value must be empty for tmpfs mounts
+            source="",  # Source value must be empty for tmpfs mounts
             type="tmpfs",
-            tmpfs_size=int(100 * 1e9) # Just give it 100GB of a shared memory upper-limit
+            tmpfs_size=int(
+                100 * 1e9
+            ),  # Just give it 100GB of a shared memory upper-limit
         )
     ]
-    
+
     for mount_path in docker_mounts:
         mount_paths = mount_path.split(":")
         mount_source = mount_paths[0]
         mount_target = mount_paths[1]
-        docker_volumes.append(docker.types.Mount(target=mount_target, source=mount_source, type="bind"))
+        docker_volumes.append(
+            docker.types.Mount(target=mount_target, source=mount_source, type="bind")
+        )
 
     docker_service = {
         "image": docker_image,
@@ -195,7 +223,9 @@ def schedule_workflow_job(
         # The labels on the Docker Nodes are pre-empetively set beforehand
         "constraints": ["node.labels.compute == true"],
         # Must be in bytes
-        "resources": docker.types.Resources(mem_reservation=int(docker_memory_reservation * 1e9)),
+        "resources": docker.types.Resources(
+            mem_reservation=int(docker_memory_reservation * 1e9)
+        ),
         # Will throw an error if you give two of the same bind mount paths
         # e.g. avoid double-mounting basepath and stackpath when they are the same
         "mounts": docker_volumes,
@@ -204,15 +234,16 @@ def schedule_workflow_job(
         # also manually added to this network
         "networks": ["pipeline-network"],
     }
-    
+
     log.info(f"Creating Docker Service: \n{docker_service}")
 
     docker_client.services.create(**docker_service)
-    
+
     # Wait a second before querying Docker Swarm again
     time.sleep(1)
-    
+
     return work_id[0]
+
 
 @click.command()
 @click.option(
@@ -247,7 +278,8 @@ def clear_workflow_buckets(workflow_buckets_name):
             )
     except Exception as error:
         pass
-    
+
+
 @click.command()
 @click.option(
     "--workflow-results-name",
@@ -258,7 +290,7 @@ def clear_workflow_buckets(workflow_buckets_name):
 def clear_workflow_results(workflow_results_name):
     """Function to empty given SPS Results collection on-site."""
     log.setLevel(logging.INFO)
-    
+
     try:
         results_api = Results()
         # Results API only allows 10 deletes per request
@@ -268,62 +300,90 @@ def clear_workflow_results(workflow_results_name):
         while len(results_list) != 0:
             result_ids_to_delete = [result["id"] for result in results_list]
             log.info(f"Will delete results entries with ids: {result_ids_to_delete}")
-            results_api.delete_ids(pipeline=workflow_results_name, ids=result_ids_to_delete)
+            results_api.delete_ids(
+                pipeline=workflow_results_name, ids=result_ids_to_delete
+            )
             results_list = results_api.view(
                 query={}, pipeline=workflow_results_name, limit=10, projection={"id": 1}
             )
     except Exception as error:
         pass
-    
+
+
 def get_work_from_buckets(workflow_buckets_name, work_id, failover_to_results):
     log.setLevel(logging.INFO)
-    
+
     workflow_buckets_api = Buckets()
     workflow_buckets_list = workflow_buckets_api.view(
         query={"pipeline": workflow_buckets_name, "id": work_id},
         limit=1,
         projection={"results": 1},
     )
-    
+
     log.info(f"Workflow Buckets for Work ID {work_id}: \n{workflow_buckets_list}")
-    
+
     if len(workflow_buckets_list) > 0:
-        if type(workflow_buckets_list[0]) == dict and "results" in workflow_buckets_list[0]:
+        if (
+            type(workflow_buckets_list[0]) == dict
+            and "results" in workflow_buckets_list[0]
+        ):
             workflow_buckets_dict = workflow_buckets_list[0]["results"]
             return workflow_buckets_dict
-        
+
     if failover_to_results:
-        work_bucket = get_work_from_results(workflow_results_name=workflow_buckets_name, work_id=work_id, failover_to_buckets=False)
+        work_bucket = get_work_from_results(
+            workflow_results_name=workflow_buckets_name,
+            work_id=work_id,
+            failover_to_buckets=False,
+        )
         if work_bucket:
             return work_bucket
         else:
             # Maybe finally appeared in Buckets in meantime, try one more time
-            return get_work_from_buckets(workflow_buckets_name==workflow_buckets_name, work_id=work_id, failover_to_results=False)
-    
+            return get_work_from_buckets(
+                workflow_buckets_name == workflow_buckets_name,
+                work_id=work_id,
+                failover_to_results=False,
+            )
+
     return None
-    
+
+
 def get_work_from_results(workflow_results_name, work_id, failover_to_buckets):
     log.setLevel(logging.INFO)
-    
+
     workflow_results_api = Results()
     workflow_results_list = workflow_results_api.view(
-        query={"id": work_id}, pipeline=workflow_results_name, limit=1, projection={"results": 1}
+        query={"id": work_id},
+        pipeline=workflow_results_name,
+        limit=1,
+        projection={"results": 1},
     )
-    
+
     log.info(f"Workflow Results for Work ID {work_id}: \n{workflow_results_list}")
-    
+
     if len(workflow_results_list) > 0:
-        if type(workflow_results_list[0]) == dict and "results" in workflow_results_list[0]:
+        if (
+            type(workflow_results_list[0]) == dict
+            and "results" in workflow_results_list[0]
+        ):
             workflow_results_dict = workflow_results_list[0]["results"]
             return workflow_results_dict
-        
+
     if failover_to_buckets:
-        work_result = get_work_from_buckets(workflow_buckets_name=workflow_results_name, work_id=work_id, failover_to_results=False)
+        work_result = get_work_from_buckets(
+            workflow_buckets_name=workflow_results_name,
+            work_id=work_id,
+            failover_to_results=False,
+        )
         if work_result:
             return work_result
         else:
             # Maybe moved to Results in meantime, try one more time
-            return get_work_from_results(workflow_results_name=workflow_results_name, work_id=work_id, failover_to_buckets=False)
-        
-    
+            return get_work_from_results(
+                workflow_results_name=workflow_results_name,
+                work_id=work_id,
+                failover_to_buckets=False,
+            )
+
     return None

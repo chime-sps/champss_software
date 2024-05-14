@@ -1,4 +1,4 @@
-# CHAMPSS Codebase
+# CHAMPSS Software
 
 Please first run:
 ```

@@ -450,18 +450,18 @@ class SkyBeamFormer:
                 # This happens if one channel is completely for one beam
                 # but not for the others
                 if flatten_bandpass:
-                    # Perform this here to not unnessecary slicing in the normal case
+                    # Perform this here to not unnecessarily slice in the normal case
                     spectra[~_zero_vals] = (
                         spectra[~_zero_vals] - spectra[~_zero_vals].mean()
                     ) / spectra[~_zero_vals].std()
                     spectra[_zero_vals] = 0
                 else:
                     _local_median = np.median(spectra[~_zero_vals])
-                    spectra[~_zero_vals] = _local_median
+                    spectra[_zero_vals] = _local_median
             else:
                 if flatten_bandpass:
-                    # In an earlier version the mean and std was computed using only the
-                    # nonzero values but nothing should be 0 at this point
+                    # In an earlier version, the mean and std were computed using only the
+                    # nonzero values, but nothing should be 0 at this point
                     spectra[:] = (spectra - spectra.mean()) / spectra.std()
         shared_spectra.close()
         shared_mask.close()

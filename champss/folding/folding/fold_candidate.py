@@ -183,7 +183,7 @@ def main(
                     continue
 
     db_utils.connect(host=db_host, port=db_port, name=db_name)
-    pst = PointingStrategist()
+    pst = PointingStrategist(create_db=False)
 
     # fs_id known_source, md_candidate, sd_candidate, ra+dec, psr
     ephem_path = None
@@ -264,7 +264,7 @@ def main(
     fname = f"/{year}-{month:02}-{day:02}.fil"
     fil = outdir + fname
 
-    pst = PointingStrategist()
+    pst = PointingStrategist(create_db=False)
     ap = pst.get_single_pointing(ra, dec, date)
 
     data_list = []
