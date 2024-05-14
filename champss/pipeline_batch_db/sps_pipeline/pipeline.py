@@ -19,7 +19,6 @@ import pytz
 from omegaconf import OmegaConf
 from prometheus_api_client import PrometheusConnect
 
-
 # Careful disabling HDF5 file locking: can lead to stack corruption
 # if two processes write to the same file concurrently (as
 # is the case with same pointings, different dates)
@@ -240,12 +239,22 @@ def dbexcepthook(type, value, tb):
 @click.option(
     "--using-pyroscope/--not-using-pyroscope",
     default=False,
-    help="Whether to profile this function using Pyroscope or not"
+    help="Whether to profile this function using Pyroscope or not",
 )
 @click.option(
     "--using-docker/--not-using-docker",
     default=False,
-    help="Whether this run is being used with Workflow + Docker Swarm or not"
+    help="Whether this run is being used with Workflow + Docker Swarm",
+)
+@click.option(
+    "--known-source-threshold",
+    "--kst",
+    default=np.inf,
+    type=float,
+    help=(
+        "Threshold under which known sources are filtered based on the previously"
+        " strongest detection of that source in that pointing."
+    ),
 )
 def main(
     date,
@@ -265,6 +274,7 @@ def main(
     stackpath,
     using_pyroscope,
     using_docker,
+    known_source_threshold,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -304,18 +314,18 @@ def main(
                 break
             except ValueError:
                 continue
-            
-    date_string = date.strftime('%Y/%m/%d')
-            
+
+    date_string = date.strftime("%Y/%m/%d")
+
     if using_pyroscope:
         pyroscope.configure(
             application_name="pipeline",
             server_address="http://sps-archiver.chime:4040",
-            detect_subprocesses=True, # Include multiprocessing pools
-            sample_rate=100, # In milliseconds
-            oncpu=False, # Include idle CPU time
-            gil_only=False, # Include threads not managed by Python's GIL
-            enable_logging=True
+            detect_subprocesses=True,  # Include multiprocessing pools
+            sample_rate=100,  # In milliseconds
+            oncpu=False,  # Include idle CPU time
+            gil_only=False,  # Include threads not managed by Python's GIL
+            enable_logging=True,
         )
 
     with (
@@ -778,6 +788,16 @@ def main(
     type=str,
     help="Path where the candidates are created",
 )
+@click.option(
+    "--known-source-threshold",
+    "--kst",
+    default=np.inf,
+    type=float,
+    help=(
+        "Threshold under which known sources are filtered based on the previously"
+        " strongest detection of that source in that pointing."
+    ),
+)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -789,6 +809,7 @@ def stack_and_search(
     db_name,
     path_cumul_stack,
     cand_path,
+    known_source_threshold,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -804,7 +825,14 @@ def stack_and_search(
     global pipeline_start_time
     pipeline_start_time = time.time()
     config = load_config()
-    apply_logging_config(config)
+    now = dt.datetime.now()
+    log_path = str(cand_path) + f"./stack_logs/{now.strftime('%Y/%m/%d')}/"
+    log_name = (
+        f"run_stack_search_{ra :.02f}_"
+        f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
+    )
+    log_file = log_path + log_name
+    apply_logging_config(config, log_file)
     if path_cumul_stack:
         config.ps_cumul_stack.ps_stack_config.basepath = path_cumul_stack
     db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -828,7 +856,11 @@ def stack_and_search(
     if "search-monthly" in components or "search" in components:
         cands_processor = cands.initialise(config)
     ps_cumul_stack_processor = ps_cumul_stack.initialise(
-        config, to_stack, to_search, to_search_monthly
+        config,
+        to_stack,
+        to_search,
+        to_search_monthly,
+        known_source_threshold=known_source_threshold,
     )
     global power_spectra
     if to_search_monthly:
@@ -900,6 +932,8 @@ def stack_and_search(
         "Pipeline execution time:"
         f" {((pipeline_end_time - pipeline_start_time) / 60):.2f} minutes"
     )
+
+    return {}, [], []
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -1007,6 +1041,7 @@ def run_quant(utc_start, utc_end, beam_row, nchan):
         log.error("`ch_frb_l1` is a required dependency for quantization this step.")
         sys.exit(1)
     quant.run(utc_start, utc_end, beam_row, nchan)
+
 
 if __name__ == "__main__":
     main()

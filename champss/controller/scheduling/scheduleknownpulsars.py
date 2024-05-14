@@ -7,31 +7,41 @@ import astropy.units as u
 import click
 from astropy.time import Time
 from beamformer.strategist.strategist import PointingStrategist
-from psrqpy import QueryATNF
+from sps_databases import db_api, db_utils
 
-
-def get_folding_pars(psr, df):
+def get_folding_pars(psr):
     """
-    Return ra and dec for a pulsar from psrcat database
-    psr: string, pulsar B name
-    df: Panda of psrqpy query
+    Return ra and dec for a pulsar from the known_source database
+    psr: string, pulsar B name                                                                                                                                                                                                                                   df: Panda of psrqpy query
     """
-    if "B" in psr:
-        psrcolumn = df[df["PSRB"].values == psr]
-    elif "J" in psr:
-        psrcolumn = df[df["PSRJ"].values == psr]
-    else:
-        print(f"psrname {psr} not in query")
-    ra = psrcolumn["RAJD"].values[0]
-    dec = psrcolumn["DECJD"].values[0]
-
+    source = db_api.get_known_source_by_name(psr)[0]
+    ra = source.pos_ra_deg
+    dec = source.pos_dec_deg
     return ra, dec
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument("psrfile", type=click.File("r"), required="True")
 @click.argument("outfile", type=click.File("a"), required="True")
-def main(psrfile, outfile):
+@click.option(
+    "--db-port",
+    default=27017,
+    type=int,
+    help="Port used for the mongodb database.",
+)
+@click.option(
+    "--db-host",
+    default="localhost",
+    type=str,
+    help="Host used for the mongodb database.",
+)
+@click.option(
+    "--db-name",
+    default="sps",
+    type=str,
+    help="Name used for the mongodb database.",
+)
+def main(psrfile, outfile, db_port, db_host, db_name):
     """
     Record SPS data when known pulsars are transitting.
 
@@ -44,7 +54,13 @@ def main(psrfile, outfile):
     Per SPS convention, the 'B' name must be used if it exists
 
     outfile: a txt file to record acquisition log messages.
+
+    db-port: port used for the mongodb database.
+    db-host: host used for the mongodb database.
+    db-name: name used for the mongodb database.
     """
+
+    db_utils.connect(host=db_host, port=db_port, name=db_name)
     pst = PointingStrategist(create_db=False)
 
     Dnow = datetime.datetime.now()
@@ -55,16 +71,13 @@ def main(psrfile, outfile):
     processes = []
     transit_buffer = 3 * u.min
 
-    query = QueryATNF()
-    psrcat_df = query.pandas
-
     print("Acquiring pointings for all pulsars in list \n")
     # Append all pointings into one list
     for psr in psrfile:
         psr = psr.strip()
         # avoid duplicates
         if psr not in psrs:
-            ra, dec = get_folding_pars(psr, psrcat_df)
+            ra, dec = get_folding_pars(psr)
             ap = pst.get_single_pointing(ra, dec, Dnow)
             pointings.append(ap)
             current_acq.append(0)

@@ -142,7 +142,7 @@ class PowerSpectraCreation:
     update_db = attribute(validator=instance_of(bool), default=True)
     nbit = attribute(validator=instance_of(int), default=32)
     num_threads = attribute(validator=instance_of(int), default=8)
-    mp_chunk_size: bool = attribute(default=0)
+    mp_chunk_size: bool = attribute(default=10)
     static_filter = attribute(init=False)
     dynamic_filter = attribute(init=False)
 

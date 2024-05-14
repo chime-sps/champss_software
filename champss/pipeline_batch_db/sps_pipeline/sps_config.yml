@@ -142,6 +142,7 @@ ps:
     cluster_scale_factor: 10
     dbscan_min_samples: 5
     filter_by_nharm: False
+    cluster_dm_cut: 2
     clustering_max_ndetect: 50000
 
 cands:
@@ -295,4 +296,5 @@ ps_cumul_stack:
     cluster_scale_factor: 10
     dbscan_min_samples: 5
     filter_by_nharm: False
+    cluster_dm_cut: 2
     clustering_max_ndetect: 100000

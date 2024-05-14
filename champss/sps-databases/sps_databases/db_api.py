@@ -69,6 +69,34 @@ def get_pointing(pointing_id):
     return Pointing.from_db(db.pointings.find_one(pointing_id))
 
 
+def update_pointing(pointing_id, payload):
+    """
+    Updates pointing to the given attribute and values as a dict.
+
+    Parameters
+    ----------
+    pointing_id: str or ObjectId
+        The id of the observation to be updated
+
+    payload: dict
+        The dict of the attributes and values to be updated
+
+    Returns
+    -------
+    pointing: dict
+        The dict of the updated pointing entry
+    """
+    db = db_utils.connect()
+    payload["last_changed"] = dt.datetime.now()
+    if isinstance(pointing_id, str):
+        pointing_id = ObjectId(pointing_id)
+    return db.pointings.find_one_and_update(
+        {"_id": pointing_id},
+        {"$set": payload},
+        return_document=pymongo.ReturnDocument.AFTER,
+    )
+
+
 def create_observation(payload):
     """
     Create an `Observation` instance and inserts it into the database.
@@ -807,7 +835,30 @@ def get_known_source_by_name(name):
     # name is a string; caller is seeking single object
     db = db_utils.connect()
     return [
-        KnownSource.from_db(ks) for ks in db.known_sources.find({"source_name": name})
+        KnownSource.from_db(ks)
+        for ks in db.known_sources.find_one({"source_name": name})
+    ]
+
+
+def get_known_source_by_names(names):
+    """
+    Alternative method to get_known_source_by_name which uses a single db query.
+
+    Parameters
+    ----------
+    name: str or list of strs
+
+    Returns
+    -------
+    known_sources: list of KnownSource
+        The known source(s) with the desired name(s).
+    """
+    db = db_utils.connect()
+    if isinstance(names, str):
+        names = [names]
+    return [
+        KnownSource.from_db(ks)
+        for ks in db.known_sources.find({"source_name": {"$in": names}})
     ]
 
 
@@ -1089,7 +1140,7 @@ def dequeue_process(process_id):
 
     Returns
     -------
-    observation: dict
+    process: dict
         The dict of the updated process entry
     """
     db = db_utils.connect()
@@ -1183,3 +1234,49 @@ def get_dates(obs_id_list):
         dates.append(cand.datetime)
     sorted_dates = sorted(dates)
     return sorted_dates
+
+
+def update_pulsars_in_pointing(pointing_id, pulsar_name, pulsar_dict):
+    """
+    Updates the strongest_pulsar_detections in a pointing.
+
+    Parameters
+    ----------
+    pointing_id: str or ObjectId
+        The id of the pointing to be updated
+
+    pulsar_name: str
+        TName of the pulsar as given in the source_name in the known sources
+
+    pulsar_dict: dict
+        Dict of the new pulsar
+
+    Returns
+    -------
+    pointing: dict
+        The dict of the updated pointing entry
+    """
+    initial_pointing = get_pointing(pointing_id)
+    new_pulsar_dict = {pulsar_name: pulsar_dict}
+    if initial_pointing.strongest_pulsar_detections == {}:
+        payload = {"strongest_pulsar_detections": new_pulsar_dict}
+        updated_pointing = update_pointing(pointing_id, payload)
+    else:
+        payload = {
+            "strongest_pulsar_detections": initial_pointing.strongest_pulsar_detections
+        }
+        old_pulsar_info = payload["strongest_pulsar_detections"].get(pulsar_name, {})
+        if old_pulsar_info == {}:
+            payload["strongest_pulsar_detections"][pulsar_name] = pulsar_dict
+            updated_pointing = update_pointing(pointing_id, payload)
+        else:
+            old_max = payload["strongest_pulsar_detections"][pulsar_name].get(
+                "sigma", 0
+            )
+            new_max = pulsar_dict.get("sigma", 0)
+            if new_max > old_max:
+                payload["strongest_pulsar_detections"][pulsar_name] = pulsar_dict
+                updated_pointing = update_pointing(pointing_id, payload)
+            else:
+                updated_pointing = initial_pointing
+    return updated_pointing

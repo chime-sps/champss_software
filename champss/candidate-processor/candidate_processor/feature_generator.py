@@ -671,7 +671,7 @@ class Features:
 
         if self.write_detections_to_candidates:
             written_detections = rfn.structured_to_unstructured(
-                cluster.detections[["dm", "freq", "sigma", "nharm"]]
+                cluster.detections[["dm", "freq", "sigma", "nharm", "injection"]]
             )
         else:
             written_detections = None
@@ -696,6 +696,7 @@ class Features:
             unique_freqs=cluster.unique_freqs,
             unique_dms=cluster.unique_dms,
             sigma=cluster.sigma,
+            injection=cluster.injection,
             ra=cluster_dict.ra,
             dec=cluster_dict.dec,
             features=np.array([tuple(vals)], dtype=dts),

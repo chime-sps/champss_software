@@ -36,20 +36,21 @@ class StaticPeriodicFilter:
                     open(p),
                     Loader=yaml.FullLoader,
                 )
-    
+
     @classmethod
     def from_ks_list(cls, ks_list):
         ks_birdies = {}
         for source in ks_list:
-            source_dict = {
-            "frequency": 1/source.spin_period_s, 
-            "width": getattr(source, "filter_width", 0.01),
-            "int_nharm": getattr(source, "filter_int_nharm", None),
-            "frac_nharm": getattr(source, "filter_frac_nharm", 0)}
-            ks_birdies[f"{source.source_name}"] = source_dict
+            if not np.isnan(source.spin_period_s):
+                source_dict = {
+                    "frequency": 1 / source.spin_period_s,
+                    "width": getattr(source, "filter_width", 0.01),
+                    "int_nharm": getattr(source, "filter_int_nharm", None),
+                    "frac_nharm": getattr(source, "filter_frac_nharm", 0),
+                }
+                ks_birdies[f"{source.source_name}"] = source_dict
         birdie_dict = {"known_bad_frequencies": ks_birdies}
         return cls(birdies=birdie_dict)
-
 
     def apply_static_mask(self, ps_freqs: np.ndarray, beta: float = 0) -> List[int]:
         """

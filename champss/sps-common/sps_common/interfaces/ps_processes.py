@@ -190,6 +190,7 @@ class PowerSpectra:
 
         power_spectra_shared (multiprocessing.shared_memory.SharedMemory or None):
         Shared memory object storing the power spectrum if it is kept in stored memory.
+        
     """
 
     power_spectra = attrib()
@@ -530,6 +531,7 @@ class PowerSpectraDetections:
             nharm (int): number of harmonics summed
             sum_pow (float): (incoherent) summed power of the harmonics
             sigma (float): significance of the detection
+            injection (bool): whether the detection shares bins with an injection
 
         freq_spacing (float): The trial frequency spacing of
         between adjacent bins in the power spectra
@@ -559,6 +561,7 @@ class PowerSpectraDetections:
             ("nharm", int),
             ("harm_pows", [("power", float, (32,)), ("freq", float, (32,))]),
             ("sigma", float),
+            ("injection", bool),
         ]
         if value.dtype != np.dtype(dit):
             raise AttributeError(
@@ -642,6 +645,7 @@ class Cluster:
     sigma (float): sigma of the highest-sigma detection
     nharm (int): nharm of the highest-sigma detection
     harm_idx (np.ndarray): harm_idx of the highest-sigma detection
+    injection (bool): whether the cluster is associated with an injection
 
     Properties
     ==========
@@ -660,7 +664,8 @@ class Cluster:
     sigma: float = attrib()
     nharm: int = attrib()
     harm_idx: np.ndarray = attrib()
-
+    injection: bool = attrib()
+    
     @classmethod
     def from_raw_detections(cls, detections):
         max_sig_det = detections[np.argmax(detections["sigma"])]
@@ -671,6 +676,7 @@ class Cluster:
             sigma=max_sig_det["sigma"],
             nharm=max_sig_det["nharm"],
             harm_idx=max_sig_det["harm_idx"],
+            injection=max_sig_det["injection"],
             detections=detections,
         )
         return cls(**init_dict)
@@ -684,6 +690,7 @@ class Cluster:
             sigma=max_sig_det["sigma"],
             nharm=max_sig_det["nharm"],
             harm_idx=max_sig_det["harm_idx"],
+            injection=max_sig_det["injection"],
             detections=detections,
         )
         return cls(**init_dict)
@@ -768,6 +775,7 @@ class PowerSpectraDetectionClusters:
 
     datetimes: List(datetime.datetime): A list of datetimes of the power
     spectra detections. For now not included when writing the file.
+
     """
 
     clusters = attrib()
@@ -793,12 +801,13 @@ class PowerSpectraDetectionClusters:
                 {"freq", "dm", "nharm", "sigma"},
                 {"freq", "dm", "nharm", "harm_idx", "sigma"},
                 {"freq", "dm", "nharm", "harm_idx", "harm_pow", "sigma"},
+                {"freq", "dm", "nharm", "harm_idx", "harm_pow", "injection", "sigma"},
             ]
             if val_dtype not in acceptable_dtype_names:
                 raise TypeError(
                     f"The dtype of detections of entry {v} in {attribute.name} must"
                     " have 'freq', 'dm', 'nharm' and 'sigma' (and optionally"
-                    " 'harm_idx', 'harm_pow')"
+                    " 'harm_idx', 'harm_pow', 'injection')"
                 )
 
     @summary.validator
@@ -813,12 +822,13 @@ class PowerSpectraDetectionClusters:
                     "nharm",
                     "sigma",
                     "harm_idx",
+                    "injection",
                 ]
             ):
                 raise TypeError(
                     f"The dictionary for entry {v} for {attribute.name} does not"
                     " contain the correct keys"
-                )
+   )
 
     @ra.validator
     def _check_ra(self, attribute, value):
@@ -883,6 +893,7 @@ class PowerSpectraDetectionClusters:
             ("dm", float),
             ("nharm", int),
             ("harm_idx", int, (32,)),
+            ("injection", bool),
             ("sigma", float),
         ]
         if h5f.attrs["harm_idx_included"]:
@@ -893,6 +904,7 @@ class PowerSpectraDetectionClusters:
                 ("dm", float),
                 ("nharm", int),
                 ("sigma", float),
+                ("injection", bool),
             ]
 
         ra = h5f.attrs["ra"]
@@ -917,6 +929,7 @@ class PowerSpectraDetectionClusters:
                 nharm=max_sig_det["nharm"],
                 sigma=max_sig_det["sigma"],
                 harm_idx=max_sig_det["harm_idx"],
+                injection=max_sig_det["injection"],
             )
             clusters[cluster_id] = Cluster.from_saved_psdc(
                 detections=detections,
