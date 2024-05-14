@@ -98,55 +98,59 @@ git add .
 git commit -n -m "Adding all modified versions of each subrepo's desired main branches to your monorepo branch: $MONOREPO_BRANCH"
 git push
 
-for ((index=0; index<${#SUBREPO_BRANCHES_PER_SUBREPO[@]}; index++))
-do
-  SUBREPO_URL=${SUBREPO_URLS[index]}
-  SUBREPO_URL_WITHOUT_BRANCH=$(echo "$SUBREPO_URL" | sed 's/#.*//')
-  SUBREPO_NAME=$(basename "$SUBREPO_URL_WITHOUT_BRANCH" .git)
-  echo $SUBREPO_URL
-  echo $SUBREPO_URL_WITHOUT_BRANCH
-  echo $SUBREPO_NAME
+CLONE_SUBREPO_BRANCHES=$1
 
-  SUBREPO_BRANCHES=${SUBREPO_BRANCHES_PER_SUBREPO[index]}
-  echo $SUBREPO_BRANCHES
-
-  for SUBREPO_BRANCH in $SUBREPO_BRANCHES
+if [ "$CLONE_SUBREPO_BRANCHES" -eq 1 ]; then
+  for ((index=0; index<${#SUBREPO_BRANCHES_PER_SUBREPO[@]}; index++))
   do
-    git checkout $MONOREPO_BRANCH
+    SUBREPO_URL=${SUBREPO_URLS[index]}
+    SUBREPO_URL_WITHOUT_BRANCH=$(echo "$SUBREPO_URL" | sed 's/#.*//')
+    SUBREPO_NAME=$(basename "$SUBREPO_URL_WITHOUT_BRANCH" .git)
+    echo $SUBREPO_URL
+    echo $SUBREPO_URL_WITHOUT_BRANCH
+    echo $SUBREPO_NAME
 
-    NEW_BRANCH="$SUBREPO_NAME-$SUBREPO_BRANCH"
-    echo $NEW_BRANCH
+    SUBREPO_BRANCHES=${SUBREPO_BRANCHES_PER_SUBREPO[index]}
+    echo $SUBREPO_BRANCHES
 
-    git push origin -d "$NEW_BRANCH"
-    git branch -D "$NEW_BRANCH"
-    git checkout -b "$NEW_BRANCH"
-    git push --set-upstream origin "$NEW_BRANCH"
-
-    cd "$MONOREPO_NAME"
-    rm -rf "$SUBREPO_NAME"
-    git clone $SUBREPO_URL_WITHOUT_BRANCH
-
-    cd "$SUBREPO_NAME"
-    git checkout $SUBREPO_BRANCH
-
-    for FILE_TO_DELETE in $FILES_TO_DELETE
+    for SUBREPO_BRANCH in $SUBREPO_BRANCHES
     do
-      if [ -e "$FILE_TO_DELETE" ]
-      then
-        rm -rf "$FILE_TO_DELETE"
-      fi
+      git checkout $MONOREPO_BRANCH
+
+      NEW_BRANCH="$SUBREPO_NAME-$SUBREPO_BRANCH"
+      echo $NEW_BRANCH
+
+      git push origin -d "$NEW_BRANCH"
+      git branch -D "$NEW_BRANCH"
+      git checkout -b "$NEW_BRANCH"
+      git push --set-upstream origin "$NEW_BRANCH"
+
+      cd "$MONOREPO_NAME"
+      rm -rf "$SUBREPO_NAME"
+      git clone $SUBREPO_URL_WITHOUT_BRANCH
+
+      cd "$SUBREPO_NAME"
+      git checkout $SUBREPO_BRANCH
+
+      for FILE_TO_DELETE in $FILES_TO_DELETE
+      do
+        if [ -e "$FILE_TO_DELETE" ]
+        then
+          rm -rf "$FILE_TO_DELETE"
+        fi
+      done
+
+      sed -i.bak '/chime-sps/ s|git = "ssh://git@github.com/chime-sps/\(.*\)".*|path = "../\1"|; s/, rev = "[^"]*"//g' pyproject.toml
+      sed -i.bak '/path = /s/$/}/' pyproject.toml
+      rm -f pyproject.toml.bak
+
+      poetry lock
+
+      cd ../..
+
+      git add .
+      git commit -n -m "Adding $NEW_BRANCH branch's codebase to the monorepo"
+      git push
     done
-
-    sed -i.bak '/chime-sps/ s|git = "ssh://git@github.com/chime-sps/\(.*\)".*|path = "../\1"|; s/, rev = "[^"]*"//g' pyproject.toml
-    sed -i.bak '/path = /s/$/}/' pyproject.toml
-    rm -f pyproject.toml.bak
-
-    poetry lock
-
-    cd ../..
-
-    git add .
-    git commit -n -m "Adding $NEW_BRANCH branch's codebase to the monorepo"
-    git push
   done
-done
+fi

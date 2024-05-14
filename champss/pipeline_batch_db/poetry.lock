@@ -433,7 +433,7 @@ files = [
 
 [[package]]
 name = "chime-frb-api"
-version = "3.3.0"
+version = "3.4.0"
 description = "CHIME/FRB API"
 optional = false
 python-versions = "^3.8"
@@ -460,7 +460,7 @@ docs = ["mkdocs-material (>=8)", "mkdocstrings-python (>=0.8.3,<0.9.0)", "pytkdo
 type = "git"
 url = "ssh://git@github.com/CHIMEFRB/frb-api"
 reference = "HEAD"
-resolved_reference = "09972e9772a24f2ee2e561796ec85a8707727ed6"
+resolved_reference = "4d1a34846d1a5002c5e67e8ae2585fe4535b3d48"
 
 [[package]]
 name = "chime-frb-constants"
