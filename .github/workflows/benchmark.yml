@@ -26,8 +26,8 @@ jobs:
             run: |
               export NODE_NAME='ss1'
               export CONTAINER_NAME='champss-${{ inputs.branch_name }}'
-              chmod +x /module/pipeline-scripts/run-benchmark.sh
-              ./pipeline-scripts/run-benchmark.sh '--using-docker'
+              chmod +x /module/champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh
+              ./champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh '--using-docker'
       - run: |
           docker image rmi chimefrb/champss_software:${{ inputs.branch_name }}
           docker builder prune -f
