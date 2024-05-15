@@ -3,7 +3,7 @@ name: Continuous Deployment
 on:
   push:
     branches:
-      - test-actions
+      - main
 
 jobs:
   # GitHub Actions fails if any "with" parameter is empty when using reusable workflows, so needs || fallbacks
@@ -11,9 +11,9 @@ jobs:
     uses: chime-sps/champss_software/.github/workflows/release.yml@main
     secrets: inherit
   latest-image:
-    #needs: check-release
+    needs: check-release
     # only true if merging automated release PR
-    #if: ${{ needs.check-release.outputs.release_created == 'false' }}
+    if: ${{ needs.check-release.outputs.release_created == 'false' }}
     uses: chime-sps/champss_software/.github/workflows/image.yml@main
     secrets: inherit
     with:
