@@ -52,9 +52,11 @@ ENV PYTHONUNBUFFERED=1 \
 COPY . .
 
 RUN --mount=type=ssh,id=github_ssh_id set -ex \
-    && python3 -m pip install .
+    && python3 -m pip install . \
+    && get-data
+# Above "get-data" call is needed for CHIMEFRB/beam-model
 
-# Stage 4: Cleanup to prpeare for runtime
+# Stage 4: Cleanup to prepare for runtime
 FROM pip as runtime
 
 WORKDIR /module
