@@ -313,7 +313,7 @@ def find_all_pipeline_processes(
 )
 @click.option(
     "--docker-image-name",
-    default="chimefrb/pipeline_batch_db:latest",
+    default="chimefrb/champss_software:latest",
     type=str,
     help="Which Docker Image name to use.",
 )
@@ -520,7 +520,7 @@ def run_all_pipeline_processes(
 )
 @click.option(
     "--docker-image-name",
-    default="chimefrb/pipeline_batch_db:latest",
+    default="chimefrb/champss_software:latest",
     type=str,
     help="Which Docker Image name to use.",
 )
@@ -937,13 +937,13 @@ def start_processing_manager(
 )
 @click.option(
     "--manager-docker-image-name",
-    default="chimefrb/pipeline_batch_db:latest",
+    default="chimefrb/champss_software:latest",
     type=str,
     help="Name of Docker Image to use for the processing manager.",
 )       
 @click.option(
     "--pipeline-docker-image-name",
-    default="chimefrb/pipeline_batch_db:latest",
+    default="chimefrb/champss_software:latest",
     type=str,
     help="Name of Docker Image to use for the processing pipeline.",
 )

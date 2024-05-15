@@ -7,6 +7,5 @@ docs/*
 .precommit-manual.yaml
 Dockerfile
 LICENSE
-README.md
 poetry.lock
 .venv/*
