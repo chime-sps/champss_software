@@ -12,8 +12,7 @@ jobs:
     secrets: inherit
   latest-image:
     needs: check-release
-    # only true if merging automated release PR
-    if: ${{ needs.check-release.outputs.release_created == 'false' }}
+    if: ${{ !needs.check-release.outputs.release_created }}
     uses: chime-sps/champss_software/.github/workflows/image.yml@main
     secrets: inherit
     with:
