@@ -16,7 +16,6 @@ beamformer = {path = "./champss/beamformer"}
 candidate-processor = {path = "./champss/candidate-processor"}
 chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
 controller = {path = "./champss/controller"}
-fdmt = {path = "./champss/fdmt"}
 folding = {path = "./champss/folding"}
 ps-processes = {path = "./champss/ps-processes"}
 rfi-mitigation = {path = "./champss/rfi-mitigation"}
