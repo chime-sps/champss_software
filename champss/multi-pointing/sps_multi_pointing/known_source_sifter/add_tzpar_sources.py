@@ -1,18 +1,19 @@
-import glob
 import argparse
+import glob
+
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from beamformer.utilities.dm import DMMap
-from sps_databases import db_utils, db_api
+from sps_databases import db_api, db_utils
 
 obliquity = 84381.448 / 3600
 
 
 def ra_dec_from_ecliptic(elong, elat, elong_err=np.nan, elat_err=np.nan):
     """
-    Compute the ra and dec of a source, including its uncertainties, given the ecliptic position of the source and
-    its uncertainties.
+    Compute the ra and dec of a source, including its uncertainties, given the ecliptic
+    position of the source and its uncertainties.
 
     Arguments
     ---------
@@ -92,8 +93,8 @@ def ra_dec_from_ecliptic(elong, elat, elong_err=np.nan, elat_err=np.nan):
 
 def add_source_to_database(payload, db_port=27017, db_host="localhost", db_name="sps"):
     """
-    Add a source into the known source database, given a dictionary including all the properties required by the
-    database.
+    Add a source into the known source database, given a dictionary including all the
+    properties required by the database.
 
     Arguments
     ---------
@@ -119,23 +120,28 @@ def add_source_to_database(payload, db_port=27017, db_host="localhost", db_name=
         db_api.update_known_source(ks["_id"], payload)
     else:
         print(
-            f"Parfile for {payload['source_name']} is older than the entry in the known source database. "
-            f"Not adding it to the database"
+            f"Parfile for {payload['source_name']} is older than the entry in the known"
+            " source database. Not adding it to the database"
         )
     return
 
 
 if __name__ == "__main__":
     """
-    The script loops through the parfiles in a directory to extract the relevant values to be added to the known
-    source database. The attributes extracted are :
+    The script loops through the parfiles in a directory to extract the relevant values
+    to be added to the known source database.
+
+    The attributes extracted are :
     ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
     'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
     'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
     'spin_period_derivative_error', 'spin_period_epoch']
     """
     parser = argparse.ArgumentParser(
-        description="converting a directory of parfiles into entries for the known source database"
+        description=(
+            "converting a directory of parfiles into entries for the known source"
+            " database"
+        )
     )
     parser.add_argument(
         "path",
@@ -174,7 +180,7 @@ if __name__ == "__main__":
         elong = np.nan
         elong_err = np.nan
         fake_parfile = False
-        with open(f, "r") as infile:
+        with open(f) as infile:
             for line in infile:
                 if len(line.split()) == 0:
                     continue
