@@ -7,14 +7,7 @@ import numpy as np
 from astropy.constants import c
 from astropy.coordinates import EarthLocation, SkyCoord, solar_system_ephemeris
 from astropy.time import Time
-
-from champss.sps-common.sps_common.constants import (
-    CHIME_ELEV,
-    CHIME_LAT,
-    CHIME_LON,
-    SEC_PER_DAY,
-    TSAMP,
-)
+from sps_common.constants import CHIME_ELEV, CHIME_LAT, CHIME_LON, SEC_PER_DAY
 
 # define CHIME's Earth location
 CHIME_LOCATION = EarthLocation(
@@ -77,7 +70,7 @@ def get_barycentric_correction(
         )
     else:
         logger.warning(
-            "convention not recognised, must be one of: optical, radio, " "relativistic"
+            "convention not recognised, must be one of: optical, radio, relativistic"
         )
         logger.warning("Defaulting to RADIO convention")
         vb = vb_optical.to(u.Hz, u.doppler_optical(1 * u.Hz)).to(
@@ -85,8 +78,9 @@ def get_barycentric_correction(
         )
 
     logger.info(
-        "barycentric velocity (fraction of speed of light) = "
-        "{}".format(vb.value / c.value)
+        "barycentric velocity (fraction of speed of light) = {}".format(
+            vb.value / c.value
+        )
     )
 
     return vb.value / c.value
@@ -160,8 +154,9 @@ def get_mean_barycentric_correction(
     mean_vb = np.mean(vb_corr)
 
     logger.info(
-        "mean barycentric velocity (fraction of speed of light) = "
-        "{}".format(mean_vb / c.value)
+        "mean barycentric velocity (fraction of speed of light) = {}".format(
+            mean_vb / c.value
+        )
     )
 
     return mean_vb / c.value
@@ -196,9 +191,7 @@ def barycenter_timeseries(topo_ts: np.ndarray, beta: float, metadata: bool = Fal
     bary_ts = np.copy(topo_ts)
     one_over_abs_beta = 1 / np.abs(beta)
     logger.info(f"nsamps in topocentric time series = {topo_ts.size}")
-    logger.info(
-        f"nsamps before first correction = {int(round(one_over_abs_beta))}"
-    )
+    logger.info(f"nsamps before first correction = {int(round(one_over_abs_beta))}")
 
     logger.debug("determining correction indices")
     n = 1
@@ -219,9 +212,7 @@ def barycenter_timeseries(topo_ts: np.ndarray, beta: float, metadata: bool = Fal
 
     correction_index = np.array(correction_index)
     correction_required = np.array(correction_required)
-    logger.info(
-        f"# samples to be added: {np.count_nonzero(correction_required == 1)}"
-    )
+    logger.info(f"# samples to be added: {np.count_nonzero(correction_required == 1)}")
     logger.info(
         "# samples to be removed: {}".format(
             np.count_nonzero(correction_required == -1)
@@ -274,7 +265,7 @@ def bary_from_topo_freq(topo_freq, beta, convention="radio"):
         return topo_freq * np.sqrt(1 - beta**2) / (1 + beta)
     else:
         logger.warning(
-            "convention not recognised, must be one of: optical, " "radio, relativistic"
+            "convention not recognised, must be one of: optical, radio, relativistic"
         )
         logger.warning("Defaulting to RADIO convention")
         return topo_freq * (1 - beta)
@@ -302,7 +293,7 @@ def topo_from_bary_freq(bary_freq, beta, convention="radio"):
         return bary_freq / (np.sqrt(1 - beta**2) / (1 + beta))
     else:
         logger.warning(
-            "convention not recognised, must be one of: optical, " "radio, relativistic"
+            "convention not recognised, must be one of: optical, radio, relativistic"
         )
         logger.warning("Defaulting to RADIO convention")
         return bary_freq / (1 - beta)

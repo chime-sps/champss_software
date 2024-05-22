@@ -3,11 +3,7 @@ import os
 
 import click
 from sps_common.interfaces import MultiPointingCandidate
-
-from champss.multi-pointing.sps_multi_pointing.classifier.trainer import (
-    MlpTrainer,
-    SvmTrainer,
-)
+from sps_multi_pointing.classifier.trainer import MlpTrainer, SvmTrainer
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})

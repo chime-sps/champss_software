@@ -8,9 +8,8 @@ Ziggy Pleunis, ziggy.pleunis@physics.mcgill.ca
 
 
 import numpy as np
-
-from champss.sps-common.sps_common import sigproc
-from champss.sps-common.sps_common.constants import FREQ_BOTTOM, FREQ_TOP, TSAMP
+from sps_common import sigproc
+from sps_common.constants import FREQ_BOTTOM, FREQ_TOP
 
 
 def create_filterbank_file(outfile, header, spectra=None, nbits=32, verbose=False):

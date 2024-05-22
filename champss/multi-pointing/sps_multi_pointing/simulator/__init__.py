@@ -2,15 +2,9 @@ import copy
 import os
 
 import numpy as np
-
-from champss.multi-pointing.sps_multi_pointing.simulator.pointing import Pointing
-from champss.multi-pointing.sps_multi_pointing.simulator.sources import (
-    generate_known_sources,
-    generate_source,
-)
-from champss.multi-pointing.sps_multi_pointing.simulator.utils import (
-    make_single_pointing_candidate_collection,
-)
+from sps_multi_pointing.simulator.pointing import Pointing
+from sps_multi_pointing.simulator.sources import generate_known_sources, generate_source
+from sps_multi_pointing.simulator.utils import make_single_pointing_candidate_collection
 
 reference_angles = np.load(os.path.dirname(__file__) + "/reference_angles.npy")
 
@@ -91,24 +85,16 @@ class PointingGrid:
             if np.random.choice(["bright", "bright", "dim"]) == "bright":
                 if psr_row + 1 < self.num_rows and np.random.choice([True, False]):
                     side_ra, side_dec = self.get_ra_dec(psr_row + 1, psr_col)
-                    known_pulsar_pointing_ids[
-                        f"{side_ra:.3f}_{side_dec:.3f}"
-                    ] = kss
+                    known_pulsar_pointing_ids[f"{side_ra:.3f}_{side_dec:.3f}"] = kss
                 if psr_row - 1 > 0 and np.random.choice([True, False]):
                     side_ra, side_dec = self.get_ra_dec(psr_row - 1, psr_col)
-                    known_pulsar_pointing_ids[
-                        f"{side_ra:.3f}_{side_dec:.3f}"
-                    ] = kss
+                    known_pulsar_pointing_ids[f"{side_ra:.3f}_{side_dec:.3f}"] = kss
                 if psr_col + 1 < self.num_cols and np.random.choice([True, False]):
                     side_ra, side_dec = self.get_ra_dec(psr_row, psr_col + 1)
-                    known_pulsar_pointing_ids[
-                        f"{side_ra:.3f}_{side_dec:.3f}"
-                    ] = kss
+                    known_pulsar_pointing_ids[f"{side_ra:.3f}_{side_dec:.3f}"] = kss
                 if psr_col - 1 > 0 and np.random.choice([True, False]):
                     side_ra, side_dec = self.get_ra_dec(psr_row, psr_col - 1)
-                    known_pulsar_pointing_ids[
-                        f"{side_ra:.3f}_{side_dec:.3f}"
-                    ] = kss
+                    known_pulsar_pointing_ids[f"{side_ra:.3f}_{side_dec:.3f}"] = kss
 
         print(known_pulsar_pointing_ids.keys())
         count = 0
