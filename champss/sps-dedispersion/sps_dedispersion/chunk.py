@@ -3,7 +3,7 @@ dispersion transform.'''
 
 import sys
 import numpy as np
-from fdmt.cpu_fdmt import FDMT
+from sps_dedispersion.fdmt.cpu_fdmt import FDMT
 
 # The following is for memory inspection
 import linecache
