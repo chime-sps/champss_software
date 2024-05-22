@@ -2,20 +2,23 @@
 
 [[package]]
 name = "ads"
-version = "0.12.4"
+version = "0.12.6"
 description = "A Python module for NASA's ADS that doesn't suck."
 optional = false
 python-versions = "*"
 files = [
-    {file = "ads-0.12.4.tar.gz", hash = "sha256:66d4d3c4742db7d710ca66e508b220fe2e836d4af0ad25a6c0fff1ca8c08ed50"},
+    {file = "ads-0.12.6-py3-none-any.whl", hash = "sha256:82dd5ac169294ee2c5b1d809acad9b820000a942018a11867419b9b5a9835bb0"},
+    {file = "ads-0.12.6.tar.gz", hash = "sha256:b4caeb5df31b735973afdb7d8c471d93020b620d2058f4a94be97358f5fa51a1"},
 ]
 
 [package.dependencies]
-httpretty = ">=0.8.10"
 mock = "*"
 requests = "*"
 six = "*"
 werkzeug = "*"
+
+[package.extras]
+tests = ["httpretty (>=0.8.10)"]
 
 [[package]]
 name = "antlr4-python3-runtime"
@@ -530,13 +533,13 @@ tests-extra = ["colorcet[tests]", "pytest-mpl"]
 
 [[package]]
 name = "commitizen"
-version = "3.25.0"
+version = "3.27.0"
 description = "Python commitizen client tool"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "commitizen-3.25.0-py3-none-any.whl", hash = "sha256:46b7f2a5a846df7414440d069aaa43b5d6c5a7f8840e68ae4c541492e93cd086"},
-    {file = "commitizen-3.25.0.tar.gz", hash = "sha256:65c9c5114ac2ded5ab1e1a75c2540adc27ae7291ed2db9290f9ed208178d1e99"},
+    {file = "commitizen-3.27.0-py3-none-any.whl", hash = "sha256:11948fa563d5ad5464baf09eaacff3cf8cbade1ca029ed9c4978f2227f033130"},
+    {file = "commitizen-3.27.0.tar.gz", hash = "sha256:5874d0c7e8e1be3b75b1b0a2269cffe3dd5c843b860d84b0bdbb9ea86e3474b8"},
 ]
 
 [package.dependencies]
@@ -709,6 +712,29 @@ files = [
     {file = "distlib-0.3.8-py2.py3-none-any.whl", hash = "sha256:034db59a0b96f8ca18035f36290806a9a6e6bd9d1ff91e45a7f172eb17e51784"},
     {file = "distlib-0.3.8.tar.gz", hash = "sha256:1530ea13e350031b6312d8580ddb6b27a104275a31106523b8f123787f494f64"},
 ]
+
+[[package]]
+name = "dmt"
+version = "0.1.0"
+description = "Dispersion Measure Transforms"
+optional = false
+python-versions = ">=3.8"
+files = []
+develop = false
+
+[package.dependencies]
+numpy = "*"
+
+[package.extras]
+develop = ["ruff"]
+docs = ["breathe", "myst-nb", "sphinx", "sphinx-book-theme", "sphinx-click"]
+tests = ["mypy", "pytest", "pytest-benchmark", "pytest-cov", "pytest-randomly", "pytest-sugar"]
+
+[package.source]
+type = "git"
+url = "ssh://git@github.com/chime-sps/dmt"
+reference = "HEAD"
+resolved_reference = "369575153a39a3348bbac5ea2898ce87e5b91592"
 
 [[package]]
 name = "dnspython"
@@ -1053,16 +1079,6 @@ files = [
 
 [package.dependencies]
 requests = ">=1.0.0"
-
-[[package]]
-name = "httpretty"
-version = "1.1.4"
-description = "HTTP client mock for Python"
-optional = false
-python-versions = ">=3"
-files = [
-    {file = "httpretty-1.1.4.tar.gz", hash = "sha256:20de0e5dd5a18292d36d928cc3d6e52f8b2ac73daec40d41eb62dee154933b68"},
-]
 
 [[package]]
 name = "identify"
@@ -2686,13 +2702,13 @@ files = [
 
 [[package]]
 name = "requests"
-version = "2.31.0"
+version = "2.32.2"
 description = "Python HTTP for Humans."
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = [
-    {file = "requests-2.31.0-py3-none-any.whl", hash = "sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f"},
-    {file = "requests-2.31.0.tar.gz", hash = "sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1"},
+    {file = "requests-2.32.2-py3-none-any.whl", hash = "sha256:fc06670dd0ed212426dfeb94fc1b983d917c4f9847c863f313c9dfaaffb7c23c"},
+    {file = "requests-2.32.2.tar.gz", hash = "sha256:dd951ff5ecf3e3b3aa26b40703ba77495dab41da839ae72ef3c8e5d8e2433289"},
 ]
 
 [package.dependencies]
@@ -3313,4 +3329,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "36bb8e2712e251097b39dd4c1ffdb43a2eec342d164b3d6448e877f5c8278d83"
+content-hash = "f4160d16e9bcd18ab86d437fc0ea03b488aa2281250b677111e3080dc3d1416d"

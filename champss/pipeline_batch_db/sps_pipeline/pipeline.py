@@ -36,12 +36,10 @@ from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.ps_pipeline import PowerSpectraPipeline
 from sps_common.interfaces import DedispersedTimeSeries
 from sps_databases import db_api, db_utils, models
-
 from sps_pipeline import (  # ps,
     beamform,
     cands,
     cleanup,
-    dedisp,
     hhat,
     ps_cumul_stack,
     rfi,
@@ -552,6 +550,8 @@ def main(
                     processing_failed = True
             if "dedisp" in components:
                 if fdmt:
+                    from sps_pipeline import dedisp
+
                     dedisp_ts = dedisp.run_fdmt(
                         active_pointing, skybeam, config, num_threads
                     )
