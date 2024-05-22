@@ -1,24 +1,29 @@
-from .beamformer import Pointing, ActivePointing, SkyBeam
-from .ps_processes import (
-    DedispersedTimeSeries,
-    PowerSpectra,
-    PowerSpectraDetections,
-    PowerSpectraDetectionClusters,
-    Cluster,
+from champss.sps-common.sps_common.interfaces.beamformer import (
+    ActivePointing,
+    Pointing,
+    SkyBeam,
 )
-
-from .single_pointing import (
-    SinglePointingCandidate,
-    SinglePointingCandidateCollection,
-    SearchAlgorithm,
-    check_detection_statistic,
-)
-from .multi_pointing import (
-    MultiPointingCandidate,
-    PulsarCandidate,
+from champss.sps-common.sps_common.interfaces.multi_pointing import (
+    CandidateClassification,
+    CandidateClassificationLabel,
     KnownSourceClassification,
     KnownSourceLabel,
-    CandidateClassificationLabel,
-    CandidateClassification,
+    MultiPointingCandidate,
+    PulsarCandidate,
 )
-from .rfi_mitigation import SlowPulsarIntensityChunk
+from champss.sps-common.sps_common.interfaces.ps_processes import (
+    Cluster,
+    DedispersedTimeSeries,
+    PowerSpectra,
+    PowerSpectraDetectionClusters,
+    PowerSpectraDetections,
+)
+from champss.sps-common.sps_common.interfaces.rfi_mitigation import (
+    SlowPulsarIntensityChunk,
+)
+from champss.sps-common.sps_common.interfaces.single_pointing import (
+    SearchAlgorithm,
+    SinglePointingCandidate,
+    SinglePointingCandidateCollection,
+    check_detection_statistic,
+)

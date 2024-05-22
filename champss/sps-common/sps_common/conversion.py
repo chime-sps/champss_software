@@ -7,10 +7,9 @@ import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.time import Time, TimeDelta
-from spshuff import l1_io
-
 from sps_common.constants import TSAMP
 from sps_common.filterbank import write_to_filterbank
+from spshuff import l1_io
 
 # import line_profiler
 # profiler = line_profiler.LineProfiler()

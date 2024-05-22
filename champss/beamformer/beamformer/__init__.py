@@ -19,11 +19,10 @@ log = logging.getLogger(__package__)
 
 
 class NoSuchPointingError(ValueError):
-    """Exception raised when the beamformer cannot find a pointing in its map"""
+    """Exception raised when the beamformer cannot find a pointing in its map."""
 
 
 class NotEnoughDataError(ValueError):
-    """
-    Exception raised when the available data for beamforming is below a set
+    """Exception raised when the available data for beamforming is below a set
     threshold.
     """

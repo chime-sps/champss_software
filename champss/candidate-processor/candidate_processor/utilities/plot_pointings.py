@@ -1,6 +1,7 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import glob
+
+import matplotlib.pyplot as plt
+import numpy as np
 
 files = glob.glob("*fake_pointing*.npz")
 files.sort()

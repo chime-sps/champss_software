@@ -6,7 +6,6 @@ try:
 
     import numpy as np
     from prometheus_client import Summary
-
     from rfi_mitigation.cleaners import cleaners
     from rfi_mitigation.utilities.cleaner_utils import (
         combine_cleaner_masks,

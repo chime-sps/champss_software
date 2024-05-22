@@ -2,7 +2,6 @@
 import numpy as np
 from astropy.time import Time
 from attr import attrib, attrs
-
 from sps_common.constants import TSAMP
 from sps_common.conversion import convert_intensity_to_hdf5, read_intensity_hdf5
 

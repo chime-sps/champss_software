@@ -1,26 +1,23 @@
-from sps_multi_pointing import classifier
-from attr import attrs, attrib, Factory
-import logging
-from attr.validators import instance_of
 import importlib
+import logging
+import pickle
+import sys
+from typing import Dict, List, Type, Union
+
 import numpy as np
 import numpy.lib.recfunctions as rfn
-import pickle
-from typing import Dict, List, Type, Union
-import sys
-
+from attr import Factory, attrib, attrs
 from sps_common.interfaces import (
     CandidateClassification,
     CandidateClassificationLabel,
     MultiPointingCandidate,
 )
 
-
 log = logging.getLogger(__name__)
 
 
 class Classifier:
-    """Base class for implementing classifiers"""
+    """Base class for implementing classifiers."""
 
     def __init__(self, classifier_file):
         self.classifier = self.load_classifier(classifier_file)
@@ -41,7 +38,7 @@ class Classifier:
 
 
 class DummyClassifier(Classifier):
-    """Placeholder classifier that just grades everything as an A-OK Astro candidate"""
+    """Placeholder classifier that just grades everything as an A-OK Astro candidate."""
 
     def __init__(self):
         pass
@@ -54,8 +51,9 @@ class DummyClassifier(Classifier):
 
 class SvmClassifier(Classifier):
     """
-    Support Vector Machine classifier which is a purely binary classifier. It does not come with probability of a
-    instance belonging to a particular class. Here we assume SVM only gives 0 or 1 (RFI or Astro) to a class instance.
+    Support Vector Machine classifier which is a purely binary classifier. It does not
+    come with probability of a instance belonging to a particular class. Here we assume
+    SVM only gives 0 or 1 (RFI or Astro) to a class instance.
 
     Parameters
     ----------
@@ -97,9 +95,10 @@ class SvmClassifier(Classifier):
 
 class MlpClassifier(Classifier):
     """
-    Multilayer Perceptron classifier that returns a probability for classification. By default each classification by
-    a MLP comes with a probability that an instance belongs to a particular class. Here we expect the classifier to be
-    a binary classifier. We can set the threshold for classifying as RFI, Ambiguous or Astro.
+    Multilayer Perceptron classifier that returns a probability for classification. By
+    default each classification by a MLP comes with a probability that an instance
+    belongs to a particular class. Here we expect the classifier to be a binary
+    classifier. We can set the threshold for classifying as RFI, Ambiguous or Astro.
 
     Parameters
     ----------
@@ -112,7 +111,6 @@ class MlpClassifier(Classifier):
     ambiguous_threshold: float
         The classification likelihood threshold to determine if a candidate is an RFI. Must be between 0 and 1 and larger
         than rfi_threshold. Default = 0.6
-
     """
 
     def __init__(self, classifier_file, rfi_threshold=0.4, ambiguous_threshold=0.6):
@@ -253,8 +251,9 @@ def load_classifier_class(classifier: str) -> Type:
 
 @attrs
 class CandidateClassifier:
-    """Processes `MultiPointingCandidate`s by applying a set of classification
-    algorithms and combining their result into an RFI/Astrophysical label.
+    """
+    Processes `MultiPointingCandidate`s by applying a set of classification algorithms
+    and combining their result into an RFI/Astrophysical label.
 
     Attributes:
     -----------
@@ -262,7 +261,6 @@ class CandidateClassifier:
     active_classifiers (List[sps_multi_pointing.classifier.Classifier]):
         classification algorithms that are applied to the `candidate` and
         their result combined to label the candidate as RFI or Astrophysical.
-
     """
 
     active_classifiers: List[Classifier] = attrib(
@@ -271,7 +269,9 @@ class CandidateClassifier:
     )
 
     def classify(self, candidate: MultiPointingCandidate) -> MultiPointingCandidate:
-        """Add the combined result of each active classifier on the multi-pointing `candidate` to the "classification" field of the candidate."""
+        """Add the combined result of each active classifier on the multi-pointing
+        `candidate` to the "classification" field of the candidate.
+        """
 
         classifier_grades = [
             classifier.classify(candidate) for classifier in self.active_classifiers
@@ -283,7 +283,9 @@ class CandidateClassifier:
         self,
         classifier_grades: List[CandidateClassification],
     ) -> CandidateClassification:
-        """Combines grades of all active classifiers into a single overall grade.
+        """
+        Combines grades of all active classifiers into a single overall grade.
 
-        Currently, we just choose the classification with the highest grade"""
+        Currently, we just choose the classification with the highest grade
+        """
         return classifier_grades[np.argmax([g.grade for g in classifier_grades])]

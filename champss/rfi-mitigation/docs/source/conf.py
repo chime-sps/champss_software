@@ -14,9 +14,9 @@
 # import sys
 # sys.path.insert(0, os.path.abspath('../'))
 
-import rfi_mitigation
-import sphinx_bootstrap_theme
 import time
+
+import sphinx_bootstrap_theme
 
 # -- Project information -----------------------------------------------------
 version = "0.0.1"  # chime_frb_api.__version__

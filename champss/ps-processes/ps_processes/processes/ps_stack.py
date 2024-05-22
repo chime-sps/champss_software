@@ -15,10 +15,6 @@ from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
 from filelock import FileLock, Timeout
-from scipy.stats import median_abs_deviation
-from sps_common.interfaces import PowerSpectra
-from sps_databases import db_api
-
 from ps_processes import (
     FailedChi2TestError,
     IncompleteMonthlyStackError,
@@ -30,6 +26,9 @@ from ps_processes.utilities.qc import (
     validate_ps_chisqr_outlier_bins,
 )
 from ps_processes.utilities.utilities import check_in_range, grab_metric_history
+from scipy.stats import median_abs_deviation
+from sps_common.interfaces import PowerSpectra
+from sps_databases import db_api
 
 log = logging.getLogger(__name__)
 

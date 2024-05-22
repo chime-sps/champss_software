@@ -1,6 +1,7 @@
-import docker
 import time
 from datetime import datetime
+
+import docker
 
 client = docker.from_env()
 
@@ -26,11 +27,11 @@ def main():
                 images[image_name] = []
 
             image_id = image.attrs["Id"]
-            image_timestamp_string = image.attrs["Created"].split("Z", 1)[0].split(".",1)[0]
-            image_timestamp = datetime.fromisoformat(
-                image_timestamp_string
+            image_timestamp_string = (
+                image.attrs["Created"].split("Z", 1)[0].split(".", 1)[0]
             )
-            
+            image_timestamp = datetime.fromisoformat(image_timestamp_string)
+
             images[image_name].append({"id": image_id, "timestamp": image_timestamp})
 
         for image_name in images.keys():

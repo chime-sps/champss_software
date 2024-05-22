@@ -1,23 +1,21 @@
-from attr import s as attrs
+import logging
+
+import numpy as np
 from attr import ib as attrib
-from attr.validators import instance_of, in_, deep_iterable
+from attr import s as attrs
 from attr.converters import optional
 from attr.setters import convert
-import logging
-import numpy as np
+from attr.validators import deep_iterable, in_, instance_of
 
-from ..constants import TSAMP
-from ..conversion import (
-    convert_ra_dec,
-    unix_to_mjd,
-)
-from ..filterbank import write_to_filterbank
+from champss.sps-common.sps_common.constants import TSAMP
+from champss.sps-common.sps_common.conversion import convert_ra_dec, unix_to_mjd
+from champss.sps-common.sps_common.filterbank import write_to_filterbank
 
 log = logging.getLogger(__name__)
 
 
 @attrs(slots=True)
-class Pointing(object):
+class Pointing:
     """
     Pointing class to store the properties of a pointing into the CHIME/SPS database.
     Does a self validation to ensure all inputs are valid.
@@ -117,7 +115,7 @@ class Pointing(object):
 
 
 @attrs
-class ActivePointing(object):
+class ActivePointing:
     """
     Interface for active pointings with all the information required by SkyBeamCreation.
 
@@ -225,9 +223,9 @@ class ActivePointing(object):
 
 
 @attrs
-class SkyBeam(object):
+class SkyBeam:
     """
-    Interface for skybeam to be sent to dedispersion process
+    Interface for skybeam to be sent to dedispersion process.
 
     Parameters
     ----------
@@ -348,9 +346,9 @@ class SkyBeam(object):
         """
         srcra, srcdec = convert_ra_dec(self.ra, self.dec)
         if srcdec.startswith("-"):
-            srcname = "J{0}{1}".format(srcra[:4], srcdec[:3])
+            srcname = f"J{srcra[:4]}{srcdec[:3]}"
         else:
-            srcname = "J{0}+{1}".format(srcra[:4], srcdec[:2])
+            srcname = f"J{srcra[:4]}+{srcdec[:2]}"
         start_mjd = unix_to_mjd(self.utc_start)
         write_to_filterbank(
             self.spectra,

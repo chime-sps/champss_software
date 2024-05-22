@@ -1,13 +1,12 @@
-"""Executes the Hhat pipeline component
-"""
-import docker
+"""Executes the Hhat pipeline component."""
 import logging
 import os
 from os import path
+
+import docker
 from prometheus_client import Summary
 
-from . import utils
-
+from champss.pipeline_batch_db.sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 
@@ -19,7 +18,8 @@ hhat_processing_time = Summary(
 
 
 def run(pointing):
-    """Search for periodicity on a `pointing` using Hhat
+    """
+    Search for periodicity on a `pointing` using Hhat.
 
     Parameters
     ----------

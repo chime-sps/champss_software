@@ -8,11 +8,9 @@ import numpy as np
 import pytz
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from sps_common import constants
-from sps_common.interfaces.beamformer import Pointing
-from sps_databases import db_utils, models
-
 from beamformer import CURRENT_POINTING_MAP, NoSuchPointingError
+from sps_common import constants
+from sps_databases import db_utils, models
 
 config = beam_model.current_config
 beammod = beam_model.current_model_class(config)

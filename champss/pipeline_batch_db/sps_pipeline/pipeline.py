@@ -36,7 +36,6 @@ from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.ps_pipeline import PowerSpectraPipeline
 from sps_common.interfaces import DedispersedTimeSeries
 from sps_databases import db_api, db_utils, models
-
 from sps_pipeline import (  # ps,
     beamform,
     cands,

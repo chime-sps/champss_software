@@ -1,10 +1,6 @@
-from setuptools import setup, find_packages
-
 # Available at setup time due to pyproject.toml
 from pybind11.setup_helpers import Pybind11Extension
-from pybind11 import get_cmake_dir
-
-import sys
+from setuptools import find_packages, setup
 
 __version__ = "0.0.1"
 

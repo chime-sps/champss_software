@@ -9,7 +9,6 @@ from typing import Tuple, Union
 
 import click
 import trio
-
 from controller.l1_rpc import get_beam_ip, get_node_beams
 from controller.pointer import generate_pointings
 from controller.updater import SPS_DATA_DIR, pointing_beam_control

@@ -1,12 +1,9 @@
+import sys
+
 import click
 import numpy as np
-import sys, os
-import glob
-
-from sps_common.interfaces import MultiPointingCandidate
 from sps_multi_pointing.simulator import PointingGrid
 from sps_multi_pointing.simulator.utils import relabel_simulated_candidates
-from sps_multi_pointing.classifier.trainer import SvmTrainer, MlpTrainer
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -42,8 +39,9 @@ from sps_multi_pointing.classifier.trainer import SvmTrainer, MlpTrainer
     help="Use a random starting value of the random number generator",
 )
 def main(seed, random_seed, rows, cols, beam_row):
-    """Simulate the output of single-pointing pipeline for a rectangular patch of sky
-    of size ROWS x COLS, centered on BEAM_ROW.
+    """
+    Simulate the output of single-pointing pipeline for a rectangular patch of sky of
+    size ROWS x COLS, centered on BEAM_ROW.
 
     `SinglePointingCandidateCollection`s are saved as RA_Dec_sim_ps_candidates.npz,
     with each pointing also having a companion file to record the actual injected
@@ -88,17 +86,18 @@ def main(seed, random_seed, rows, cols, beam_row):
 )
 def relabel(candidates_path, sim_pulsars_path, freq_diff, dm_diff, delete):
     """
-    Relabel simulated candidates based on whether they are matched to the injected pulsars. The output
-    MultiPointingCandidate .npz files will be written with extra prefix of 'relabelled'.
+    Relabel simulated candidates based on whether they are matched to the injected
+    pulsars. The output MultiPointingCandidate .npz files will be written with extra
+    prefix of 'relabelled'.
 
-    The inputs should be the directories where the MultiPointingCandidate .npz files and the simulated pulsars' .npy
-    files are stored.
+    The inputs should be the directories where the MultiPointingCandidate .npz files and
+    the simulated pulsars' .npy files are stored.
 
-    There are options to change the default frequency and DM difference to match the candidates to a pulsar from the
-    default of 3.5 * 9.70127682e-04 Hz and 1.0 pc/cc.
+    There are options to change the default frequency and DM difference to match the
+    candidates to a pulsar from the default of 3.5 * 9.70127682e-04 Hz and 1.0 pc/cc.
 
-    There is also an option to delete the original .npz files after writing out the new MultiPointingCandidate .npz
-    files.
+    There is also an option to delete the original .npz files after writing out the new
+    MultiPointingCandidate .npz files.
     """
     relabel_simulated_candidates(
         candidates_path, sim_pulsars_path, freq_diff, dm_diff, delete

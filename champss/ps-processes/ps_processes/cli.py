@@ -1,9 +1,10 @@
 import argparse
+
 from ps_processes.ps_pipeline import PowerSpectraPipeline
 
 
 def main():
-    """Run power spectrum search with sps database"""
+    """Run power spectrum search with sps database."""
     parser = argparse.ArgumentParser(
         description="Run power spectrum processes with sps database interaction."
     )

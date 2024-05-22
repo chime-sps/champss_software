@@ -1,16 +1,18 @@
+import glob
+import os
+from typing import List
+
 import numpy as np
 import numpy.lib.recfunctions as rfn
-import glob, os
 from sps_common.interfaces import (
-    SearchAlgorithm,
-    SinglePointingCandidate,
-    SinglePointingCandidateCollection,
-    MultiPointingCandidate,
     CandidateClassification,
     CandidateClassificationLabel,
     KnownSourceLabel,
+    MultiPointingCandidate,
+    SearchAlgorithm,
+    SinglePointingCandidate,
+    SinglePointingCandidateCollection,
 )
-from typing import List
 
 
 def make_single_pointing_candidate_collection(
@@ -19,7 +21,9 @@ def make_single_pointing_candidate_collection(
     group_summary,
     groups,
 ) -> SinglePointingCandidateCollection:
-    """Slimmed-down clone of `candidate_processor.harmonic_filter.make_single_pointing_candidate_collection`"""
+    """Slimmed-down clone of
+    `candidate_processor.harmonic_filter.make_single_pointing_candidate_collection`
+    """
 
     spcs: List[SinglePointingCandidate] = []
     for cluster_id, cluster in group_summary.items():
@@ -59,7 +63,8 @@ def make_single_pointing_candidate_collection(
 
 def get_diagnostic_from_cluster(cluster, freq, dm):
     """
-    Extract the frequency vs sigma array at the input DM, and DM vs sigma array at the input frequency
+    Extract the frequency vs sigma array at the input DM, and DM vs sigma array at the
+    input frequency.
 
     Clone of `candidate_processor.harmonic_filter.get_diagnostic_from_cluster`
     """
@@ -77,8 +82,9 @@ def relabel_simulated_candidates(
     delete_old_candidates=True,
 ):
     """
-    Function to read MultiPointingCandidates from simulated data and relabel them based on matches to simulated
-    pulsars in the dataset and save them in separate file with 'relabelled' in its file name.
+    Function to read MultiPointingCandidates from simulated data and relabel them based
+    on matches to simulated pulsars in the dataset and save them in separate file with
+    'relabelled' in its file name.
 
     Parameters
     ----------

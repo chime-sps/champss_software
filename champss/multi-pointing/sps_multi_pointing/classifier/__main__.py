@@ -1,9 +1,13 @@
-import click
 import glob
 import os
 
-from .trainer import SvmTrainer, MlpTrainer
+import click
 from sps_common.interfaces import MultiPointingCandidate
+
+from champss.multi-pointing.sps_multi_pointing.classifier.trainer import (
+    MlpTrainer,
+    SvmTrainer,
+)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -11,9 +15,9 @@ from sps_common.interfaces import MultiPointingCandidate
 @click.option("--trainer", type=click.Choice(["SVM", "MLP"], case_sensitive=False))
 def train_cands(candidates_path, trainer):
     """
-    Script to train a classifier from a set of MultiPointingCandidates from a given directory.
-    The script will produce a classifier as a .pickle file and a .txt file showing the metrics on
-    the quality of the classifier produced.
+    Script to train a classifier from a set of MultiPointingCandidates from a given
+    directory. The script will produce a classifier as a .pickle file and a .txt file
+    showing the metrics on the quality of the classifier produced.
 
     Currently two classification algorithms are being used for training : Support Vector Machine (SVM)
     and Multilayer Perceptron (MLP).

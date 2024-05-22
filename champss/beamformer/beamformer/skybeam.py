@@ -10,6 +10,7 @@ import attr
 import numpy as np
 from astropy.time import Time, TimeDelta
 from attr.validators import deep_iterable, instance_of
+from beamformer.utilities.common import get_data_list
 from rfi_mitigation.pipeline import RFIPipeline
 from scipy.signal import detrend
 from sps_common.constants import TSAMP
@@ -17,8 +18,6 @@ from sps_common.interfaces.beamformer import SkyBeam
 from sps_databases import db_api
 from spshuff import l1_io
 from threadpoolctl import threadpool_limits
-
-from beamformer.utilities.common import get_data_list
 
 log = logging.getLogger(__name__)
 
