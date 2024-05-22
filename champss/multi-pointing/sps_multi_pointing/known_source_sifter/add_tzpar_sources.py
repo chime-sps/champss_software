@@ -1,18 +1,19 @@
-import glob
 import argparse
+import glob
+
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from beamformer.utilities.dm import DMMap
-from sps_databases import db_utils, db_api
+from sps_databases import db_api, db_utils
 
 obliquity = 84381.448 / 3600
 
 
 def ra_dec_from_ecliptic(elong, elat, elong_err=np.nan, elat_err=np.nan):
     """
-    Compute the ra and dec of a source, including its uncertainties, given the ecliptic position of the source and
-    its uncertainties.
+    Compute the ra and dec of a source, including its uncertainties, given the ecliptic
+    position of the source and its uncertainties.
 
     Arguments
     ---------
@@ -90,10 +91,10 @@ def ra_dec_from_ecliptic(elong, elat, elong_err=np.nan, elat_err=np.nan):
     return ra, dec, ra_err, dec_err
 
 
-def add_source_to_database(payload):
+def add_source_to_database(payload, db_port=27017, db_host="localhost", db_name="sps"):
     """
-    Add a source into the known source database, given a dictionary including all the properties required by the
-    database.
+    Add a source into the known source database, given a dictionary including all the
+    properties required by the database.
 
     Arguments
     ---------
@@ -104,7 +105,7 @@ def add_source_to_database(payload):
         'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
         'spin_period_derivative_error', 'spin_period_epoch']
     """
-    db = db_utils.connect()
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     ks = db.known_sources.find_one({"source_name": payload["source_name"]})
     if not ks:
         print(f"Adding {payload['source_name']} to the known source database.")
@@ -119,23 +120,28 @@ def add_source_to_database(payload):
         db_api.update_known_source(ks["_id"], payload)
     else:
         print(
-            f"Parfile for {payload['source_name']} is older than the entry in the known source database. "
-            f"Not adding it to the database"
+            f"Parfile for {payload['source_name']} is older than the entry in the known"
+            " source database. Not adding it to the database"
         )
     return
 
 
 if __name__ == "__main__":
     """
-    The script loops through the parfiles in a directory to extract the relevant values to be added to the known
-    source database. The attributes extracted are :
+    The script loops through the parfiles in a directory to extract the relevant values
+    to be added to the known source database.
+
+    The attributes extracted are :
     ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
     'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
     'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
     'spin_period_derivative_error', 'spin_period_epoch']
     """
     parser = argparse.ArgumentParser(
-        description="converting a directory of parfiles into entries for the known source database"
+        description=(
+            "converting a directory of parfiles into entries for the known source"
+            " database"
+        )
     )
     parser.add_argument(
         "path",
@@ -143,8 +149,29 @@ if __name__ == "__main__":
         type=str,
         help="the path to the directory containing the parfiles",
     )
+    parser.add_argument(
+        "--db-port",
+        type=int,
+        default=27017,
+        help="The port of the database.",
+    )
+    parser.add_argument(
+        "--db-host",
+        default="localhost",
+        type=str,
+        help="Host used for the mongodb database.",
+    )
+    parser.add_argument(
+        "--db-name",
+        default="sps",
+        type=str,
+        help="Name used for the mongodb database.",
+    )
     args = parser.parse_args()
     tzpar_path = args.path
+    db_port = args.db_port
+    db_host = args.db_host
+    db_name = args.db_name
     dmm = DMMap()
     for f in sorted(glob.glob(f"{tzpar_path}/*.par")):
         payload = {}
@@ -153,7 +180,7 @@ if __name__ == "__main__":
         elong = np.nan
         elong_err = np.nan
         fake_parfile = False
-        with open(f, "r") as infile:
+        with open(f) as infile:
             for line in infile:
                 if len(line.split()) == 0:
                     continue
@@ -283,4 +310,4 @@ if __name__ == "__main__":
         if len(payload.keys()) != 16:
             print(f"{payload['source_name']} is not complete")
             continue
-        add_source_to_database(payload)
+        add_source_to_database(payload, db_port, db_host, db_name)
