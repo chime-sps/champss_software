@@ -256,6 +256,27 @@ def dbexcepthook(type, value, tb):
         " strongest detection of that source in that pointing."
     ),
 )
+@click.option(
+    "--injection-path",
+    default = None,
+    help = (
+        "Path to yml file containing injection"
+    ),
+)
+@click.option(
+    "--injection-idx",
+    default = 0,
+    help = (
+        "Index of pulse to inject from yml file"
+    ),
+)
+@click.option(
+    "--only-store-injections",
+    default = False,
+    help = (
+        "Do you only want to store the injection candidates?"
+    ),
+)
 def main(
     date,
     stack,
@@ -275,6 +296,9 @@ def main(
     using_pyroscope,
     using_docker,
     known_source_threshold,
+    injection_path,
+    injection_idx,
+    only_store_injections,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -597,7 +621,8 @@ def main(
                 gc.collect()
                 if "search" in components:
                     ps_detections = ps_pipeline.power_spectra_search(
-                        power_spectra, obs_folder, prefix
+                        power_spectra, obs_folder, prefix, injection_path, injection_idx,
+                        only_store_injections,
                     )
                     if ps_detections is None:
                         power_spectra.unlink_shared_memory()
