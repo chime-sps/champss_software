@@ -54,8 +54,7 @@ def load_config(config_file="sps_config.yml"):
     """
     Combines default/user-specified config settings and applies them to loggers.
 
-    User-specified settings can be given in two forms: as a YAML file in the
-    current directory, or as command-line arguments.
+    User-specified settings are given as a YAML file in the current directory.
 
     The format of the file is (all sections optional):
     ```
