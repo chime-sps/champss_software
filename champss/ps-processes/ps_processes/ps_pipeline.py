@@ -190,13 +190,16 @@ class PowerSpectraPipeline:
     def power_spectra_search(
         self,
         power_spectra_to_search,
+        injection_path,
+        injection_idx,
+        only_store_injections,
         filepath="./",
         prefix="",
     ):
         (
             power_spectra_detection_clusters,
             power_spectra_detections,
-        ) = self._ps_search.search(power_spectra_to_search)
+        ) = self._ps_search.search(power_spectra_to_search, injection_path, injection_idx, only_store_injections)
         if self.write_ps_detections and power_spectra_detection_clusters is not None:
             filename = f"{prefix}_power_spectra_detection_clusters.hdf5"
             power_spectra_detection_clusters.write(f"{filepath}/{filename}")

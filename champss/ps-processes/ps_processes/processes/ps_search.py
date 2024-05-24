@@ -180,7 +180,7 @@ class PowerSpectraSearch:
             "HDBSCAN",
         ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
 
-    def search(self, pspec, inject=False):
+    def search(self, pspec, injection_path, injection_idx, only_store_injections):
         """
         Run the search.
 
@@ -201,10 +201,12 @@ class PowerSpectraSearch:
             PowerSpectraDetectionClusters object with the properties of all the
             detections clusters from the pointing.
         """
-        if inject:
+        if injection_path is not None:
+           with open(injection_path) as stream:
+               profile = stream[injection_idx]
+
             injection_bins_original, injection_DMs = ps_inject.main(
-                pspec, "gaussian", num_injections=1
-            )
+                pspec, profile)
         else:
             injection_DMs = []
             injection_bins_original = []
