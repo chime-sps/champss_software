@@ -823,6 +823,27 @@ def main(
         " strongest detection of that source in that pointing."
     ),
 )
+@click.option(
+    "--injection-path",
+    default = None,
+    help = (
+        "Path to yml file containing injection"
+    ),
+)
+@click.option(
+    "--injection-idx",
+    default = 0,
+    help = (
+        "Index of pulse to inject from yml file"
+    ),
+)
+@click.option(
+    "--only-store-injections",
+    default = False,
+    help = (
+        "Do you only want to store the injection candidates?"
+    ),
+)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -835,6 +856,9 @@ def stack_and_search(
     path_cumul_stack,
     cand_path,
     known_source_threshold,
+    injection_path,
+    injection_idx,
+    only_store_injections,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -919,7 +943,8 @@ def stack_and_search(
 
     if to_stack or to_search:
         ps_detections, power_spectra = ps_cumul_stack.run(
-            closest_pointing, ps_cumul_stack_processor, power_spectra_monthly
+            closest_pointing, ps_cumul_stack_processor, power_spectra_monthly,
+            injection_path, injection_idx, only_store_injections,
         )
         if to_search:
             if not ps_detections:

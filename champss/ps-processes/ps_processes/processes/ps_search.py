@@ -4,7 +4,7 @@ import logging
 import time
 from functools import partial
 from multiprocessing import Pool, shared_memory
-
+import yaml
 import numpy as np
 from attr import ib as attribute
 from attr import s as attrs
@@ -202,9 +202,14 @@ class PowerSpectraSearch:
             detections clusters from the pointing.
         """
         if injection_path is not None:
-           with open(injection_path) as stream:
-               profile = stream[injection_idx]
-
+            with open(injection_path, 'r') as file:
+                data = yaml.safe_load(file)
+                pulse = np.array(data[injection_idx]['profile'])
+                frequency = data[injection_idx]['frequency'][0]
+                DM = data[injection_idx]['DM'][0]
+                sigma = data[injection_idx]['sigma'][0]
+            
+            profile = [pulse, sigma, frequency, DM]
             injection_bins_original, injection_DMs = ps_inject.main(
                 pspec, profile)
         else:

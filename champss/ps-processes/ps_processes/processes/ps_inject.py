@@ -253,7 +253,7 @@ def main(pspec, injection_profile = 'random', num_injections = 1):
             injection_profile (str or tuple): either a string specifying the key that references the
                                               profile in the dictionary defaults, or a tuple with
                                               custom injection profile parameters of the format
-                                              (target power spectrum, pulse profile, sigma, frequency,
+                                              (pulse profile, sigma, frequency,
                                               DM)
             num_injections (int)            : provided if injection_profile == 'random.' How many profiles
                                               to randomly generate.
@@ -288,6 +288,10 @@ def main(pspec, injection_profile = 'random', num_injections = 1):
         for i in range(num_injections):
             pulse, sigma = generate()
             injection_profiles.append([pulse, sigma, default_freq[i], default_dm[i]])
+    
+    else:
+        injection_profiles.append(injection_profile)
+
     i = 0
     dms = []
     bins = []

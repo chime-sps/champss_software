@@ -385,7 +385,8 @@ class StackSearchPipeline:
 
         return monthly_power_spectra_detection_clusters, monthly_power_spectra
 
-    def stack_and_search(self, pointing_id, monthly_power_spectra=None):
+    def stack_and_search(self, pointing_id, monthly_power_spectra=None, injection_path = None,
+            injection_idx = None, only_store_injections = False):
         """
         Process the cumulative stack.
 
@@ -468,7 +469,8 @@ class StackSearchPipeline:
             (
                 power_spectra_detection_clusters,
                 power_spectra_detections,
-            ) = self._ps_search.search(stacked_power_spectra)
+            ) = self._ps_search.search(stacked_power_spectra, injection_path,
+                    injection_idx, only_store_injections)
             if self.write_ps_detections:
                 stack_detection_file = (
                     ps_stack_db.datapath_cumul.split(".hdf5")[0]
