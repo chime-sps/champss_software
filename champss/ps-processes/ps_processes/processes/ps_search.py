@@ -202,14 +202,20 @@ class PowerSpectraSearch:
             detections clusters from the pointing.
         """
         if injection_path is not None:
-            with open(injection_path, 'r') as file:
-                data = yaml.safe_load(file)
-                pulse = np.array(data[injection_idx]['profile'])
-                frequency = data[injection_idx]['frequency'][0]
-                DM = data[injection_idx]['DM'][0]
-                sigma = data[injection_idx]['sigma'][0]
+            presets = ['gaussian', 'subpulse', 'interpulse', 'faint', 'high-DM', 
+                    'slow', 'fast']
+            if injection_path in presets:
+                profile = injection_path
+            else:
+                with open(injection_path, 'r') as file:
+                    data = yaml.safe_load(file)
+                    pulse = np.array(data[injection_idx]['profile'])
+                    frequency = data[injection_idx]['frequency'][0]
+                    DM = data[injection_idx]['DM'][0]
+                    sigma = data[injection_idx]['sigma'][0]
             
-            profile = [pulse, sigma, frequency, DM]
+                profile = [pulse, sigma, frequency, DM]
+            
             injection_bins_original, injection_DMs = ps_inject.main(
                 pspec, profile)
         else:
