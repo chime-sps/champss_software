@@ -180,7 +180,7 @@ class PowerSpectraSearch:
             "HDBSCAN",
         ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
 
-    def search(self, pspec, injection_path, injection_idx, only_store_injections):
+    def search(self, pspec, injection_path, injection_indices, only_injections):
         """
         Run the search.
 
@@ -205,19 +205,28 @@ class PowerSpectraSearch:
             presets = ['gaussian', 'subpulse', 'interpulse', 'faint', 'high-DM', 
                     'slow', 'fast']
             if injection_path in presets:
-                profile = injection_path
+                    profile = injection_path
+                    injection_bins_original, injection_DMs = ps_inject.main(
+                    pspec, profile)
             else:
+                injection_bins_original = []
+                injection_DMs = []
                 with open(injection_path, 'r') as file:
                     data = yaml.safe_load(file)
-                    pulse = np.array(data[injection_idx]['profile'])
-                    frequency = data[injection_idx]['frequency'][0]
-                    DM = data[injection_idx]['DM'][0]
-                    sigma = data[injection_idx]['sigma'][0]
-            
-                profile = [pulse, sigma, frequency, DM]
-            
-            injection_bins_original, injection_DMs = ps_inject.main(
-                pspec, profile)
+                    if len(injection_indices) == 0:
+                        injection_indices = np.arange(len(data))
+                    for injection_index in injection_indices:
+                        pulse = np.array(data[injection_index]['profile'])
+                        frequency = data[injection_index]['frequency']
+                        DM = data[injection_index]['DM']
+                        sigma = data[injection_index]['sigma']
+                
+                        profile = [pulse, sigma, frequency, DM]
+                        
+                        current_injection_bins, current_injection_DMs = ps_inject.main(
+                            pspec, profile)
+                        injection_bins_original.extend(current_injection_bins)
+                        injection_DMs.extend(current_injection_DMs)
         else:
             injection_DMs = []
             injection_bins_original = []
@@ -396,6 +405,7 @@ class PowerSpectraSearch:
             filter_nharm=self.filter_by_nharm,
             remove_harm_idx=False,
             cluster_dm_cut=self.cluster_dm_cut,
+            only_injections=only_injections
         )
 
         log.info(f"Total number of candidate clusters={len(clusters)}")

@@ -259,22 +259,25 @@ def dbexcepthook(type, value, tb):
 @click.option(
     "--injection-path",
     default = None,
+    type=str,
     help = (
         "Path to yml file containing injection"
     ),
 )
 @click.option(
-    "--injection-idx",
-    default = 0,
+    "--injection-idx", "--ii",
+    default = [],
+    type=int,
+    multiple=True,
     help = (
         "Index of pulse to inject from yml file"
     ),
 )
 @click.option(
-    "--only-store-injections",
-    default = False,
+    "--only-injections/--no-only-injections",
+    default=False,
     help = (
-        "Do you only want to store the injection candidates?"
+        "Only process clusters containing injections."
     ),
 )
 def main(
@@ -298,7 +301,7 @@ def main(
     known_source_threshold,
     injection_path,
     injection_idx,
-    only_store_injections,
+    only_injections,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -621,8 +624,8 @@ def main(
                 gc.collect()
                 if "search" in components:
                     ps_detections = ps_pipeline.power_spectra_search(
-                        power_spectra, obs_folder, prefix, injection_path, injection_idx,
-                        only_store_injections,
+                        power_spectra, injection_path, injection_idx,
+                        only_injections, obs_folder, prefix,
                     )
                     if ps_detections is None:
                         power_spectra.unlink_shared_memory()

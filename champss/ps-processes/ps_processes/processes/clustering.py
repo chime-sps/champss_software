@@ -685,6 +685,7 @@ class Clusterer:
         filter_nharm=False,
         remove_harm_idx=False,
         cluster_dm_cut=-1,
+        only_injections=False
     ):
         """
         Make clusters from detections. This calls the cluster function, and packages up
@@ -734,6 +735,8 @@ class Clusterer:
                 if remove_harm_idx:
                     cluster.remove_harm_idx()
                     cluster.remove_harm_pow()
+                if only_injections and not cluster.injection:
+                    continue
                 clusters[current_label] = cluster
                 summary[current_label] = dict(
                     freq=cluster.freq,
