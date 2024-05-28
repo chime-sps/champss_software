@@ -4,11 +4,14 @@ import logging
 import time
 from functools import partial
 from multiprocessing import Pool, shared_memory
-import yaml
+
 import numpy as np
+import yaml
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
+from ps_processes.processes import ps_inject
+from ps_processes.processes.clustering import Clusterer
 from rfi_mitigation.cleaners.periodic import StaticPeriodicFilter
 from sps_common.constants import MIN_SEARCH_FREQ, TSAMP
 from sps_common.interfaces import PowerSpectraDetectionClusters, SearchAlgorithm
@@ -18,9 +21,6 @@ from sps_common.interfaces.utilities import (
     sigma_sum_powers,
 )
 from sps_databases import db_api
-
-from ps_processes.processes import ps_inject
-from ps_processes.processes.clustering import Clusterer
 
 log = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ class PowerSpectraSearch:
             "HDBSCAN",
         ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
 
-    def search(self, pspec, injection_path, injection_idx, only_store_injections):
+    def search(self, pspec, injection_path, injection_indices, only_injections):
         """
         Run the search.
 
@@ -202,22 +202,40 @@ class PowerSpectraSearch:
             detections clusters from the pointing.
         """
         if injection_path is not None:
-            presets = ['gaussian', 'subpulse', 'interpulse', 'faint', 'high-DM', 
-                    'slow', 'fast']
+            presets = [
+                "gaussian",
+                "subpulse",
+                "interpulse",
+                "faint",
+                "high-DM",
+                "slow",
+                "fast",
+            ]
             if injection_path in presets:
                 profile = injection_path
+                injection_bins_original, injection_DMs = ps_inject.main(pspec, profile)
             else:
-                with open(injection_path, 'r') as file:
+                injection_bins_original = []
+                injection_DMs = []
+                with open(injection_path) as file:
                     data = yaml.safe_load(file)
-                    pulse = np.array(data[injection_idx]['profile'])
-                    frequency = data[injection_idx]['frequency'][0]
-                    DM = data[injection_idx]['DM'][0]
-                    sigma = data[injection_idx]['sigma'][0]
-            
-                profile = [pulse, sigma, frequency, DM]
-            
-            injection_bins_original, injection_DMs = ps_inject.main(
-                pspec, profile)
+                    if len(injection_indices) == 0:
+                        injection_indices = np.arange(len(data))
+                    for injection_index in injection_indices:
+                        pulse = np.array(data[injection_index]["profile"])
+                        frequency = data[injection_index]["frequency"]
+                        DM = data[injection_index]["DM"]
+                        sigma = data[injection_index]["sigma"]
+
+                        profile = [pulse, sigma, frequency, DM]
+
+                        current_injection_bins, current_injection_DMs = ps_inject.main(
+                            pspec, profile
+                        )
+                        # injection_DMs are indices of the altered injection trials
+                        # injection_bins_original and injection_DMs are lists of lists
+                        injection_bins_original.extend(current_injection_bins)
+                        injection_DMs.extend(current_injection_DMs)
         else:
             injection_DMs = []
             injection_bins_original = []
@@ -349,6 +367,7 @@ class PowerSpectraSearch:
                 nsum_per_harmonic,
                 power_cutoff_per_harmonic,
                 injection_bins_original,
+                injection_DMs,
             ),
             zip(dm_indices, dm_split),
         )
@@ -396,6 +415,7 @@ class PowerSpectraSearch:
             filter_nharm=self.filter_by_nharm,
             remove_harm_idx=False,
             cluster_dm_cut=self.cluster_dm_cut,
+            only_injections=only_injections,
         )
 
         log.info(f"Total number of candidate clusters={len(clusters)}")
@@ -437,6 +457,7 @@ class PowerSpectraSearch:
         nsum_per_harmonic,
         power_cutoff_per_harmonic,
         injection_bins_original,
+        injection_DMs,
         dm_indices,
         dms,
     ):
@@ -574,13 +595,16 @@ class PowerSpectraSearch:
                             replace_last = True
 
                     sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
-                    injection_bins = np.intersect1d(
-                        sorted_harm_bins, injection_bins_original
-                    )
-                    if injection_bins.size == 0:
-                        injection = False
-                    else:
-                        injection = True
+                    is_injection = False
+                    for injected_bins, injected_dms in zip(
+                        injection_bins_original, injection_DMs
+                    ):
+                        if dm_index in injected_dms:
+                            injection_overlap = np.intersect1d(
+                                sorted_harm_bins, injected_bins
+                            )
+                            if injection_overlap.size != 0:
+                                is_injection = True
 
                     if replace_last:
                         detection_list[-1] = (
@@ -599,7 +623,7 @@ class PowerSpectraSearch:
                                 )
                             ),
                             sigma,
-                            injection,
+                            is_injection,
                         )
                     else:
                         detection_list.append(
@@ -620,7 +644,7 @@ class PowerSpectraSearch:
                                     )
                                 ),
                                 sigma,
-                                injection,
+                                is_injection,
                             )
                         )
                     last_detection_freq = detection_freq
