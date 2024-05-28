@@ -18,10 +18,6 @@ mean_zeros = 0.522394
 mean_ones = 0.40298
 mean_twos = 0.064676
 mean_threes = 0.00995
-"""These values come from approximating the FWHMs given for interpulses in the TPA dataset
-as a Gaussian distribution with a mean and a standard deviation."""
-mean_gamma_interpulse = 0.021472222 / 2
-mean_std_interpulse = 0.020875266 / 2
 
 
 def gaussian(mu, sig):
@@ -32,67 +28,7 @@ def gaussian(mu, sig):
 def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
 
-
-"""These FWHM bins come from the Pareto distribution of the FWHM distributions of
-the TPA dataset. Divided by 360 because they are given in degrees of phase."""
-bins = (
-    np.array(
-        [
-            [
-                5.25300000e00,
-                8.05500000e00,
-                6.18700000e00,
-                9.92300000e00,
-                1.17910000e01,
-                1.64610000e01,
-                1.45930000e01,
-                2.48670000e01,
-                2.58010000e01,
-                2.01970000e01,
-                2.29990000e01,
-                3.42070000e01,
-                4.54150000e01,
-                3.79430000e01,
-                5.38210000e01,
-                8.74450000e01,
-                1.24805000e02,
-                4.63490000e01,
-                1.17333000e02,
-                5.47550000e01,
-            ],
-            [
-                1.20038722e-01,
-                1.00677637e-01,
-                9.97095839e-02,
-                9.48693127e-02,
-                6.58276865e-02,
-                6.09874153e-02,
-                6.00193606e-02,
-                4.54985481e-02,
-                4.54985481e-02,
-                4.45304934e-02,
-                4.45304934e-02,
-                4.06582769e-02,
-                3.48499521e-02,
-                2.51694097e-02,
-                2.51694097e-02,
-                2.22652467e-02,
-                1.93610837e-02,
-                1.74249755e-02,
-                1.64569219e-02,
-                1.64569219e-02,
-            ],
-        ]
-    )
-    / 360
-)
-gammas = bins[0] / 2
-weights = bins[1]
-# normalize
-weights /= sum(weights)
-
-
-def generate(noise=False, shape=gaussian):
+def generate(noise=False):
     """
     This function generates a random pulse profile to inject.
 
@@ -101,7 +37,9 @@ def generate(noise=False, shape=gaussian):
             noise: bool
                 whether or not the pulse should be distorted by white noise
     """
-    gamma = rand.choice(gammas, p=weights)
+    u = rand.choice(np.linspace(0.01, 0.99, 1000))
+    #inverse sampling theorem for an exponential distribution with lambda = 1/15
+    gamma = -15*np.log(1 - u)/2/360    
     prof = lorentzian(phis, gamma)
     prof /= max(prof)
     subpulses = rand.choice(range(4), p=(mean_zeros, mean_ones, mean_twos, mean_threes))
@@ -110,7 +48,9 @@ def generate(noise=False, shape=gaussian):
     # the chances of having an interpulse are approximately 23/(1208 - 23), as in TPA
     roll = rand.choice(range(1208 - 23))
     if roll < 23:
-        gamma_interpulse = rand.normal(mean_gamma_interpulse, mean_std_interpulse)
+        u = rand.choice(np.linspace(0.01, 0.99, 1000))
+        #inverse sampling theorem for an exponential distribution with lambda = 1/15
+        gamma_interpulse = -15*np.log(1 - u)/2/360
         x0_inter = rand.normal(0.5, 10 / 360)
         interpulse = lorentzian(phis, gamma_interpulse, x0_inter)
         interpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(interpulse)
@@ -120,7 +60,9 @@ def generate(noise=False, shape=gaussian):
 
     # subpulses
     for i in range(subpulses):
-        gamma_sub = rand.choice(gammas, p=weights)
+        u = rand.choice(np.linspace(0.01, 0.99, 1000))
+        #inverse sampling theorem for an exponential distribution with lambda = 1/15
+        gamma_sub = -15*np.log(1 - u)/2/360
         x0_sub = 0.5 + rand.normal(0, 0.1)
         subpulse = lorentzian(phis, gamma_sub, x0_sub)
         subpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(subpulse)
