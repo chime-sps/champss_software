@@ -5,7 +5,7 @@ Please first run:
 pre-commit install
 ```
 to add a local Git Hook which will automatically fix any formatting isues when commiting (no work required on your part).
-There is a second pre-commit config `.precommit-manual.yaml` which will be automatically run when you create  pull request 
+There is a second pre-commit config `.pre-commit-manual.yaml` which will be automatically run when you create  pull request 
 but those pre-commit hooks need manual fixing.
 On your machine these hooks can be used by adding `--config .pre-commit-manual.yaml` to pre-commit commands.
 
