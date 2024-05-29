@@ -18,17 +18,15 @@ def transit_time(pointing):
     datetime.datetime
         Time of the middle of the pointing's transit
     """
-    
+
     N_beam = len(pointing.max_beams)
-    for i,b in enumerate(pointing.max_beams):
+    for i, b in enumerate(pointing.max_beams):
         if i == 0:
             utc_start = b["utc_start"]
-        if i == N_beam-1:
+        if i == N_beam - 1:
             utc_end = b["utc_end"]
-    utc_transit = utc_start + (utc_end-utc_start)/2
-    transit_datetime = dt.datetime.utcfromtimestamp(
-        utc_transit
-    )
+    utc_transit = utc_start + (utc_end - utc_start) / 2
+    transit_datetime = dt.datetime.utcfromtimestamp(utc_transit)
     return transit_datetime.replace(tzinfo=pytz.UTC)
 
 

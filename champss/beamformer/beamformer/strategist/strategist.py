@@ -6,16 +6,15 @@ import attr
 import numpy as np
 import pytz
 import sps_databases.models as spsdb_models
-from sps_common import constants
-from sps_common.interfaces.beamformer import ActivePointing
-from sps_databases import db_api, db_utils, models
-
 from beamformer import CURRENT_POINTING_MAP
 from beamformer.utilities.common import (
     beammod,
     find_closest_pointing,
     find_next_transit,
 )
+from sps_common import constants
+from sps_common.interfaces.beamformer import ActivePointing
+from sps_databases import db_api, db_utils, models
 
 _sidereal_s = constants.SIDEREAL_S
 _storage_path = constants.STORAGE_PATH

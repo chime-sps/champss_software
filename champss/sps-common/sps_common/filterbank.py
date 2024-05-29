@@ -8,12 +8,14 @@ Ziggy Pleunis, ziggy.pleunis@physics.mcgill.ca
 
 
 import numpy as np
-from . import sigproc
-from .constants import TSAMP, FREQ_TOP, FREQ_BOTTOM
+
+from champss.sps-common.sps_common import sigproc
+from champss.sps-common.sps_common.constants import FREQ_BOTTOM, FREQ_TOP, TSAMP
 
 
 def create_filterbank_file(outfile, header, spectra=None, nbits=32, verbose=False):
-    """Write filterbank header and spectra to file.
+    """
+    Write filterbank header and spectra to file.
 
     Parameters
     ----------
@@ -31,7 +33,6 @@ def create_filterbank_file(outfile, header, spectra=None, nbits=32, verbose=Fals
     verbose : bool
         If `True`, be verbose.
         (Default: be quiet.)
-
     """
     dtype = get_dtype(nbits)
     header["nbits"] = nbits
@@ -50,7 +51,7 @@ def create_filterbank_file(outfile, header, spectra=None, nbits=32, verbose=Fals
             # only add recognized parameters
             continue
         if verbose:
-            print("Writing header parameter '{}'".format(parameter))
+            print(f"Writing header parameter '{parameter}'")
         value = header[parameter]
         outfile.write(sigproc.addto_hdr(parameter, value))
 
@@ -65,7 +66,8 @@ def create_filterbank_file(outfile, header, spectra=None, nbits=32, verbose=Fals
 
 
 def append_spectra(outfile, spectra, nbits=32, verbose=False):
-    """Append filterbank spectra to file.
+    """
+    Append filterbank spectra to file.
 
     Parameters
     ----------
@@ -80,7 +82,6 @@ def append_spectra(outfile, spectra, nbits=32, verbose=False):
     verbose : bool
         If `True`, be verbose.
         (Default: be quiet.)
-
     """
     dtype = get_dtype(nbits)
     if is_float(nbits):
@@ -101,8 +102,9 @@ def append_spectra(outfile, spectra, nbits=32, verbose=False):
 
 
 def is_float(nbits):
-    """For a given number of bits per sample return `True` if it
-    corresponds to floating-point samples in filterbank files.
+    """
+    For a given number of bits per sample return `True` if it corresponds to floating-
+    point samples in filterbank files.
 
     Parameters
     ----------
@@ -115,7 +117,6 @@ def is_float(nbits):
     isfloat : bool
         `True`, if `nbits` indicates the data in the file are encoded
         as floats.
-
     """
     check_nbits(nbits)
     if nbits == 32:
@@ -125,8 +126,9 @@ def is_float(nbits):
 
 
 def check_nbits(nbits):
-    """Given a number of bits per sample check to make sure
-    `filterbank.py` can cope with it.
+    """
+    Given a number of bits per sample check to make sure `filterbank.py` can cope with
+    it.
 
     Parameters
     ----------
@@ -138,7 +140,6 @@ def check_nbits(nbits):
     ------
     ValueError
         If `filterbank.py` cannot cope.
-
     """
     if nbits not in [32, 16, 8]:
         raise ValueError(
@@ -149,8 +150,8 @@ def check_nbits(nbits):
 
 
 def get_dtype(nbits):
-    """For a given number of bits per sample return a numpy-recognized
-    dtype.
+    """
+    For a given number of bits per sample return a numpy-recognized dtype.
 
     Parameters
     ----------
@@ -162,12 +163,11 @@ def get_dtype(nbits):
     -------
     dtype : dtype
         A numpy dtype string.
-
     """
     check_nbits(nbits)
 
     if is_float(nbits):
-        dtype = "float{}".format(nbits)
+        dtype = f"float{nbits}"
     else:
         dtype = "uint%d" % nbits
 
@@ -178,7 +178,7 @@ def write_to_filterbank(
     spectra, nchan, ntime, tsamp, beam, start_mjd, nbits, srcname, srcra, srcdec, oname
 ):
     """
-    Writes the beamformed spectra to a filterbank file
+    Writes the beamformed spectra to a filterbank file.
 
     Parameters
     =======
@@ -218,7 +218,6 @@ def write_to_filterbank(
     Returns
     =======
     None
-
     """
     chan_bw = np.abs(FREQ_TOP - FREQ_BOTTOM) / nchan
     fb_header = dict(

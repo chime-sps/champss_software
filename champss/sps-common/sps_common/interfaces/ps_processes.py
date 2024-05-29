@@ -17,7 +17,6 @@ from attr.setters import validate
 from attr.validators import instance_of
 from easydict import EasyDict
 from numpy.lib import recfunctions as rfn
-
 from sps_common.conversion import load_presto_dat, natural_keys
 from sps_common.interfaces.single_pointing import (
     SearchAlgorithm,
@@ -190,7 +189,6 @@ class PowerSpectra:
 
         power_spectra_shared (multiprocessing.shared_memory.SharedMemory or None):
         Shared memory object storing the power spectrum if it is kept in stored memory.
-        
     """
 
     power_spectra = attrib()
@@ -665,7 +663,7 @@ class Cluster:
     nharm: int = attrib()
     harm_idx: np.ndarray = attrib()
     injection: bool = attrib()
-    
+
     @classmethod
     def from_raw_detections(cls, detections):
         max_sig_det = detections[np.argmax(detections["sigma"])]
@@ -775,7 +773,6 @@ class PowerSpectraDetectionClusters:
 
     datetimes: List(datetime.datetime): A list of datetimes of the power
     spectra detections. For now not included when writing the file.
-
     """
 
     clusters = attrib()
@@ -828,7 +825,7 @@ class PowerSpectraDetectionClusters:
                 raise TypeError(
                     f"The dictionary for entry {v} for {attribute.name} does not"
                     " contain the correct keys"
-   )
+                )
 
     @ra.validator
     def _check_ra(self, attribute, value):

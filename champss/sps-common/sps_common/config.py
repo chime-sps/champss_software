@@ -3,7 +3,7 @@ import numpy as np
 
 def search_freq_range_from_dc(dc, base_freq=50.0, nphi=0):
     """
-    Script to return the frequency search range for a given duty cycle
+    Script to return the frequency search range for a given duty cycle.
 
     Parameters
     ----------
@@ -23,7 +23,6 @@ def search_freq_range_from_dc(dc, base_freq=50.0, nphi=0):
 
     freq_max: float
         The maximum frequency of the search
-
     """
     freq_min = 0.01
     if dc == 0:

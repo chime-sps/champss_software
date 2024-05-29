@@ -6,6 +6,7 @@ import numpy as np
 from attr import attrib, attrs, cmp_using
 from numba import njit, prange, set_num_threads
 
+
 @njit(parallel=True)
 def fdmt_iter_par(src, dest, Q, fs, nchan, df, fmin, fmax, i, maxDT, num_threads):
     """
@@ -60,6 +61,7 @@ def fdmt_iter_par(src, dest, Q, fs, nchan, df, fmin, fmax, i, maxDT, num_threads
             dest[Q[i][i_F] + i_dT, dT_mid12:] += src[
                 Q[i - 1][2 * i_F + 1] + dT_rest, : T - dT_mid12
             ]
+
 
 @attrs
 class FDMT:
@@ -204,7 +206,6 @@ class FDMT:
         # because now frontpadding works by inserting maxDT samples' worth
         # of zeros at the front of I
         return DMT[:, self.maxDT :]
-
 
     def fdmt_initialize(self, I):
         self.A[self.Q[0], :] = I

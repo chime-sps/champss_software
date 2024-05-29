@@ -14,6 +14,7 @@ from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
 from prometheus_client import Summary
+from ps_processes.utilities.utilities import rednoise_normalise
 from rfi_mitigation.cleaners.periodic import DynamicPeriodicFilter, StaticPeriodicFilter
 from scipy.interpolate import interp1d
 from sps_common.barycenter import (
@@ -25,8 +26,6 @@ from sps_common.constants import SEC_PER_DAY, TSAMP
 from sps_common.conversion import convert_ra_dec
 from sps_common.interfaces.ps_processes import PowerSpectra
 from sps_databases import db_api
-
-from ps_processes.utilities.utilities import rednoise_normalise
 
 log = logging.getLogger(__name__)
 

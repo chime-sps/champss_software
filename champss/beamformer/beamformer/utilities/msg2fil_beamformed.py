@@ -74,9 +74,7 @@ def convert_ra_dec(ra_deg, dec_deg):
 
 
 def get_best_beam(ra_deg, dec_deg, y_beam, ref_time, ref_freq=480.5):
-    """
-    Get the brightest beam from a row of beams
-    """
+    """Get the brightest beam from a row of beams."""
     beam_arr = np.asarray([y_beam, y_beam + 1000, y_beam + 2000, y_beam + 3000])
     ref_pos = beammod.get_position_from_equatorial(ra_deg, dec_deg, ref_time)
     if not -0.6 <= ref_pos[0] <= 1.0:
@@ -90,9 +88,8 @@ def get_best_beam(ra_deg, dec_deg, y_beam, ref_time, ref_freq=480.5):
 
 
 def get_beam_sen(ra_deg, dec_deg, y_beam, ref_time, fscrunch):
-    """
-    Get relative sensitivity of all 4 beams on a line
-    The relative sensitivity will add up to 1 with only values > 0.5 retained
+    """Get relative sensitivity of all 4 beams on a line The relative sensitivity will
+    add up to 1 with only values > 0.5 retained.
     """
     beam_arr = np.asarray([y_beam, y_beam + 1000, y_beam + 2000, y_beam + 3000])
     ref_pos = beammod.get_position_from_equatorial(ra_deg, dec_deg, ref_time)
@@ -115,9 +112,7 @@ def get_beam_sen(ra_deg, dec_deg, y_beam, ref_time, fscrunch):
 
 
 def get_start_time_RA_dec(msg, msg_len, beam_no):
-    """
-    Get start time and RA, Dec of a set of beams
-    """
+    """Get start time and RA, Dec of a set of beams."""
     (
         intensity,
         weights,
@@ -141,7 +136,9 @@ def get_start_time_RA_dec(msg, msg_len, beam_no):
 
 
 def cas2fil(cas, outfile, fil_header, newfile=True, verbose=False):
-    """Convert a Cascade object to a filterbank file.
+    """
+    Convert a Cascade object to a filterbank file.
+
     Parameters
     ----------
     cas : Cascade
@@ -165,7 +162,9 @@ def cas2fil(cas, outfile, fil_header, newfile=True, verbose=False):
 
 
 def caslist2fil(caslist, outfile, fil_header, newfile=True, verbose=False):
-    """Convert a Cascade object to a filterbank file.
+    """
+    Convert a Cascade object to a filterbank file.
+
     Parameters
     ----------
     cas : Cascade

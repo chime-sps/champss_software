@@ -3,8 +3,10 @@ from numpy.lib import stride_tricks
 
 
 def blur_3x3(array, mean=False):
-    """Takes the mean of/sums each element with its neighbours (within a 3x3 box centered on the element), \
-    effectively blurring the input array.
+    r"""
+    Takes the mean of/sums each element with its neighbours (within a 3x3 box centered
+    on the element), \ effectively blurring the input array.
+
     If summing, the edge and corner sums are scaled up to match the rest.
     Uses strides to form the boxes - may(untested!) be speedier and lower on memory
     :param array: 2D integer numpy array
@@ -93,18 +95,23 @@ def blur_3x3(array, mean=False):
 
 
 def blur(array, window=3, mean=True, scale_edges=True, dtype=float):
-    """Takes the mean of (or sums if set mean=False) each element with its neighbours.
-    Effectively blurs the input array.
-    Steps through array with ndenumerate and so may be slow for large arrays.
+    """
+    Takes the mean of (or sums if set mean=False) each element with its neighbours.
+
+    Effectively blurs the input array. Steps through array with ndenumerate and so may
+    be slow for large arrays.
     :param array: 2D integer numpy array
     :type array: ndarray
-    :param window: Neighbours are defined by a window x window box centered on the element, default is 3
+    :param window: Neighbours are defined by a window x window box centered on the
+        element, default is 3
     :type window: int
     :param dtype: Data type for output array. Default is float
     :type dtype: Type
-    :param scale_edges: Edges and corners are summed over fewer elements. Set True (=default) to scale them up.
+    :param scale_edges: Edges and corners are summed over fewer elements. Set True
+        (=default) to scale them up.
     :type scale_edges: bool
-    :param mean: Compute the mean of the window, default is True. If mean=False computes a sum
+    :param mean: Compute the mean of the window, default is True. If mean=False computes
+        a sum
     :type mean: bool
     :raises TypeError: window must be an odd integer
     :return: 2D numpy array of the sums/means

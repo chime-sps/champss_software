@@ -2,10 +2,14 @@
 
 import logging
 from typing import Tuple
-import numpy as np
-from scipy.stats import kstest, chi2
-from .utilities import analytical_chi2_cdf, get_ks_distance
 
+import numpy as np
+from scipy.stats import chi2, kstest
+
+from champss.ps-processes.ps_processes.utilities.utilities import (
+    analytical_chi2_cdf,
+    get_ks_distance,
+)
 
 log = logging.getLogger(__name__)
 rng = np.random.default_rng()
@@ -22,10 +26,9 @@ def validate_ps_chisqr_outlier_bins(
     ntests: int = 4,
 ) -> bool:
     """
-    For a pure-noise power spectrum, we expect a perfect chi2 distribution.
-    Knowing this, we can compute the expected number of samples above certain
-    threshold values and then compare those (with some scaling factor) to the
-    input power spectrum.
+    For a pure-noise power spectrum, we expect a perfect chi2 distribution. Knowing
+    this, we can compute the expected number of samples above certain threshold values
+    and then compare those (with some scaling factor) to the input power spectrum.
 
     The threshold values here are set according to what seems reasonable in
     terms of how many outlier values we want to see. Nominally, we want to do
@@ -116,8 +119,8 @@ def compare_ps_to_chisqr_kstest(
     """
     In theory, the noise-only power spectrum containing ndays of data has 2 * ndays
     degrees-of-freedom. If this is not the case, then it implies there is some
-    significant corruption of the power spectrum, which likely means we should not
-    use it in the long-term stack.
+    significant corruption of the power spectrum, which likely means we should not use
+    it in the long-term stack.
 
     We perform a KS test to determine whether the power spectrum amplitudes match a chi-squared
     distribution with the appropraite d.o.f. The null hypothesis is that the distributions are
@@ -325,7 +328,7 @@ def compare_ps_to_chisqr_kstest(
         )
         pdf_hist_kwargs = {"density": True, "alpha": 0.2}
         axPDF.hist(ps_truncated, bins=bins, label="truncated data", **pdf_hist_kwargs)
-        axPDF.plot(x, chi2.pdf(x, dof), color="r", label=f"$\chi^2$ PDF (dof={dof})")
+        axPDF.plot(x, chi2.pdf(x, dof), color="r", label=fr"$\chi^2$ PDF (dof={dof})")
         if upper_percentile_cut is not None:
             axPDF.axvline(
                 2 * u_percentile, color="k", ls="--", label="upper percentile cut"
@@ -344,7 +347,7 @@ def compare_ps_to_chisqr_kstest(
 
         cdf_hist_kwargs = {"density": True, "cumulative": True, "alpha": 0.2}
         axCDF.hist(ps_truncated, bins=bins, label="truncated data", **cdf_hist_kwargs)
-        axCDF.plot(x, chi2.cdf(x, dof), color="r", label=f"$\chi^2$ CDF (dof={dof})")
+        axCDF.plot(x, chi2.cdf(x, dof), color="r", label=fr"$\chi^2$ CDF (dof={dof})")
         axCDF.plot(
             x,
             analytical_chi2_cdf(
@@ -354,7 +357,7 @@ def compare_ps_to_chisqr_kstest(
                 ulim=truncated_chi2_cutoff_upper,
             ),
             color="g",
-            label=f"Truncated $\chi^2$ CDF (dof={dof})",
+            label=fr"Truncated $\chi^2$ CDF (dof={dof})",
         )
         if upper_percentile_cut is not None:
             axCDF.axvline(

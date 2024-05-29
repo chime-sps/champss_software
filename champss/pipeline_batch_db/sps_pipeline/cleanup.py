@@ -1,17 +1,15 @@
-from attr import s as attrs
+import datetime as dt
+import logging
+import shutil
+from glob import glob
+from os import path, remove
+
+import pytz
 from attr import ib as attribute
+from attr import s as attrs
 from attr.validators import instance_of
 
-from omegaconf import OmegaConf
-from os import path, remove
-from glob import glob
-import logging
-import pytz
-import shutil
-import datetime as dt
-
-from sps_common.interfaces import ActivePointing
-from . import utils
+from champss.pipeline_batch_db.sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 
@@ -29,7 +27,7 @@ def cleanup_rfi(beams_start_end):
             .replace(tzinfo=pytz.utc)
             .date()
         )
-        dates = list(set([date_start, date_end]))
+        dates = list({date_start, date_end})
         for date in dates:
             beam_path = path.join(date.strftime("%Y/%m/%d"), f"{beam_id :04d}")
             if path.exists(beam_path):
@@ -37,7 +35,7 @@ def cleanup_rfi(beams_start_end):
 
 
 @attrs(slots=True)
-class CleanUp(object):
+class CleanUp:
     """
     Class object to delete intermediate products after processing.
 
@@ -76,27 +74,35 @@ class CleanUp(object):
             if path.exists(
                 path.join(
                     file_path,
-                    f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}.fil",
+                    (
+                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}.fil"
+                    ),
                 )
             ):
                 remove(
                     path.join(
                         file_path,
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}.fil",
+                        (
+                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}.fil"
+                        ),
                     )
                 )
         if self.dedisp:
             files_to_remove = glob(
                 path.join(
                     file_path,
-                    f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}*.dat",
+                    (
+                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}*.dat"
+                    ),
                 )
             )
             files_to_remove.extend(
                 glob(
                     path.join(
                         file_path,
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}*.inf",
+                        (
+                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}*.inf"
+                        ),
                     )
                 )
             )
@@ -106,38 +112,50 @@ class CleanUp(object):
             if path.exists(
                 path.join(
                     file_path,
-                    f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra.hdf5",
+                    (
+                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra.hdf5"
+                    ),
                 )
             ):
                 remove(
                     path.join(
                         file_path,
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra.hdf5",
+                        (
+                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra.hdf5"
+                        ),
                     )
                 )
         if self.ps_detections:
             if path.exists(
                 path.join(
                     file_path,
-                    f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_detections.hdf5",
+                    (
+                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_detections.hdf5"
+                    ),
                 )
             ):
                 remove(
                     path.join(
                         file_path,
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_detections.hdf5",
+                        (
+                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_detections.hdf5"
+                        ),
                     )
                 )
         if self.candidates:
             if path.exists(
                 path.join(
                     file_path,
-                    f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.hdf5",
+                    (
+                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.hdf5"
+                    ),
                 )
             ):
                 remove(
                     path.join(
                         file_path,
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.hdf5",
+                        (
+                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.hdf5"
+                        ),
                     )
                 )

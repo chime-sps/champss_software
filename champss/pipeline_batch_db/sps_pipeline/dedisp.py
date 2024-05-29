@@ -8,7 +8,6 @@ from prometheus_client import Summary
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_dedispersion.dedisperse import dedisperse
 from sps_dedispersion.fdmt.cpu_fdmt import FDMT
-
 from sps_pipeline import utils
 
 log = logging.getLogger(__package__)
@@ -58,7 +57,13 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
         )
         + 1
     ) * num_dms_fac
-    fdmt = FDMT(fmin=FREQ_BOTTOM, fmax=FREQ_TOP, nchan=skybeam.nchan, maxDT=num_dms, num_threads=num_threads)
+    fdmt = FDMT(
+        fmin=FREQ_BOTTOM,
+        fmax=FREQ_TOP,
+        nchan=skybeam.nchan,
+        maxDT=num_dms,
+        num_threads=num_threads,
+    )
     dts = dedisperse(fdmt, skybeam, fdmt_config.chunk_size, fdmt_config.dm_step)
     log.info(
         f"FDMT Dedispersion ({pointing.ra :.2f} {pointing.dec :.2f}) completed with"

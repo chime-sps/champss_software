@@ -1,15 +1,21 @@
-import numpy as np
-import os
 import copy
+import os
 
-from .pointing import Pointing
-from .sources import generate_known_sources, generate_source
-from .utils import make_single_pointing_candidate_collection
+import numpy as np
+
+from champss.multi-pointing.sps_multi_pointing.simulator.pointing import Pointing
+from champss.multi-pointing.sps_multi_pointing.simulator.sources import (
+    generate_known_sources,
+    generate_source,
+)
+from champss.multi-pointing.sps_multi_pointing.simulator.utils import (
+    make_single_pointing_candidate_collection,
+)
 
 reference_angles = np.load(os.path.dirname(__file__) + "/reference_angles.npy")
 
 
-class PointingGrid(object):
+class PointingGrid:
     def __init__(self, num_rows=5, num_cols=6, beam_row=128):
         self.num_rows = num_rows
         self.num_cols = num_cols
@@ -24,22 +30,22 @@ class PointingGrid(object):
             np.random.choice(range(self.num_cols)),
         )
         ra, dec = self.get_ra_dec(psr_row, psr_col)
-        ppi = "{:.3f}_{:.3f}".format(ra, dec)
+        ppi = f"{ra:.3f}_{dec:.3f}"
         self.main_ppi = ppi
         pulsar_pointing_ids.append(ppi)
         if np.random.choice(["bright", "bright", "dim"]) == "bright":
             if psr_row + 1 < self.num_rows and np.random.choice([True, False]):
                 side_ra, side_dec = self.get_ra_dec(psr_row + 1, psr_col)
-                pulsar_pointing_ids.append("{:.3f}_{:.3f}".format(side_ra, side_dec))
+                pulsar_pointing_ids.append(f"{side_ra:.3f}_{side_dec:.3f}")
             if psr_row - 1 > 0 and np.random.choice([True, False]):
                 side_ra, side_dec = self.get_ra_dec(psr_row - 1, psr_col)
-                pulsar_pointing_ids.append("{:.3f}_{:.3f}".format(side_ra, side_dec))
+                pulsar_pointing_ids.append(f"{side_ra:.3f}_{side_dec:.3f}")
             if psr_col + 1 < self.num_cols and np.random.choice([True, False]):
                 side_ra, side_dec = self.get_ra_dec(psr_row, psr_col + 1)
-                pulsar_pointing_ids.append("{:.3f}_{:.3f}".format(side_ra, side_dec))
+                pulsar_pointing_ids.append(f"{side_ra:.3f}_{side_dec:.3f}")
             if psr_col - 1 > 0 and np.random.choice([True, False]):
                 side_ra, side_dec = self.get_ra_dec(psr_row, psr_col - 1)
-                pulsar_pointing_ids.append("{:.3f}_{:.3f}".format(side_ra, side_dec))
+                pulsar_pointing_ids.append(f"{side_ra:.3f}_{side_dec:.3f}")
         print("Injecting pulsar in: ", pulsar_pointing_ids)
         num_consistent_rfi_ids = np.random.choice(range(self.num_rows * self.num_cols))
         consistent_rfi_ids = []
@@ -48,7 +54,7 @@ class PointingGrid(object):
                 np.random.choice(range(self.num_rows)),
                 np.random.choice(range(self.num_cols)),
             )
-            ppi = "{:.3f}_{:.3f}".format(ra, dec)
+            ppi = f"{ra:.3f}_{dec:.3f}"
             if ppi not in consistent_rfi_ids:
                 consistent_rfi_ids.append(ppi)
 
@@ -72,7 +78,7 @@ class PointingGrid(object):
             kss = generate_known_sources([s])
             psr_row, psr_col = self.get_row_col(s["pos_ra_deg"], s["pos_dec_deg"])
             ra, dec = self.get_ra_dec(psr_row, psr_col)
-            ppi = "{:.3f}_{:.3f}".format(ra, dec)
+            ppi = f"{ra:.3f}_{dec:.3f}"
             print(
                 s["source_name"],
                 psr_row,
@@ -86,22 +92,22 @@ class PointingGrid(object):
                 if psr_row + 1 < self.num_rows and np.random.choice([True, False]):
                     side_ra, side_dec = self.get_ra_dec(psr_row + 1, psr_col)
                     known_pulsar_pointing_ids[
-                        "{:.3f}_{:.3f}".format(side_ra, side_dec)
+                        f"{side_ra:.3f}_{side_dec:.3f}"
                     ] = kss
                 if psr_row - 1 > 0 and np.random.choice([True, False]):
                     side_ra, side_dec = self.get_ra_dec(psr_row - 1, psr_col)
                     known_pulsar_pointing_ids[
-                        "{:.3f}_{:.3f}".format(side_ra, side_dec)
+                        f"{side_ra:.3f}_{side_dec:.3f}"
                     ] = kss
                 if psr_col + 1 < self.num_cols and np.random.choice([True, False]):
                     side_ra, side_dec = self.get_ra_dec(psr_row, psr_col + 1)
                     known_pulsar_pointing_ids[
-                        "{:.3f}_{:.3f}".format(side_ra, side_dec)
+                        f"{side_ra:.3f}_{side_dec:.3f}"
                     ] = kss
                 if psr_col - 1 > 0 and np.random.choice([True, False]):
                     side_ra, side_dec = self.get_ra_dec(psr_row, psr_col - 1)
                     known_pulsar_pointing_ids[
-                        "{:.3f}_{:.3f}".format(side_ra, side_dec)
+                        f"{side_ra:.3f}_{side_dec:.3f}"
                     ] = kss
 
         print(known_pulsar_pointing_ids.keys())
@@ -109,7 +115,7 @@ class PointingGrid(object):
         for r in range(self.num_rows):
             for c in range(self.num_cols):
                 ra, dec = self.get_ra_dec(r, c)
-                pointing_id = "{:.3f}_{:.3f}".format(ra, dec)
+                pointing_id = f"{ra:.3f}_{dec:.3f}"
                 # print(pointing_id, pointing_id in known_pulsar_pointing_ids)
                 rfi = []
                 psrs = []
@@ -166,11 +172,11 @@ class PointingGrid(object):
         spcc = make_single_pointing_candidate_collection(
             ra=float(ra), dec=float(dec), group_summary=gs, groups=groups
         )
-        spcc.write("{}_sim_ps_candidates.npz".format(pointing_id))
+        spcc.write(f"{pointing_id}_sim_ps_candidates.npz")
 
         if len(pulsars):
             print("Pulsars:", pulsars)
-        np.save("{}_sim_pulsars".format(pointing_id), pulsars)
+        np.save(f"{pointing_id}_sim_pulsars", pulsars)
 
     def change_brightness(self, source, factor=0.8):
         source["max_power"] *= factor

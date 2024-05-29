@@ -2,12 +2,11 @@ import datetime as dt
 
 import numpy as np
 import pytz
-
 from sps_common.interfaces import multi_pointing, ps_processes, single_pointing
 
 
 def test_power_spectra(tmp_path):
-    """Reading a saved PowerSpectra instance should be equal to the original"""
+    """Reading a saved PowerSpectra instance should be equal to the original."""
     now = dt.datetime.utcnow().replace(tzinfo=pytz.UTC)
     ps = ps_processes.PowerSpectra(
         power_spectra=np.zeros((1, 1)),
@@ -28,7 +27,9 @@ def test_power_spectra(tmp_path):
 
 
 def test_power_spectra_detections(tmp_path):
-    """Reading a saved PowerSpectraDetections instance should be equal to the original"""
+    """Reading a saved PowerSpectraDetections instance should be equal to the
+    original.
+    """
     detection_list = np.zeros(
         shape=1,
         dtype=[
@@ -54,7 +55,9 @@ def test_power_spectra_detections(tmp_path):
 
 
 def test_multi_pointing_candidate(tmp_path):
-    """Reading a saved MultiPointingCandidate instance should be equal to the original"""
+    """Reading a saved MultiPointingCandidate instance should be equal to the
+    original.
+    """
     spc = single_pointing.SinglePointingCandidate(
         freq=1.0,
         freq_arr=np.array([[1.0, 0.5], [2.0, 0.5]]),
