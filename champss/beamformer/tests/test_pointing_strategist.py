@@ -7,12 +7,11 @@ from random import random
 import numpy as np
 import pytest
 from astropy.time import Time
-from sps_common.interfaces.rfi_mitigation import SlowPulsarIntensityChunk
-
 from beamformer import AVAILAIBLE_POINTING_MAPS
 from beamformer.skybeam import SkyBeamFormer
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import get_all_data_list
+from sps_common.interfaces.rfi_mitigation import SlowPulsarIntensityChunk
 
 POINTING_MAP = AVAILAIBLE_POINTING_MAPS[0]
 TSAMP = 0.00098304 * 64

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import numpy as np
 from scipy import sparse
+from scipy.ndimage import generic_filter, median_filter
 from scipy.sparse.linalg import spsolve
-from scipy.ndimage import median_filter, generic_filter
 
 
 def baseline_estimation_medfilt(y, k=3):
@@ -24,7 +23,6 @@ def baseline_estimation_medfilt(y, k=3):
     -------
     z: np.ndarray
         The median filtered result, effectively representing the baseline.
-
     """
     z = generic_filter(y, function=np.ma.median, size=k, mode="reflect")
     return z

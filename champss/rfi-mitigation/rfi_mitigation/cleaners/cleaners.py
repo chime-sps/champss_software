@@ -1,31 +1,28 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import logging
+
 import numpy as np
 from pyfftw.interfaces.numpy_fft import rfft
-from scipy.stats.mstats import kurtosis
-
-from sps_common.constants import TSAMP, L0_NCHAN, L1_NCHAN
 from rfi_mitigation.utilities.cleaner_utils import (
-    median_absolute_deviation,
     generalised_spectral_kurtosis,
-    get_pdf_transforms,
     get_gaussian_gsk_bounds,
+    get_pdf_transforms,
+    median_absolute_deviation,
 )
 from rfi_mitigation.utilities.noise_utils import baseline_estimation_medfilt
-
+from scipy.stats.mstats import kurtosis
+from sps_common.constants import L0_NCHAN, L1_NCHAN, TSAMP
 
 log = logging.getLogger(__name__)
 
 
-class Cleaner(object):
-    """
-    This class is a superclass for other cleaners, collecting the common attributes
+class Cleaner:
+    """This class is a superclass for other cleaners, collecting the common attributes
     among all methods.
     """
 
     def __init__(self, spectra_shape):
-        #self.spectra = spectra  # assumes shape is (nchan, ntime)
+        # self.spectra = spectra  # assumes shape is (nchan, ntime)
         self.nchan = spectra_shape[0]
         self.ntime = spectra_shape[1]
         self.nsamp = spectra_shape[0] * spectra_shape[1]
@@ -48,18 +45,16 @@ class Cleaner(object):
 
 
 class DummyCleaner(Cleaner):
-    """
-    This class is a dummy cleaner that does nothing except return a binary mask that
+    """This class is a dummy cleaner that does nothing except return a binary mask that
     masks no data.
     """
 
     def __init__(self, spectra: np.ndarray):
-        super(DummyCleaner, self).__init__(spectra)
+        super().__init__(spectra)
 
     def clean(self):
         log.info("Running Dummy cleaner")
         self.cleaned = True
-        pass
 
     def summary(self):
         return dict(
@@ -75,15 +70,16 @@ class MedianAbsoluteDeviationCleaner(Cleaner):
     """
     This class accepts a spectra and detects RFI along the frequency axis by computing
     the local median and median absolute deviation (MAD) and rejecting samples outside
-    the nominated thresholds. This helps to recognize data corruption and/or missing
-    data caused by packet loss or L0/L1 GPU node failures. It will also pick up on RFI
-    tha other methods may miss.
+    the nominated thresholds.
+
+    This helps to recognize data corruption and/or missing data caused by packet loss or
+    L0/L1 GPU node failures. It will also pick up on RFI tha other methods may miss.
     """
 
     def __init__(
         self, spectra: np.ndarray, threshold: float = 4.0, stat_window_size: int = 64
     ):
-        super(MedianAbsoluteDeviationCleaner, self).__init__(spectra)
+        super().__init__(spectra)
         self.threshold = threshold
         self.stat_window_size = stat_window_size
 
@@ -110,7 +106,7 @@ class MedianAbsoluteDeviationCleaner(Cleaner):
         current_stat_window = self.stat_window_size
 
         # run the MAD cleaner on multiple channel scales
-        log.debug("cleaner window = {0} channels".format(current_stat_window))
+        log.debug(f"cleaner window = {current_stat_window} channels")
         for i in range(self.ntime // step):
             # pre-determine the time-index slice
             tsl = slice(i * step, (i + 1) * step)
@@ -145,7 +141,7 @@ class MedianAbsoluteDeviationCleaner(Cleaner):
         step = 1024
 
         for i in range(self.ntime // step):
-            log.debug("cleaning time slice {0}".format(i))
+            log.debug(f"cleaning time slice {i}")
             # pre-determine the time-index slice
             tsl = slice(i * step, (i + 1) * step)
             intensity = np.ma.mean(self.spectra[:, tsl], axis=0)
@@ -187,14 +183,16 @@ class KurtosisCleaner(Cleaner):
     """
     This class accepts a spectra and detects RFI along the frequency axis by computing
     the (time) local kurtosis in each channel and rejecting samples outside the
-    nominated percentile. This cleaning method flags entire channels (i.e. does not make
-     use of the time resolution).
+    nominated percentile.
+
+    This cleaning method flags entire channels (i.e. does not make use of the time
+    resolution).
     """
 
     def __init__(
         self, spectra: np.ndarray, percentile: float = 99.0, stat_window_size: int = 128
     ):
-        super(KurtosisCleaner, self).__init__(spectra)
+        super().__init__(spectra)
         self.percentile = percentile
         self.stat_window_size = stat_window_size
 
@@ -263,9 +261,9 @@ class KurtosisCleaner(Cleaner):
 class SpectralKurtosisCleaner(Cleaner):
     """
     This class accepts a spectra and detects RFI corrupted channels by calculating the
-    generalized spectral kurtosis (GSK). It is best suited to identification of
-    narrow-band impulsive RFI, especially as it uses a median filter approach to remove
-    the non-uniform baseline of the GSK statistics in order to detect outliers.
+    generalized spectral kurtosis (GSK). It is best suited to identification of narrow-
+    band impulsive RFI, especially as it uses a median filter approach to remove the
+    non-uniform baseline of the GSK statistics in order to detect outliers.
 
     Here, we discuss some details of the algorithm and choices made in the case of
     CHIME/SPS data. The GSK requires 3 parameters in addition to the intensity data:
@@ -333,7 +331,7 @@ class SpectralKurtosisCleaner(Cleaner):
         rfi_threshold_sigma=None,
         plot_diagnostics: bool = False,
     ):
-        super(SpectralKurtosisCleaner, self).__init__(spectra_shape)
+        super().__init__(spectra_shape)
 
         # set the scale on which the SK cleaner operates
         if scales is None:
@@ -361,7 +359,8 @@ class SpectralKurtosisCleaner(Cleaner):
         # M-sample chunk are masked
         self.chunk_mask_frac_threshold = 0.75
         log.debug(
-            f"Masking fraction threshold to flag entire chunk = {self.chunk_mask_frac_threshold}"
+            "Masking fraction threshold to flag entire chunk ="
+            f" {self.chunk_mask_frac_threshold}"
         )
 
         # define a channel range where, usually, there is little-to-no RFI (this is only
@@ -416,9 +415,7 @@ class SpectralKurtosisCleaner(Cleaner):
             d = 1
             n = 96 * n_chan_scrunch
             delta = d * n
-            spec_sk = generalised_spectral_kurtosis(
-                spec_chunk, m=scale, delta=delta
-            )
+            spec_sk = generalised_spectral_kurtosis(spec_chunk, m=scale, delta=delta)
 
             scl, loc, a, b = get_pdf_transforms(scale, n, d, ret_ab=True)
             # scale the SK spectrum based on the moments
@@ -514,14 +511,14 @@ class PowerSpectrumCleaner(Cleaner):
 
     For a correctly normalised power spectrum (where the mean value is unity), the
     probability of getting a power value >= threhsold is ~exp(-threshold). Given the
-    "trials factor" involved, and since we are deciding whether or not to flag an
-    entire channel for a large chunk of time, a threshold of ~20 is appropriate.
+    "trials factor" involved, and since we are deciding whether or not to flag an entire
+    channel for a large chunk of time, a threshold of ~20 is appropriate.
     """
 
     def __init__(
         self, spectra: np.ndarray, threshold: float = 20.0, plot_diagnostics=True
     ):
-        super(PowerSpectrumCleaner, self).__init__(spectra)
+        super().__init__(spectra)
         self.dt = TSAMP  # time sampling
         self.threshold = threshold
         self.plot_diagnostics = plot_diagnostics
@@ -561,7 +558,8 @@ class PowerSpectrumCleaner(Cleaner):
         ]
         fft_mask[chans_above_threshold, :] = True
         log.debug(
-            f"Number of channels flagged due to excess power: {len(chans_above_threshold)}"
+            "Number of channels flagged due to excess power:"
+            f" {len(chans_above_threshold)}"
         )
 
         invalid_chans = [
@@ -576,7 +574,8 @@ class PowerSpectrumCleaner(Cleaner):
 
         total_num_to_flag = len(chans_above_threshold) + len(invalid_chans)
         log.debug(
-            f"Total number of channels to mask = {total_num_to_flag} (out of {self.nchan})"
+            f"Total number of channels to mask = {total_num_to_flag} (out of"
+            f" {self.nchan})"
         )
         self.cleaner_mask = np.logical_or(self.spectra.mask, fft_mask)
 

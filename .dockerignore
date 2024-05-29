@@ -3,8 +3,8 @@ docs/*
 .git/*
 .gitignore
 .dockerignore
-.precommit-automatic.yaml
-.precommit-manual.yaml
+.pre-commit-config.yaml
+.pre-commit-manual.yaml
 Dockerfile
 LICENSE
 poetry.lock

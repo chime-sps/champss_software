@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import copy
 import itertools
 import logging
 from collections import OrderedDict
@@ -551,7 +550,7 @@ class Clusterer:
         if scheme in ["combined", "dmfreq"]:
             log.info("Starting freq-DM distance metric computation")
             metric_array = pairwise_distances(data)
-            #metric_array = np.nan_to_num(metric_array, posinf=10000)
+            # metric_array = np.nan_to_num(metric_array, posinf=10000)
             log.info("Finished freq-DM distance metric computation")
 
         if scheme in ["combined", "harm"]:
@@ -630,7 +629,9 @@ class Clusterer:
                     if scheme == "combined":
                         if self.metric_combination == "multiply":
                             metric_array[index_0, index_1] *= metric
-                            metric_array[index_1, index_0] = metric_array[index_0, index_1]
+                            metric_array[index_1, index_0] = metric_array[
+                                index_0, index_1
+                            ]
                         elif self.metric_combination == "replace":
                             metric_array[index_0, index_1] = metric
                             metric_array[index_1, index_0] = metric
@@ -742,10 +743,12 @@ class Clusterer:
                     nharm=cluster.nharm,
                     harm_idx=cluster.harm_idx,
                     injection=cluster.injection,
-                    )
+                )
                 current_label += 1
         if zero_dm_count:
-            log.info(f"Filtered {zero_dm_count} clusters below or equal {cluster_dm_cut} DM.")
+            log.info(
+                f"Filtered {zero_dm_count} clusters below or equal {cluster_dm_cut} DM."
+            )
         used_detections_len = len(detections)
         return clusters, summary, sig_limit, used_detections_len
 

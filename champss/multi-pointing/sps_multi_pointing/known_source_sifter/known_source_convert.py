@@ -1,8 +1,13 @@
-"""Add the things in the .npy file into the mongodb. This file can be run once
-to populate the initial `KnownSources` collection."""
+"""
+Add the things in the .npy file into the mongodb.
 
+This file can be run once
+to populate the initial `KnownSources` collection.
+"""
+
+import bson
 import numpy as np
-import pymongo, bson
+import pymongo
 
 if __name__ == "__main__":
     client = pymongo.MongoClient()
@@ -13,7 +18,7 @@ if __name__ == "__main__":
 
     for entry in ks_db_dicts:
         # Use existing id as ObjectID in hex
-        entry["_id"] = bson.ObjectId("{0:0>24x}".format(entry["id"]))
+        entry["_id"] = bson.ObjectId("{:0>24x}".format(entry["id"]))
 
         # Convert numpy types into bson-compatible base python types
         entry["source_type"] = int(entry["source_type"])
@@ -53,7 +58,7 @@ if __name__ == "__main__":
 
     # Was everything inserted propertly?
     insert_result = known_source_db.insert_many(ks_db_dicts)
-    if set(insert_result.inserted_ids) == set(entry["_id"] for entry in ks_db_dicts):
+    if set(insert_result.inserted_ids) == {entry["_id"] for entry in ks_db_dicts}:
         print("Inserted all the entries. Done.")
     else:
         print("Didn't insert all the entries. Double-check the database.")

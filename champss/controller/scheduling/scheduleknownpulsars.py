@@ -9,6 +9,7 @@ from astropy.time import Time
 from beamformer.strategist.strategist import PointingStrategist
 from sps_databases import db_api, db_utils
 
+
 def get_folding_pars(psr):
     """
     Return ra and dec for a pulsar from the known_source database

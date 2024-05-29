@@ -57,7 +57,8 @@ def plot_dm_freq_3(fig, panel, grid_points, candidate):
     if "nharm" in candidate.dm_freq_sigma:
         current_subplot_index += 1
         alpha_nharm = np.clip(
-            candidate.dm_freq_sigma["sigmas"] / np.nanmax(candidate.dm_freq_sigma["sigmas"]),
+            candidate.dm_freq_sigma["sigmas"]
+            / np.nanmax(candidate.dm_freq_sigma["sigmas"]),
             0,
             1,
         ).astype(float)

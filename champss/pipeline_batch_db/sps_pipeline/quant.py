@@ -1,20 +1,18 @@
-"""Executes the quantization and down-sampling pipeline component
-"""
-from glob import glob
+"""Executes the quantization and down-sampling pipeline component."""
+import datetime
 import logging
 import os
+from glob import glob
 from os import path
-from prometheus_client import Summary
-import numpy as np
-import datetime
-import pytz
 
+import numpy as np
+import pytz
 from ch_frb_l1 import rpc_client
+from prometheus_client import Summary
 from sps_common.conversion import subband
 from spshuff import l1_io
 
-from . import utils
-
+from champss.pipeline_batch_db.sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 
@@ -28,7 +26,7 @@ quant_processing_time = Summary(
 
 
 def _overlap(msg_file, start, end):
-    """how much does the range (start1, end1) overlap with (start2, end2)"""
+    """How much does the range (start1, end1) overlap with (start2, end2)"""
     chunk = rpc_client.read_msgpack_file(msg_file)
     chunk_start = chunk.frame0_nano * 1e-9 + (chunk.fpga0 * 2.56e-6)
     chunk_end = chunk_start + (chunk.fpgaN * 2.56e-6)
@@ -42,7 +40,8 @@ def _overlap(msg_file, start, end):
 
 
 def run(utc_start, utc_end, beam_row, nchan):
-    """Execute the quantization step on a set of data.
+    """
+    Execute the quantization step on a set of data.
 
     Parameters
     ----------
@@ -70,7 +69,7 @@ def run(utc_start, utc_end, beam_row, nchan):
     date_end = (
         datetime.datetime.utcfromtimestamp(utc_end).replace(tzinfo=pytz.utc).date()
     )
-    dates = list(set([date_start, date_end]))
+    dates = list({date_start, date_end})
 
     for date in dates:
         file_path = path.join(archive_root, date.strftime("/intensity/raw/%Y/%m/%d"))
@@ -86,7 +85,7 @@ def run(utc_start, utc_end, beam_row, nchan):
 
 def convert_msgpack_to_huff(filename, nsub=16384, root=archive_root + "/sps/raw"):
     """
-    converts L1 intensity msgpack data to huffman encoded binary data.
+    Converts L1 intensity msgpack data to huffman encoded binary data.
 
     Parameters
     ==========
@@ -98,7 +97,6 @@ def convert_msgpack_to_huff(filename, nsub=16384, root=archive_root + "/sps/raw"
     =======
     new_filename: str
         huffman encoded data file
-
     """
     chunk = rpc_client.read_msgpack_file(filename)
     intensity, weights = chunk.decode()
@@ -120,7 +118,7 @@ def convert_msgpack_to_huff(filename, nsub=16384, root=archive_root + "/sps/raw"
     dt = datetime.datetime.fromtimestamp(unix_start)
     new_filename = path.join(root, dt.strftime("%Y/%m/%d"), f"{ beam :04d}")
     os.makedirs(new_filename, exist_ok=True)
-    new_filename += "/{0:.0f}_{1:.0f}.dat".format(
+    new_filename += "/{:.0f}_{:.0f}.dat".format(
         unix_start,
         unix_end,
     )

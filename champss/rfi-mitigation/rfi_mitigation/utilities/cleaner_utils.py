@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-from typing import Union, Tuple
 import logging
-import numpy as np
-from scipy.special import gamma, gammainc
-from scipy.optimize import newton
-from itertools import groupby, count
 import warnings
+from itertools import count, groupby
+from typing import Tuple, Union
 
+import numpy as np
+from scipy.optimize import newton
+from scipy.special import gamma, gammainc
 from sps_common.constants import L1_NCHAN
-
 
 log = logging.getLogger(__name__)
 
 
 def known_bad_channels(nchan: int = 16384) -> list:
     """
-    Given a nominal set of bad channels evaluated at the native L1 frequency
+    Given a nominal set of bad channels evaluated at the native L1 frequency.
+
     resolution, this function will downsample the bad frequency mask and
     return a list of channel indices in the range (0, nchan - 1) inclusive
     to mask.
@@ -31,7 +30,6 @@ def known_bad_channels(nchan: int = 16384) -> list:
     -------
     downsampled_badchans: list
         A list of unique bad channel indices at the given frequency resolution
-
     """
     # TODO: This bad channel mask needs to be re-evaluated,
     #  and the ordering needs to be checked
@@ -60,7 +58,7 @@ def known_bad_channels(nchan: int = 16384) -> list:
     else:
         log.info("Bad channel mask will be downsampled to match data shape")
         ffact = L1_NCHAN // nchan
-        log.info("  downsampling factor = {0}".format(ffact))
+        log.info(f"  downsampling factor = {ffact}")
 
         split_badchans = [
             np.array(list(g))
@@ -121,15 +119,17 @@ def generalised_spectral_kurtosis(
     spec: np.ndarray, m: int, delta: Union[float, np.ndarray] = 1.0
 ) -> np.ndarray:
     """
-    Compute the Generalised Spectral Kurtosis estimator base on
-    (Nita, Gary & Hellbourg 2017, eq. 5), where the delta = d * N parameter encodes the
-    true shape of the data distribution
+    Compute the Generalised Spectral Kurtosis estimator base on (Nita, Gary & Hellbourg
+    2017, eq.
+
+    5), where the delta = d * N parameter encodes the true shape of the data
+    distribution
     """
     # assuming that the spectrum is of shape (nchan, ntime) then perform a summation
     # over the power measurements and their square over the M time samples
     s1_sq = np.nansum(spec, axis=1) ** 2
     s2 = np.nansum(spec**2, axis=1)
-    warnings.filterwarnings('ignore')
+    warnings.filterwarnings("ignore")
     gsk = ((m * delta + 1) / float(m - 1)) * (m * (s2 / s1_sq) - 1)
 
     return gsk
@@ -178,8 +178,9 @@ def gsk_lower_root_from_moments(x: float, mom2: float, mom3: float, p: float) ->
 
 
 def gsk_moments(m: int, n: float, d: float) -> Tuple[float, float]:
-    """Based on the input SK parameter, compute the second and third
-    central moments. By definition, the first central moment is 1.
+    """
+    Based on the input SK parameter, compute the second and third central moments. By
+    definition, the first central moment is 1.
 
     :param m: Number of off-board accumulations before S1 and S2 are computed
     :type m: int
@@ -188,7 +189,6 @@ def gsk_moments(m: int, n: float, d: float) -> Tuple[float, float]:
     :param d: The assumed shape parameter of the Gamma probability distribution
         describing the input data.
     :type d: float
-
     :return: The second and third central moments
     :rtype: Tuple[float, float]
     """
@@ -211,20 +211,23 @@ def gsk_moments(m: int, n: float, d: float) -> Tuple[float, float]:
 def transform_using_type6(
     m2: float, beta1: float, alpha1: float, ret_alpha_beta: bool = False
 ) -> Union[Tuple[float, float], Tuple[float, float, float, float]]:
-    """Compute the transformation corrections needed when data is in the
-    Pearson Type VI error distribution regime.
+    """
+    Compute the transformation corrections needed when data is in the Pearson Type VI
+    error distribution regime.
 
     :param m2: The SK second central moment
     :type m2: float
-    :param beta1: First pre-computed error distribution evaluation parameter,
-        the ratio of third and second central moments (see get_pdf_transforms)
+    :param beta1: First pre-computed error distribution evaluation parameter, the ratio
+        of third and second central moments (see get_pdf_transforms)
     :type beta1: float
-    :param alpha1: Second pre-computed error distribution evaluation parameter (see get_pdf_transforms)
+    :param alpha1: Second pre-computed error distribution evaluation parameter (see
+        get_pdf_transforms)
     :type alpha1: float
-    :param ret_alpha_beta: Whether to return intermediate quantities (only useful if debugging), defaults to False
+    :param ret_alpha_beta: Whether to return intermediate quantities (only useful if
+        debugging), defaults to False
     :type ret_alpha_beta: bool, optional
-
-    :return: The transformation parameters (scale and location), and optionally intermediate values
+    :return: The transformation parameters (scale and location), and optionally
+        intermediate values
     :rtype: Union[Tuple[float, float], Tuple[float, float, float, float]]
     """
     # compute the transformation variable required for a Pearson Type VI distribution
@@ -247,9 +250,9 @@ def transform_using_type6(
 def get_pdf_transforms(
     m: int, n: float, d: float, ret_ab=False
 ) -> Union[Tuple[float, float], Tuple[float, float, float, float]]:
-    """Based on the input SK paramteres, determine which kind of
-    Error distribution applies to our data and reeturn the correct
-    transformation parameters.
+    """
+    Based on the input SK paramteres, determine which kind of Error distribution applies
+    to our data and reeturn the correct transformation parameters.
 
     :param m: Number of off-board accumulations before S1 and S2 are computed
     :type m: int
@@ -258,10 +261,11 @@ def get_pdf_transforms(
     :param d: The assumed shape parameter of the Gamma probability distribution
         describing the input data.
     :type d: float
-    :param ret_ab: Whether to return intermediate quantities (only useful if debugging), defaults to False
+    :param ret_ab: Whether to return intermediate quantities (only useful if debugging),
+        defaults to False
     :type ret_ab: bool, optional
-
-    :return: The transformation parameters (scale and location), and optionally intermediate values
+    :return: The transformation parameters (scale and location), and optionally
+        intermediate values
     :rtype: Union[Tuple[float, float], Tuple[float, float, float, float]]
     """
     # compute often-used quantities up-front
@@ -327,8 +331,9 @@ def get_pdf_transforms(
 def get_gaussian_gsk_bounds(
     m: int, n: float, d: float, eta: float = 3
 ) -> Tuple[float, float]:
-    """Based on the input SK paramteres, determine the theoretical Gaussian
-    RFI threshold values.
+    """
+    Based on the input SK paramteres, determine the theoretical Gaussian RFI threshold
+    values.
 
     :param m: Number of off-board accumulations before S1 and S2 are computed
     :type m: int
@@ -339,7 +344,6 @@ def get_gaussian_gsk_bounds(
     :type d: float
     :param eta: Equivalent Gaussian sigma cut-off threshold, defaults to 3
     :type eta: float, optional
-
     :return: The lower and upper SK RFI thresholds.
     :rtype: Tuple[float, float]
     """
@@ -502,9 +506,8 @@ def generalised_sk_shape_from_data(
 
 # define some plotting functions used for debugging/diagnostic purposes
 def plot_diagnostic_baseline(flagged_spec_sk, baseline, scale, idx):
-    """
-    Plot the GSK spectrum with basic flagging applied, and the corresponding median
-    baseline
+    """Plot the GSK spectrum with basic flagging applied, and the corresponding median
+    baseline.
     """
     import matplotlib.pyplot as plt
 
@@ -520,7 +523,7 @@ def plot_diagnostic_baseline(flagged_spec_sk, baseline, scale, idx):
 
 
 def plot_diagnostic_delta(delta, idx):
-    """Plot the frequency-dependent data distribution shape spectrum"""
+    """Plot the frequency-dependent data distribution shape spectrum."""
     import matplotlib.pyplot as plt
 
     plt.plot(delta)
@@ -532,7 +535,7 @@ def plot_diagnostic_delta(delta, idx):
 
 
 def plot_diagnostic_masked_sk(spec_sk, mask, llim, ulim, scale, mean_delta, idx):
-    """Plot the "final" masked GSK spectrum, effectively a before/after snapshot"""
+    """Plot the "final" masked GSK spectrum, effectively a before/after snapshot."""
     import matplotlib.pyplot as plt
 
     masked = np.ma.masked_array(spec_sk, mask=mask)
@@ -563,7 +566,7 @@ def plot_diagnostic_masked_sk(spec_sk, mask, llim, ulim, scale, mean_delta, idx)
 
 
 def plot_diagnostic_masked_spectrum(spec, mask, idx):
-    """Plot the masked 2D spectrum for the given chunk of data"""
+    """Plot the masked 2D spectrum for the given chunk of data."""
     import matplotlib.pyplot as plt
 
     full_mask = np.logical_or(spec.mask, mask[:, np.newaxis])
@@ -583,7 +586,7 @@ def plot_diagnostic_masked_spectrum(spec, mask, idx):
 
 
 def plot_diagnostic_power_spectrum(freqs, pspec, chan, thresh=20, nchan=16384):
-    """Plot the FFT power spectrum for a given channel's data"""
+    """Plot the FFT power spectrum for a given channel's data."""
     import matplotlib.pyplot as plt
 
     plt.plot(freqs, pspec)

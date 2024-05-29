@@ -3,7 +3,8 @@ import sps_pipeline
 
 
 def test_data_files():
-    """Access package config file using pkg_resources APIs (setuptools).
+    """
+    Access package config file using pkg_resources APIs (setuptools).
 
     https://setuptools.readthedocs.io/en/latest/pkg_resources.html#basic-resource-access
     """

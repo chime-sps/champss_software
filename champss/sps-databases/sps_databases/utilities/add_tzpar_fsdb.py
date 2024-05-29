@@ -1,17 +1,21 @@
-import os
 import glob
+import os
+
 import click
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from beamformer.utilities.dm import DMMap
-from sps_databases import db_utils, db_api
-from sps_multi_pointing.known_source_sifter.add_tzpar_sources import ra_dec_from_ecliptic
+from sps_databases import db_api, db_utils
+from sps_multi_pointing.known_source_sifter.add_tzpar_sources import (
+    ra_dec_from_ecliptic,
+)
+
 
 def add_source_to_database(payload):
     """
-    Add a source into the follow-up source database, given a dictionary including all the properties required by the
-    database.
+    Add a source into the follow-up source database, given a dictionary including all
+    the properties required by the database.
 
     Arguments
     ---------
@@ -37,8 +41,8 @@ def add_source_to_database(payload):
         db_api.update_followup_source(fs["_id"], payload)
     else:
         print(
-            f"Parfile for {payload['source_name']} is older than the entry in the follow-up source database. "
-            f"Not adding it to the database"
+            f"Parfile for {payload['source_name']} is older than the entry in the"
+            " follow-up source database. Not adding it to the database"
         )
     return
 
@@ -65,8 +69,10 @@ def add_source_to_database(payload):
 )
 def main(path, db_port, db_host, db_name):
     """
-    The script loops through the parfiles in a directory to extract the relevant values to be added to the known
-    source database. The attributes extracted are :
+    The script loops through the parfiles in a directory to extract the relevant values
+    to be added to the known source database.
+
+    The attributes extracted are :
     ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
     'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
     'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
@@ -77,7 +83,7 @@ def main(path, db_port, db_host, db_name):
     dmm = DMMap()
     for f in sorted(glob.glob(f"{tzpar_path}/*.par")):
         payload = {}
-        with open(f, "r") as infile:
+        with open(f) as infile:
             elong = np.nan
             elat = np.nan
             for line in infile:
@@ -130,6 +136,7 @@ def main(path, db_port, db_host, db_name):
         except Exception as e:
             print(f"Failed to add {payload['source_name']} to the database.")
             print(e)
+
 
 if __name__ == "__main__":
     main()

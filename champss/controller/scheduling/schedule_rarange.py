@@ -83,7 +83,7 @@ def main(beams, ra_range):
 
         if (Tnow.mjd > acq["Tstart"].mjd) and (Tnow.mjd < acq["Tend"].mjd):
             if not current_acq:
-                for i,beamrow in enumerate(acq["beams"]):
+                for i, beamrow in enumerate(acq["beams"]):
                     outfile.write(f"{Tnow.isot} Starting acq, row {beamrow} \n")
 
                     outfile.flush()

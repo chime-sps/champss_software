@@ -3,7 +3,6 @@
 from random import random
 
 import numpy as np
-
 from beamformer.strategist import mapper
 
 

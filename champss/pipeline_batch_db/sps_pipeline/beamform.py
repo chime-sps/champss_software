@@ -1,15 +1,12 @@
-"""Executes the beamforming pipeline component
-"""
+"""Executes the beamforming pipeline component."""
 import logging
-from omegaconf import OmegaConf
 import os
 from os import path
-from prometheus_client import Summary
 
 from beamformer.skybeam import SkyBeamFormer
-
-from . import utils
-
+from omegaconf import OmegaConf
+from prometheus_client import Summary
+from sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 
@@ -21,7 +18,8 @@ beamform_processing_time = Summary(
 
 
 def run(pointing, beamformer, fdmt, num_threads, basepath):
-    """Execute the beamforming step on a `pointing`
+    """
+    Execute the beamforming step on a `pointing`
 
     Parameters
     ----------

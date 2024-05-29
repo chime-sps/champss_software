@@ -1,11 +1,13 @@
-import yaml
 import numpy as np
+import yaml
+from candidate_processor import feature_generator, harmonic_filter
 from sps_common.interfaces.single_pointing import SearchAlgorithm
-from candidate_processor import harmonic_filter, feature_generator
 
 
 def test_harmonically_related_clusters(tmp_path):
-    """Reading a saved HarmonicallyRelatedClusters instance should be equal to the original"""
+    """Reading a saved HarmonicallyRelatedClusters instance should be equal to the
+    original.
+    """
     cluster = np.zeros(
         shape=1,
         dtype=[
