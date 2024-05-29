@@ -68,13 +68,11 @@ def generate(noise=False):
         subpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(subpulse)
         prof += subpulse
 
-    sigma = rand.choice(np.linspace(5, 25))
-
     # working on this-- the standard deviation isn't correct
     if noise:
         prof += rand.normal(0, 1, len(phis))
 
-    return prof, sigma
+    return prof
 
 
 class Injection:
@@ -256,6 +254,7 @@ def main(pspec, injection_profile="random", num_injections=1):
         np.linspace(0.1, 100, 10000), num_injections, replace=False
     )
     default_dm = rand.choice(np.linspace(10, 200, 10000), num_injections, replace=False)
+    default_sigma = rand.choice(np.linspace(5, 20, 1000), num_injections, replace = False)
 
     defaults = {
         "gaussian": (gaussian(0.5, 0.025), 20, default_freq[0], 121.4375),
@@ -287,8 +286,8 @@ def main(pspec, injection_profile="random", num_injections=1):
 
     elif injection_profile == "random":
         for i in range(num_injections):
-            pulse, sigma = generate()
-            injection_profiles.append([pulse, sigma, default_freq[i], default_dm[i]])
+            pulse = generate()
+            injection_profiles.append([pulse, default_sigma[i], default_freq[i], default_dm[i]])
 
     else:
         injection_profiles.append(injection_profile)

@@ -218,10 +218,13 @@ class PowerSpectraSearch:
                 injection_bins_original = []
                 injection_DMs = []
                 with open(injection_path) as file:
-                    data = yaml.safe_load(file)
+                    data = yaml.load(file, Loader = yaml.Loader)
                     if len(injection_indices) == 0:
                         injection_indices = np.arange(len(data))
                     for injection_index in injection_indices:
+                        log.info(f"DM: {data[injection_index]['DM']}")
+                        log.info(f"sigma: {data[injection_index]['sigma']}")
+                        log.info(f"frequency: {data[injection_index]['frequency']}")
                         pulse = np.array(data[injection_index]["profile"])
                         frequency = data[injection_index]["frequency"]
                         DM = data[injection_index]["DM"]

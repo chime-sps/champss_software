@@ -835,7 +835,8 @@ def main(
 )
 @click.option(
     "--injection-idx",
-    default = 0,
+    default = [],
+    multiple=True,
     help = (
         "Index of pulse to inject from yml file"
     ),
