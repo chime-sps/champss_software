@@ -645,6 +645,7 @@ def main(
                             config.cands.get(
                                 "write_harmonically_related_clusters", False
                             ),
+                            only_injections,
                         )
                     gc.collect()
                 if stack:
@@ -941,6 +942,7 @@ def stack_and_search(
                 plot,
                 plot_threshold,
                 config.cands.get("write_harmonically_related_clusters", False),
+                only_injections,
             )
     else:
         power_spectra_monthly = None
@@ -970,6 +972,7 @@ def stack_and_search(
                         plot,
                         plot_threshold,
                         config.cands.get("write_harmonically_related_clusters", False),
+                        only_injections,
                     )
     try:
         power_spectra_monthly.unlink_shared_memory()
