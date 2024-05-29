@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import argparse
 import os
+
 import yaml
 from candidate_processor.clustering import PowerSpectraDetectionClusterer
+from candidate_processor.feature_generator import Features
 from candidate_processor.harmonic_filter import (
-    HarmonicFilter,
     HarmonicallyRelatedClustersCollection,
+    HarmonicFilter,
 )
 from sps_common.interfaces.ps_processes import PowerSpectraDetections
-from candidate_processor.feature_generator import Features
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -65,13 +65,18 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-o",
-        help="output filename to store the single pointing candidate collection npz file",
+        help=(
+            "output filename to store the single pointing candidate collection npz file"
+        ),
         type=str,
         default="./single_pointing_candidate_collection.npz",
     )
     parser.add_argument(
         "-o_hrcs",
-        help="npz filename to store the harmonically related clusters, if wish to write them",
+        help=(
+            "npz filename to store the harmonically related clusters, if wish to write"
+            " them"
+        ),
         type=str,
         default="",
     )

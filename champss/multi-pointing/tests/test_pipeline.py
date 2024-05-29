@@ -1,12 +1,13 @@
 import glob
+
 import pytest
-from sps_multi_pointing import grouper, classifier, known_source_sifter
-from sps_common.interfaces.single_pointing import SinglePointingCandidateCollection
 from sps_common.interfaces.multi_pointing import (
     CandidateClassification,
     CandidateClassificationLabel,
     KnownSourceLabel,
 )
+from sps_common.interfaces.single_pointing import SinglePointingCandidateCollection
+from sps_multi_pointing import classifier, grouper, known_source_sifter
 
 
 @pytest.fixture(scope="module")

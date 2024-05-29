@@ -2,9 +2,8 @@
 
 import attr
 import numpy as np
-from scipy.interpolate import LinearNDInterpolator
-
 from beamformer import PATH
+from scipy.interpolate import LinearNDInterpolator
 
 """
 Note:
@@ -23,8 +22,8 @@ class DMMap:
 
     def get_dm_ne2001(self, latitude: float, longitude: float) -> np.ndarray:
         """
-        Uses a map of DM values generate by the NE2001 software to obtain maximum Galactic
-        component of DM, given a position of the source.
+        Uses a map of DM values generate by the NE2001 software to obtain maximum
+        Galactic component of DM, given a position of the source.
 
         Parameters
         ----------
@@ -54,8 +53,8 @@ class DMMap:
 
     def get_dm_ymw16(self, latitude: float, longitude: float) -> np.ndarray:
         """
-        Uses a map of DM values generate by the YMW16 software to obtain maximum Galactic
-        component of DM, given a position of the source.
+        Uses a map of DM values generate by the YMW16 software to obtain maximum
+        Galactic component of DM, given a position of the source.
 
         Parameters
         ----------

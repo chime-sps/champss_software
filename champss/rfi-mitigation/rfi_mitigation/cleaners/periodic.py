@@ -5,13 +5,13 @@ from typing import List
 
 import numpy as np
 import yaml
+
+# import location for data files to exist so that importlib can correctly find them
+from rfi_mitigation import data as rfi_mitigation_data
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 from sps_common.barycenter import bary_from_topo_freq, topo_from_bary_freq
 from sps_databases import db_api
-
-# import location for data files to exist so that importlib can correctly find them
-from rfi_mitigation import data as rfi_mitigation_data
 
 try:
     import importlib.resources as pkg_resources

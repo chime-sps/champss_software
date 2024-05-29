@@ -1,10 +1,10 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.cluster import DBSCAN
 import logging
-import pandas as pd
 
-from sps_databases import db_utils, db_api
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.cluster import DBSCAN
+from sps_databases import db_api, db_utils
 
 log = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 def clean_power_spec(data, threshold):
     sigmas = np.asarray([d[4] for d in data])
     to_pop = np.where(sigmas < threshold)[0]
-    log.info("Number of low sigma candidates to remove = {}".format(len(to_pop)))
+    log.info(f"Number of low sigma candidates to remove = {len(to_pop)}")
     data = np.delete(data, to_pop, axis=0)
 
     return data
@@ -20,9 +20,9 @@ def clean_power_spec(data, threshold):
 
 def clean_hhat(data):
     """
-    Identify bad frequencies in hhat array.
-    Performs a median across the DM space and identifies common frequencies.
-    Astrophysical frequencies are expected to be clustered near a small DM range.
+    Identify bad frequencies in hhat array. Performs a median across the DM space and
+    identifies common frequencies. Astrophysical frequencies are expected to be
+    clustered near a small DM range.
 
     Paramaters
     ==========
@@ -87,7 +87,7 @@ def extract_bright_hhat(
         plt.xscale("Log")
         plt.xlabel("spin freq Hz")
         plt.ylabel("DM (pc/cc)")
-        plt.title("Duty cycle: {} %".format(dc_label * 100))
+        plt.title(f"Duty cycle: {dc_label * 100} %")
         plt.savefig(filename)
         plt.clf()
     return wh
@@ -95,8 +95,8 @@ def extract_bright_hhat(
 
 def perform_clustering(data, dc_value, min_group_size=5, filename=None):
     """
-    Perform a clustering analysis on the hhat-array for a given duty cycle.
-    This uses Scikit Learn's DBSCAN algorithm.
+    Perform a clustering analysis on the hhat-array for a given duty cycle. This uses
+    Scikit Learn's DBSCAN algorithm.
 
     Paramaters
     ==========
@@ -115,7 +115,7 @@ def perform_clustering(data, dc_value, min_group_size=5, filename=None):
     groups: dict of np.ndarray
         groups of clustered hhat points.
     """
-    log.info("Number of points to cluster = {}".format(len(data)))
+    log.info(f"Number of points to cluster = {len(data)}")
     # Compute DBSCAN
     db = DBSCAN(eps=0.125, min_samples=3).fit(data[:, 0:2])
     core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
@@ -156,7 +156,8 @@ def rescale_clusters(
     freq_labels,
 ):
     """
-    Rescale values to original level and make the final groups that will become candidates.
+    Rescale values to original level and make the final groups that will become
+    candidates.
 
     Paramaters
     ==========
@@ -208,7 +209,8 @@ def rescale_power_spec_clusters(
     groups, curr_freq_diff, curr_dm_diff, original_freq_diff, original_dm_diff
 ):
     """
-    Rescale values to original level and make the final groups that will become candidates.
+    Rescale values to original level and make the final groups that will become
+    candidates.
 
     Paramaters
     ==========
@@ -255,8 +257,8 @@ def rescale_power_spec_clusters(
 
 def scale_data(data, current_diff=0.0, diff=0.125):
     """
-    Scale the data for clustering analysis.
-    increase the spacing in the data to an optimal level.
+    Scale the data for clustering analysis. increase the spacing in the data to an
+    optimal level.
 
     Parameters
     ==========
@@ -279,8 +281,8 @@ def scale_data(data, current_diff=0.0, diff=0.125):
 
 def make_rec_array(curr_group):
     """
-    Make a dictionary of array into a dictionary of record array of type
-    dtype=[("f", "float"), ("dm", "float"), ("dc", "float"), ("sigma", "float")].
+    Make a dictionary of array into a dictionary of record array of type dtype=[("f",
+    "float"), ("dm", "float"), ("dc", "float"), ("sigma", "float")].
 
     Parameters
     ==========
@@ -345,10 +347,10 @@ def group_summary(group):
 
 def harmonic_filter(summary, freq_spacing, dm_thresh=0.99, f_thresh=0.1):
     """
-    Associate any candidates of the same frequency with each other.
-    Apply a harmonic filter to group candidates that are harmonically related to the brightest detection.
+    Associate any candidates of the same frequency with each other. Apply a harmonic
+    filter to group candidates that are harmonically related to the brightest detection.
     It searches up to 32 harmonics above and 8 harmonics below the brightest detection.
-    Does not group harmonics for candidates with f<f_thresh or dm<dm_thresh
+    Does not group harmonics for candidates with f<f_thresh or dm<dm_thresh.
 
     Parameters
     ----------
@@ -402,7 +404,8 @@ def harmonic_filter(summary, freq_spacing, dm_thresh=0.99, f_thresh=0.1):
         try:
             harms_n.extend(duplicate_indices[sorted_summary_idx[n]])
             log.debug(
-                f"{sorted_summary_idx[n]} has duplicate freq candidates {duplicate_indices[sorted_summary_idx[n]]}"
+                f"{sorted_summary_idx[n]} has duplicate freq candidates"
+                f" {duplicate_indices[sorted_summary_idx[n]]}"
             )
         except (
             KeyError
@@ -468,7 +471,8 @@ def harmonic_filter(summary, freq_spacing, dm_thresh=0.99, f_thresh=0.1):
                     try:
                         harms_n.extend(duplicate_indices[sorted_summary_idx[m]])
                         log.debug(
-                            f"{sorted_summary_idx[m]} has duplicates {duplicate_indices[sorted_summary_idx[m]]}"
+                            f"{sorted_summary_idx[m]} has duplicates"
+                            f" {duplicate_indices[sorted_summary_idx[m]]}"
                         )
                     except KeyError:
                         pass
@@ -527,7 +531,6 @@ def plot_group(
     Returns
     =======
     None
-
     """
     fig = plt.figure(figsize=figsize)
     fig.suptitle(plot_title, fontsize=16)

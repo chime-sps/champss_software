@@ -12,7 +12,6 @@ import numpy as np
 import yaml
 from attr import attrib, attrs, converters
 from attr.validators import deep_iterable, instance_of
-
 from sps_common.constants import (
     MAX_SEARCH_DM,
     MAX_SEARCH_FREQ,

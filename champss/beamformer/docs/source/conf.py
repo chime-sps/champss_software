@@ -19,9 +19,8 @@
 
 import time
 
-import sphinx_bootstrap_theme
-
 import beamformer
+import sphinx_bootstrap_theme
 
 project = "CHIME/SPS Beamformer"
 copyright = "2019-{}, CHIME/SPS Collaboration".format(time.strftime("%Y"))

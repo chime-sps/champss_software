@@ -1,21 +1,21 @@
-"""The CHIME/FRB L2/L3 Known Source Sifter contains an actor styled
-class that determines if an event is likely originating from a known
-source.
+"""
+The CHIME/FRB L2/L3 Known Source Sifter contains an actor styled class that determines
+if an event is likely originating from a known source.
 
 Adapted to SPS 20210204
 """
 
 
-import numpy as np
-import attr
-from attr.validators import instance_of
-from . import known_source_filters
 import logging
-import numpy.lib.recfunctions as rfn
-from sps_common.interfaces import KnownSourceLabel, KnownSourceClassification
-from sps_databases.db_api import get_nearby_known_sources
 import os
 
+import attr
+import numpy as np
+import numpy.lib.recfunctions as rfn
+from attr.validators import instance_of
+from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
+from sps_databases.db_api import get_nearby_known_sources
+from sps_multi_pointing.known_source_sifter import known_source_filters
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +23,11 @@ kss_path = os.path.dirname(__file__)
 
 
 @attr.s(slots=True)
-class KnownSourceSifter(object):
+class KnownSourceSifter:
     """
-    Known source sifter SPS version, adapted from CHIME/FRB L2/L3. The KnownSourceSifter is initialised
-    with a set of ks_filters used to determine the likelihood of a candidate is associated with a known
-    source.
+    Known source sifter SPS version, adapted from CHIME/FRB L2/L3. The KnownSourceSifter
+    is initialised with a set of ks_filters used to determine the likelihood of a
+    candidate is associated with a known source.
 
     Parameters
     -------
@@ -179,7 +179,9 @@ class KnownSourceSifter(object):
         return candidate
 
     def load_filters(self):
-        """Initializes the filters defined in the configuration file.
+        """
+        Initializes the filters defined in the configuration file.
+
         Function appends to `ks_filter_names` and `ks_filter_weights`.
         """
         # initialize filters
@@ -188,17 +190,17 @@ class KnownSourceSifter(object):
             if hasattr(known_source_filters, filt[0]):
                 self.ks_filter_names.append(filt[0])
                 self.ks_filter_weights.append(float(filt[1]))
-                logger.info("Filter '{0}' loaded".format(filt[0]))
+                logger.info(f"Filter '{filt[0]}' loaded")
             else:
                 logger.error(
-                    "Filter '{0}' ".format(filt[0])
+                    f"Filter '{filt[0]}' "
                     + "is not defined in "
                     + "known_source_filters.py!"
                 )
 
         nof = len(self.ks_filter_names)
         if nof:
-            logger.info("Read {nof} filters".format(nof=nof))
+            logger.info(f"Read {nof} filters")
             self.config_init = True
         else:
             logger.error(
@@ -207,10 +209,10 @@ class KnownSourceSifter(object):
             )
 
     def calculate_response(self, candidate, ks_sub_database, n_ks, freq=True):
-        """Calculates statistical match of an L2 event to a list of
-        known sources.
-        Function loops over the filters listed in the KS sifter
-        configuration file and defined in the known_source_filters.py script.
+        """
+        Calculates statistical match of an L2 event to a list of known sources. Function
+        loops over the filters listed in the KS sifter configuration file and defined in
+        the known_source_filters.py script.
 
         Parameters
         ----------
@@ -262,8 +264,10 @@ class KnownSourceSifter(object):
 
 def known_sources_subset(ks_database, pos_filter=False, ra=0, dec=0, radius=5.0):
     """
-    Retrieve known sources with angular separation less than `radius` of the provided coordinates
-    if prompted and split the database to sources with spin period and without spin period
+    Retrieve known sources with angular separation less than `radius` of the provided
+    coordinates if prompted and split the database to sources with spin period and
+    without spin period.
+
     Parameters
     ----------
     ks_database : array_like

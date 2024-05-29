@@ -1,15 +1,13 @@
+import datetime as dt
+import logging
+import time
+
+import click
+import docker
 from chime_frb_api.modules.buckets import Buckets
 from chime_frb_api.modules.results import Results
 from chime_frb_api.workflow import Work
 from slack_sdk import WebClient
-
-import datetime as dt
-
-import click
-import docker
-import logging
-import os
-import time
 
 log = logging.getLogger()
 
@@ -103,14 +101,15 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
 
                     if task_state in docker_swarm_finished_states:
                         log.info(
-                            f"Removing finished service {service.name} in state {task_state}."
+                            f"Removing finished service {service.name} in state"
+                            f" {task_state}."
                         )
                         try:
                             service.remove()
-                            pass
                         except Exception as error:
                             log.info(
-                                f"Error removing service {service.name}: {error} (will skip gracefully)."
+                                f"Error removing service {service.name}: {error} (will"
+                                " skip gracefully)."
                             )
                     else:
                         if task_state in docker_swarm_running_states:
@@ -118,7 +117,10 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                                 dt.datetime.now() - service_created_at
                             ).total_seconds() > task_timeout_seconds:
                                 log.info(
-                                    f"Approaching Workflow timeout for stuck service {service.name}, {task_timeout_seconds / 60} minutes in state {task_state} (if reached, will try once more)."
+                                    "Approaching Workflow timeout for stuck service"
+                                    f" {service.name},"
+                                    f" {task_timeout_seconds / 60} minutes in state"
+                                    f" {task_state} (if reached, will try once more)."
                                 )
                             elif states_to_wait_for_none == docker_swarm_running_states:
                                 is_task_in_state = True
@@ -128,20 +130,25 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                                 dt.datetime.now() - service_created_at
                             ).total_seconds() > task_timeout_seconds:
                                 message_slack(
-                                    f"Removing stuck task {service.name}:{task_id}, {task_timeout_seconds / 60} minutes in state {task_state}."
+                                    f"Removing stuck task {service.name}:{task_id},"
+                                    f" {task_timeout_seconds / 60} minutes in state"
+                                    f" {task_state}."
                                 )
                                 try:
                                     service.remove()
                                 except Exception as error:
                                     message_slack(
-                                        f"Error removing service {service.name} with stuck task {task_id}: {error} (will skip gracefully)."
+                                        f"Error removing service {service.name} with"
+                                        f" stuck task {task_id}: {error} (will skip"
+                                        " gracefully)."
                                     )
                             elif states_to_wait_for_none == docker_swarm_pending_states:
                                 is_task_in_state = True
                                 break
             except Exception as error:
                 log.info(
-                    f"Error checking tasks for service {service.name}: {error} (will skip gracefully)."
+                    f"Error checking tasks for service {service.name}: {error} (will"
+                    " skip gracefully)."
                 )
 
             if is_task_in_state is True:
@@ -209,7 +216,11 @@ def schedule_workflow_job(
         "name": f"processing-{docker_name.replace('.', '_').replace('/', '')}",
         # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
         # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
-        "command": f"workflow run {workflow_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site {workflow_site} --lifetime 1 --sleep-time 0",
+        "command": (
+            "workflow run"
+            f" {workflow_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
+            f" {workflow_site} --lifetime 1 --sleep-time 0"
+        ),
         # Using template Docker variables as in-container environment variables
         # that allow us this access out-of-container information
         "env": ["CONTAINER_NAME={{.Task.Name}}", "NODE_NAME={{.Node.Hostname}}"],

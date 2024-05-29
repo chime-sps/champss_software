@@ -286,7 +286,7 @@ def grab_metric_history(obs_list, test, metric):
         if test == "obs_properties":
             current_metric = getattr(obs, metric, None)
             if current_metric is not None:
-                all_tests.append(current_metric)            
+                all_tests.append(current_metric)
         else:
             current_qc = getattr(obs, "qc_test", None)
             if isinstance(current_qc, dict):

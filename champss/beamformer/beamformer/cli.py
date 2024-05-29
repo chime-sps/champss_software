@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
-"""
-Command Line Interface for CHIME/SPS Beamformer
-"""
+"""Command Line Interface for CHIME/SPS Beamformer."""
 
 
 def get_pointing():

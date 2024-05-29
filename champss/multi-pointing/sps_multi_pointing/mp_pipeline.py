@@ -14,7 +14,6 @@ import pandas as pd
 from omegaconf import OmegaConf
 from sps_common.interfaces.multi_pointing import KnownSourceLabel
 from sps_databases import db_api, db_utils
-
 from sps_multi_pointing import classifier, data_reader, grouper, utilities
 from sps_multi_pointing.known_source_sifter.known_source_sifter import KnownSourceSifter
 
@@ -342,15 +341,17 @@ def cli(
                     for summary in cand.all_summaries:
                         obs_id = summary["obs_id"]
                         if len(obs_id) == 1:
-                            #M May want to include the pointing id in the summaries?
+                            # M May want to include the pointing id in the summaries?
                             pointing_id = db_api.get_observation(obs_id[0]).pointing_id
-                            pointing_dict = {"obs_id": obs_id,
-                                             "sigma": summary["sigma"],
-                                             "freq": summary["freq"],
-                                             "dm": summary["dm"]}
-                            updated_pointing = db_api.update_pulsars_in_pointing(pointing_id,
-                                                              pulsar,
-                                                              pointing_dict)
+                            pointing_dict = {
+                                "obs_id": obs_id,
+                                "sigma": summary["sigma"],
+                                "freq": summary["freq"],
+                                "dm": summary["dm"],
+                            }
+                            updated_pointing = db_api.update_pulsars_in_pointing(
+                                pointing_id, pulsar, pointing_dict
+                            )
         """
         I don't think  in the current state without filtering
         we want to write candidates to the database.

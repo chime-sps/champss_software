@@ -1,14 +1,14 @@
-import pytest
-import os
-import numpy as np
-import time
 import datetime
+import os
+import shutil
+import time
 from random import random
+
+import numpy as np
+import pytest
 from astropy.time import Time
 from ps_processes import FailedChi2TestError
-from ps_processes.processes import ps, ps_stack, ps_search
-import shutil
-
+from ps_processes.processes import ps, ps_search, ps_stack
 from sps_common.interfaces.ps_processes import DedispersedTimeSeries, PowerSpectra
 
 TEST_RA = random() * 360
