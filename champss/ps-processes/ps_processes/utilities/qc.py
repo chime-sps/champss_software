@@ -4,12 +4,8 @@ import logging
 from typing import Tuple
 
 import numpy as np
+from ps_processes.utilities.utilities import analytical_chi2_cdf, get_ks_distance
 from scipy.stats import chi2, kstest
-
-from champss.ps-processes.ps_processes.utilities.utilities import (
-    analytical_chi2_cdf,
-    get_ks_distance,
-)
 
 log = logging.getLogger(__name__)
 rng = np.random.default_rng()
@@ -328,7 +324,7 @@ def compare_ps_to_chisqr_kstest(
         )
         pdf_hist_kwargs = {"density": True, "alpha": 0.2}
         axPDF.hist(ps_truncated, bins=bins, label="truncated data", **pdf_hist_kwargs)
-        axPDF.plot(x, chi2.pdf(x, dof), color="r", label=fr"$\chi^2$ PDF (dof={dof})")
+        axPDF.plot(x, chi2.pdf(x, dof), color="r", label=rf"$\chi^2$ PDF (dof={dof})")
         if upper_percentile_cut is not None:
             axPDF.axvline(
                 2 * u_percentile, color="k", ls="--", label="upper percentile cut"
@@ -347,7 +343,7 @@ def compare_ps_to_chisqr_kstest(
 
         cdf_hist_kwargs = {"density": True, "cumulative": True, "alpha": 0.2}
         axCDF.hist(ps_truncated, bins=bins, label="truncated data", **cdf_hist_kwargs)
-        axCDF.plot(x, chi2.cdf(x, dof), color="r", label=fr"$\chi^2$ CDF (dof={dof})")
+        axCDF.plot(x, chi2.cdf(x, dof), color="r", label=rf"$\chi^2$ CDF (dof={dof})")
         axCDF.plot(
             x,
             analytical_chi2_cdf(
@@ -357,7 +353,7 @@ def compare_ps_to_chisqr_kstest(
                 ulim=truncated_chi2_cutoff_upper,
             ),
             color="g",
-            label=fr"Truncated $\chi^2$ CDF (dof={dof})",
+            label=rf"Truncated $\chi^2$ CDF (dof={dof})",
         )
         if upper_percentile_cut is not None:
             axCDF.axvline(

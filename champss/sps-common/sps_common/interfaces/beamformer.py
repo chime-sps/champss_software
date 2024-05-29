@@ -6,10 +6,9 @@ from attr import s as attrs
 from attr.converters import optional
 from attr.setters import convert
 from attr.validators import deep_iterable, in_, instance_of
-
-from champss.sps-common.sps_common.constants import TSAMP
-from champss.sps-common.sps_common.conversion import convert_ra_dec, unix_to_mjd
-from champss.sps-common.sps_common.filterbank import write_to_filterbank
+from sps_common.constants import TSAMP
+from sps_common.conversion import convert_ra_dec, unix_to_mjd
+from sps_common.filterbank import write_to_filterbank
 
 log = logging.getLogger(__name__)
 
@@ -81,28 +80,32 @@ class Pointing:
     def _validate_beam_row(self, attribute, value):
         if not 0 <= value <= 255:
             raise ValueError(
-                f"Beam row attribute ({attribute.name}={value}) must be between 0 and 255."
+                f"Beam row attribute ({attribute.name}={value}) must be between 0 and"
+                " 255."
             )
 
     @ra.validator
     def _validate_ra(self, attribute, value):
         if not 0.0 <= value <= 360.0:
             raise ValueError(
-                f"Right ascension attribute ({attribute.name}={value}) must be between 0 and 360."
+                f"Right ascension attribute ({attribute.name}={value}) must be between"
+                " 0 and 360."
             )
 
     @dec.validator
     def _validate_dec(self, attribute, value):
         if not -90.0 <= value <= 90.0:
             raise ValueError(
-                f"Declination attribute ({attribute.name}={value}) must be between -90 and 90."
+                f"Declination attribute ({attribute.name}={value}) must be between -90"
+                " and 90."
             )
 
     @length.validator
     def _validate_length(self, attribute, value):
         if value <= 0:
             raise ValueError(
-                f"Number of time samples attribute ({attribute.name}={value}) must be larger than 0."
+                f"Number of time samples attribute ({attribute.name}={value}) must be"
+                " larger than 0."
             )
 
     @ne2001dm.validator
@@ -181,21 +184,24 @@ class ActivePointing:
     def _validate_ra(self, attribute, value):
         if not 0.0 <= value <= 360.0:
             raise ValueError(
-                f"Right ascension attribute ({attribute.name}={value}) must be between 0 and 360."
+                f"Right ascension attribute ({attribute.name}={value}) must be between"
+                " 0 and 360."
             )
 
     @dec.validator
     def _validate_dec(self, attribute, value):
         if not -90.0 <= value <= 90.0:
             raise ValueError(
-                f"Declination attribute ({attribute.name}={value}) must be between -90 and 90."
+                f"Declination attribute ({attribute.name}={value}) must be between -90"
+                " and 90."
             )
 
     @ntime.validator
     def _validate_ntime(self, attribute, value):
         if value <= 0:
             raise ValueError(
-                f"Number of time samples attribute ({attribute.name}={value}) must be larger than 0."
+                f"Number of time samples attribute ({attribute.name}={value}) must be"
+                " larger than 0."
             )
 
     @maxdm.validator
@@ -210,15 +216,16 @@ class ActivePointing:
         for val in value:
             if not "beam" and "utc_start" and "utc_end" in val.keys():
                 raise KeyError(
-                    f"The dict keys in the elements of ({attribute.name}) does not contain 'beam', 'utc_start', and "
-                    f"'utc_end'."
+                    f"The dict keys in the elements of ({attribute.name}) does not"
+                    " contain 'beam', 'utc_start', and 'utc_end'."
                 )
 
     @beam_row.validator
     def _validate_beam_row(self, attribute, value):
         if not 0 <= value <= 255:
             raise ValueError(
-                f"Beam row attribute ({attribute.name}={value}) must be between 0 and 255."
+                f"Beam row attribute ({attribute.name}={value}) must be between 0 and"
+                " 255."
             )
 
 
@@ -286,39 +293,45 @@ class SkyBeam:
     def __attrs_post_init__(self):
         if self.spectra.shape != (self.nchan, self.ntime):
             raise ValueError(
-                f"The attribute spectra does not have the right number of channels and number of time samples."
+                f"The attribute spectra does not have the right number of channels and"
+                f" number of time samples."
             )
 
     @spectra.validator
     def _validate_spectra(self, attribute, value):
         if value.size <= 0:
             raise ValueError(
-                f"Spectra attribute ({attribute.name}={value}) must have size larger than 0."
+                f"Spectra attribute ({attribute.name}={value}) must have size larger"
+                " than 0."
             )
         if value.ndim != 2:
             raise ValueError(
-                f"Spectra attribute ({attribute.name}={value}) must number of dimension of 2."
+                f"Spectra attribute ({attribute.name}={value}) must number of dimension"
+                " of 2."
             )
 
     @ra.validator
     def _validate_ra(self, attribute, value):
         if not 0.0 <= value <= 360.0:
             raise ValueError(
-                f"Right ascension attribute ({attribute.name}={value}) must be between 0 and 360."
+                f"Right ascension attribute ({attribute.name}={value}) must be between"
+                " 0 and 360."
             )
 
     @dec.validator
     def _validate_dec(self, attribute, value):
         if not -90.0 <= value <= 90.0:
             raise ValueError(
-                f"Declination attribute ({attribute.name}={value}) must be between -90 and 90."
+                f"Declination attribute ({attribute.name}={value}) must be between -90"
+                " and 90."
             )
 
     @ntime.validator
     def _validate_ntime(self, attribute, value):
         if value <= 0:
             raise ValueError(
-                f"Number of time samples attribute ({attribute.name}={value}) must be larger than 0."
+                f"Number of time samples attribute ({attribute.name}={value}) must be"
+                " larger than 0."
             )
 
     @maxdm.validator
@@ -332,7 +345,8 @@ class SkyBeam:
     def _validate_beam_row(self, attribute, value):
         if not 0 <= value <= 255:
             raise ValueError(
-                f"Beam row attribute ({attribute.name}={value}) must be between 0 and 255."
+                f"Beam row attribute ({attribute.name}={value}) must be between 0 and"
+                " 255."
             )
 
     def write(self, oname):

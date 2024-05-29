@@ -6,8 +6,7 @@ from os import path
 from beamformer.skybeam import SkyBeamFormer
 from omegaconf import OmegaConf
 from prometheus_client import Summary
-
-from champss.pipeline_batch_db.sps_pipeline import utils
+from sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 

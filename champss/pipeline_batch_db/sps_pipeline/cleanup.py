@@ -8,8 +8,7 @@ import pytz
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
-
-from champss.pipeline_batch_db.sps_pipeline import utils
+from sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 

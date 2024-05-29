@@ -15,10 +15,7 @@ import numpy.lib.recfunctions as rfn
 from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
 from sps_databases.db_api import get_nearby_known_sources
-
-from champss.multi-pointing.sps_multi_pointing.known_source_sifter import (
-    known_source_filters,
-)
+from sps_multi_pointing.known_source_sifter import known_source_filters
 
 logger = logging.getLogger(__name__)
 

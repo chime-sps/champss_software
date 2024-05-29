@@ -5,8 +5,7 @@ from os import path
 
 import docker
 from prometheus_client import Summary
-
-from champss.pipeline_batch_db.sps_pipeline import utils
+from sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 
