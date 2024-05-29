@@ -37,6 +37,7 @@ def run(
     plot_threshold=0,
     basepath="./",
     write_hrc=False,
+    only-injections=False,
 ):
     """
     Search a `pointing` for periodicity candidates. Used for daily stacks.
@@ -60,6 +61,8 @@ def run(
         Folder which is used to store data. Default: "./"
     write_hrc: bool
         Whether to write the harmonically related clusters. Default: False
+    only-injections: bool
+        Whether to store only the injected candidates
     """
     date = utils.transit_time(pointing).date()
     log.info(
@@ -80,22 +83,37 @@ def run(
     ps_candidates = (
         f"{file_path}/{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.npz"
     )
-    with cand_ps_processing_time.labels(pointing.pointing_id, pointing.beam_row).time():
-        spcc = cands_processor.fg.make_single_pointing_candidate_collection(
-            psdc, power_spectra
-        )
-        spcc.write(ps_candidates)
-        payload = {"path_candidate_file": path.abspath(ps_candidates)}
-        db_api.update_observation(pointing.obs_id, payload)
-        if plot:
-            log.info("Creating candidates plots.")
-            plot_folder = f"{ file_path }/plots/"
-            candidate_plots = spcc.plot_candidates(
-                sigma_threshold=plot_threshold, folder=plot_folder
+    
+    def store(cand):        
+        
+        with cand_ps_processing_time.labels(pointing.pointing_id, pointing.beam_row).time():
+            spcc = cands_processor.fg.make_single_pointing_candidate_collection(
+                psdc, power_spectra
             )
-            log.info(f"Plotted {len(candidate_plots)} candidate plots.")
-    log.info(f"{len(spcc.candidates)} candidates.")
+            spcc.write(ps_candidate)
+            payload = {"path_candidate_file": path.abspath(ps_candidate)}
+            db_api.update_observation(pointing.obs_id, payload)
+            if plot:
+                log.info("Creating candidates plots.")
+                plot_folder = f"{ file_path }/plots/"
+                candidate_plots = spcc.plot_candidate(
+                    sigma_threshold=plot_threshold, folder=plot_folder
+                )
 
+    if only-injections:
+        count = 0
+        for ps_candidate in ps_candidates:
+            if ps_candidate['injection']:
+                store(ps_candidate)
+                count += 1
+        
+        log.info(f"Plotted {count} candidate plots.")
+    
+    else:
+        store(ps_candidates)
+        log.info(f"Plotted {len(ps_candidates)} candidate plots.")
+
+    log.info(f"{len(spcc.candidates)} candidates.")
 
 def run_interface(
     ps_detection_clusters,
