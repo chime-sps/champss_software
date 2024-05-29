@@ -4,9 +4,11 @@ from functools import partial
 from multiprocessing import Pool, shared_memory
 from typing import Dict, List, Tuple
 
+import candidate_processor.utilities.features as feat
 import numpy as np
 from attr import attrib, attrs
 from attr.validators import deep_iterable, in_, instance_of
+from candidate_processor.utilities.features import Fit, Mean, Stat
 from easydict import EasyDict
 from numpy.lib import recfunctions as rfn
 from sps_common.interfaces.ps_processes import Cluster, PowerSpectraDetectionClusters
@@ -15,9 +17,6 @@ from sps_common.interfaces.single_pointing import (
     SinglePointingCandidateCollection,
 )
 from sps_common.interfaces.utilities import harmonic_sum, sigma_sum_powers
-
-import candidate_processor.utilities.features as feat
-from candidate_processor.utilities.features import Fit, Mean, Stat
 
 log = logging.getLogger(__name__)
 NOPOINT = 999999

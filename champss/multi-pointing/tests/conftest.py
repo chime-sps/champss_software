@@ -1,5 +1,6 @@
 import glob
 import os
+
 import pytest
 from sps_multi_pointing.simulator import PointingGrid
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 import logging
 import os
-import numpy as np
 from typing import List
+
+import numpy as np
 from astropy.time import Time, TimeDelta
 from sps_common import conversion as sps_conversion
 from sps_common.constants import L0_NCHAN
@@ -13,9 +14,10 @@ log = logging.getLogger(__name__)
 
 class DataReader:
     """
-    Generic data reader for the SPS RFI pipeline. This class encapsulates functions to
-    read data from disk and populate the correct interface to then pass to the pipeline
-    for processing.
+    Generic data reader for the SPS RFI pipeline.
+
+    This class encapsulates functions to read data from disk and populate the correct
+    interface to then pass to the pipeline for processing.
     """
 
     def __init__(self, apply_l1_mask: bool = True):
@@ -28,10 +30,8 @@ class DataReader:
         is_raw: bool = False,
         sps_freq_downsamp_factor: int = 1,
     ) -> List[SlowPulsarIntensityChunk]:
-        """
-        Read the provided file list and populate a variety of class attributes
-        based on the information from the data headers, metadata and final
-        shape.
+        """Read the provided file list and populate a variety of class attributes based
+        on the information from the data headers, metadata and final shape.
         """
         suffix = ".dat"
         if is_callback:
@@ -49,7 +49,8 @@ class DataReader:
                 log.info("Assuming files are Huffmann-encoded, quantised msgpack data")
                 if sps_freq_downsamp_factor != 1:
                     log.info(
-                        f"Will downsample in frequency by a factor of {sps_freq_downsamp_factor}"
+                        "Will downsample in frequency by a factor of"
+                        f" {sps_freq_downsamp_factor}"
                     )
                 spic_list = self._read_sps_files(
                     files_to_read, channel_downsampling_factor=sps_freq_downsamp_factor
@@ -68,8 +69,8 @@ class DataReader:
         self, fnames: List[str], channel_downsampling_factor: int = 1
     ) -> List[SlowPulsarIntensityChunk]:
         """
-        Read a given FRB -> SPS huffman encoded format data file into a
-        flexible numpy masked array
+        Read a given FRB -> SPS huffman encoded format data file into a flexible numpy
+        masked array.
 
         Parameters
         ----------
@@ -88,7 +89,7 @@ class DataReader:
         spic = []
 
         for fname in fnames:
-            log.debug("Loading {0}".format(fname))
+            log.debug(f"Loading {fname}")
             file_chunks = sps_conversion.read_huff_msgpack(
                 fname, channel_downsampling_factor=channel_downsampling_factor
             )
@@ -99,8 +100,7 @@ class DataReader:
 
     def _read_msgpack_files(self, fnames: List[str]) -> List[SlowPulsarIntensityChunk]:
         """
-        Read a given FRB L1 msgpack format data file into a flexible numpy
-        masked array
+        Read a given FRB L1 msgpack format data file into a flexible numpy masked array.
 
         Parameters
         ----------
@@ -135,7 +135,7 @@ class DataReader:
         spic = []
 
         for i, filename in enumerate(fnames):
-            log.debug("Loading {0}".format(filename))
+            log.debug(f"Loading {filename}")
             chunk = rpc_client.read_msgpack_file(filename)
             intensity, weights = chunk.decode()
 

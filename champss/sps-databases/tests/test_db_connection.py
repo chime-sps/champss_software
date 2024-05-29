@@ -1,8 +1,9 @@
 import datetime as dt
 import math
+
 import pytz
-from sps_databases import db_utils
 from pymongo.errors import ServerSelectionTimeoutError
+from sps_databases import db_utils
 
 
 def test_datetimes():

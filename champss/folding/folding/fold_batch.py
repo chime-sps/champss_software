@@ -1,6 +1,7 @@
-import sys
-import numpy as np
 import asyncio
+import sys
+
+import numpy as np
 
 
 async def run_fold_candidate(date, sigma, dm, f0, ra, dec, known, sem):
@@ -47,8 +48,6 @@ ras = cand_file["ras"].astype(float)
 decs = cand_file["decs"].astype(float)
 knowns = cand_file["known"]
 
-print(
-    "Running {0} concurrent processes on {1} pointings".format(MAX_PROCESSES, len(ras))
-)
+print(f"Running {MAX_PROCESSES} concurrent processes on {len(ras)} pointings")
 
 # asyncio.run(main(MAX_PROCESSES, year, month, day, sigmas, dms, f0s, ras, decs, knowns))

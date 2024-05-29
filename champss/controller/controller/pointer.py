@@ -41,7 +41,9 @@ class BeamUpdateParams(NamedTuple):
 async def generate_pointings(
     active_beams: Set[int], send_channels: Dict[int, trio.abc.SendChannel]
 ):
-    """Task that continually calculates current pointings for `active_beams` and sends them to the respective beam's `send_channel`.
+    """
+    Task that continually calculates current pointings for `active_beams` and sends them
+    to the respective beam's `send_channel`.
 
     Pointings are calculated in chunks, using `beamformer.strategist` package.
     The time interval for this calculation is one hour long, but the
@@ -109,7 +111,9 @@ async def update_pointing_schedule(
     last_time: float,
     send_channels: Dict[int, trio.abc.SendChannel],
 ):
-    """Calculate the next batch of pointings for `beam_rows` and send them to the respective beam's `send_channel`.
+    """
+    Calculate the next batch of pointings for `beam_rows` and send them to the
+    respective beam's `send_channel`.
 
     Parameters
     ----------
@@ -142,7 +146,7 @@ async def update_pointing_schedule(
         new value of last_time after processing the new schedule batch
     """
     # The strategist works per-row, so we have to give it the rows that include active beams
-    beam_rows = set([b % 1000 for b in active_beams])
+    beam_rows = {b % 1000 for b in active_beams}
     aps = await trio.to_thread.run_sync(
         get_active_pointings,
         list(beam_rows),
@@ -161,7 +165,10 @@ async def update_pointing_schedule(
             # Catch if #3 is still possible:
             if "utc_end" not in b or "utc_start" not in b:
                 log.error(
-                    "Pointing %d (%.2f, %.2f) has transit time properties for beam %04d: %s",
+                    (
+                        "Pointing %d (%.2f, %.2f) has transit time properties for beam"
+                        " %04d: %s"
+                    ),
                     i,
                     ap.ra,
                     ap.dec,
@@ -209,7 +216,9 @@ async def update_pointing_schedule(
 
 
 def get_active_pointings(beam_rows: List[int], start_utc: float, duration: float):
-    """Return active pointings in `beam_rows` in time interval `(start_utc, start_utc+duration)`
+    """
+    Return active pointings in `beam_rows` in time interval `(start_utc,
+    start_utc+duration)`
 
     Parameters
     ----------
@@ -225,7 +234,8 @@ def get_active_pointings(beam_rows: List[int], start_utc: float, duration: float
 
     Returns
     -------
-    List[beamformer.strategist.ActivePointing]"""
+    List[beamformer.strategist.ActivePointing]
+    """
     strategy = strategist.PointingStrategist(from_db=False)
     return strategy.get_pointings(
         utc_start=start_utc,

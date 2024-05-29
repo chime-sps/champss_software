@@ -8,7 +8,6 @@ from omegaconf import OmegaConf
 from prometheus_client import Summary
 from sps_common.interfaces import PowerSpectraDetectionClusters
 from sps_databases import db_api
-
 from sps_pipeline import utils
 
 log = logging.getLogger(__package__)

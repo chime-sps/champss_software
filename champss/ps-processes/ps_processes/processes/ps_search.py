@@ -9,6 +9,8 @@ import numpy as np
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
+from ps_processes.processes import ps_inject
+from ps_processes.processes.clustering import Clusterer
 from rfi_mitigation.cleaners.periodic import StaticPeriodicFilter
 from sps_common.constants import MIN_SEARCH_FREQ, TSAMP
 from sps_common.interfaces import PowerSpectraDetectionClusters, SearchAlgorithm
@@ -18,9 +20,6 @@ from sps_common.interfaces.utilities import (
     sigma_sum_powers,
 )
 from sps_databases import db_api
-
-from ps_processes.processes import ps_inject
-from ps_processes.processes.clustering import Clusterer
 
 log = logging.getLogger(__name__)
 

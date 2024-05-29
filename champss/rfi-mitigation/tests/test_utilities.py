@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-import pytest
 import numpy as np
-
+import pytest
 from rfi_mitigation.utilities.cleaner_utils import combine_cleaner_masks
 
 np.random.seed(2020)

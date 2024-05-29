@@ -5,7 +5,6 @@ import pymongo
 import pytz
 from bson.objectid import ObjectId
 from sps_common.constants import SIDEREAL_S
-
 from sps_databases import db_utils
 from sps_databases.models import (
     Candidate,

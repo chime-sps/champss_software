@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-import logging
 import argparse
-import prometheus_client
-import numpy as np
+import logging
 from glob import glob
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
 
+import matplotlib.pyplot as plt
+import numpy as np
+import prometheus_client
+from matplotlib.colors import LogNorm
 from rfi_mitigation.pipeline import RFIPipeline
 from rfi_mitigation.reader import DataReader
 
@@ -34,7 +33,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "-p",
         metavar="RA DEC",
-        help='Sky coordinates as a single space-separated string ("hh:mm:ss.s dd:mm:ss.s")',
+        help=(
+            'Sky coordinates as a single space-separated string ("hh:mm:ss.s'
+            ' dd:mm:ss.s")'
+        ),
         type=str,
         default="05:34:31 22:00:52",
     )
@@ -66,9 +68,11 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "-d",
-        help="Downsample the data in time and frequency by this factor. "
-        "First number corresponds to time downsampling factor and must divide 1024. "
-        "Second number corresponds to frequency downsampling and must divide 16384.",
+        help=(
+            "Downsample the data in time and frequency by this factor. First number"
+            " corresponds to time downsampling factor and must divide 1024. Second"
+            " number corresponds to frequency downsampling and must divide 16384."
+        ),
         nargs=2,
         metavar=("TFACT", "FFACT"),
         type=int,
@@ -123,7 +127,7 @@ if __name__ == "__main__":
     srcra, srcdec = args.p.split(" ")
     srcra = srcra.replace(":", "")
     srcdec = srcdec.replace(":", "")
-    beam = "{0:04d}".format(args.b)
+    beam = f"{args.b:04d}"
     start, end = args.i
     loadmax = args.l
     tfact, ffact = args.d
@@ -140,22 +144,20 @@ if __name__ == "__main__":
     is_raw = args.raw
 
     if is_callback:
-        msgpack_list = np.sort(np.array(glob("{0}/*.msgpack".format(file_path))))
+        msgpack_list = np.sort(np.array(glob(f"{file_path}/*.msgpack")))
     elif is_raw:
-        msgpack_list = np.sort(np.array(glob("{0}/*.msg".format(file_path))))
+        msgpack_list = np.sort(np.array(glob(f"{file_path}/*.msg")))
     else:
-        msgpack_list = np.sort(np.array(glob("{0}/*.dat".format(file_path))))
+        msgpack_list = np.sort(np.array(glob(f"{file_path}/*.dat")))
 
     # split the total requested time into 100 second chunks
     ntoload = abs(end - start)
     if ntoload > loadmax:
-        log.warning(
-            "request > {0} seconds total, will split processing".format(loadmax)
-        )
+        log.warning(f"request > {loadmax} seconds total, will split processing")
         nbatches = (
             ntoload // loadmax if ntoload % loadmax == 0 else ntoload // loadmax + 1
         )
-        log.debug("will process in {0} batches...".format(nbatches))
+        log.debug(f"will process in {nbatches} batches...")
 
         file_ranges = [
             (start + i * loadmax, start + (i + 1) * loadmax)
@@ -169,8 +171,8 @@ if __name__ == "__main__":
     else:
         file_ranges = [(start, start + ntoload)]
 
-    log.debug("first msgpack file = {0}".format(file_ranges[0][0]))
-    log.debug("last msgpack file = {0}".format(file_ranges[-1][-1]))
+    log.debug(f"first msgpack file = {file_ranges[0][0]}")
+    log.debug(f"last msgpack file = {file_ranges[-1][-1]}")
 
     masking_dict = dict(
         badchan=apply_badchan,
@@ -187,7 +189,9 @@ if __name__ == "__main__":
     reader = DataReader(apply_l1_mask=apply_l1)
 
     if args.profile:
-        import cProfile, io, pstats
+        import cProfile
+        import io
+        import pstats
 
         pr = cProfile.Profile()
         pr.enable()
