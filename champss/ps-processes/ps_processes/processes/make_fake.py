@@ -3,6 +3,7 @@ import click
 import yaml
 import os
 
+@click.group("cli")
 
 @click.argument(
         "n",
@@ -31,7 +32,7 @@ def main(n, file_name, path):
         n = len(load_profs)
     
     data = []
-
+    print('hello world')
     for i in range(n):
         
         n_dict = {}
@@ -54,3 +55,6 @@ def main(n, file_name, path):
     file_name = os.getcwd()+'/'+file_name
     stream = file(file_name, 'w')
     yaml.dump(data, stream)
+
+if __name__ == "__main__":
+    main(prog_name = "cli")
