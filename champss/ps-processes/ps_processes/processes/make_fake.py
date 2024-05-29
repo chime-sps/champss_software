@@ -23,7 +23,7 @@ import os
         help = ("Path to injection profile npy file")
 )
 
-def main(n, file_name, path):
+def get(n, file_name, path):
     
     if path != 'random':
         load_profs = np.load(path)
@@ -55,4 +55,4 @@ def main(n, file_name, path):
     yaml.dump(data, stream)
 
 if __name__ == "__main__":
-    main()
+    get()
