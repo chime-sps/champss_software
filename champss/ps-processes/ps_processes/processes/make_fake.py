@@ -3,8 +3,6 @@ import click
 import yaml
 import os
 
-@click.group("cli")
-
 @click.argument(
         "n",
         type = int,
@@ -57,4 +55,4 @@ def main(n, file_name, path):
     yaml.dump(data, stream)
 
 if __name__ == "__main__":
-    main(prog_name = "cli")
+    main()
