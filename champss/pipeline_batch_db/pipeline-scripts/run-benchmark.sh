@@ -1,7 +1,7 @@
 ADDITIONAL_PIPELINE_PARAMS="$1" # First argument
 ADDITIONAL_STACK_PARAMS="$2" # Second argument
 
-rm -r /data/chime/sps/benchmark/stack
+rm -r /data/chime/sps/benchmark/stack /data/chime/sps/benchmark/2022/
 
 run-pipeline $ADDITIONAL_PIPELINE_PARAMS --date 20220618 --stack --db-host ss1 --db-name sps_benchmark --basepath /data/chime/sps/benchmark --stackpath /data/chime/sps/benchmark 317.21 50.01
 run-pipeline $ADDITIONAL_PIPELINE_PARAMS --date 20220619 --stack --db-host ss1 --db-name sps_benchmark --basepath /data/chime/sps/benchmark --stackpath /data/chime/sps/benchmark 317.21 50.01
@@ -19,4 +19,7 @@ run-stack-search-pipeline $ADDITIONAL_STACK_PARAMS --db-host ss1 --db-name sps_b
 print_candidates --threshold 6.5 /data/chime/sps/benchmark/2022/06/*/*/*_power_spectra_candidates.npz
 print_candidates --threshold 13  /data/chime/sps/benchmark/*/*_candidates.npz
 
-rm -r /data/chime/sps/benchmark/stack
+mkdir /data/chime/sps/benchmark/single_day_candidates
+mv /data/chime/sps/benchmark/2022/06/*/*/*_power_spectra_candidates.npz /data/chime/sps/benchmark/single_day_candidates/
+
+rm -r /data/chime/sps/benchmark/stack /data/chime/sps/benchmark/2022/
