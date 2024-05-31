@@ -98,7 +98,7 @@ class Injection:
         """
         return self.sigma**2 / 2.0 + np.log(np.sqrt(np.pi / 2) * self.sigma)
 
-    def disperse(self, trial_DM):
+    def disperse(self, trial_DM, obs, nchans):
         """
         This function "dedisperses" a pulse profile according to some error from the
         true DM.
@@ -114,9 +114,6 @@ class Injection:
 
         DM_err = self.true_dm - trial_DM
 
-        # connect to database and find number of spectral channels in observation
-        obs = db_api.get_observation(self.pspec_obj.obs_id[0])
-        nchans = db_api.get_pointing(obs.pointing_id).nchans
 
         # create frequency array
         freqs = np.linspace(FREQ_TOP, FREQ_BOTTOM, nchans, endpoint=False)
@@ -213,8 +210,12 @@ class Injection:
         harms = []
         dms = []
 
+        # connect to database and find number of spectral channels in observation
+        obs = db_api.get_observation(self.pspec_obj.obs_id[0])
+        nchans = db_api.get_pointing(obs.pointing_id).nchans
+        
         for i in range(self.true_dm_trial, len(self.trial_dms)):
-            dispersed_prof = self.disperse(self.trial_dms[i])
+            dispersed_prof = self.disperse(self.trial_dms[i], obs, nchans)
             bins, harm = self.harmonics(dispersed_prof, df, n_harm, weight)
             if np.max(harm) < self.power_threshold:
                 break

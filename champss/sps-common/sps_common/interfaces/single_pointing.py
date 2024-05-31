@@ -182,6 +182,7 @@ class SinglePointingCandidate:
     raw_harmonic_powers_array = attrib(type=dict, default=None)
     dm_sigma_1d = attrib(type=dict, default=None)
     sigmas_per_harmonic_sum = attrib(type=dict, default=None)
+    injection = attrib(type=bool, default=False)
     datetimes = attrib(
         validator=deep_iterable(
             member_validator=instance_of(datetime.datetime),
@@ -409,6 +410,7 @@ class SinglePointingCandidate:
             dm_sigma_1d=self.dm_sigma_1d,
             sigmas_per_harmonic_sum=self.sigmas_per_harmonic_sum,
             pspec_freq_resolution=self.pspec_freq_resolution,
+            injection=self.injection,
             datetimes=self.datetimes,
         )
         return ret_dict
@@ -467,6 +469,7 @@ class SinglePointingCandidateCollection:
                 ("dm", float),
                 ("nharm", int),
                 ("sigma", float),
+                ("injection", bool),
             ]
             dummy_harm_info = np.array([], dtype=harm_dtype)
 
