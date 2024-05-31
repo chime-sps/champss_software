@@ -1,4 +1,4 @@
-import ps_inject
+from ps_processes.processes import ps_inject
 import click
 import yaml
 import os
@@ -8,7 +8,7 @@ import numpy as np
 @click.command()
 @click.option(
         "--n-injections",
-        "--n",
+        "-n",
         default = 1,
         type = int,
         help = ("Number of injections")
@@ -35,18 +35,25 @@ def get(n_injections, file_name, injection_path):
         load_profs = np.load(injection_path)
         n = len(load_profs)
     
+    frequencies = np.random.uniform(0.1, 100, n_injections)
+    dms = np.random.uniform(3, 200, n_injections)
+    sigmas = np.random.uniform(10, 20, n_injections)
     data = []
+    print(f"Creating {n_injections} fake pulsars into {injection_path}")
     
     for i in range(n_injections):
         
         n_dict = {}
 
-        n_dict['frequency'] = rand.choice(np.linspace(0.1, 50, 1000))
-        n_dict['DM'] = rand.choice(np.linspace(10, 200, 10000))
-        n_dict['sigma'] = rand.choice(np.linspace(1, 20, 1000))
+        # .item() allows a simpler output in the yanl file
+        # alternatively could use float()
+        n_dict['frequency'] = frequencies[i].item()
+        n_dict['DM'] = dms[i].item()
+        n_dict['sigma'] = sigmas[i].item()
 
+        print(f"{i}: {n_dict}")
         if injection_path == 'random':
-            n_dict['profile'] = ps_inject.generate()
+            n_dict['profile'] = ps_inject.generate().tolist()
 
         else:
             n_dict['profile'] = load_profs[i]
