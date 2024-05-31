@@ -1,11 +1,17 @@
-from ps_inject import generate
+from ps_processes.processes import ps_inject
 import click
 import yaml
 import os
+import numpy.random as rand
+import numpy as np
 
-@click.argument(
-        "n",
+@click.command()
+@click.option(
+        "--n-injections",
+        "-n",
+        default = 1,
         type = int,
+        help = ("Number of injections")
 )
 
 @click.option(
@@ -23,32 +29,31 @@ import os
         help = ("Path to injection profile npy file")
 )
 
-def get(n, file_name, path):
+def get(n_injections, file_name, injection_path):
     
-    if path != 'random':
-        load_profs = np.load(path)
+    if injection_path != 'random':
+        load_profs = np.load(injection_path)
         n = len(load_profs)
     
+    frequencies = np.random.uniform(0.1, 100, n_injections)
+    dms = np.random.uniform(3, 200, n_injections)
+    sigmas = np.random.uniform(10, 20, n_injections)
     data = []
-    print('hello world')
-    for i in range(n):
+    print(f"Creating {n_injections} fake pulsars into {injection_path}")
+    
+    for i in range(n_injections):
         
         n_dict = {}
 
-<<<<<<< HEAD:champss/ps-processes/ps_processes/utilities/make_fake.py
-        n_dict['frequency'] = rand.choice(np.linspace(0.1, 50, 1000))
-        n_dict['DM'] = rand.choice(np.linspace(10, 200, 10000))
-=======
-        n_dict['frequency'] = rand.choice(
-            np.linspace(0.1, 100, 10000), num_injections, replace=False
-        )
-        n_dict['DM'] = rand.choice(np.linspace(10, 200, 10000), num_injections, replace=False)
-        
->>>>>>> parent of e35d8d5... Fixed click issue:champss/ps-processes/ps_processes/processes/make_fake.py
-        n_dict['sigma'] = rand.choice(np.linspace(1, 20, 1000))
+        # .item() allows a simpler output in the yanl file
+        # alternatively could use float()
+        n_dict['frequency'] = frequencies[i].item()
+        n_dict['DM'] = dms[i].item()
+        n_dict['sigma'] = sigmas[i].item()
 
-        if path == 'random':
-            n_dict['profile'] = ps_inject.generate()
+        print(f"{i}: {n_dict}")
+        if injection_path == 'random':
+            n_dict['profile'] = ps_inject.generate().tolist()
 
         else:
             n_dict['profile'] = load_profs[i]
@@ -56,7 +61,7 @@ def get(n, file_name, path):
         data.append(n_dict)
 
     file_name = os.getcwd()+'/'+file_name
-    stream = file(file_name, 'w')
+    stream = open(file_name, 'w')
     yaml.dump(data, stream)
 
 if __name__ == "__main__":
