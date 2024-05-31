@@ -1,17 +1,11 @@
-import ps_inject
+from ps_inject import generate
 import click
 import yaml
 import os
-import numpy.random as rand
-import numpy as np
 
-@click.command()
-@click.option(
-        "--n-injections",
-        "--n",
-        default = 1,
+@click.argument(
+        "n",
         type = int,
-        help = ("Number of injections")
 )
 
 @click.option(
@@ -29,23 +23,31 @@ import numpy as np
         help = ("Path to injection profile npy file")
 )
 
-def get(n_injections, file_name, injection_path):
+def get(n, file_name, path):
     
-    if injection_path != 'random':
-        load_profs = np.load(injection_path)
+    if path != 'random':
+        load_profs = np.load(path)
         n = len(load_profs)
     
     data = []
-    
-    for i in range(n_injections):
+    print('hello world')
+    for i in range(n):
         
         n_dict = {}
 
+<<<<<<< HEAD:champss/ps-processes/ps_processes/utilities/make_fake.py
         n_dict['frequency'] = rand.choice(np.linspace(0.1, 50, 1000))
         n_dict['DM'] = rand.choice(np.linspace(10, 200, 10000))
+=======
+        n_dict['frequency'] = rand.choice(
+            np.linspace(0.1, 100, 10000), num_injections, replace=False
+        )
+        n_dict['DM'] = rand.choice(np.linspace(10, 200, 10000), num_injections, replace=False)
+        
+>>>>>>> parent of e35d8d5... Fixed click issue:champss/ps-processes/ps_processes/processes/make_fake.py
         n_dict['sigma'] = rand.choice(np.linspace(1, 20, 1000))
 
-        if injection_path == 'random':
+        if path == 'random':
             n_dict['profile'] = ps_inject.generate()
 
         else:
@@ -54,7 +56,7 @@ def get(n_injections, file_name, injection_path):
         data.append(n_dict)
 
     file_name = os.getcwd()+'/'+file_name
-    stream = open(file_name, 'w')
+    stream = file(file_name, 'w')
     yaml.dump(data, stream)
 
 if __name__ == "__main__":

@@ -256,30 +256,6 @@ def dbexcepthook(type, value, tb):
         " strongest detection of that source in that pointing."
     ),
 )
-@click.option(
-    "--injection-path",
-    default = None,
-    type=str,
-    help = (
-        "Path to yml file containing injection"
-    ),
-)
-@click.option(
-    "--injection-idx", "--ii",
-    default = [],
-    type=int,
-    multiple=True,
-    help = (
-        "Index of pulse to inject from yml file"
-    ),
-)
-@click.option(
-    "--only-injections/--no-only-injections",
-    default=False,
-    help = (
-        "Only process clusters containing injections."
-    ),
-)
 def main(
     date,
     stack,
@@ -299,9 +275,6 @@ def main(
     using_pyroscope,
     using_docker,
     known_source_threshold,
-    injection_path,
-    injection_idx,
-    only_injections,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -624,8 +597,7 @@ def main(
                 gc.collect()
                 if "search" in components:
                     ps_detections = ps_pipeline.power_spectra_search(
-                        power_spectra, injection_path, injection_idx,
-                        only_injections, obs_folder, prefix,
+                        power_spectra, obs_folder, prefix
                     )
                     if ps_detections is None:
                         power_spectra.unlink_shared_memory()
@@ -645,7 +617,6 @@ def main(
                             config.cands.get(
                                 "write_harmonically_related_clusters", False
                             ),
-                            only_injections,
                         )
                     gc.collect()
                 if stack:
@@ -827,28 +798,6 @@ def main(
         " strongest detection of that source in that pointing."
     ),
 )
-@click.option(
-    "--injection-path",
-    default = None,
-    help = (
-        "Path to yml file containing injection"
-    ),
-)
-@click.option(
-    "--injection-idx",
-    default = [],
-    multiple=True,
-    help = (
-        "Index of pulse to inject from yml file"
-    ),
-)
-@click.option(
-    "--only-store-injections",
-    default = False,
-    help = (
-        "Do you only want to store the injection candidates?"
-    ),
-)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -861,9 +810,6 @@ def stack_and_search(
     path_cumul_stack,
     cand_path,
     known_source_threshold,
-    injection_path,
-    injection_idx,
-    only_store_injections,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -942,15 +888,13 @@ def stack_and_search(
                 plot,
                 plot_threshold,
                 config.cands.get("write_harmonically_related_clusters", False),
-                only_injections,
             )
     else:
         power_spectra_monthly = None
 
     if to_stack or to_search:
         ps_detections, power_spectra = ps_cumul_stack.run(
-            closest_pointing, ps_cumul_stack_processor, power_spectra_monthly,
-            injection_path, injection_idx, only_store_injections,
+            closest_pointing, ps_cumul_stack_processor, power_spectra_monthly
         )
         if to_search:
             if not ps_detections:
@@ -972,7 +916,6 @@ def stack_and_search(
                         plot,
                         plot_threshold,
                         config.cands.get("write_harmonically_related_clusters", False),
-                        only_injections,
                     )
     try:
         power_spectra_monthly.unlink_shared_memory()

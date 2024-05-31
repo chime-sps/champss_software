@@ -37,7 +37,6 @@ def run(
     plot_threshold=0,
     basepath="./",
     write_hrc=False,
-    only_injections=False,
 ):
     """
     Search a `pointing` for periodicity candidates. Used for daily stacks.
@@ -61,8 +60,6 @@ def run(
         Folder which is used to store data. Default: "./"
     write_hrc: bool
         Whether to write the harmonically related clusters. Default: False
-    only-injections: bool
-        Whether to store only the injected candidates
     """
     date = utils.transit_time(pointing).date()
     log.info(
@@ -83,37 +80,22 @@ def run(
     ps_candidates = (
         f"{file_path}/{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.npz"
     )
-    
-    def store(cand):        
-        
-        with cand_ps_processing_time.labels(pointing.pointing_id, pointing.beam_row).time():
-            spcc = cands_processor.fg.make_single_pointing_candidate_collection(
-                psdc, power_spectra
+    with cand_ps_processing_time.labels(pointing.pointing_id, pointing.beam_row).time():
+        spcc = cands_processor.fg.make_single_pointing_candidate_collection(
+            psdc, power_spectra
+        )
+        spcc.write(ps_candidates)
+        payload = {"path_candidate_file": path.abspath(ps_candidates)}
+        db_api.update_observation(pointing.obs_id, payload)
+        if plot:
+            log.info("Creating candidates plots.")
+            plot_folder = f"{ file_path }/plots/"
+            candidate_plots = spcc.plot_candidates(
+                sigma_threshold=plot_threshold, folder=plot_folder
             )
-            spcc.write(ps_candidate)
-            payload = {"path_candidate_file": path.abspath(ps_candidate)}
-            db_api.update_observation(pointing.obs_id, payload)
-            if plot:
-                log.info("Creating candidates plots.")
-                plot_folder = f"{ file_path }/plots/"
-                candidate_plots = spcc.plot_candidate(
-                    sigma_threshold=plot_threshold, folder=plot_folder
-                )
-
-    if only_injections:
-        count = 0
-        for ps_candidate in ps_candidates:
-            if ps_candidate['injection']:
-                store(ps_candidate)
-                count += 1
-        
-        log.info(f"Plotted {count} candidate plots.")
-    
-    else:
-        store(ps_candidates)
-        log.info(f"Plotted {len(ps_candidates)} candidate plots.")
-
+            log.info(f"Plotted {len(candidate_plots)} candidate plots.")
     log.info(f"{len(spcc.candidates)} candidates.")
+
 
 def run_interface(
     ps_detection_clusters,
@@ -125,7 +107,6 @@ def run_interface(
     plot=False,
     plot_threshold=0,
     write_hrc=False,
-    only_injections=False,
 ):
     """
     Search a `pointing` for periodicity candidates. Candidates will be written out in a
@@ -168,49 +149,34 @@ def run_interface(
         f"{power_spectra.datetimes[-1].strftime('%Y%m%d')}"
         f"_{len(power_spectra.datetimes)}_candidates.npz"
     )
-    
-    def store(ps_candidate):
 
-        with cand_ps_processing_time.labels(pointing._id, pointing.beam_row).time():
-            psdc = ps_detection_clusters
-            spcc = cands_processor.fg.make_single_pointing_candidate_collection(
-                psdc, power_spectra
+    with cand_ps_processing_time.labels(pointing._id, pointing.beam_row).time():
+        psdc = ps_detection_clusters
+        spcc = cands_processor.fg.make_single_pointing_candidate_collection(
+            psdc, power_spectra
+        )
+        spcc.write(ps_candidates)
+        payload = {
+            "path_candidate_file": path.abspath(ps_candidates),
+            "num_total_candidates": len(spcc.candidates),
+        }
+        db_api.append_ps_stack(pointing._id, payload)
+        if plot:
+            if cand_path is None:
+                plot_folder = f"{stack_root_folder}/plots"
+            else:
+                plot_folder = f"{cand_path}/plots"
+            if "cumulative" in stack_path.rsplit("/stack/")[1]:
+                plot_folder += "_cumul/"
+            else:
+                plot_folder += "_monthly/"
+            log.info(f"Creating candidates plots in {plot_folder}.")
+            candidate_plots = spcc.plot_candidates(
+                sigma_threshold=plot_threshold, folder=plot_folder
             )
-            spcc.write(ps_candidate)
-            payload = {
-                "path_candidate_file": path.abspath(ps_candidate),
-                "num_total_candidates": len(spcc.candidates),
-            }
-            db_api.append_ps_stack(pointing._id, payload)
-            if plot:
-                if cand_path is None:
-                    plot_folder = f"{stack_root_folder}/plots"
-                else:
-                    plot_folder = f"{cand_path}/plots"
-                if "cumulative" in stack_path.rsplit("/stack/")[1]:
-                    plot_folder += "_cumul/"
-                else:
-                    plot_folder += "_monthly/"
-                log.info(f"Creating candidates plots in {plot_folder}.")
-                candidate_plots = spcc.plot_candidates(
-                    sigma_threshold=plot_threshold, folder=plot_folder
-                )
-
-    if only_injections:
-        count = 0
-        for ps_candidate in ps_candidates:
-            if ps_candidate['injection']:
-                store(ps_candidate)
-                count += 1
-
-        log.info(f"Plotted {count} candidate plots.")
-
-    else:
-        store(ps_candidates)
-    
-        log.info(f"Plotted {len(candidate_plots)} candidate plots.")
-
+            log.info(f"Plotted {len(candidate_plots)} candidate plots.")
     log.info(f"{len(spcc.candidates)} candidates.")
+
 
 def initialise(configuration, num_threads=4):
     class Wrapper:
