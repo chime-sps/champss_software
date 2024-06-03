@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch: 
 
 jobs:
   # Avoid double checks from bot's automated release PR
@@ -16,4 +17,4 @@ jobs:
     uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
     secrets: inherit
     with:
-      branch_name: ${{ github.head_ref || 'none' }}
+      branch_name: ${{ github.head_ref || github.ref_name || 'none' }}
