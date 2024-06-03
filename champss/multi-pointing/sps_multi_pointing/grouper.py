@@ -151,7 +151,7 @@ class SinglePointingCandidateGroup:
         std_ra = scipy.stats.circstd(all_ra_dec[:, 0] / 180 * math.pi) * 180 / math.pi
         std_dec = np.std(all_ra_dec[:, 1])
 
-        delta_ra = np.ptp(ra_dec[:, 0])
+        delta_ra = min(np.ptp(ra_dec[:, 1]), 360 - np.ptp(ra_dec[:, 1]))
         delta_dec = np.ptp(ra_dec[:, 1])
 
         self.position_sigmas = np.array(
