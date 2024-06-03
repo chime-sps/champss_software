@@ -33,7 +33,7 @@ def get(n_injections, file_name, injection_path):
     
     if injection_path != 'random':
         load_profs = np.load(injection_path)
-        n = len(load_profs)
+        n_injections = len(load_profs)
     
     frequencies = np.random.uniform(0.1, 100, n_injections)
     dms = np.random.uniform(3, 200, n_injections)
@@ -56,7 +56,7 @@ def get(n_injections, file_name, injection_path):
             n_dict['profile'] = ps_inject.generate().tolist()
 
         else:
-            n_dict['profile'] = load_profs[i]
+            n_dict['profile'] = load_profs[i].tolist()
         
         data.append(n_dict)
 

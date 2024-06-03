@@ -4,6 +4,7 @@ import numpy as np
 from scipy.fft import rfft
 from sps_common.constants import FREQ_BOTTOM, FREQ_TOP
 from sps_databases import db_api
+from sps_dedispersion.fdmt.cpu_fdmt import FDMT
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ class Injection:
         """
         return self.sigma**2 / 2.0 + np.log(np.sqrt(np.pi / 2) * self.sigma)
 
-    def disperse(self, trial_DM, obs, nchans):
+    def disperse(self, trial_DM, obs, nchans, config, dm_step = 1):
         """
         This function "dedisperses" a pulse profile according to some error from the
         true DM.
@@ -109,38 +110,36 @@ class Injection:
 
         Returns:
         ________
-                dispersed_phase_prof: a DM-smeared 1D phase profile of a pulse
+                dispersed_prof: a DM-smeared 1D phase profile of a pulse
         """
-
         DM_err = self.true_dm - trial_DM
+        fdmt_config = config.dedisp.fdmt
+        if fdmt_config.num_dms_fac > nchan:
+            num_dms_fac = nchan
+        else:
+            num_dms_fac = fdmt_config.num_dms_fac
+        # check config for maximum dm to process
+        num_dms = (
+            int(
+                DM_CONSTANT
+                * DM_err
+                * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2)
+                / TSAMP
+                // num_dms_fac
+            )
+            + 1
+        ) * num_dms_fac
+        fdmt = FDMT(
+            fmin=FREQ_BOTTOM,
+            fmax=FREQ_TOP,
+            nchan=nchan,
+            maxDT=num_dms,
+            num_threads=num_threads,
+        )
+        
+        dispersed_prof =fdmt.fdmt(self.phase_prof[::-1], frontpadding=True)[::dm_step]
 
-
-        # create frequency array
-        freqs = np.linspace(FREQ_TOP, FREQ_BOTTOM, nchans, endpoint=False)
-        freq_ref = np.max(freqs)
-
-        # define constants
-        kDM = 1 / (2.41e-4)  # in MHz^2 s cm^3 pc^-1
-        dt = 2.56 * 512 * 0.75 * 1e-6  # s
-
-        # calculate dispersion delay
-        delay = kDM * DM_err * (1 / freqs**2 - 1 / freq_ref**2)
-
-        # calculate how much to shift bins
-        dd_binshift = (delay // dt).astype("int")
-
-        # create 2D pulse profile
-        pulse2D = np.zeros((len(freqs), len(self.phase_prof)))
-        pulse2D[:] = self.phase_prof
-
-        # apply dispersion delay to each spectral channel of 2D pulse profile
-        for i in range(len(freqs)):
-            pulse2D[i] = np.roll(pulse2D[i], dd_binshift[i])
-
-        # average all spectral channels to get 1D dispersed pulse
-        dispersed_phase_prof = pulse2D.mean(0)
-
-        return dispersed_phase_prof
+        return dispersed_prof
 
     def harmonics(self, prof, df, n_harm, weights):
         """
