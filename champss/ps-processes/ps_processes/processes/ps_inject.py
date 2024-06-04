@@ -2,7 +2,7 @@ import logging
 
 import numpy as np
 from scipy.fft import rfft
-from sps_common.constants import FREQ_BOTTOM, FREQ_TOP
+from sps_common.constants import FREQ_BOTTOM, FREQ_TOP, TSAMP, DM_CONSTANT
 from sps_databases import db_api
 from sps_dedispersion.fdmt.cpu_fdmt import FDMT
 
@@ -85,8 +85,8 @@ class Injection:
         self.birdies = pspec_obj.bad_freq_indices
         self.f = true_f
         self.true_dm = true_dm
-        self.trial_dms = self.pspec_obj.dms
-        self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
+        self.min_dm = min(self.pspec_obj.dms)
+        self.max_dm = max(self.pspec_obj.dms)
         self.phase_prof = phase_prof
         self.sigma = sigma
         self.power_threshold = 1
@@ -99,7 +99,7 @@ class Injection:
         """
         return self.sigma**2 / 2.0 + np.log(np.sqrt(np.pi / 2) * self.sigma)
 
-    def disperse(self, trial_DM, obs, nchans, config, dm_step = 1):
+    def disperse(self, min_DM, max_DM, nchans, freqs, dm_step = 1):
         """
         This function "dedisperses" a pulse profile according to some error from the
         true DM.
@@ -112,33 +112,32 @@ class Injection:
         ________
                 dispersed_prof: a DM-smeared 1D phase profile of a pulse
         """
-        DM_err = self.true_dm - trial_DM
-        fdmt_config = config.dedisp.fdmt
-        if fdmt_config.num_dms_fac > nchan:
-            num_dms_fac = nchan
-        else:
-            num_dms_fac = fdmt_config.num_dms_fac
-        # check config for maximum dm to process
+
         num_dms = (
             int(
                 DM_CONSTANT
-                * DM_err
+                * (max_DM - min_DM)
                 * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2)
                 / TSAMP
-                // num_dms_fac
+                // nchans
             )
             + 1
-        ) * num_dms_fac
+        ) * nchans
+        
         fdmt = FDMT(
             fmin=FREQ_BOTTOM,
             fmax=FREQ_TOP,
-            nchan=nchan,
+            nchan=nchans,
             maxDT=num_dms,
-            num_threads=num_threads,
+            num_threads=1,
         )
+        pulse2D = np.zeros((nchans, len(self.phase_prof)))
+        pulse2D[:] = self.phase_prof
+        for i in range(nchans):
+            pulse2D[i] = np.roll(pulse2D[i], num_dms)
         
-        dispersed_prof =fdmt.fdmt(self.phase_prof[::-1], frontpadding=True)[::dm_step]
-
+        dispersed_prof =fdmt.fdmt(pulse2D[::-1], frontpadding=True)[::dm_step]
+        print(dispersed_prof.shape)
         return dispersed_prof
 
     def harmonics(self, prof, df, n_harm, weights):
@@ -211,20 +210,11 @@ class Injection:
 
         # connect to database and find number of spectral channels in observation
         obs = db_api.get_observation(self.pspec_obj.obs_id[0])
-        nchans = db_api.get_pointing(obs.pointing_id).nchans
+        nchans = db_api.get_pointing(obs.pointing_id).nchans 
+        dispersed_prof = self.disperse(self.min_dm, self.max_dm, nchans, freqs)
         
-        for i in range(self.true_dm_trial, len(self.trial_dms)):
-            dispersed_prof = self.disperse(self.trial_dms[i], obs, nchans)
-            bins, harm = self.harmonics(dispersed_prof, df, n_harm, weight)
-            if np.max(harm) < self.power_threshold:
-                break
-            harms.append(harm)
-            dms.append(i)
-        for i in range(self.true_dm_trial - 1, -1, -1):
-            dispersed_prof = self.disperse(self.trial_dms[i])
-            bins, harm = self.harmonics(dispersed_prof, df, n_harm, weight)
-            if np.max(harm) < self.power_threshold:
-                break
+        for i in range(len(dispersed_prof)):
+            bins, harm = self.harmonics(dispersed_prof[i], df, n_harm, weight)
             harms.append(harm)
             dms.append(i)
 
