@@ -4,7 +4,6 @@
 from random import random
 
 import numpy as np
-
 from beamformer.utilities import dm
 
 dm_map = dm.DMMap()

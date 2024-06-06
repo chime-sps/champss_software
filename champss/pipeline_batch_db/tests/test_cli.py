@@ -1,10 +1,11 @@
+import re
+
 from click.testing import CliRunner
 from sps_pipeline.pipeline import main
-import re
 
 
 def test_command_line_interface():
-    """Check the output when no commands are invoked"""
+    """Check the output when no commands are invoked."""
     runner = CliRunner()
     result = runner.invoke(main, ["--help"])
     assert result.exit_code == 0

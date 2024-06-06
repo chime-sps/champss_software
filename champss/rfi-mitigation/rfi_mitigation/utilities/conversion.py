@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import logging
+
 import numpy as np
 from scipy.signal import detrend
-import copy
-
 
 log = logging.getLogger(__name__)
 
 
 def bin_ndarray(ndarray, new_shape, operation="mean"):
     """
-    Bins an ndarray in all axes based on the target shape, by summing or
-    averaging.
-    Number of output dimensions must match number of input dimensions and
-    new axes must divide old ones.
+    Bins an ndarray in all axes based on the target shape, by summing or averaging.
+    Number of output dimensions must match number of input dimensions and new axes must
+    divide old ones.
+
     Example
     -------
     >>> m = np.arange(0,100,1).reshape((10,10))
@@ -33,7 +31,7 @@ def bin_ndarray(ndarray, new_shape, operation="mean"):
         raise ValueError("Operation not supported.")
 
     if ndarray.ndim != len(new_shape):
-        raise ValueError("Shape mismatch: {0} -> {1}".format(ndarray.shape, new_shape))
+        raise ValueError(f"Shape mismatch: {ndarray.shape} -> {new_shape}")
 
     compression_pairs = [(d, c // d) for d, c in zip(new_shape, ndarray.shape)]
     flattened = [l for p in compression_pairs for l in p]

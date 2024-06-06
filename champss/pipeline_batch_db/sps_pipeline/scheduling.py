@@ -1,6 +1,11 @@
-"""Methods for improving the scheduling. Currently work in progress and not implemented."""
+"""
+Methods for improving the scheduling.
+
+Currently work in progress and not implemented.
+"""
 
 import logging
+
 import numpy as np
 
 log = logging.getLogger(__package__)

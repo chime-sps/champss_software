@@ -3,13 +3,12 @@
 # fmt: off
 """
 Python client for the L1 RPC service.
-The RPC service is fully asynchronous; each request sends an integer
-"token", and all replies to that query include the token.  Thus it is
-possible to send multiple requests and then later retrieve the
-results.
-This client can talk to multiple RPC servers at once.
+
+The RPC service is fully asynchronous; each request sends an integer "token", and all
+replies to that query include the token.  Thus it is possible to send multiple requests
+and then later retrieve the results. This client can talk to multiple RPC servers at
+once.
 """
-from __future__ import print_function
 
 import time
 
@@ -18,15 +17,15 @@ import numpy as np
 import zmq
 
 
-class AssembledChunk(object):
+class AssembledChunk:
     """
-    This class represents an "assembled chunk" of CHIME/FRB intensity
-    data read from a msgpack-format file.
-    You probably want to use *read_msgpack_file* to create one of
-    these, and then use *decode* to produce arrays of Intensity and Weights.
-    Note that rf_pipelines and bonsai assume a frequency ordering of
-    high-to-low, so *intensities*[0,0] is the intensity for the first time
-    sample and highest frequency (800 MHz).
+    This class represents an "assembled chunk" of CHIME/FRB intensity data read from a
+    msgpack-format file.
+
+    You probably want to use *read_msgpack_file* to create one of these, and then use
+    *decode* to produce arrays of Intensity and Weights. Note that rf_pipelines and
+    bonsai assume a frequency ordering of high-to-low, so *intensities*[0,0] is the
+    intensity for the first time sample and highest frequency (800 MHz).
     """
 
     def __init__(self, msgpacked_chunk):
@@ -135,9 +134,8 @@ class AssembledChunk(object):
         return intensities, weights
 
     def time_start(self):
-        """
-        Returns a unix-time (seconds since 1970) value for the start of this
-        chunk of data.
+        """Returns a unix-time (seconds since 1970) value for the start of this chunk of
+        data.
         """
         # Nanoseconds per FPGA count
         fpga_nano = 2560
@@ -146,9 +144,8 @@ class AssembledChunk(object):
         )
 
     def time_end(self):
-        """
-        Returns a unix-time (seconds since 1970) value for the end of this
-        chunk of data.
+        """Returns a unix-time (seconds since 1970) value for the end of this chunk of
+        data.
         """
         # Nanoseconds per FPGA count
         fpga_nano = 2560
@@ -159,18 +156,17 @@ class AssembledChunk(object):
 
 
 def read_msgpack_file(fn):
-    """ Reads the given *fn* msgpack-formatted CHIME/FRB intensity
-    data ("assembled chunk").
+    """Reads the given *fn* msgpack-formatted CHIME/FRB intensity data ("assembled
+    chunk").
     """
     f = open(fn, "rb")
     m = msgpack.unpackb(f.read())
     return AssembledChunk(m)
 
 
-class WriteChunkReply(object):
-    """
-    Python version of rpc.hpp : WriteChunks_Reply: the RPC server's
-    reply to a WriteChunks request.
+class WriteChunkReply:
+    """Python version of rpc.hpp : WriteChunks_Reply: the RPC server's reply to a
+    WriteChunks request.
     """
 
     def __init__(self, beam, fpga0, fpgaN, filename, success, err):
@@ -199,9 +195,8 @@ class WriteChunkReply(object):
         return str(self)
 
 
-class MaskedFrequencies(object):
-    """
-    The reply to a *get_masked_frequencies* RPC request: a vector of (beam, where) ->
+class MaskedFrequencies:
+    """The reply to a *get_masked_frequencies* RPC request: a vector of (beam, where) ->
     spectrum mappings giving the fraction of masked samples.
     """
 
@@ -215,11 +210,10 @@ class MaskedFrequencies(object):
             self.histories[(beam, where)] = np.array(hist).astype(np.float32) / nt
 
 
-class SummedMaskedFrequencies(object):
-    """
-    The reply to a *get_summed_masked_frequencies* RPC request: data
-    about the fraction of masked samples, by frequency, for a given
-    beam, FPGAcounts time range, and place in the RFI chain.
+class SummedMaskedFrequencies:
+    """The reply to a *get_summed_masked_frequencies* RPC request: data about the
+    fraction of masked samples, by frequency, for a given beam, FPGAcounts time range,
+    and place in the RFI chain.
     """
 
     @staticmethod
@@ -271,10 +265,8 @@ class SummedMaskedFrequencies(object):
         )
 
 
-class PacketRate(object):
-    """
-    The return type for the *get_packet_rate* RPC call.
-    """
+class PacketRate:
+    """The return type for the *get_packet_rate* RPC call."""
 
     def __init__(self, msgpack):
         self.start = msgpack[0]
@@ -282,28 +274,25 @@ class PacketRate(object):
         self.packets = msgpack[2]
 
     def __str__(self):
-        return "PacketRate: start %g, period %g, packets: " % (
+        return "PacketRate: start {:g}, period {:g}, packets: ".format(
             self.start,
             self.period,
         ) + str(self.packets)
 
 
-class InjectData(object):
-    """
-    Input datatype for the *inject_data* RPC call.
-    """
+class InjectData:
+    """Input datatype for the *inject_data* RPC call."""
 
     # matching rf_pipelines_inventory :: inject_data + ch_frb_l1 :: rpc.hpp
     def __init__(self, beam, mode, fpga0, sample_offsets, data):
         """
-        *beam*: integer.
-        *mode*: 0 = ADD to stream.
-        *fpga0*: FPGAcounts of the reference time when these data should be injected.
-          The sample times in *sample_offsets* are relative to this FPGAcounts time.
-        *sample_offsets*: numpy array of ints, one per frequency.  The intensity sample
-          offset (ie, time offset in ~ milliseconds) when data for this frequency should
-          be injected.
-        *data*: list of numpy arrays, one per frequency; the data to be injected.
+        *beam*: integer. *mode*: 0 = ADD to stream. *fpga0*: FPGAcounts of the reference
+        time when these data should be injected. The sample times in *sample_offsets*
+        are relative to this FPGAcounts time. *sample_offsets*: numpy array of ints, one
+        per frequency.  The intensity sample offset (ie, time offset in ~ milliseconds)
+        when data for this frequency should be injected. *data*: list of numpy arrays,
+        one per frequency; the data to be injected.
+
         This is a hybrid sparse representation:
         - every frequency is assumed to be represented
         - each frequency can have a different number of samples (including zero),
@@ -357,16 +346,15 @@ class InjectData(object):
         return b
 
 
-class RpcClient(object):
+class RpcClient:
     def __init__(self, servers, context=None, identity=None, debug=False):
         """
-        *servers*: a dict of [key, address] entries, where each
-          *address* is a string address of an RPC server: eg,
-          'tcp://localhost:5555'.
-        *context*: if non-None: the ZeroMQ context in which to create
-           my socket.
-        *identity*: (ignored; here for backward-compatibility)
-        NOTE throughout this class that *timeout* is in *milliseconds*!
+        *servers*: a dict of [key, address] entries, where each *address* is a string
+        address of an RPC server: eg, 'tcp://localhost:5555'.
+
+        *context*: if non-None: the ZeroMQ context in which to create    my socket.
+        *identity*: (ignored; here for backward-compatibility) NOTE throughout this
+        class that *timeout* is in *milliseconds*!
         """
         if context is None:
             self.context = zmq.Context()
@@ -393,9 +381,10 @@ class RpcClient(object):
 
     def get_statistics(self, servers=None, wait=True, timeout=-1):
         """
-        Retrieves statistics from each server.  Return value is one
-        item per server.  Each item is a list of dictionaries (string
-        to int).
+        Retrieves statistics from each server.
+
+        Return value is one item per server.  Each item is a list of dictionaries
+        (string to int).
         """
         if servers is None:
             servers = self.servers.keys()
@@ -478,7 +467,8 @@ class RpcClient(object):
         self, beam_offset, ipaddr, port, beam=0, servers=None, wait=True, timeout=-1
     ):
         """
-        beam=0 means send all beams handled by this node.
+        Beam=0 means send all beams handled by this node.
+
         If beam != 0, then beam_offset is the destination beam number (not offset)
         """
         if servers is None:
@@ -516,14 +506,14 @@ class RpcClient(object):
 
     def inject_data(self, inj, freq_low_to_high, servers=None, wait=True, timeout=-1):
         """
-        Sends data to be injected.  The beam number, time, and data
-        are in the *inj* data structure.  Please see the *InjectData*
-        class for a detailed explanation of that data structure.
-        *freq_low_to_high*: boolean, required.  If True, frequencies in *inj*
-        are assumed to be ordered from lowest frequency to highest frequency.
-        This is the order returned by simpulse by default.
-        (Note that rf_pipelines and bonsai assume high-to-low frequency
-        ordering.)
+        Sends data to be injected.
+
+        The beam number, time, and data are in the *inj* data structure.  Please see the
+        *InjectData* class for a detailed explanation of that data structure.
+        *freq_low_to_high*: boolean, required.  If True, frequencies in *inj* are
+        assumed to be ordered from lowest frequency to highest frequency. This is the
+        order returned by simpulse by default. (Note that rf_pipelines and bonsai assume
+        high-to-low frequency ordering.)
         """
         if servers is None:
             servers = self.servers.keys()
@@ -551,9 +541,8 @@ class RpcClient(object):
         fpga_period=2.56e-6,
         **kwargs
     ):
-        """
-        Injects a *simpulse* simulated pulse *sp* into the given *beam*, starting
-        at the reference time *fpga0* in FPGAcounts units.
+        """Injects a *simpulse* simulated pulse *sp* into the given *beam*, starting at
+        the reference time *fpga0* in FPGAcounts units.
         """
         # NOTE, some approximations here
         t0, t1 = sp.get_endpoints()
@@ -648,7 +637,9 @@ class RpcClient(object):
     def list_chunks(self, servers=None, wait=True, timeout=-1):
         """
         Retrieves lists of chunks held by each server.
-        Return value is one list per server, containing a list of [beam, fpga0, fpga1, bitmask] entries.
+
+        Return value is one list per server, containing a list of [beam, fpga0, fpga1,
+        bitmask] entries.
         """
         if servers is None:
             servers = self.servers.keys()
@@ -682,16 +673,13 @@ class RpcClient(object):
         waitAll=True,
     ):
         """
-        Asks the RPC servers to write a set of chunks to disk.
-        *beams*: list of integer beams to write to disk
-        *min_fgpa*, *max_fpga*: range of FPGA-counts to write
-        *filename_pattern*: printf filename pattern
-        *priority*: of writes.
-        When requesting a sweep (NOT CURRENTLY IMPLEMENTED!):
-        *dm*, *dm_error*: floats, DM and uncertainty of the sweep to request
-        *sweep_width*: float, range in seconds to retrieve around the sweep
-        *frequency_binning*: int, the factor by which to bin frequency
-         data before writing.
+        Asks the RPC servers to write a set of chunks to disk. *beams*: list of integer
+        beams to write to disk *min_fgpa*, *max_fpga*: range of FPGA-counts to write
+        *filename_pattern*: printf filename pattern *priority*: of writes. When
+        requesting a sweep (NOT CURRENTLY IMPLEMENTED!): *dm*, *dm_error*: floats, DM
+        and uncertainty of the sweep to request *sweep_width*: float, range in seconds
+        to retrieve around the sweep *frequency_binning*: int, the factor by which to
+        bin frequency data before writing.
 
         *wait*: wait for the initial replies listing the chunks to be written out.
         *waitAll*: wait for servers to reply that all chunks have been written out.
@@ -782,8 +770,9 @@ class RpcClient(object):
 
     def get_writechunk_status(self, filename, servers=None, wait=True, timeout=-1):
         """
-        Asks the RPC servers for the status of a given filename whose
-        write was requested by a write_chunks request.
+        Asks the RPC servers for the status of a given filename whose write was
+        requested by a write_chunks request.
+
         Returns (status, error_message).
         """
         if servers is None:
@@ -805,9 +794,7 @@ class RpcClient(object):
         return results
 
     def shutdown(self, servers=None):
-        """
-        Sends a shutdown request to each RPC server.
-        """
+        """Sends a shutdown request to each RPC server."""
         if servers is None:
             servers = self.servers.keys()
         # Send RPC requests
@@ -819,9 +806,7 @@ class RpcClient(object):
             self.sockets[k].send(hdr)
 
     def start_logging(self, address, servers=None):
-        """
-        Sends a request to start chlog logging to the given address.
-        """
+        """Sends a request to start chlog logging to the given address."""
         if servers is None:
             servers = self.servers.keys()
         # Send RPC requests
@@ -834,9 +819,7 @@ class RpcClient(object):
             self.sockets[k].send(hdr + req)
 
     def stop_logging(self, address, servers=None):
-        """
-        Sends a request to stop chlog logging to the given address.
-        """
+        """Sends a request to stop chlog logging to the given address."""
         if servers is None:
             servers = self.servers.keys()
         # Send RPC requests
@@ -851,8 +834,8 @@ class RpcClient(object):
     def get_masked_frequencies(self, servers=None, wait=True, timeout=-1):
         """
         Deprecated; prefer get_summed_masked_frequencies.
-        Returns the most recent mask stats for all beams and places in
-        the RFI chain.
+
+        Returns the most recent mask stats for all beams and places in the RFI chain.
         """
         if servers is None:
             servers = self.servers.keys()
@@ -883,15 +866,13 @@ class RpcClient(object):
         timeout=-1,
     ):
         """
-        Returns summed statistics for the given range of times (in
-        FPGAcounts units) from *fpgamin* to *fpgamax*.
-        If *beam* is specified, returns only that beam; otherwise, all
-        beams.
-        *where*: where in the RFI pipeline to retrieve stats from.  In
-         production, we typically have only "before_rfi" and
-         "after_rfi" available.  This is before and after the L1 RFI
-         chain.
-        The return value is a list of *SummedMaskedFrequencies* objects.
+        Returns summed statistics for the given range of times (in FPGAcounts units)
+        from *fpgamin* to *fpgamax*.
+
+        If *beam* is specified, returns only that beam; otherwise, all beams. *where*:
+        where in the RFI pipeline to retrieve stats from.  In  production, we typically
+        have only "before_rfi" and  "after_rfi" available.  This is before and after the
+        L1 RFI  chain. The return value is a list of *SummedMaskedFrequencies* objects.
         """
         fpgamin = int(fpgamin)
         fpgamax = int(fpgamax)
@@ -916,9 +897,8 @@ class RpcClient(object):
         ]
 
     def get_max_fpga_counts(self, servers=None, wait=True, timeout=-1):
-        """
-        Returns the largest (ie, last) FPGAcounts values seen at a
-        variety of places in the processing pipeline.
+        """Returns the largest (ie, last) FPGAcounts values seen at a variety of places
+        in the processing pipeline.
         """
         if servers is None:
             servers = self.servers.keys()
@@ -935,9 +915,8 @@ class RpcClient(object):
         return [msgpack.unpackb(p[0]) if p is not None else None for p in parts]
 
     def _pop_token(self, t, d=None, get_socket=False):
-        """
-        Pops a message for the given token number *t*, or returns *d*
-        if one does not exist.
+        """Pops a message for the given token number *t*, or returns *d* if one does not
+        exist.
         """
         try:
             msgs = self.received[t]
@@ -957,9 +936,9 @@ class RpcClient(object):
     def _receive(self, timeout=-1):
         """
         Receives >=1 replies from servers.
-        *timeout* in milliseconds.  timeout=0 means only read
-         already-queued messages.  timeout=-1 means wait forever.
-        Returns True if >1 messages were received.
+
+        *timeout* in milliseconds.  timeout=0 means only read  already-queued messages.
+        timeout=-1 means wait forever. Returns True if >1 messages were received.
         """
 
         def _handle_parts(parts, socket):
@@ -1008,8 +987,8 @@ class RpcClient(object):
 
     def wait_for_tokens(self, tokens, timeout=-1, get_sockets=False):
         """
-        Retrieves results for the given *tokens*, possibly waiting for
-        servers to reply.
+        Retrieves results for the given *tokens*, possibly waiting for servers to reply.
+
         Returns a list of result messages, one for each *token*.
         """
 
@@ -1077,7 +1056,7 @@ import threading
 
 class ChLogServer(threading.Thread):
     def __init__(self, addr="127.0.0.1", port=None, context=None):
-        super(ChLogServer, self).__init__()
+        super().__init__()
         # I'm a demon thread! Muahahaha
         self.daemon = True
 
@@ -1375,7 +1354,7 @@ def main():
             )
             fits.close()
         except:
-            import traceback
+            pass
 
             print_exc()
 

@@ -5,9 +5,6 @@ import numpy as np
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
-from sps_common.interfaces import PowerSpectra
-from sps_databases import db_api
-
 from ps_processes import (
     FailedChi2TestError,
     IncompleteMonthlyStackError,
@@ -15,6 +12,8 @@ from ps_processes import (
 )
 from ps_processes.processes.ps_search import PowerSpectraSearch
 from ps_processes.processes.ps_stack import PowerSpectraStack
+from sps_common.interfaces import PowerSpectra
+from sps_databases import db_api
 
 log = logging.getLogger(__name__)
 

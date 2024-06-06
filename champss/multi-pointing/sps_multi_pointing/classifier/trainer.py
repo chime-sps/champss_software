@@ -1,16 +1,17 @@
 import pickle
-import numpy.lib.recfunctions as rfn
+import sys
+
 import numpy as np
+import numpy.lib.recfunctions as rfn
 import scipy
 import sklearn
-import sys
 from sklearn import neural_network, svm
 from sklearn.model_selection import cross_val_score
 
 
 class Trainer:
     """
-    Base class for classifier training
+    Base class for classifier training.
 
     Parameters
     ----------
@@ -26,7 +27,8 @@ class Trainer:
 
     def train(self, candidate_list, compute_metrics=True, save_model=True, filename=""):
         """
-        Train the classifier using a list of MultiPointingCandidates along with their labels.
+        Train the classifier using a list of MultiPointingCandidates along with their
+        labels.
 
         Parameters
         ----------
@@ -58,19 +60,21 @@ class Trainer:
                 outfile.write("\n")
                 if compute_metrics:
                     for m in metrics:
-                        outfile.write("{} : {}\n".format(m, metrics[m]))
+                        outfile.write(f"{m} : {metrics[m]}\n")
                 outfile.write(
                     "python version : {}.{}.{}\n".format(
                         sys.version_info[0], sys.version_info[1], sys.version_info[2]
                     )
                 )
-                outfile.write("numpy version : {}\n".format(np.__version__))
-                outfile.write("scipy version : {}\n".format(scipy.__version__))
-                outfile.write("scikit-learn version : {}\n".format(sklearn.__version__))
+                outfile.write(f"numpy version : {np.__version__}\n")
+                outfile.write(f"scipy version : {scipy.__version__}\n")
+                outfile.write(f"scikit-learn version : {sklearn.__version__}\n")
 
     def compute_performance_metrics(self, data, labels):
         """
-        Compute metrics on the viability of the classifier. Currently using several cross validation scores
+        Compute metrics on the viability of the classifier.
+
+        Currently using several cross validation scores
         """
         scores = ["accuracy", "precision", "recall", "f1", "roc_auc"]
         metrics = {}
@@ -80,7 +84,7 @@ class Trainer:
 
     def get_features(self, candidate_list):
         """
-        Obtain the features and labels of the list of MultiPointingCandidate
+        Obtain the features and labels of the list of MultiPointingCandidate.
 
         Parameters
         ----------
@@ -131,7 +135,7 @@ class SvmTrainer(Trainer):
 
 class MlpTrainer(Trainer):
     """
-    Class to implement multilayer perceptron classifier
+    Class to implement multilayer perceptron classifier.
 
     See https://scikit-learn.org/stable/modules/neural_networks_supervised.html for a list of properties that can be
     called.

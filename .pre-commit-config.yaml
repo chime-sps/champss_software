@@ -25,7 +25,6 @@ repos:
       - id: autoflake
         args:
           - --in-place # Overwrite contents
-          - --remove-all-unused-imports
 
   - repo: https://github.com/pycqa/docformatter
     rev: v1.7.5

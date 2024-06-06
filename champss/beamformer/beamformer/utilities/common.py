@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 from glob import glob
 
 import beam_model
@@ -8,14 +9,22 @@ import numpy as np
 import pytz
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from beamformer import CURRENT_POINTING_MAP, NoSuchPointingError
 from sps_common import constants
-from sps_common.interfaces.beamformer import Pointing
 from sps_databases import db_utils, models
 
-from beamformer import CURRENT_POINTING_MAP, NoSuchPointingError
+log = logging.getLogger(__name__)
 
 config = beam_model.current_config
-beammod = beam_model.current_model_class(config)
+try:
+    beammod = beam_model.current_model_class(config)
+except FileNotFoundError:
+    log.error("Missing files for beam model. Will try to load them.")
+    from beam_model.bm_data import get_data
+
+    get_data.main()
+    beammod = beam_model.current_model_class(config)
+
 beam_transit = beam_model.config.chime
 
 _storage_path = constants.STORAGE_PATH

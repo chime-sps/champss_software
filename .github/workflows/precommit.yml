@@ -20,7 +20,7 @@ jobs:
         with:
           path: |
             ~/.cache/precommit
-          key: precommit-${{ runner.os }}-${{ hashFiles('.precommit-manual.yaml') }}
+          key: precommit-${{ runner.os }}-${{ hashFiles('.pre-commit-manual.yaml') }}
       # Only run Precommit on files that have changed
       - id: get-changed-files
         uses: tj-actions/changed-files@v36
@@ -32,4 +32,4 @@ jobs:
       # (the automatic changes are done locally before commiting)
       - run: |
             pip install pre-commit
-            pre-commit run --files ${{ steps.get-changed-files.outputs.all_changed_files }} --config .precommit-manual.yaml
+            pre-commit run --files ${{ steps.get-changed-files.outputs.all_changed_files }} --config .pre-commit-manual.yaml

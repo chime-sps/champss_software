@@ -36,7 +36,6 @@ from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.ps_pipeline import PowerSpectraPipeline
 from sps_common.interfaces import DedispersedTimeSeries
 from sps_databases import db_api, db_utils, models
-
 from sps_pipeline import (  # ps,
     beamform,
     cands,
@@ -51,12 +50,11 @@ from sps_pipeline import (  # ps,
 datpath = "/data/chime/sps/raw"
 
 
-def load_config():
+def load_config(config_file="sps_config.yml"):
     """
     Combines default/user-specified config settings and applies them to loggers.
 
-    User-specified settings can be given in two forms: as a YAML file in the
-    current directory named "sps_config.yml", or as command-line arguments.
+    User-specified settings are given as a YAML file in the current directory.
 
     The format of the file is (all sections optional):
     ```
@@ -67,18 +65,28 @@ def load_config():
         module_name: logging level for the submodule `module_name`
         module_name2: etc.
     ```
+    Paramaters
+    ----------
+    config_files: str
+        Name of config file. Default: "sps_config.yml"
 
     Returns
     -------
     The `omegaconf` configuration object merging all the default configuration
     with the (optional) user-specified overrides.
     """
-    base_config = OmegaConf.load(os.path.dirname(__file__) + "/sps_config.yml")
-    if os.path.exists("./sps_config.yml"):
-        user_config = OmegaConf.load("./sps_config.yml")
+    base_config_path = os.path.dirname(__file__) + "/" + config_file
+    if os.path.isfile(base_config_path):
+        base_config = OmegaConf.load(base_config_path)
+    else:
+        log.info(
+            "Base config does not exist. Will only use config from execution folder."
+        )
+        base_config = OmegaConf.create()
+    if os.path.exists("./" + config_file):
+        user_config = OmegaConf.load("./" + config_file)
     else:
         user_config = OmegaConf.create()
-
     return OmegaConf.merge(base_config, user_config)
 
 
@@ -257,6 +265,12 @@ def dbexcepthook(type, value, tb):
     ),
 )
 @click.option(
+    "--config-file",
+    default="sps_config.yml",
+    type=str,
+    help="Name of used config. Default: sps_config.yml",
+)
+@click.option(
     "--injection-path",
     default = None,
     type=str,
@@ -299,6 +313,7 @@ def main(
     using_pyroscope,
     using_docker,
     known_source_threshold,
+    config_file,
     injection_path,
     injection_idx,
     only_injections,
@@ -366,7 +381,7 @@ def main(
         global pipeline_start_time
         pipeline_start_time = time.time()
 
-        config = load_config()
+        config = load_config(config_file)
         now = dt.datetime.utcnow()
         processing_failed = False
 

@@ -9,7 +9,6 @@ import numpy as np
 import numpy.lib.recfunctions as rfn
 from attr import attrib, attrs
 from attr.validators import deep_iterable, instance_of
-
 from sps_common.constants import (
     MAX_SEARCH_DM,
     MAX_SEARCH_FREQ,

@@ -5,12 +5,11 @@ import matplotlib.colors as colors
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from beamformer.utilities import dm
+from beamformer.utilities.common import beammod
 from matplotlib import pyplot as plt
 from sps_common import constants
 from sps_common.interfaces.beamformer import Pointing
-
-from beamformer.utilities import dm
-from beamformer.utilities.common import beammod
 
 sidereal_s = constants.SIDEREAL_S
 
@@ -18,7 +17,7 @@ sidereal_s = constants.SIDEREAL_S
 @attr.s(slots=True)
 class PointingMapper:
     """
-    PointingMapper class to create a sky pointing map
+    PointingMapper class to create a sky pointing map.
 
     Parameters
     =======
@@ -74,9 +73,7 @@ class PointingMapper:
         self.y_pos = [beammod.reference_angles[x] for x in self.beams]
 
     def get_pointing_map(self):
-        """
-        Get sky pointing map with a list of RA, Dec and max DM to search to
-        """
+        """Get sky pointing map with a list of RA, Dec and max DM to search to."""
         pointings = []
         for index, beam in enumerate(self.beams):
             no_ra = (
@@ -161,6 +158,7 @@ class PointingMapper:
     ):
         """
         Get LoS max DM from a dict of RA, Dec, ne2001 and ymw16 max DM.
+
         Inputs :
         pointing - a dict of ra, dec, beam, ne2001dm and ymw16dm
         exp - Boolean input for exponential modelling of max DM to search
@@ -190,7 +188,8 @@ class PointingMapper:
 
     def get_nchans(self, maxdm):
         """
-        Inputs a pointing dict with ra, dec, maxdm and returns nchans
+        Inputs a pointing dict with ra, dec, maxdm and returns nchans.
+
         Inputs
         pointing - A dict of ra, dec, maxdm
         """
@@ -208,7 +207,9 @@ class PointingMapper:
 
     def get_length(self, beam_index):
         """
-        Get the length of a beam for a given FRB beam row in multiple of chunks of n samples
+        Get the length of a beam for a given FRB beam row in multiple of chunks of n
+        samples.
+
         Inputs
         beam - FRB beam row number between 0 and 255
         chunk_size - size of chunk in number of samples
@@ -227,9 +228,7 @@ class PointingMapper:
         return int(length)
 
     def plot_dm_nchan_map(self, pointings, save=True):
-        """
-        Plots the all sky max DM and nchans requirements maps
-        """
+        """Plots the all sky max DM and nchans requirements maps."""
         fig = plt.figure(figsize=(15, 20))
         ax = fig.add_subplot(211, projection="aitoff")
         ax2 = fig.add_subplot(212, projection="aitoff")

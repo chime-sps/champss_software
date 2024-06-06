@@ -1,20 +1,18 @@
-"""Executes the RFI mitigation pipeline component
-"""
-from glob import glob
-import logging
-from omegaconf import OmegaConf
-import os
+"""Executes the RFI mitigation pipeline component."""
 import datetime as dt
-import pytz
+import logging
+import os
+from glob import glob
 from os import path
-from prometheus_client import Summary
 
-from spshuff import l1_io
+import pytz
+from omegaconf import OmegaConf
+from prometheus_client import Summary
 from rfi_mitigation.pipeline import RFIPipeline
 from rfi_mitigation.reader import DataReader
+from spshuff import l1_io
 
-from . import utils
-
+from champss.pipeline_batch_db.sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 
@@ -28,7 +26,7 @@ rfi_processing_time = Summary(
 
 
 def _overlap(msg_file, start, end):
-    """how much does the range (start1, end1) overlap with (start2, end2)"""
+    """How much does the range (start1, end1) overlap with (start2, end2)"""
     with open(msg_file, "rb") as f:
         fh = l1_io.FileHeader.from_file(f)
     chunk_start = fh.start
@@ -43,7 +41,8 @@ def _overlap(msg_file, start, end):
 
 
 def run(beams_start_end, config, basepath="./"):
-    """Execute the RFI excision step on a set of data.
+    """
+    Execute the RFI excision step on a set of data.
 
     Parameters
     ----------
@@ -61,7 +60,6 @@ def run(beams_start_end, config, basepath="./"):
 
     basepath: str
         Folder which is used to store data. Default: './'
-
     """
     masking_dict = OmegaConf.to_container(config.rfi)
 
@@ -106,7 +104,7 @@ def run(beams_start_end, config, basepath="./"):
         beam_path_end = path.join(date_end.strftime("%Y/%m/%d"), f"{beam_id :04d}")
         os.makedirs(path.join(basepath, beam_path_start), exist_ok=True)
         os.makedirs(path.join(basepath, beam_path_end), exist_ok=True)
-        beam_paths = list(set([beam_path_start, beam_path_end]))
+        beam_paths = list({beam_path_start, beam_path_end})
 
         for beam_path in beam_paths:
             spshuff_files = sorted(

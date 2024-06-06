@@ -1,1 +1,1 @@
-from .classifier import CandidateClassifier
+from sps_multi_pointing.classifier.classifier import CandidateClassifier

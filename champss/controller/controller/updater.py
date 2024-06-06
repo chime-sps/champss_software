@@ -6,7 +6,6 @@ import subprocess  # nosec
 
 import pytz
 import trio
-
 from controller.l1_rpc import get_beam_ip
 
 log = logging.getLogger("issuer")

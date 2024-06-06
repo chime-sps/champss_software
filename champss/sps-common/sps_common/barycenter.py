@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import logging
+
 import astropy.units as u
 import numpy as np
 from astropy.constants import c
-from astropy.coordinates import SkyCoord, EarthLocation
-from astropy.coordinates import solar_system_ephemeris
+from astropy.coordinates import EarthLocation, SkyCoord, solar_system_ephemeris
 from astropy.time import Time
-from .constants import CHIME_LAT, CHIME_LON, CHIME_ELEV, SEC_PER_DAY, TSAMP
+from sps_common.constants import CHIME_ELEV, CHIME_LAT, CHIME_LON, SEC_PER_DAY, TSAMP
 
 # define CHIME's Earth location
 CHIME_LOCATION = EarthLocation(
@@ -28,8 +27,8 @@ def get_barycentric_correction(
     ra: str, dec: str, mjd: float, convention: str = "radio"
 ):
     """
-    Compute the instantaneous barycentric velocity correction towards a given
-    direction at a given time.
+    Compute the instantaneous barycentric velocity correction towards a given direction
+    at a given time.
 
     Parameters
     ----------
@@ -71,7 +70,7 @@ def get_barycentric_correction(
         )
     else:
         logger.warning(
-            "convention not recognised, must be one of: optical, radio, " "relativistic"
+            "convention not recognised, must be one of: optical, radio, relativistic"
         )
         logger.warning("Defaulting to RADIO convention")
         vb = vb_optical.to(u.Hz, u.doppler_optical(1 * u.Hz)).to(
@@ -79,8 +78,9 @@ def get_barycentric_correction(
         )
 
     logger.info(
-        "barycentric velocity (fraction of speed of light) = "
-        "{0}".format(vb.value / c.value)
+        "barycentric velocity (fraction of speed of light) = {}".format(
+            vb.value / c.value
+        )
     )
 
     return vb.value / c.value
@@ -90,8 +90,8 @@ def get_mean_barycentric_correction(
     ra: str, dec: str, start_mjd: float, duration: float, convention: str = "radio"
 ):
     """
-    Compute the mean barycentric velocity correction towards a given direction
-    over a certain time span.
+    Compute the mean barycentric velocity correction towards a given direction over a
+    certain time span.
 
     Parameters
     ----------
@@ -154,8 +154,9 @@ def get_mean_barycentric_correction(
     mean_vb = np.mean(vb_corr)
 
     logger.info(
-        "mean barycentric velocity (fraction of speed of light) = "
-        "{0}".format(mean_vb / c.value)
+        "mean barycentric velocity (fraction of speed of light) = {}".format(
+            mean_vb / c.value
+        )
     )
 
     return mean_vb / c.value
@@ -163,8 +164,8 @@ def get_mean_barycentric_correction(
 
 def barycenter_timeseries(topo_ts: np.ndarray, beta: float, metadata: bool = False):
     """
-    Apply the barycentric velocity correction to a time series by duplicating
-    or removing specific samples.
+    Apply the barycentric velocity correction to a time series by duplicating or
+    removing specific samples.
 
     Parameters
     ----------
@@ -189,10 +190,8 @@ def barycenter_timeseries(topo_ts: np.ndarray, beta: float, metadata: bool = Fal
     total_nsamp = topo_ts.size
     bary_ts = np.copy(topo_ts)
     one_over_abs_beta = 1 / np.abs(beta)
-    logger.info("nsamps in topocentric time series = {0}".format(topo_ts.size))
-    logger.info(
-        "nsamps before first correction = {0}".format(int(round(one_over_abs_beta)))
-    )
+    logger.info(f"nsamps in topocentric time series = {topo_ts.size}")
+    logger.info(f"nsamps before first correction = {int(round(one_over_abs_beta))}")
 
     logger.debug("determining correction indices")
     n = 1
@@ -213,11 +212,9 @@ def barycenter_timeseries(topo_ts: np.ndarray, beta: float, metadata: bool = Fal
 
     correction_index = np.array(correction_index)
     correction_required = np.array(correction_required)
+    logger.info(f"# samples to be added: {np.count_nonzero(correction_required == 1)}")
     logger.info(
-        "# samples to be added: {0}".format(np.count_nonzero(correction_required == 1))
-    )
-    logger.info(
-        "# samples to be removed: {0}".format(
+        "# samples to be removed: {}".format(
             np.count_nonzero(correction_required == -1)
         )
     )
@@ -247,16 +244,16 @@ def barycenter_timeseries(topo_ts: np.ndarray, beta: float, metadata: bool = Fal
 
 
 def bary_from_topo_freq(topo_freq, beta, convention="radio"):
-    """Convert from topocentric to barycentric frequency.
+    """
+    Convert from topocentric to barycentric frequency.
 
     :param topo_freq: Topocentric frequency in Hz
     :type topo_freq: float
-    :param beta: The barycentric velocity correction (as a fraction of the
-    speed of light)
+    :param beta: The barycentric velocity correction (as a fraction of the speed of
+        light)
     :type beta: float
     :param convention: The Doppler convention to use when converting frequency
     :type convention: str
-
     :return: Barycentric frequency in Hz
     :rtype: float
     """
@@ -268,24 +265,23 @@ def bary_from_topo_freq(topo_freq, beta, convention="radio"):
         return topo_freq * np.sqrt(1 - beta**2) / (1 + beta)
     else:
         logger.warning(
-            "convention not recognised, must be one of: optical, " "radio, relativistic"
+            "convention not recognised, must be one of: optical, radio, relativistic"
         )
         logger.warning("Defaulting to RADIO convention")
         return topo_freq * (1 - beta)
 
 
 def topo_from_bary_freq(bary_freq, beta, convention="radio"):
-    """Convert from barycentric to topocentric frequency. Assuming the radio
-    convention.
+    """
+    Convert from barycentric to topocentric frequency. Assuming the radio convention.
 
     :param bary_freq: Barycentric frequency in Hz
     :type bary_freq: float
-    :param beta: The barycentric velocity correction (as a fraction of the
-    speed of light)
+    :param beta: The barycentric velocity correction (as a fraction of the speed of
+        light)
     :type beta: float
     :param convention: The Doppler convention to use when converting frequency
     :type convention: str
-
     :return: Topocentric frequency in Hz
     :rtype: float
     """
@@ -297,15 +293,16 @@ def topo_from_bary_freq(bary_freq, beta, convention="radio"):
         return bary_freq / (np.sqrt(1 - beta**2) / (1 + beta))
     else:
         logger.warning(
-            "convention not recognised, must be one of: optical, " "radio, relativistic"
+            "convention not recognised, must be one of: optical, radio, relativistic"
         )
         logger.warning("Defaulting to RADIO convention")
         return bary_freq / (1 - beta)
 
 
 def bary_from_topo_mjd(topo_mjd, ra, dec):
-    """Given a topocentric time, correct it to the barycenter based on the
-    source direction.
+    """
+    Given a topocentric time, correct it to the barycenter based on the source
+    direction.
 
     :param topo_mjd: Topocentric MJD (UTC scale)
     :type topo_mjd: float
@@ -313,7 +310,6 @@ def bary_from_topo_mjd(topo_mjd, ra, dec):
     :type ra: str
     :param dec: Source Declination, in dd:mm:ss.ss
     :type dec: str
-
     :return: barycentric MJD (UTC scale)
     :rtype: float
     """

@@ -1,48 +1,56 @@
-import os
-import sys
-import subprocess
-import numpy as np
 import datetime as dt
-from astropy.time import Time
-from astropy.coordinates import SkyCoord
-import click
-
 import logging
+import os
+import subprocess
+
+import click
+import numpy as np
+from astropy.coordinates import SkyCoord
+from astropy.time import Time
+
 # set these up before importing any SPS packages
 log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
-from beamformer.utilities.common import find_closest_pointing, get_data_list
-from beamformer.strategist.strategist import PointingStrategist
 from beamformer.skybeam import SkyBeamFormer
+from beamformer.strategist.strategist import PointingStrategist
+from beamformer.utilities.common import find_closest_pointing, get_data_list
 from folding.plot_candidate import plot_candidate_archive
-from sps_databases import db_api, db_utils 
+from sps_databases import db_api, db_utils
+
 
 def apply_logging_config(level):
-    """Applies logging settings from the given configuration
+    """
+    Applies logging settings from the given configuration.
+
     Logging settings are under the 'logging' key, and include:
     - format: string for the `logging.formatter`
     - level: logging level for the root logger
     - modules: a dictionary of submodule names and logging level to be applied to that submodule's logger
     """
     log_stream.setFormatter(
-        logging.Formatter(fmt="%(asctime)s %(levelname)s >> %(message)s", datefmt="%b %d %H:%M:%S")
+        logging.Formatter(
+            fmt="%(asctime)s %(levelname)s >> %(message)s", datefmt="%b %d %H:%M:%S"
+        )
     )
 
     logging.root.setLevel(level)
     log.debug("Set default level to: %s", level)
 
+
 apply_logging_config(logging.INFO)
+
 
 def candidate_name(ra_deg, dec_deg, j2000=True):
     ra_hhmmss = ra_deg * 24 / 360
     dec_ddmmss = abs(dec_deg)
-    ra_str = "{:02d}{:02d}".format(int(ra_hhmmss), int((ra_hhmmss * 60) % 60))
+    ra_str = f"{int(ra_hhmmss):02d}{int((ra_hhmmss * 60) % 60):02d}"
     dec_sign = "+" if dec_deg >= 0 else "-"
-    dec_str = "{:02d}{:02d}".format(int(dec_ddmmss), int((dec_ddmmss * 60) % 60))
+    dec_str = f"{int(dec_ddmmss):02d}{int((dec_ddmmss * 60) % 60):02d}"
     candidate_name = "J" + ra_str + dec_sign + dec_str
     return candidate_name
+
 
 def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     cand_pos = SkyCoord(ra, dec, unit="deg")
@@ -85,7 +93,12 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
 @click.option("--f0", type=float, help="F0")
 @click.option("--ra", type=float, help="RA")
 @click.option("--dec", type=float, help="DEC")
-@click.option("--known", type=str, default=" ", help="Name of known pulsar, otherwise empty string")
+@click.option(
+    "--known",
+    type=str,
+    default=" ",
+    help="Name of known pulsar, otherwise empty string",
+)
 @click.option(
     "--psr", type=str, default="", help="Fold on known pulsar, using ephemeris"
 )
@@ -93,7 +106,7 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     "--fs_id",
     type=str,
     default="",
-    help="FollowUpSource ID, to fold from database values"
+    help="FollowUpSource ID, to fold from database values",
 )
 @click.option(
     "--db-port",
@@ -114,8 +127,10 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Name used for the mongodb database.",
 )
 @click.option(
-        "--basepath", type=str, default='/data/chime/sps/raw/',
-        help="Base directory for raw data",
+    "--basepath",
+    type=str,
+    default="/data/chime/sps/raw/",
+    help="Base directory for raw data",
 )
 @click.option(
     "--write-to-db",
@@ -146,9 +161,9 @@ def main(
     overwrite_folding=False,
 ):
     """
-    Perform the main processing steps for folding a candidate or known source.  It can be called for
-    a set of ra, dec, f0, dm, from a pulsar name using the known_source database, or from a FollowUpSource ID
-    which uses the ephemeris in the database.
+    Perform the main processing steps for folding a candidate or known source.  It can
+    be called for a set of ra, dec, f0, dm, from a pulsar name using the known_source
+    database, or from a FollowUpSource ID which uses the ephemeris in the database.
 
     The main automated processing will use FollowUpSource ID, and update the database with the folding history.
 
@@ -172,7 +187,7 @@ def main(
     Returns:
         tuple: A tuple containing an empty dictionary, an empty list, and an empty list.
     """
-    
+
     if using_workflow:
         if isinstance(date, str):
             for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
@@ -195,17 +210,17 @@ def main(
             if not overwrite_folding and date.date() in fold_dates:
                 log.info(f"Already folded on {date.date()}, skipping...")
                 return
-            
+
         f0 = source.f0
         ra = source.ra
         dec = source.dec
         dm = source.dm
         sigma = source.candidate_sigma
-        if source_type == 'known_source':
+        if source_type == "known_source":
             psr = source.source_name
             dir_suffix = "known_sources"
             known = psr
-        elif source_type == 'md_candidate' or source_type == 'sd_candidate':
+        elif source_type == "md_candidate" or source_type == "sd_candidate":
             dir_suffix = "candidates"
             name = candidate_name(ra, dec)
         ephem_path = source.path_to_ephemeris
@@ -225,7 +240,10 @@ def main(
         dir_suffix = "candidates"
         name = candidate_name(ra, dec)
     else:
-        log.error("Must provide either a pulsar name, FollowUpSource ID, or candidate RA and DEC")
+        log.error(
+            "Must provide either a pulsar name, FollowUpSource ID, or candidate RA"
+            " and DEC"
+        )
         return
 
     directory_path = f"/data/chime/sps/archives/{dir_suffix}"
@@ -235,15 +253,19 @@ def main(
     day = date.day
 
     if dir_suffix == "candidates":
-        log.info("Setting up pointing for {0} {1}...".format(round(ra, 2), round(dec, 2)))
+        log.info(f"Setting up pointing for {round(ra, 2)} {round(dec, 2)}...")
         coord_path = f"{directory_path}/{round(ra, 2)}_{round(dec, 2)}"
-        archive_fname = f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}"
+        archive_fname = (
+            f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}"
+        )
         if not os.path.exists(coord_path):
             os.makedirs(coord_path)
         else:
             log.info(f"Directory '{coord_path}' already exists.")
         if not ephem_path:
-            ephem_path = f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}.par"
+            ephem_path = (
+                f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}.par"
+            )
             create_ephemeris(name, ra, dec, dm, date, f0, ephem_path, fs_id)
     elif dir_suffix == "known_sources":
         log.info(f"Setting up pointing for {psr}...")
@@ -269,23 +291,22 @@ def main(
 
     data_list = []
     for active_pointing in ap:
-        data_list.extend(get_data_list(active_pointing.max_beams, basepath=basepath, extn="dat"))
-    if not data_list:
-        log.error(
-            "No data found for the pointing {:.2f} {:.2f}".format(
-                ap[0].ra, ap[0].dec
-            )
+        data_list.extend(
+            get_data_list(active_pointing.max_beams, basepath=basepath, extn="dat")
         )
+    if not data_list:
+        log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
         return
 
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
     if nchan < ap[0].nchan:
         log.info(
-            f"only need nchan = {nchan} for dm = {dm}, beamforming with {nchan} channels"
+            f"only need nchan = {nchan} for dm = {dm}, beamforming with"
+            f" {nchan} channels"
         )
         ap[0].nchan = nchan
-    num_threads = 4*nchan // 1024
+    num_threads = 4 * nchan // 1024
     log.info(f"using {num_threads} threads")
 
     # set number of turns, roughly equalling 10s
@@ -297,7 +318,7 @@ def main(
         turns = 10
 
     if not os.path.isfile(fil):
-        log.info("Beamforming..., basepath {0}".format(basepath))
+        log.info(f"Beamforming..., basepath {basepath}")
         sbf = SkyBeamFormer(
             extn="dat",
             update_db=False,
@@ -329,9 +350,7 @@ def main(
         spectra_shared.unlink()
         del skybeam
 
-    if not os.path.isfile(
-        f"{archive_fname}.ar"
-    ):
+    if not os.path.isfile(f"{archive_fname}.ar"):
         log.info("Folding...")
         subprocess.run(
             [
@@ -386,7 +405,10 @@ def main(
             folding_history.append(fold_details)
         db_api.update_followup_source(fs_id, {"folding_history": folding_history})
         if len(folding_history) >= source.followup_duration:
-            log.info("Finished follow-up duration of {0} days, setting active = False".format(source.followup_duration))
+            log.info(
+                f"Finished follow-up duration of {source.followup_duration} days,"
+                " setting active = False"
+            )
             db_api.update_followup_source(fs_id, {"active": False})
 
     # Silence Workflow errors, requires results, products, plots

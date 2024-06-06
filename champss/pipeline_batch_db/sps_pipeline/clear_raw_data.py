@@ -1,10 +1,10 @@
-import click
 import os
-import pytz
 import shutil
 import time
-
 from datetime import datetime, timedelta, timezone
+
+import click
+import pytz
 from slack_sdk import WebClient
 from sps_databases import db_utils
 
@@ -23,7 +23,10 @@ def delete_raw_data_folder(date, raw_data_path, dry_run):
     slack_channel = "#slow-pulsar-alerts"
     slack_warning = slack_client.chat_postMessage(
         channel=slack_channel,
-        text=f"{raw_data_folder} will be deleted in 1 hour. Reply 'skip' to skip this day's raw data deletion.",
+        text=(
+            f"{raw_data_folder} will be deleted in 1 hour. Reply 'skip' to skip this"
+            " day's raw data deletion."
+        ),
     )
 
     time.sleep(3600)
@@ -147,18 +150,17 @@ def clear_raw_data(
             last_process_for_date_timestamp = last_process_for_date.get("last_changed")
 
             print(
-                f"Most recent process for {date} has last timestamp of {last_process_for_date_timestamp}"
+                f"Most recent process for {date} has last timestamp of"
+                f" {last_process_for_date_timestamp}"
             )
 
             if (
                 datetime.now(timezone.utc) - last_process_for_date_timestamp
             ) < timedelta(days=days_threshold):
                 print(
-                    (
-                        f"\tLess than {days_threshold} days have passed since this "
-                        "date's last processed timestamp, skipping processes completion "
-                        "check, will not delete date's raw data."
-                    )
+                    f"\tLess than {days_threshold} days have passed since this "
+                    "date's last processed timestamp, skipping processes completion "
+                    "check, will not delete date's raw data."
                 )
                 continue
 
@@ -172,20 +174,16 @@ def clear_raw_data(
 
             if percentage_processes >= completed_threshold:
                 print(
-                    (
-                        f"\tMore than {completed_threshold * 100}% of date's processed "
-                        f"are in stack (has {percentage_processes * 100}%), will delete date's "
-                        "raw data."
-                    )
+                    f"\tMore than {completed_threshold * 100}% of date's processed are"
+                    f" in stack (has {percentage_processes * 100}%), will delete date's"
+                    " raw data."
                 )
                 delete_raw_data_folder(date, raw_data_path, dry_run)
             else:
                 print(
-                    (
-                        f"\tLess than {completed_threshold * 100}% of date's "
-                        f"processes are in stack (only {percentage_processes * 100}%), will "
-                        "not delete date's raw data."
-                    )
+                    f"\tLess than {completed_threshold * 100}% of date's processes are"
+                    f" in stack (only {percentage_processes * 100}%), will not delete"
+                    " date's raw data."
                 )
                 # This date might just have a lot of failures, so continue checking
                 # next dates (do not break out of this loop)

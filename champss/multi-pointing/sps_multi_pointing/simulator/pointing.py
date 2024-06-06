@@ -1,15 +1,15 @@
 import copy
-import numpy as np
 
+import numpy as np
 from sps_common.constants import (
-    MIN_SEARCH_FREQ,
+    MAX_SEARCH_DM,
     MAX_SEARCH_FREQ,
     MIN_SEARCH_DM,
-    MAX_SEARCH_DM,
+    MIN_SEARCH_FREQ,
 )
 
 
-class Group(object):
+class Group:
     def __init__(
         self,
         f,
@@ -83,7 +83,7 @@ class Group(object):
         return max(self.min_power, self.max_power / decay)
 
 
-class GroupSummary(object):
+class GroupSummary:
     def __init__(
         self, group_id, freq, dm, max_dm, min_dm, max_power, num_harm=0, rfi=False
     ):
@@ -146,7 +146,7 @@ class GroupSummary(object):
         return groups, group_summary
 
 
-class Pointing(object):
+class Pointing:
     def __init__(self, pulsars=[], rfi=[]):
         self.pulsars = pulsars
         self.rfi = rfi

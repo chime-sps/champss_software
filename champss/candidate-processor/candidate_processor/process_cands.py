@@ -1,8 +1,8 @@
 import logging
+
 import numpy as np
 from candidate_processor.utilities import candidate_utils
 from sps_common import conversion
-import glob
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,6 @@ def process(
     Returns
     =======
     None
-
     """
     print('hello world')
     if clean:
@@ -60,7 +59,7 @@ def process(
     if not make_plots:
         filename = None
     else:
-        filename = root_plot_dir + "hhat_{}.png".format(dc_idx)
+        filename = root_plot_dir + f"hhat_{dc_idx}.png"
     good_idx = candidate_utils.extract_bright_hhat(
         data,
         dm_labels,
@@ -87,7 +86,7 @@ def process(
     if not make_plots:
         filename = None
     else:
-        filename = root_plot_dir + "clusters_{}.png".format(dc_idx)
+        filename = root_plot_dir + f"clusters_{dc_idx}.png"
     groups = candidate_utils.perform_clustering(
         data_cluster,
         dc_value,
@@ -112,7 +111,7 @@ def process(
     if not make_plots:
         filename = None
     else:
-        filename = root_plot_dir + "candidates_{}.png".format(dc_idx)
+        filename = root_plot_dir + f"candidates_{dc_idx}.png"
         log.info("plotting candidates")
         candidate_utils.plot_group(
             final_group,
@@ -124,7 +123,7 @@ def process(
         )
     log.info("saving candidates")
     np.savez(
-        root_plot_dir + "candidates_dc{}.npz".format(dc_idx),
+        root_plot_dir + f"candidates_dc{dc_idx}.npz",
         group=final_group,
         group_summary=summary,
     )
@@ -142,7 +141,8 @@ def process_full_hhat(
     update_db=False,
 ):
     """
-    Given an hhat array (ndm, nfreq,ndc), perform a clustering analysis for each duty cycle.
+    Given an hhat array (ndm, nfreq,ndc), perform a clustering analysis for each duty
+    cycle.
 
     Parameters
     ==========
@@ -169,7 +169,6 @@ def process_full_hhat(
         contains a summary of the groups for each duty cycle
     groups: dict
         contains all the groups of clusters for each duty cycle.
-
     """
     h5f, dm_labels, freq_labels, dc_labels, sliced_by = conversion.read_hhat_hdf5(
         filename
@@ -181,7 +180,7 @@ def process_full_hhat(
     groups = {}
     for dc_idx in range(11):
         dc_value = dc_labels[dc_idx]
-        data = conversion.read_hdf5_dataset(h5f, dataset_key="{}".format(dc_idx))
+        data = conversion.read_hdf5_dataset(h5f, dataset_key=f"{dc_idx}")
         if freq_labels.ndim == 2:
             fls = freq_labels[:, dc_idx]
         else:
@@ -225,7 +224,8 @@ def process_power_spec(
     save_pregroup=True,
 ):
     """
-    Given an hhat array (ndm, nfreq,ndc), perform a clustering analysis for each duty cycle.
+    Given an hhat array (ndm, nfreq,ndc), perform a clustering analysis for each duty
+    cycle.
 
     Parameters
     ==========
@@ -254,14 +254,13 @@ def process_power_spec(
         contains a summary of the groups for each duty cycle
     groups: dict
         contains all the groups of clusters for each duty cycle.
-
     """
     cand_list = []
     for c in candidate_files:
         try:
             cl, cand_labels, freq_spacing = conversion.read_hdf5_cands(c)
         except:
-            log.error("Error opening {}".format(c))
+            log.error(f"Error opening {c}")
             continue
         cl = cl[cl[:, 1].argsort()]
         pop_dup = []
@@ -282,7 +281,7 @@ def process_power_spec(
         # log.info('Removing {} duplicate detections from {}'.format(len(pop_dup), c))
         cand_list.append(np.delete(cl, pop_dup, axis=0))
     cand_list = np.vstack(cand_list)
-    log.info("total number of candidates = {}".format(len(cand_list)))
+    log.info(f"total number of candidates = {len(cand_list)}")
     # save candidates before grouping
     if save_pregroup:
         log.info("saving pre-grouping PS candidates")
@@ -342,9 +341,8 @@ def process_spec(
     Returns
     =======
     None
-
     """
-    log.info("Threshold: {}".format(threshold))
+    log.info(f"Threshold: {threshold}")
     if clean:
         log.info("cleaning power spec")
         data = candidate_utils.clean_power_spec(data, threshold)

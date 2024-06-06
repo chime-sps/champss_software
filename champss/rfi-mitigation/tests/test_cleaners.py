@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-import pytest
 import numpy as np
-
+import pytest
 from rfi_mitigation.cleaners.cleaners import DummyCleaner
 from sps_common.constants import TSAMP
 
