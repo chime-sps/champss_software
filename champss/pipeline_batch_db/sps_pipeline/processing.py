@@ -343,6 +343,10 @@ def find_all_pipeline_processes(
 )
 @click.option(
     "--docker-password",
+    prompt=True,
+    confirmation_prompt=False,
+    hide_input=True,
+    required=True,
     type=str,
     help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
@@ -553,10 +557,11 @@ def run_all_pipeline_processes(
     help="Which Docker Image name to use.",
 )
 @click.option(
-    "--docker-password",
+    "--docker-password-filepath",
+    default="/run/secrets/DOCKERHUB_PASSWORD",
     required=True,
     type=str,
-    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
+    help="The path to the file containing the DockerHub password.",
 )
 @click.option(
     "--run-pipeline",
@@ -589,7 +594,7 @@ def start_processing_manager(
     max_dec,
     workflow_name,
     docker_image_name,
-    docker_password,
+    docker_password_filepath,
     run_pipeline,
     run_multipointing,
     run_folding,
@@ -599,6 +604,9 @@ def start_processing_manager(
     signal.signal(signal.SIGINT, remove_processing_services)
 
     log.setLevel(logging.INFO)
+
+    with open(docker_password_filepath) as docker_password_file:
+        docker_password = docker_password_file.read()
 
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
 
@@ -992,12 +1000,6 @@ def start_processing_manager(
     help="Name of Docker Image to use for the processing pipeline.",
 )
 @click.option(
-    "--registry-docker-password",
-    required=True,
-    type=str,
-    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
-)
-@click.option(
     "--run-pipeline",
     default=True,
     type=bool,
@@ -1025,16 +1027,20 @@ def start_processing_services(
     workflow_name,
     manager_docker_image_name,
     pipeline_docker_image_name,
-    registry_docker_password,
     run_pipeline,
     run_multipointing,
     run_folding,
 ):
+    # Please run "docker login" in your CLI to allow retrieval of the manager image
+
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
 
-    docker_client.login(username="chimefrb", password=registry_docker_password)
+    docker_password_secret_name = "DOCKERHUB_PASSWORD"
+    docker_password_secret_id = docker_client.secrets.list(
+        filters={"name": docker_password_secret_name}
+    )[0].id
 
     docker_service_manager = {
         "image": manager_docker_image_name,
@@ -1042,8 +1048,8 @@ def start_processing_services(
         "command": (
             f"start-processing-manager --db-host {db_host} --db-port"
             f" {db_port} --db-name {db_name} --start-date {start_date} --number-of-days"
-            f" {number_of_days} --docker-password {registry_docker_password} --basepath"
-            f" {basepath} --workflow-name {workflow_name} --docker-image-name"
+            f" {number_of_days} --basepath {basepath}"
+            f" --workflow-name {workflow_name} --docker-image-name"
             f" {pipeline_docker_image_name} --run-pipeline"
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
             f" {run_folding}"
@@ -1066,6 +1072,12 @@ def start_processing_services(
         # to communicate with other containers (MongoDB, Prometheus, etc) that are
         # also manually added to this network
         "networks": ["pipeline-network"],
+        # Secrets are put into /run/secrets/<secret_name> inside the container
+        "secrets": [
+            docker.types.SecretReference(
+                docker_password_secret_id, docker_password_secret_name
+            )
+        ],
     }
     docker_service_pipeline_image_clenaup = {
         "image": manager_docker_image_name,
