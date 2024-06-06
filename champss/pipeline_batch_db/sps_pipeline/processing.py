@@ -341,10 +341,11 @@ def find_all_pipeline_processes(
     type=str,
     help="Which Docker Image name to use.",
 )
-@click.password_option(
-    param_decls=["--docker-password"],
-    prompt="Enter DockerHub password: ",
+@click.option(
+    "--docker-password",
+    prompt=True,
     confirmation_prompt=True,
+    hide_input=True,
     required=True,
     type=str,
     help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
