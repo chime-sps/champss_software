@@ -344,7 +344,7 @@ def find_all_pipeline_processes(
 @click.option(
     "--docker-password",
     prompt=True,
-    confirmation_prompt=True,
+    confirmation_prompt=False,
     hide_input=True,
     required=True,
     type=str,
