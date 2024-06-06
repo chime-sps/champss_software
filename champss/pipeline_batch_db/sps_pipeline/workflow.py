@@ -281,6 +281,10 @@ def schedule_workflow_job(
 
     log.info(f"Creating Docker Service: \n{docker_service}")
 
+    # Wait a few seconds because Work might still not have propogated to Buckets
+    # and Workflow runner can pickup nothing and quietly exit
+    time.sleep(5)
+
     docker_client.services.create(**docker_service)
 
     # Wait a second before querying Docker Swarm again
