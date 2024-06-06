@@ -283,7 +283,7 @@ def schedule_workflow_job(
 
     # Wait a few seconds because Work might still not have propogated to Buckets
     # and Workflow runner can pickup nothing and quietly exit
-    time.sleep(5)
+    # time.sleep(5)
 
     docker_client.services.create(**docker_service)
 
