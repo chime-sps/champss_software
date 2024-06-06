@@ -2,9 +2,8 @@ import logging
 
 import numpy as np
 from scipy.fft import rfft
-from sps_common.constants import FREQ_BOTTOM, FREQ_TOP, TSAMP, DM_CONSTANT
+from sps_common.constants import FREQ_BOTTOM, FREQ_TOP
 from sps_databases import db_api
-from sps_dedispersion.fdmt.cpu_fdmt import FDMT
 
 log = logging.getLogger(__name__)
 
@@ -85,8 +84,8 @@ class Injection:
         self.birdies = pspec_obj.bad_freq_indices
         self.f = true_f
         self.true_dm = true_dm
-        self.min_dm = min(self.pspec_obj.dms)
-        self.max_dm = max(self.pspec_obj.dms)
+        self.trial_dms = self.pspec_obj.dms
+        self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
         self.phase_prof = phase_prof
         self.sigma = sigma
         self.power_threshold = 1
@@ -99,7 +98,7 @@ class Injection:
         """
         return self.sigma**2 / 2.0 + np.log(np.sqrt(np.pi / 2) * self.sigma)
 
-    def disperse(self, min_DM, max_DM, nchans, freqs, dm_step = 1):
+    def disperse(self, trial_DM, nchans):
         """
         This function "dedisperses" a pulse profile according to some error from the
         true DM.
@@ -110,35 +109,38 @@ class Injection:
 
         Returns:
         ________
-                dispersed_prof: a DM-smeared 1D phase profile of a pulse
+                dispersed_phase_prof: a DM-smeared 1D phase profile of a pulse
         """
 
-        num_dms = (
-            int(
-                DM_CONSTANT
-                * (max_DM - min_DM)
-                * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2)
-                / TSAMP
-                // nchans
-            )
-            + 1
-        ) * nchans
-        
-        fdmt = FDMT(
-            fmin=FREQ_BOTTOM,
-            fmax=FREQ_TOP,
-            nchan=nchans,
-            maxDT=num_dms,
-            num_threads=1,
-        )
-        pulse2D = np.zeros((nchans, len(self.phase_prof)))
+        DM_err = self.true_dm - trial_DM
+
+
+        # create frequency array
+        freqs = np.linspace(FREQ_TOP, FREQ_BOTTOM, nchans, endpoint=False)
+        freq_ref = np.max(freqs)
+
+        # define constants
+        kDM = 1 / (2.41e-4)  # in MHz^2 s cm^3 pc^-1
+        dt = 2.56 * 512 * 0.75 * 1e-6  # s
+
+        # calculate dispersion delay
+        delay = kDM * DM_err * (1 / freqs**2 - 1 / freq_ref**2)
+
+        # calculate how much to shift bins
+        dd_binshift = (delay // dt).astype("int")
+
+        # create 2D pulse profile
+        pulse2D = np.zeros((len(freqs), len(self.phase_prof)))
         pulse2D[:] = self.phase_prof
-        for i in range(nchans):
-            pulse2D[i] = np.roll(pulse2D[i], num_dms)
-        
-        dispersed_prof =fdmt.fdmt(pulse2D[::-1], frontpadding=True)[::dm_step]
-        print(dispersed_prof.shape)
-        return dispersed_prof
+
+        # apply dispersion delay to each spectral channel of 2D pulse profile
+        for i in range(len(freqs)):
+            pulse2D[i] = np.roll(pulse2D[i], dd_binshift[i])
+
+        # average all spectral channels to get 1D dispersed pulse
+        dispersed_phase_prof = pulse2D.mean(0)
+
+        return dispersed_phase_prof
 
     def harmonics(self, prof, df, n_harm, weights):
         """
@@ -210,11 +212,20 @@ class Injection:
 
         # connect to database and find number of spectral channels in observation
         obs = db_api.get_observation(self.pspec_obj.obs_id[0])
-        nchans = db_api.get_pointing(obs.pointing_id).nchans 
-        dispersed_prof = self.disperse(self.min_dm, self.max_dm, nchans, freqs)
+        nchans = db_api.get_pointing(obs.pointing_id).nchans
         
-        for i in range(len(dispersed_prof)):
-            bins, harm = self.harmonics(dispersed_prof[i], df, n_harm, weight)
+        for i in range(self.true_dm_trial, len(self.trial_dms)):
+            dispersed_prof = self.disperse(self.trial_dms[i], nchans)
+            bins, harm = self.harmonics(dispersed_prof, df, n_harm, weight)
+            if np.max(harm) < self.power_threshold:
+                break
+            harms.append(harm)
+            dms.append(i)
+        for i in range(self.true_dm_trial - 1, -1, -1):
+            dispersed_prof = self.disperse(self.trial_dms[i], nchans)
+            bins, harm = self.harmonics(dispersed_prof, df, n_harm, weight)
+            if np.max(harm) < self.power_threshold:
+                break
             harms.append(harm)
             dms.append(i)
 
