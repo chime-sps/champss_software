@@ -1,5 +1,6 @@
 import datetime as dt
 import logging
+import os
 import time
 
 import click
@@ -105,6 +106,38 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             f" {task_state}."
                         )
                         try:
+                            # Dump logs of multiprocessing containers
+                            # before removing them
+                            if "processing-mp" in service.name:
+                                try:
+                                    date = service.name.split("-")[-1]
+                                    logs = service.logs(
+                                        details=True,
+                                        stdout=True,
+                                        stderr=True,
+                                        follow=False,
+                                    )
+                                    logs = (
+                                        logs.decode("utf-8")
+                                        if isinstance(logs, bytes)
+                                        else logs
+                                    )
+                                    path = f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log"
+                                    directory = os.path.dirname(path)
+                                    if not os.path.exists(directory):
+                                        os.makedirs(directory)
+                                        log.info(f"Created directory: {directory}")
+                                    with open(
+                                        f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log",
+                                        "w",
+                                    ) as file:
+                                        file.write(logs)
+                                except Exception as error:
+                                    log.info(
+                                        "Error dumping logs for service"
+                                        f" {service.name}: {error} (will skip"
+                                        " gracefully)."
+                                    )
                             service.remove()
                         except Exception as error:
                             log.info(
@@ -247,6 +280,10 @@ def schedule_workflow_job(
     }
 
     log.info(f"Creating Docker Service: \n{docker_service}")
+
+    # Wait a few seconds because Work might still not have propogated to Buckets
+    # and Workflow runner can pickup nothing and quietly exit
+    # time.sleep(5)
 
     docker_client.services.create(**docker_service)
 
