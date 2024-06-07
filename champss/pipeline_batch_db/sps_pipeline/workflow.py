@@ -111,17 +111,15 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             if "processing-mp" in service.name:
                                 try:
                                     date = service.name.split("-")[-1]
-                                    logs = service.logs(
+                                    log_text = ""
+                                    log_generator = service.logs(
                                         details=True,
                                         stdout=True,
                                         stderr=True,
                                         follow=False,
                                     )
-                                    logs = (
-                                        logs.decode("utf-8")
-                                        if isinstance(logs, bytes)
-                                        else logs
-                                    )
+                                    for log_chunk in log_generator:
+                                        log_text += log_chunk.decode("utf-8")
                                     path = f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log"
                                     directory = os.path.dirname(path)
                                     if not os.path.exists(directory):
@@ -131,7 +129,7 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                                         f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log",
                                         "w",
                                     ) as file:
-                                        file.write(logs)
+                                        file.write(log_text)
                                 except Exception as error:
                                     log.info(
                                         "Error dumping logs for service"
