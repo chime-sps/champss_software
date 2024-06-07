@@ -272,27 +272,22 @@ def dbexcepthook(type, value, tb):
 )
 @click.option(
     "--injection-path",
-    default = None,
+    default=None,
     type=str,
-    help = (
-        "Path to yml file containing injection"
-    ),
+    help="Path to yml file containing injection",
 )
 @click.option(
-    "--injection-idx", "--ii",
-    default = [],
+    "--injection-idx",
+    "--ii",
+    default=[],
     type=int,
     multiple=True,
-    help = (
-        "Index of pulse to inject from yml file"
-    ),
+    help="Index of pulse to inject from yml file",
 )
 @click.option(
     "--only-injections/--no-only-injections",
     default=False,
-    help = (
-        "Only process clusters containing injections."
-    ),
+    help="Only process clusters containing injections.",
 )
 def main(
     date,
@@ -639,8 +634,12 @@ def main(
                 gc.collect()
                 if "search" in components:
                     ps_detections = ps_pipeline.power_spectra_search(
-                        power_spectra, injection_path, injection_idx,
-                        only_injections, obs_folder, prefix,
+                        power_spectra,
+                        injection_path,
+                        injection_idx,
+                        only_injections,
+                        obs_folder,
+                        prefix,
                     )
                     if ps_detections is None:
                         power_spectra.unlink_shared_memory()
@@ -660,6 +659,9 @@ def main(
                             config.cands.get(
                                 "write_harmonically_related_clusters", False
                             ),
+                            injection_path,
+                            injection_idx,
+                            only_injections,
                         )
                     gc.collect()
                 if stack:
@@ -843,25 +845,19 @@ def main(
 )
 @click.option(
     "--injection-path",
-    default = None,
-    help = (
-        "Path to yml file containing injection"
-    ),
+    default=None,
+    help="Path to yml file containing injection",
 )
 @click.option(
     "--injection-idx",
-    default = [],
+    default=[],
     multiple=True,
-    help = (
-        "Index of pulse to inject from yml file"
-    ),
+    help="Index of pulse to inject from yml file",
 )
 @click.option(
     "--only-store-injections",
-    default = False,
-    help = (
-        "Do you only want to store the injection candidates?"
-    ),
+    default=False,
+    help="Do you only want to store the injection candidates?",
 )
 def stack_and_search(
     plot,
@@ -962,8 +958,12 @@ def stack_and_search(
 
     if to_stack or to_search:
         ps_detections, power_spectra = ps_cumul_stack.run(
-            closest_pointing, ps_cumul_stack_processor, power_spectra_monthly,
-            injection_path, injection_idx, only_store_injections,
+            closest_pointing,
+            ps_cumul_stack_processor,
+            power_spectra_monthly,
+            injection_path,
+            injection_idx,
+            only_store_injections,
         )
         if to_search:
             if not ps_detections:

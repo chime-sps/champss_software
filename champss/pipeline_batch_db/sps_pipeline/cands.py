@@ -36,6 +36,9 @@ def run(
     plot_threshold=0,
     basepath="./",
     write_hrc=False,
+    injection_path=None,
+    injection_idx=[],
+    only_injections=False,
 ):
     """
     Search a `pointing` for periodicity candidates. Used for daily stacks.
@@ -65,20 +68,35 @@ def run(
         f"Candidate Processor ({pointing.ra :.2f} {pointing.dec :.2f}) @"
         f" { date :%Y-%m-%d}"
     )
-
-    file_path = path.join(
-        basepath,
-        date.strftime("%Y/%m/%d"),
-        f"{ pointing.ra :.02f}_{ pointing.dec :.02f}",
-    )
+    if only_injections:
+        file_path = path.join(
+            basepath,
+            "injections",
+        )
+        os.makedirs(
+            file_path + "/candidates/",
+            exist_ok=True,
+        )
+    else:
+        file_path = path.join(
+            basepath,
+            date.strftime("%Y/%m/%d"),
+            f"{ pointing.ra :.02f}_{ pointing.dec :.02f}",
+        )
     if not psdc:
         ps_detection_clusters = (
             f"{ file_path }/{ pointing.ra :.02f}_{ pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_detection_clusters.hdf5"
         )
         psdc = PowerSpectraDetectionClusters.read(ps_detection_clusters)
-    ps_candidates = (
-        f"{file_path}/{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.npz"
-    )
+    if only_injections:
+        ps_candidates = (
+            f"{file_path}/candidates/{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_"
+            f"{injection_path.split('/')[-1]}_{str(injection_idx).replace(' ', '')}_power_spectra_candidates.npz"
+        )
+    else:
+        ps_candidates = (
+            f"{file_path}/{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.npz"
+        )
     with cand_ps_processing_time.labels(pointing.pointing_id, pointing.beam_row).time():
         spcc = cands_processor.fg.make_single_pointing_candidate_collection(
             psdc, power_spectra
