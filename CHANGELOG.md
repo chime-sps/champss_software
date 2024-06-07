@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/chime-sps/champss_software/compare/v0.3.0...v0.3.1) (2024-06-07)
+
+
+### Bug Fixes
+
+* **workflow.py:** Read container log generator into file ([a5ba7a3](https://github.com/chime-sps/champss_software/commit/a5ba7a3ce400225289ec30e020bef9650226e327))
+
 ## [0.3.0](https://github.com/chime-sps/champss_software/compare/v0.2.0...v0.3.0) (2024-06-06)
 
 
