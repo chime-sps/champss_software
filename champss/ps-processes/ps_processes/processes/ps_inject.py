@@ -224,7 +224,7 @@ class Injection:
             fmin=FREQ_BOTTOM,
             fmax=FREQ_TOP,
             nchan=nchans,
-            maxDT=len(self.trial_dms), # probably wrong
+            maxDT=len(self.trial_dms),  # probably wrong
             num_threads=1,
         )
         zero_dm_prof = self.disperse(0, nchans, return_2d=True)
@@ -233,6 +233,7 @@ class Injection:
         dedispersed_pulses = (
             fdmt.fdmt(fdmt_input[::-1], frontpadding=False)[:, -len(self.phase_prof) :]
             / nchans
+            * 10
         )
         # need to implement dm_step somewhere, need to fix maxDT for that
 
