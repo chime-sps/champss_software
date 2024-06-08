@@ -231,7 +231,7 @@ class Injection:
 
         fdmt_input = np.tile(zero_dm_prof, (1, 4))
         dedispersed_pulses = (
-            fdmt.fdmt(fdmt_input[::-1], frontpadding=False)[, -len(self.phase_prof) :]
+            fdmt.fdmt(fdmt_input[::-1], frontpadding=False)[:, -len(self.phase_prof) :]
             / nchans
         )
         # need to implement dm_step somewhere, need to fix maxDT for that
