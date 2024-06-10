@@ -58,25 +58,14 @@ def message_slack(
 def get_service_created_at_datetime(service):
     try:
         datetime = dt.datetime.strptime(
-            # datetime does not support more than 6 decimals in seconds field
-            service.attrs["CreatedAt"][:-5],
-            "%Y-%m-%dT%H:%M:%S.%f",
+            service.attrs["CreatedAt"].split(".")[0], "%Y-%m-%dT%H:%M:%S"
         )
         return datetime
     except Exception as error:
-        try:
-            # Sometimes the CreatedAt field is missing microsecond fields
-            datetime = dt.datetime.strptime(
-                # datetime does not support more than 6 decimals in seconds field
-                service.attrs["CreatedAt"][:-5],
-                "%Y-%m-%dT%H:%M:%S.",
-            )
-            return datetime
-        except Exception as error:
-            log.info(
-                f"Error parsing CreatedAt for service {service}: {error} (will skip gracefully)."
-            )
-            return None
+        log.info(
+            f"Error parsing CreatedAt for service {service}: {error} (will skip gracefully)."
+        )
+        return None
 
 
 def wait_for_no_tasks_in_states(states_to_wait_for_none):
