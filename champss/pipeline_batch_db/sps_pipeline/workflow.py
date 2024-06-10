@@ -243,6 +243,7 @@ def schedule_workflow_job(
             f"Failed to login to DockerHub to schedule {docker_name}: {error}."
             " Will not schedule this task."
         )
+        return ""
 
     workflow_site = "chime"
     workflow_user = "CHAMPSS"
@@ -339,6 +340,7 @@ def schedule_workflow_job(
             f"Failed to deposit Work and create Docker Service for {docker_name}: {error}."
             " Will not schedule this task."
         )
+        return ""
 
 
 @click.command()
