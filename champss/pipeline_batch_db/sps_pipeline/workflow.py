@@ -33,6 +33,8 @@ docker_swarm_finished_states = [
 
 perpetual_processing_services = ["processing-manager", "processing-cleanup"]
 
+# Sometimes a Docker Swarm task gets stuck in pending/running state
+# indefinitely for unknown reasons...
 task_timeout_seconds = 60 * 40  # 40 minutes
 
 
@@ -58,13 +60,23 @@ def get_service_created_at_datetime(service):
         datetime = dt.datetime.strptime(
             # datetime does not support more than 6 decimals in seconds field
             service.attrs["CreatedAt"][:-5],
-            # Rarely, CreatedAt will not have any microsecond fields, will catch exception
             "%Y-%m-%dT%H:%M:%S.%f",
         )
         return datetime
     except Exception as error:
-        log.info(f"Error parsing service {service}: {error} (will skip gracefully).")
-        return None
+        try:
+            # Sometimes the CreatedAt field is missing microsecond fields
+            datetime = dt.datetime.strptime(
+                # datetime does not support more than 6 decimals in seconds field
+                service.attrs["CreatedAt"][:-5],
+                "%Y-%m-%dT%H:%M:%S.",
+            )
+            return datetime
+        except Exception as error:
+            log.info(
+                f"Error parsing CreatedAt for service {service}: {error} (will skip gracefully)."
+            )
+            return None
 
 
 def wait_for_no_tasks_in_states(states_to_wait_for_none):
@@ -72,15 +84,11 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
 
     docker_client = docker.from_env()
 
-    # Sometimes a Docker Swarm task gets stuck in pending/running state
-    # indefinitely for unknown reasons...
-    task_timeout_seconds = 60 * 35  # 35 minutes from now
-
     is_task_in_state = True
 
     # For pending:
     # Docker Swarm can be freeze if too many tasks are in pending state concurrently.
-    # Additionally, Docker Swarm deqeues pending jobs in random order, so we need to
+    # Additionally, Docker Swarm dequeues pending jobs in random order, so we need to
     # only have one pending job at a time, to maintain ordering
     # For running:
     # It's helpful for Slack messages to wait for all running processes to finish
@@ -149,7 +157,7 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                                     log.info(f"Created directory: {directory}")
 
                                 with open(
-                                    f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log",
+                                    path,
                                     "w",
                                 ) as file:
                                     file.write(log_text)
@@ -175,7 +183,7 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                                 f"Service {service.name} has been ruuning for more than"
                                 f" {(task_timeout_seconds  * 2) / 60} minutes in state"
                                 f" {task_state}, implying frozen task on 1st or 2nd final"
-                                f" attempt. Will remove service."
+                                f" Workflow runner attempt. Will remove service."
                             )
 
                             try:
@@ -185,6 +193,8 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                                     f"Error removing service {service.name}: {error} (will"
                                     " skip gracefully)."
                                 )
+                        # Task in state running, and we want to wait for no running states
+                        # Loop will continue
                         elif states_to_wait_for_none == docker_swarm_running_states:
                             is_task_in_state = True
                             break
@@ -198,6 +208,7 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                                 f" {task_state}, implying failed Docker task scheduling. Will"
                                 " remove service."
                             )
+
                             try:
                                 service.remove()
                             except Exception as error:
@@ -205,12 +216,14 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                                     f"Error removing service {service.name}:"
                                     f" {error} (will skip gracefully)."
                                 )
+                        # Task in state pending, and we want to wait for no pending states
+                        # Loop will continue
                         elif states_to_wait_for_none == docker_swarm_pending_states:
                             is_task_in_state = True
                             break
             except Exception as error:
                 log.info(
-                    f"Error checking tasks for service {service.name}: {error} (will"
+                    f"Error checking tasks for service {service}: {error} (will"
                     " skip gracefully)."
                 )
 
