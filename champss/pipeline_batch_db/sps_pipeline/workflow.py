@@ -33,6 +33,10 @@ docker_swarm_finished_states = [
 
 perpetual_processing_services = ["processing-manager", "processing-cleanup"]
 
+# Sometimes a Docker Swarm task gets stuck in pending/running state
+# indefinitely for unknown reasons...
+task_timeout_seconds = 60 * 40  # 40 minutes
+
 
 def message_slack(
     slack_message,
@@ -51,20 +55,29 @@ def message_slack(
         log.info(error)
 
 
+def get_service_created_at_datetime(service):
+    try:
+        datetime = dt.datetime.strptime(
+            service.attrs["CreatedAt"].split(".")[0], "%Y-%m-%dT%H:%M:%S"
+        )
+        return datetime
+    except Exception as error:
+        log.info(
+            f"Error parsing CreatedAt for service {service}: {error} (will skip gracefully)."
+        )
+        return None
+
+
 def wait_for_no_tasks_in_states(states_to_wait_for_none):
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
 
-    # Sometimes a Docker Swarm task gets stuck in pending/running state
-    # indefinitely for unknown reasons...
-    task_timeout_seconds = 60 * 35  # 35 minutes from now
-
     is_task_in_state = True
 
     # For pending:
     # Docker Swarm can be freeze if too many tasks are in pending state concurrently.
-    # Additionally, Docker Swarm deqeues pending jobs in random order, so we need to
+    # Additionally, Docker Swarm dequeues pending jobs in random order, so we need to
     # only have one pending job at a time, to maintain ordering
     # For running:
     # It's helpful for Slack messages to wait for all running processes to finish
@@ -73,27 +86,32 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
         is_task_in_state = False
 
         # Re-fetch Docker Swarm Service states
-        processing_services = sorted(
-            [
-                service
-                for service in docker_client.services.list()
-                if "processing" in service.name
-                and service.name not in perpetual_processing_services
-            ],
-            # Sort from oldest to newest to find finished services to remove
-            key=lambda service: dt.datetime.strptime(
-                # datetime does not support more than 6 decimals in seconds field
-                service.attrs["CreatedAt"][:-5],
-                "%Y-%m-%dT%H:%M:%S.%f",
-            ),
-        )
+        try:
+            processing_services = sorted(
+                [
+                    service
+                    for service in docker_client.services.list()
+                    if "processing" in service.name
+                    and service.name not in perpetual_processing_services
+                ],
+                # Sort from oldest to newest to find finished services to remove
+                key=get_service_created_at_datetime,
+            )
+            processing_services = [
+                service for service in processing_services if service is not None
+            ]
+        except Exception as error:
+            log.info(
+                f"Error fetching Docker Swarm services: {error}."
+                f" Will stop waiting for tasks in states {states_to_wait_for_none}."
+            )
+            return
 
         for service in processing_services:
-            service_created_at = dt.datetime.strptime(
-                # datetime does not support more than 6 decimals in seconds field
-                service.attrs["CreatedAt"][:-5],
-                "%Y-%m-%dT%H:%M:%S.%f",
-            )
+            service_created_at = get_service_created_at_datetime(service)
+
+            if service_created_at is None:
+                continue
 
             try:
                 for task in service.tasks():
@@ -105,80 +123,96 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             f"Removing finished service {service.name} in state"
                             f" {task_state}."
                         )
+                        # Dump logs of multiprocessing container before removing it
+                        if "processing-mp" in service.name:
+                            try:
+                                date = service.name.split("-")[-1]
+
+                                log_text = ""
+                                log_generator = service.logs(
+                                    details=True,
+                                    stdout=True,
+                                    stderr=True,
+                                    follow=False,
+                                )
+                                for log_chunk in log_generator:
+                                    log_text += log_chunk.decode("utf-8")
+
+                                path = f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log"
+                                directory = os.path.dirname(path)
+
+                                if not os.path.exists(directory):
+                                    os.makedirs(directory)
+                                    log.info(f"Created directory: {directory}")
+
+                                with open(
+                                    path,
+                                    "w",
+                                ) as file:
+                                    file.write(log_text)
+                            except Exception as error:
+                                log.info(
+                                    "Error dumping logs for service"
+                                    f" {service.name}: {error} (will skip"
+                                    " gracefully)."
+                                )
+
                         try:
-                            # Dump logs of multiprocessing containers
-                            # before removing them
-                            if "processing-mp" in service.name:
-                                try:
-                                    date = service.name.split("-")[-1]
-                                    log_text = ""
-                                    log_generator = service.logs(
-                                        details=True,
-                                        stdout=True,
-                                        stderr=True,
-                                        follow=False,
-                                    )
-                                    for log_chunk in log_generator:
-                                        log_text += log_chunk.decode("utf-8")
-                                    path = f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log"
-                                    directory = os.path.dirname(path)
-                                    if not os.path.exists(directory):
-                                        os.makedirs(directory)
-                                        log.info(f"Created directory: {directory}")
-                                    with open(
-                                        f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log",
-                                        "w",
-                                    ) as file:
-                                        file.write(log_text)
-                                except Exception as error:
-                                    log.info(
-                                        "Error dumping logs for service"
-                                        f" {service.name}: {error} (will skip"
-                                        " gracefully)."
-                                    )
                             service.remove()
                         except Exception as error:
                             log.info(
                                 f"Error removing service {service.name}: {error} (will"
                                 " skip gracefully)."
                             )
-                    else:
-                        if task_state in docker_swarm_running_states:
-                            if (
-                                dt.datetime.now() - service_created_at
-                            ).total_seconds() > task_timeout_seconds:
+                    elif task_state in docker_swarm_running_states:
+                        if (dt.datetime.now() - service_created_at).total_seconds() > (
+                            task_timeout_seconds * 2
+                        ):
+                            log.info(
+                                f"Service {service.name} has been ruuning for more than"
+                                f" {(task_timeout_seconds  * 2) / 60} minutes in state"
+                                f" {task_state}, implying frozen task on 1st or 2nd final"
+                                f" Workflow runner attempt. Will remove service."
+                            )
+
+                            try:
+                                service.remove()
+                            except Exception as error:
                                 log.info(
-                                    "Approaching Workflow timeout for stuck service"
-                                    f" {service.name},"
-                                    f" {task_timeout_seconds / 60} minutes in state"
-                                    f" {task_state} (if reached, will try once more)."
+                                    f"Error removing service {service.name}: {error} (will"
+                                    " skip gracefully)."
                                 )
-                            elif states_to_wait_for_none == docker_swarm_running_states:
-                                is_task_in_state = True
-                                break
-                        elif task_state in docker_swarm_pending_states:
-                            if (
-                                dt.datetime.now() - service_created_at
-                            ).total_seconds() > task_timeout_seconds:
-                                message_slack(
-                                    f"Removing stuck task {service.name}:{task_id},"
-                                    f" {task_timeout_seconds / 60} minutes in state"
-                                    f" {task_state}."
+                        # Task in state running, and we want to wait for no running states
+                        # Loop will continue
+                        elif states_to_wait_for_none == docker_swarm_running_states:
+                            is_task_in_state = True
+                            break
+                    elif task_state in docker_swarm_pending_states:
+                        if (dt.datetime.now() - service_created_at).total_seconds() > (
+                            task_timeout_seconds * 2
+                        ):
+                            log.info(
+                                f"Service {service.name} has been pending for more than"
+                                f" {(task_timeout_seconds  * 2) / 60} minutes in state"
+                                f" {task_state}, implying failed Docker task scheduling. Will"
+                                " remove service."
+                            )
+
+                            try:
+                                service.remove()
+                            except Exception as error:
+                                log.info(
+                                    f"Error removing service {service.name}:"
+                                    f" {error} (will skip gracefully)."
                                 )
-                                try:
-                                    service.remove()
-                                except Exception as error:
-                                    message_slack(
-                                        f"Error removing service {service.name} with"
-                                        f" stuck task {task_id}: {error} (will skip"
-                                        " gracefully)."
-                                    )
-                            elif states_to_wait_for_none == docker_swarm_pending_states:
-                                is_task_in_state = True
-                                break
+                        # Task in state pending, and we want to wait for no pending states
+                        # Loop will continue
+                        elif states_to_wait_for_none == docker_swarm_pending_states:
+                            is_task_in_state = True
+                            break
             except Exception as error:
                 log.info(
-                    f"Error checking tasks for service {service.name}: {error} (will"
+                    f"Error checking tasks for service {service}: {error} (will"
                     " skip gracefully)."
                 )
 
@@ -202,93 +236,111 @@ def schedule_workflow_job(
 
     docker_client = docker.from_env()
 
-    docker_client.login(username="chimefrb", password=docker_password)
+    try:
+        docker_client.login(username="chimefrb", password=docker_password)
+    except Exception as error:
+        log.info(
+            f"Failed to login to DockerHub to schedule {docker_name}: {error}."
+            " Will not schedule this task."
+        )
+        return ""
 
     workflow_site = "chime"
     workflow_user = "CHAMPSS"
 
-    work = Work(pipeline=workflow_name, site=workflow_site, user=workflow_user)
-    work.function = workflow_function
-    work.parameters = workflow_params
-    work.tags = workflow_tags
-    work.config.archive.results = True
-    work.config.archive.plots = "pass"
-    work.config.archive.products = "pass"
-    work.retries = 1
-    work.timeout = 60 * 40  # 40 minutes timeout
+    try:
+        work = Work(pipeline=workflow_name, site=workflow_site, user=workflow_user)
+        work.function = workflow_function
+        work.parameters = workflow_params
+        work.tags = workflow_tags
+        work.config.archive.results = True
+        work.config.archive.plots = "pass"
+        work.config.archive.products = "pass"
+        work.retries = 1
+        work.timeout = task_timeout_seconds
 
-    wait_for_no_tasks_in_states(docker_swarm_pending_states)
+        wait_for_no_tasks_in_states(docker_swarm_pending_states)
 
-    work_id = work.deposit(return_ids=True)
+        work_id = work.deposit(return_ids=True)
 
-    docker_volumes = [
-        docker.types.Mount(
-            # Only way I know of to add custom shared memory size allocations with Docker Swarm
-            target="/dev/shm",
-            source="",  # Source value must be empty for tmpfs mounts
-            type="tmpfs",
-            tmpfs_size=int(
-                100 * 1e9
-            ),  # Just give it 100GB of a shared memory upper-limit
+        docker_volumes = [
+            docker.types.Mount(
+                # Only way I know of to add custom shared memory size allocations with Docker Swarm
+                target="/dev/shm",
+                source="",  # Source value must be empty for tmpfs mounts
+                type="tmpfs",
+                tmpfs_size=int(
+                    100 * 1e9
+                ),  # Just give it 100GB of a shared memory upper-limit
+            )
+        ]
+
+        for mount_path in docker_mounts:
+            mount_paths = mount_path.split(":")
+            mount_source = mount_paths[0]
+            mount_target = mount_paths[1]
+            docker_volumes.append(
+                docker.types.Mount(
+                    target=mount_target, source=mount_source, type="bind"
+                )
+            )
+
+        docker_service = {
+            "image": docker_image,
+            # Can't have dots or slashes in Docker Service names
+            "name": f"processing-{docker_name.replace('.', '_').replace('/', '')}",
+            # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
+            # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
+            "command": (
+                "workflow run"
+                f" {workflow_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
+                f" {workflow_site} --lifetime 1 --sleep-time 0"
+            ),
+            # Using template Docker variables as in-container environment variables
+            # that allow us this access out-of-container information
+            "env": ["CONTAINER_NAME={{.Task.Name}}", "NODE_NAME={{.Node.Hostname}}"],
+            # This is neccessary to allow Pyroscope (py-spy) to work in Docker
+            # 'cap_add': ['SYS_PTRACE'],
+            # Again, using one-shot Docker Service tasks too
+            "mode": docker.types.ServiceMode("replicated", replicas=1),
+            "restart_policy": docker.types.RestartPolicy(
+                condition="none", max_attempts=0
+            ),
+            # Labels allow for easy filtering with Docker CLI
+            "labels": {"type": "processing"},
+            # The labels on the Docker Nodes are pre-empetively set beforehand
+            "constraints": ["node.labels.compute == true"],
+            # Must be in bytes
+            "resources": docker.types.Resources(
+                mem_reservation=int(docker_memory_reservation * 1e9)
+            ),
+            # Will throw an error if you give two of the same bind mount paths
+            # e.g. avoid double-mounting basepath and stackpath when they are the same
+            "mounts": docker_volumes,
+            # An externally created Docker Network that allows these spawned containers
+            # to communicate with other containers (MongoDB, Prometheus, etc) that are
+            # also manually added to this network
+            "networks": ["pipeline-network"],
+        }
+
+        log.info(f"Creating Docker Service: \n{docker_service}")
+
+        # Wait a few seconds because Work might still not have propogated to Buckets
+        # and Workflow runner can pickup nothing and quietly exit
+        time.sleep(2)
+
+        docker_client.services.create(**docker_service)
+
+        # Wait a few seconds before querying Docker Swarm again
+        time.sleep(2)
+
+        return work_id[0]
+    except Exception as error:
+        log.info(
+            f"Failed to deposit Work and create Docker Service for {docker_name}: {error}."
+            " Will not schedule this task."
         )
-    ]
-
-    for mount_path in docker_mounts:
-        mount_paths = mount_path.split(":")
-        mount_source = mount_paths[0]
-        mount_target = mount_paths[1]
-        docker_volumes.append(
-            docker.types.Mount(target=mount_target, source=mount_source, type="bind")
-        )
-
-    docker_service = {
-        "image": docker_image,
-        # Can't have dots or slashes in Docker Service names
-        "name": f"processing-{docker_name.replace('.', '_').replace('/', '')}",
-        # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
-        # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
-        "command": (
-            "workflow run"
-            f" {workflow_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
-            f" {workflow_site} --lifetime 1 --sleep-time 0"
-        ),
-        # Using template Docker variables as in-container environment variables
-        # that allow us this access out-of-container information
-        "env": ["CONTAINER_NAME={{.Task.Name}}", "NODE_NAME={{.Node.Hostname}}"],
-        # This is neccessary to allow Pyroscope (py-spy) to work in Docker
-        # 'cap_add': ['SYS_PTRACE'],
-        # Again, using one-shot Docker Service tasks too
-        "mode": docker.types.ServiceMode("replicated", replicas=1),
-        "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
-        # Labels allow for easy filtering with Docker CLI
-        "labels": {"type": "processing"},
-        # The labels on the Docker Nodes are pre-empetively set beforehand
-        "constraints": ["node.labels.compute == true"],
-        # Must be in bytes
-        "resources": docker.types.Resources(
-            mem_reservation=int(docker_memory_reservation * 1e9)
-        ),
-        # Will throw an error if you give two of the same bind mount paths
-        # e.g. avoid double-mounting basepath and stackpath when they are the same
-        "mounts": docker_volumes,
-        # An externally created Docker Network that allows these spawned containers
-        # to communicate with other containers (MongoDB, Prometheus, etc) that are
-        # also manually added to this network
-        "networks": ["pipeline-network"],
-    }
-
-    log.info(f"Creating Docker Service: \n{docker_service}")
-
-    # Wait a few seconds because Work might still not have propogated to Buckets
-    # and Workflow runner can pickup nothing and quietly exit
-    # time.sleep(5)
-
-    docker_client.services.create(**docker_service)
-
-    # Wait a second before querying Docker Swarm again
-    time.sleep(1)
-
-    return work_id[0]
+        return ""
 
 
 @click.command()
