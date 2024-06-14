@@ -2,7 +2,7 @@ import logging
 
 import numpy as np
 from scipy.fft import rfft
-from sps_common.constants import FREQ_BOTTOM, FREQ_TOP
+from sps_common.constants import FREQ_BOTTOM, FREQ_TOP, DM_CONSTANT
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
@@ -19,14 +19,19 @@ mean_ones = 0.40298
 mean_twos = 0.064676
 mean_threes = 0.00995
 
+kernels = np.load('../utilities/kernels.npy')
+kernel_scaling = np.load('../utilities/kernels.meta.npy')
 
 def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
     return np.exp(-0.5 * ((x - mu) / sig) ** 2) / (sig * np.sqrt(2 * np.pi))
 
-
 def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
+
+def sinc(x):
+    """Sinc function."""
+    return np.sin(x) / x
 
 def generate(noise=False):
     """
@@ -83,12 +88,17 @@ class Injection:
         self.pspec_obj = pspec_obj
         self.birdies = pspec_obj.bad_freq_indices
         self.f = true_f
+        self.deltaDM = self.onewrap_deltaDM() 
         self.true_dm = true_dm
         self.trial_dms = self.pspec_obj.dms
         self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
         self.phase_prof = phase_prof
         self.sigma = sigma
         self.power_threshold = 1
+    
+    def onewrap_deltaDM(self):
+        """Return the deltaDM where the dispersion smearing is one pulse period in duration"""
+        return DM_CONSTANT / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f
 
     def get_power(self):
         """
@@ -98,49 +108,45 @@ class Injection:
         """
         return self.sigma**2 / 2.0 + np.log(np.sqrt(np.pi / 2) * self.sigma)
 
-    def disperse(self, trial_DM, nchans):
-        """
-        This function "dedisperses" a pulse profile according to some error from the
-        true DM.
+    def disperse(self, kernels, kernel_scaling):
+        '''
+        This function disperses an input pulse profile over a range of -2*deltaDM to 2*deltaDM according
+        to the algorithm specified above.
 
         Inputs:
-        _______
-                trial_dm (float)    : test DM
-
+        -------
+                kernels (arr)  : 2D array containing the smeared impulse function kernels
+                kernel_scaling (arr): a 1D array containing the labels of kernels in units of DM/deltaDM
         Returns:
-        ________
-                dispersed_phase_prof: a DM-smeared 1D phase profile of a pulse
-        """
+        --------
+                dispersed_prof_fft (arr): a 2D array of size (len(DM_labels), len(prof)) containing the
+                                          dispersed profile values
+        '''
+        
+        #take the fft of the pulse
+        prof_fft = fft(self.phase_prof)
 
-        DM_err = self.true_dm - trial_DM
+        #i is our index referring to the DM_labels in the target power spectrum
+        #find the starting index, where the DM scale is -2
+        i_min = np.argmin(np.abs(-2*self.deltaDM - self.trial_DMs))
 
+        #find the stopping index, where the DM scale is +2
+        i_max = np.argmin(np.abs(2*self.deltaDM - self.trial_DMs))
 
-        # create frequency array
-        freqs = np.linspace(FREQ_TOP, FREQ_BOTTOM, nchans, endpoint=False)
-        freq_ref = np.max(freqs)
+        dispersed_prof_fft = np.zeros((len(self.trial_DMs), len(self.phase_prof)), dtype = 'complex_')
+        dms = self.trial_DMs[i_min:i_max + 1]
+        i = i_min
 
-        # define constants
-        kDM = 1 / (2.41e-4)  # in MHz^2 s cm^3 pc^-1
-        dt = 2.56 * 512 * 0.75 * 1e-6  # s
+        while i <= i_max:
+            #j is the index referring to the closest value in DMs
+            '''this can def be optimized by figuring out how many DM bins fit into
+            each kernel bin between diff dms and then increasing j by that amount each iteration
+            but i will save that for future optimization'''
+            key = np.argmin(np.abs(np.abs(self.trial_DMs[i]/self.deltaDM) - kernel_scaling))
+            dispersed_prof_fft[i] = prof_fft * kernels[key]
+            i += 1
 
-        # calculate dispersion delay
-        delay = kDM * DM_err * (1 / freqs**2 - 1 / freq_ref**2)
-
-        # calculate how much to shift bins
-        dd_binshift = (delay // dt).astype("int")
-
-        # create 2D pulse profile
-        pulse2D = np.zeros((len(freqs), len(self.phase_prof)))
-        pulse2D[:] = self.phase_prof
-
-        # apply dispersion delay to each spectral channel of 2D pulse profile
-        for i in range(len(freqs)):
-            pulse2D[i] = np.roll(pulse2D[i], dd_binshift[i])
-
-        # average all spectral channels to get 1D dispersed pulse
-        dispersed_phase_prof = pulse2D.mean(0)
-
-        return dispersed_phase_prof
+        return dispersed_prof_fft, dms
 
     def harmonics(self, prof, df, n_harm, weights):
         """
@@ -158,30 +164,22 @@ class Injection:
                 harmonics (ndarray) : Fourier-transformed harmonics of the profile convolved with
                                         [cycles] number of Delta functions
         """
-        harmonics = np.zeros(4 * n_harm)
-        bins = np.zeros(4 * n_harm).astype(int)
-        # take the fft of the pulse
-        prof_fft = rfft(prof)[1:]
+        harmonics = np.zeros((4*n_harm))
+        bins = np.zeros((4*n_harm)).astype(int)
+        
+        #now evaluate sinc-modified power at each of the first 10 harmonics
+        for i in range(1, n_harm + 1):
+            f_harm = i*self.f
+            bin_true = f_harm/df
+            bin_below = np.floor(bin_true)
+            bin_above = np.ceil(bin_true)
 
-        def sinc(x):
-            """Sinc function."""
-            return np.sin(x) / x
-
-        # now evaluate sinc-modified power at each of the first 10 harmonics
-        for i in range(n_harm):
-            f_harm = (i + 1) * self.f
-            bin_true = f_harm / df
-            bin_below = int(np.floor(bin_true))
-            bin_above = int(np.ceil(bin_true))
-            # use 2 bins on either side
-            current_bins = np.array(
-                [bin_below - 1, bin_below, bin_above, bin_above + 1]
-            )
-            bins[i * 4 : (i + 1) * 4] = current_bins
-            amplitude = prof_fft[i] * sinc(np.pi * (bin_true - current_bins))
-            harmonics[i * 4 : (i + 1) * 4] = np.abs(amplitude) ** 2
-
-        harmonics *= weights
+            #use 2 bins on either side
+            current_bins = np.array([bin_below - 1, bin_below, bin_above, bin_above + 1])
+            bins[(i - 1)*4:(i - 1)*4+4] = current_bins
+            amplitude = prof_fft[i]*sinc(np.pi*(bin_true - current_bins))
+            harmonics[(i - 1)*4:(i - 1)*4+4] = np.abs(amplitude)**2
+            harmonics *= weights
 
         return bins, harmonics
 
@@ -207,29 +205,18 @@ class Injection:
         log.info(f"Injecting {n_harm} harmonics.")
         # weights = self.get_weights(n_harm)
 
-        harms = []
-        dms = []
+        bins = [] 
         
         # connect to database and find number of spectral channels in observation
         obs = db_api.get_observation(self.pspec_obj.obs_id[0])
         nchans = db_api.get_pointing(obs.pointing_id).nchans
-        log.info(f'dDM = {self.trial_dms[1] - self.trial_dms[0]}') 
-        for i in range(self.true_dm_trial, len(self.trial_dms)):
-            dispersed_prof = self.disperse(self.trial_dms[i], nchans)
-            bins, harm = self.harmonics(dispersed_prof, df, n_harm, weight)
-            if np.max(harm) < self.power_threshold:
-                break
-            harms.append(harm)
-            dms.append(i)
-        for i in range(self.true_dm_trial - 1, -1, -1):
-            dispersed_prof = self.disperse(self.trial_dms[i], nchans)
-            bins, harm = self.harmonics(dispersed_prof, df, n_harm, weight)
-            if np.max(harm) < self.power_threshold:
-                break
-            harms.append(harm)
-            dms.append(i)
-
-        return np.asarray(harms), bins, dms
+        dispersed_prof_fft, dms = Injection.disperse(self, kernels, kernel_scaling)
+        smeared_harm = np.zeros((len(full_DMs), 4*n_harm))
+        for i in range(len(smeared_harm)):
+            bins_temp, harm = harmonics(dispersed_prof_fft[i], 1/Pspin, df, n_harm)
+            smeared_harm[i] = harm
+            bins.append(bins_temp)
+        return harms, bins, dms
 
 
 def main(pspec, injection_profile="random", num_injections=1):
