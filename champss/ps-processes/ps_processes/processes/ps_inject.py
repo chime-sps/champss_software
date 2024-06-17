@@ -1,7 +1,7 @@
 import logging
 
 import numpy as np
-from scipy.fft import rfft
+from scipy.fft import fft, rfft
 from sps_common.constants import FREQ_BOTTOM, FREQ_TOP, DM_CONSTANT
 from sps_databases import db_api
 
@@ -19,8 +19,9 @@ mean_ones = 0.40298
 mean_twos = 0.064676
 mean_threes = 0.00995
 
-kernels = np.load('../utilities/kernels.npy')
-kernel_scaling = np.load('../utilities/kernels.meta.npy')
+#placeholder
+kernels = np.load('/home/squillace/champss_software/champss/ps-processes/ps_processes/utilities/kernels.npy')
+kernel_scaling = np.load('/home/squillace/champss_software/champss/ps-processes/ps_processes/utilities/kernels.meta.npy')
 
 def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
@@ -128,13 +129,13 @@ class Injection:
 
         #i is our index referring to the DM_labels in the target power spectrum
         #find the starting index, where the DM scale is -2
-        i_min = np.argmin(np.abs(-2*self.deltaDM - self.trial_DMs))
+        i_min = np.argmin(np.abs(-2*self.deltaDM - self.trial_dms))
 
         #find the stopping index, where the DM scale is +2
-        i_max = np.argmin(np.abs(2*self.deltaDM - self.trial_DMs))
+        i_max = np.argmin(np.abs(2*self.deltaDM - self.trial_dms))
 
-        dispersed_prof_fft = np.zeros((len(self.trial_DMs), len(self.phase_prof)), dtype = 'complex_')
-        dms = self.trial_DMs[i_min:i_max + 1]
+        dispersed_prof_fft = np.zeros((len(self.trial_dms), len(self.phase_prof)), dtype = 'complex_')
+        dms = self.trial_dms[i_min:i_max + 1]
         i = i_min
 
         while i <= i_max:
@@ -142,13 +143,13 @@ class Injection:
             '''this can def be optimized by figuring out how many DM bins fit into
             each kernel bin between diff dms and then increasing j by that amount each iteration
             but i will save that for future optimization'''
-            key = np.argmin(np.abs(np.abs(self.trial_DMs[i]/self.deltaDM) - kernel_scaling))
+            key = np.argmin(np.abs(np.abs(self.trial_dms[i]/self.deltaDM) - kernel_scaling))
             dispersed_prof_fft[i] = prof_fft * kernels[key]
             i += 1
 
         return dispersed_prof_fft, dms
 
-    def harmonics(self, prof, df, n_harm, weights):
+    def harmonics(self, prof_fft, df, n_harm, weights):
         """
         This function calculates the array of frequency-domain harmonics for a given
         pulse profile.
@@ -210,13 +211,13 @@ class Injection:
         # connect to database and find number of spectral channels in observation
         obs = db_api.get_observation(self.pspec_obj.obs_id[0])
         nchans = db_api.get_pointing(obs.pointing_id).nchans
-        dispersed_prof_fft, dms = Injection.disperse(self, kernels, kernel_scaling)
-        smeared_harm = np.zeros((len(full_DMs), 4*n_harm))
+        dispersed_prof_fft, dms = self.disperse(kernels, kernel_scaling)
+        smeared_harm = np.zeros((len(self.trial_dms), 4*n_harm))
         for i in range(len(smeared_harm)):
-            bins_temp, harm = harmonics(dispersed_prof_fft[i], 1/Pspin, df, n_harm)
+            bins_temp, harm = self.harmonics(dispersed_prof_fft[i], df, n_harm, weight)
             smeared_harm[i] = harm
-            bins.append(bins_temp)
-        return harms, bins, dms
+            bins.extend(bins_temp)
+        return smeared_harm, bins, dms
 
 
 def main(pspec, injection_profile="random", num_injections=1):
@@ -300,8 +301,8 @@ def main(pspec, injection_profile="random", num_injections=1):
         )
         np.savetxt(f"Injection_{i}_params.txt", parameters)
         np.savetxt(f"Injection_{i}_profile.txt", injection_profile[0])
-        dms.append(dms_temp)
-        bins.append(bins_temp)
+        dms.extend(dms_temp)
+        bins.extend(bins_temp)
         # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
         # not change the object
         injected_indices = np.ix_(dms_temp, bins_temp)
