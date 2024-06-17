@@ -147,7 +147,7 @@ class Injection:
             dispersed_prof_fft[i] = prof_fft * kernels[key]
             i += 1
 
-        return dispersed_prof_fft, dms
+        return dispersed_prof_fft
 
     def harmonics(self, prof_fft, df, n_harm, weights):
         """
@@ -206,18 +206,17 @@ class Injection:
         log.info(f"Injecting {n_harm} harmonics.")
         # weights = self.get_weights(n_harm)
 
-        bins = [] 
-        
+        harms = []
+        dms = [] 
         # connect to database and find number of spectral channels in observation
         obs = db_api.get_observation(self.pspec_obj.obs_id[0])
         nchans = db_api.get_pointing(obs.pointing_id).nchans
-        dispersed_prof_fft, dms = self.disperse(kernels, kernel_scaling)
-        smeared_harm = np.zeros((len(self.trial_dms), 4*n_harm))
-        for i in range(len(smeared_harm)):
-            bins_temp, harm = self.harmonics(dispersed_prof_fft[i], df, n_harm, weight)
-            smeared_harm[i] = harm
-            bins.extend(bins_temp)
-        return smeared_harm, bins, dms
+        dispersed_prof_fft = self.disperse(kernels, kernel_scaling)
+        for i in range(len(dispersed_prof_fft)):
+            bins, harm = self.harmonics(dispersed_prof_fft[i], df, n_harm, weight)
+            harms.append(harm)
+            dms.append(i)
+        return np.asarray(harms), bins, dms
 
 
 def main(pspec, injection_profile="random", num_injections=1):
@@ -301,8 +300,8 @@ def main(pspec, injection_profile="random", num_injections=1):
         )
         np.savetxt(f"Injection_{i}_params.txt", parameters)
         np.savetxt(f"Injection_{i}_profile.txt", injection_profile[0])
-        dms.extend(dms_temp)
-        bins.extend(bins_temp)
+        dms.append(dms_temp)
+        bins.append(bins_temp)
         # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
         # not change the object
         injected_indices = np.ix_(dms_temp, bins_temp)
