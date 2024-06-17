@@ -1,5 +1,5 @@
 import logging
-
+import os
 import numpy as np
 from scipy.fft import fft, rfft
 from sps_common.constants import FREQ_BOTTOM, FREQ_TOP, DM_CONSTANT
@@ -19,9 +19,8 @@ mean_ones = 0.40298
 mean_twos = 0.064676
 mean_threes = 0.00995
 
-#placeholder
-kernels = np.load('/home/squillace/champss_software/champss/ps-processes/ps_processes/utilities/kernels.npy')
-kernel_scaling = np.load('/home/squillace/champss_software/champss/ps-processes/ps_processes/utilities/kernels.meta.npy')
+kernels = np.load(os.path.dirname(__file__) + "/kernels.npy")
+kernel_scaling = np.load(os.path.dirname(__file__) + "/kernels.meta.npy")
 
 def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
