@@ -116,7 +116,8 @@ def plot_candidate_archive(fn, sigma, dm, f0, ra, dec, coord_path, known=" "):
         os.makedirs(img_path)
     else:
         print(f"Directory '{img_path}' already exists.")
-    plt.savefig(img_path + f"{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png")
+    plot_fname = img_path + f"{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png"
+    plt.savefig(plot_fname)
     plt.close()
 
-    return SNprof, SNR_val
+    return SNprof, SNR_val, plot_fname

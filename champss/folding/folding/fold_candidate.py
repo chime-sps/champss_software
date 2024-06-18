@@ -376,7 +376,7 @@ def main(
     create_FT = f"pam -T -F {archive_fname} -e FT"
     subprocess.run(create_FT, shell=True, capture_output=True, text=True)
 
-    SNprof, SN_arr = plot_candidate_archive(
+    SNprof, SN_arr, plot_fname = plot_candidate_archive(
         archive_fname,
         sigma,
         dm,
@@ -396,6 +396,7 @@ def main(
             "date": date,
             "archive_fname": archive_fname,
             "SN": float(SN_arr),
+            "path_to_plot": plot_fname,
         }
         fold_dates = [entry["date"].date() for entry in folding_history]
         if date.date() in fold_dates:
