@@ -40,7 +40,6 @@ from sps_pipeline import (  # ps,
     beamform,
     cands,
     cleanup,
-    dedisp,
     hhat,
     ps_cumul_stack,
     rfi,
@@ -567,6 +566,8 @@ def main(
                     processing_failed = True
             if "dedisp" in components:
                 if fdmt:
+                    from sps_pipeline import dedisp
+
                     dedisp_ts = dedisp.run_fdmt(
                         active_pointing, skybeam, config, num_threads
                     )
