@@ -14,6 +14,7 @@ from numpy.lib.recfunctions import (
 )
 from sklearn.cluster import DBSCAN
 from sps_common.interfaces import MultiPointingCandidate, SinglePointingCandidate
+from sps_multi_pointing.known_source_sifter.known_source_filters import angular_separation
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +35,12 @@ def get_cand_freq_and_dm(cand: SinglePointingCandidate) -> Tuple[float, float]:
         The summary frequency and DM of a given candidate
     """
     return cand.freq, cand.dm
+
+def distance_with_pos(x, y):
+    freq_delta = x[0] - y[0]
+    dm_delta = x[1] - y[1]
+    angle = angular_separation(*x[2:4], *y[2:4])[1]*x[4]
+    return np.sqrt(freq_delta**2 + dm_delta**2 + angle**2)
 
 
 @attrs
@@ -314,8 +321,9 @@ class SinglePointingCandidateGrouper:
     dm_spacing = attrib(default=0.10119793310713615)
     dm_scale = attrib(default=1)
     freq_scale = attrib(default=1)
+    angle_scale = attrib(default=0)
 
-    def group(self, cands: List[EasyDict]) -> List[MultiPointingCandidate]:
+    def group(self, cands: List[EasyDict], num_threads: int=16) -> List[MultiPointingCandidate]:
         """
         The top-level function that executes grouping and return the formed
         MultiPointingCandidate objects.
@@ -334,20 +342,36 @@ class SinglePointingCandidateGrouper:
         # the candidate index in the input list
 
         f_dm_pairs = map(get_cand_freq_and_dm, cands)
-        data = np.asarray(
-            [
+        if self.angle_scale==0.:
+            data = np.asarray(
                 [
-                    i,
-                    p[0] / self.freq_spacing * self.freq_scale,
-                    p[1] / self.dm_spacing * self.dm_scale,
+                    [
+                        i,
+                        p[0] / self.freq_spacing * self.freq_scale,
+                        p[1] / self.dm_spacing * self.dm_scale,
+                    ]
+                    for i, p in enumerate(f_dm_pairs)
                 ]
-                for i, p in enumerate(f_dm_pairs)
-            ]
-        )
-        # run DBSCAN clustering algorithm on the frequency and DM data
-        dbres = DBSCAN(eps=self.dbscan_eps, min_samples=self.dbscan_min_samples).fit(
-            data[:, 1:]
-        )
+            )
+            # run DBSCAN clustering algorithm on the frequency and DM data
+            dbres = DBSCAN(eps=self.dbscan_eps, min_samples=self.dbscan_min_samples, n_jobs=num_threads).fit(
+                data[:, 1:]
+            )
+        else:
+            data = np.asarray([
+                [i,
+                 candidate.freq / self.freq_spacing * self.freq_scale,
+                 candidate.dm / self.dm_spacing * self.dm_scale,
+                 candidate.ra,
+                 candidate.dec,
+                 self.angle_scale
+                 ]
+                 for i, candidate in enumerate(cands)
+                ])
+            dbres = DBSCAN(metric=distance_with_pos, eps=self.dbscan_eps, min_samples=self.dbscan_min_samples,
+                           n_jobs=num_threads).fit(
+                data[:, 1:]
+            )
         labels = dbres.labels_
         uniq_labels = set(labels)
         core_samples_mask = np.zeros_like(labels, dtype=bool)

@@ -332,7 +332,10 @@ def angular_separation(ra1, dec1, ra2, dec2):
     # angle in the clockwise direction from the positive dec axis
     # note the minus signs in front of `dra` and `ddec`
     source_angle = np.arctan2(-dra, -ddec)
-    source_angle[source_angle < 0] += 2 * np.pi
+    if isinstance(source_angle, np.ndarray):
+        source_angle[source_angle < 0] += 2 * np.pi
+    elif source_angle < 0:
+        source_angle += 2 * np.pi
 
     # convert radians back to decimal degrees
     return source_angle / deg2rad, angular_separation / deg2rad
