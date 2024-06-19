@@ -9,8 +9,9 @@ grouper:
   dbscan_eps: 1.1
   freq_scale: 1
   dm_scale: 0.1
-  ra_scale: 0.03
-  dec_scale: 0.05
+  ra_scale: 0.1
+  dec_scale: 0.1
+  metric: "chebyshev"
 
 sifter:
   threshold: 0.997

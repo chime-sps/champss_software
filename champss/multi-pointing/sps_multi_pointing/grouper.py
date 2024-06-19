@@ -316,6 +316,7 @@ class SinglePointingCandidateGrouper:
     freq_scale = attrib(default=1)
     ra_scale = attrib(default=0.0)
     dec_scale = attrib(default=0.0)
+    metric = attrib(default="euclidean")
 
     def group(
         self, cands: List[EasyDict], num_threads: int = 16
@@ -368,7 +369,7 @@ class SinglePointingCandidateGrouper:
             eps=self.dbscan_eps,
             min_samples=self.dbscan_min_samples,
             n_jobs=num_threads,
-            metric="chebyshev",
+            metric=self.metric,
         ).fit(data[:, 1:])
 
         labels = dbres.labels_
