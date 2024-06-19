@@ -9,7 +9,8 @@ grouper:
   dbscan_eps: 1.1
   freq_scale: 1
   dm_scale: 0.1
-  angle_scale: 0.05
+  ra_scale: 0.03
+  dec_scale: 0.05
 
 sifter:
   threshold: 0.997
