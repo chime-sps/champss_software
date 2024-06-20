@@ -23,7 +23,7 @@ sifter:
     num_candidates:
       threshold: 200
       operator: gt # gt meaning values larger than threshold will be flagged as RFI
-    best_nharm:
+    best_harmonic_sum:
       threshold: 2
       operator: lt
 
