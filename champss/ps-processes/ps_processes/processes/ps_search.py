@@ -222,19 +222,20 @@ class PowerSpectraSearch:
                     if len(injection_indices) == 0:
                         injection_indices = np.arange(len(data))
                     for injection_index in injection_indices:
-                        log.info(f"DM: {data[injection_index]['DM']}")
-                        log.info(f"sigma: {data[injection_index]['sigma']}")
-                        log.info(f"frequency: {data[injection_index]['frequency']}")
+                        log.info(f"DM: {data[injection_index]['DM'][0]}")
+                        log.info(f"sigma: {data[injection_index]['sigma'][0]}")
+                        log.info(f"frequency: {data[injection_index]['frequency'][0]}")
                         pulse = np.array(data[injection_index]["profile"])
-                        frequency = data[injection_index]["frequency"]
-                        DM = data[injection_index]["DM"]
-                        sigma = data[injection_index]["sigma"]
+                        frequency = data[injection_index]["frequency"][0]
+                        DM = data[injection_index]["DM"][0]
+                        sigma = data[injection_index]["sigma"][0]
 
                         profile = [pulse, sigma, frequency, DM]
 
                         current_injection_bins, current_injection_DMs = ps_inject.main(
                             pspec, profile
                         )
+
                         # injection_DMs are indices of the altered injection trials
                         # injection_bins_original and injection_DMs are lists of lists
                         injection_bins_original.extend(current_injection_bins)
@@ -357,7 +358,7 @@ class PowerSpectraSearch:
             full_indices[i : i + self.mp_chunk_size]
             for i in range(0, len(pspec.dms), self.mp_chunk_size)
         ]
-
+        
         detection_list = pool.starmap(
             partial(
                 self.search_candidates,
@@ -599,6 +600,7 @@ class PowerSpectraSearch:
 
                     sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
                     is_injection = False
+
                     for injected_bins, injected_dms in zip(
                         injection_bins_original, injection_DMs
                     ):

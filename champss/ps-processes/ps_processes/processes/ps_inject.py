@@ -195,7 +195,6 @@ class Injection:
         """
 
         # pull frequency bins from target power spectrum
-
         freqs = self.pspec_obj.freq_labels
         df = freqs[1] - freqs[0]
         f_nyquist = np.floor(freqs[-1] / 2)
@@ -293,7 +292,6 @@ def main(pspec, injection_profile="random", num_injections=1):
         if len(injection) == 0:
             log.info("Pulsar too weak.")
             continue
-        log.info("Replacing power spectrum with injected power spectrum")
         parameters = np.array(
             [injection_profile[1], injection_profile[2], injection_profile[3]]
         )
@@ -307,11 +305,9 @@ def main(pspec, injection_profile="random", num_injections=1):
         pspec.power_spectra[injected_indices] += injection.astype(
             pspec.power_spectra.dtype
         )
+     
+        log.info("Replacing power spectrum with injected power spectrum")
         i += 1
     pspec.power_spectra[:, zero_bins] = 0
-    # below is not working
-    # print(pspec.bad_freq_indices)
-    # for birdie in pspec.bad_freq_indices:
-    #    pspec.power_spectra[birdie] += np.zeros(1).astype(pspec.power_spectra.dtype)
 
     return bins, dms
