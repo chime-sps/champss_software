@@ -7,6 +7,7 @@ Adapted to SPS 20210204
 
 
 import logging
+import operator
 import os
 
 import attr
@@ -291,8 +292,10 @@ class KnownSourceSifter:
         for check in self.rfi_check:
             threshold = self.rfi_check[check]["threshold"]
             check_val = getattr(candidate, check, None)
-            if check_val > threshold:
-                return True
+            comparator = getattr(operator, self.rfi_check[check].get("operator", "gt"))
+            if check_val is not None:
+                if comparator(check_val, threshold):
+                    return True
         return False
 
 
