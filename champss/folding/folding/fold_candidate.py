@@ -75,6 +75,7 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     with open(ephem_path, "w") as file:
         for row in ephem:
             line = "\t".join(row)
+            line.expandtabs(8)
             file.write(line + "\n")
 
     if fs_id:
@@ -439,7 +440,7 @@ def main(
             db_api.update_followup_source(fs_id, {"active": False})
 
     # Silence Workflow errors, requires results, products, plots
-    return {fold_details}, [], []
+    return {}, [], []
 
 
 if __name__ == "__main__":
