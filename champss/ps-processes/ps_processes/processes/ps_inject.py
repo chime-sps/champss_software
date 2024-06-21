@@ -4,6 +4,7 @@ import numpy as np
 from scipy.fft import fft, rfft
 from sps_common.constants import FREQ_BOTTOM, FREQ_TOP, DM_CONSTANT
 from sps_databases import db_api
+from matplotlib import pyplot as plt
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +99,8 @@ class Injection:
     
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in duration"""
-        return DM_CONSTANT / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f
+        deltaDM =  1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
+        return deltaDM
 
     def get_power(self):
         """
@@ -125,26 +127,23 @@ class Injection:
         
         #take the fft of the pulse
         prof_fft = fft(self.phase_prof)
+        prof_fft /= max(np.abs(prof_fft))
 
         #i is our index referring to the DM_labels in the target power spectrum
         #find the starting index, where the DM scale is -2
-        i_min = np.argmin(np.abs(-2*self.deltaDM - self.trial_dms))
-
+        i_min = np.argmin(np.abs((self.true_dm -2*self.deltaDM) - self.trial_dms))
+        log.info(f'Starting DM: {self.trial_dms[i_min]}')
+        i0 = np.argmin(np.abs(self.true_dm - self.trial_dms))
         #find the stopping index, where the DM scale is +2
-        i_max = np.argmin(np.abs(2*self.deltaDM - self.trial_dms))
-
+        i_max = np.argmin(np.abs((self.true_dm + 2*self.deltaDM) - self.trial_dms))
+        log.info(f'Stopping DM: {self.trial_dms[i_max]}')
         dispersed_prof_fft = np.zeros((len(self.trial_dms), len(self.phase_prof)), dtype = 'complex_')
         dms = self.trial_dms[i_min:i_max + 1]
-        i = i_min
 
-        while i <= i_max:
-            #j is the index referring to the closest value in DMs
-            '''this can def be optimized by figuring out how many DM bins fit into
-            each kernel bin between diff dms and then increasing j by that amount each iteration
-            but i will save that for future optimization'''
-            key = np.argmin(np.abs(np.abs(self.trial_dms[i]/self.deltaDM) - kernel_scaling))
+        for i in range(i_min, i_max + 1):
+            key = np.argmin(np.abs(np.abs((self.trial_dms[i] - self.true_dm)/self.deltaDM) - kernel_scaling))
             dispersed_prof_fft[i] = prof_fft * kernels[key]
-            i += 1
+            #log.info(f'DM = {self.trial_dms[i]}, first harm power = {np.abs(dispersed_prof_fft[i, 1])**2}')
 
         return dispersed_prof_fft
 
@@ -166,7 +165,7 @@ class Injection:
         """
         harmonics = np.zeros((4*n_harm))
         bins = np.zeros((4*n_harm)).astype(int)
-        
+
         #now evaluate sinc-modified power at each of the first 10 harmonics
         for i in range(1, n_harm + 1):
             f_harm = i*self.f
@@ -179,7 +178,8 @@ class Injection:
             bins[(i - 1)*4:(i - 1)*4+4] = current_bins
             amplitude = prof_fft[i]*sinc(np.pi*(bin_true - current_bins))
             harmonics[(i - 1)*4:(i - 1)*4+4] = np.abs(amplitude)**2
-            harmonics *= weights
+        
+        harmonics *= weights
 
         return bins, harmonics
 
@@ -200,9 +200,8 @@ class Injection:
         f_nyquist = np.floor(freqs[-1] / 2)
         n_harm = int(np.floor(f_nyquist / self.f))
         prof_fft = rfft(self.phase_prof)[1:]
-        weight = self.get_power() / np.sum(np.abs(prof_fft) ** 2)
+        weight = self.get_power()
         log.info(f"Injecting {n_harm} harmonics.")
-        # weights = self.get_weights(n_harm)
 
         harms = []
         dms = [] 
@@ -210,10 +209,12 @@ class Injection:
         obs = db_api.get_observation(self.pspec_obj.obs_id[0])
         nchans = db_api.get_pointing(obs.pointing_id).nchans
         dispersed_prof_fft = self.disperse(kernels, kernel_scaling)
+        
         for i in range(len(dispersed_prof_fft)):
             bins, harm = self.harmonics(dispersed_prof_fft[i], df, n_harm, weight)
             harms.append(harm)
             dms.append(i)
+
         return np.asarray(harms), bins, dms
 
 
