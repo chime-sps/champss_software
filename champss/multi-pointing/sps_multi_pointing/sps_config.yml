@@ -22,8 +22,13 @@ sifter:
   rfi_check:
     delta_freq:
       threshold: 0.003
+      operator: gt # should exist in operator module
     num_candidates:
       threshold: 200
+      operator: gt # gt meaning values larger than threshold will be ignored by the ks sifter
+    best_harmonic_sum:
+      threshold: 2
+      operator: lt
 
 classifier:
   active_classifiers:

@@ -99,6 +99,11 @@ def sigma_sum_powers(power, nsum, max_iter=20):
             The approximate equivalent Gaussian sigma.
             If the output would be smaller than ~-8, it will result in np.inf.
     """
+    if not np.isfinite(power).any() or not np.isfinite(nsum).any():
+        if np.isscalar(power):
+            return np.nan
+        else:
+            return np.full(power.shape, np.nan, dtype=power.dtype)
     with np.errstate(divide="ignore", invalid="ignore"):
         sigma = equivalent_gaussian_sigma(prob_sum_powers(power, nsum))
     # sigma > ~38.4: np,nan
@@ -343,6 +348,8 @@ def g_abergel_moisan(p, x, stop_value=np.finfo(float).eps, max_iter=200):
             log.debug(
                 "g_abergel_moisan has not converged after 200 steps."
                 + f" Current (delta - 1): {np.nanmax(np.fabs(delta - 1))}"
+                + f"{C} {D} {delta} "
+                + f"{p} {x}"
             )
             g[np.isinf(g)] = f[np.isinf(g)]
             break
