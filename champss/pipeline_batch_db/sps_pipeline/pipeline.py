@@ -40,7 +40,6 @@ from sps_pipeline import (  # ps,
     beamform,
     cands,
     cleanup,
-    dedisp,
     hhat,
     ps_cumul_stack,
     rfi,
@@ -517,10 +516,12 @@ def main(
             dedisp_ts = None
             ps_detections = None
             prefix = (
-                f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}_{active_pointing.sub_pointing}"
+                f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}"
+                f"_{active_pointing.sub_pointing}"
             )
 
-            # Compute number of threads required. Currently based on the number of channels of the input data
+            # Compute number of threads required. 
+            # Currently based on the number of channels of the input data
 
             ntime_factor = int(
                 2 ** np.ceil(np.log2(active_pointing.ntime / 2**20))
@@ -567,6 +568,8 @@ def main(
                     processing_failed = True
             if "dedisp" in components:
                 if fdmt:
+                    from sps_pipeline import dedisp
+
                     dedisp_ts = dedisp.run_fdmt(
                         active_pointing, skybeam, config, num_threads
                     )

@@ -18,6 +18,8 @@ jobs:
     needs: update-image
     runs-on: testbed # Image is only saved here
     steps:
+      - run: |
+          docker rm -f champss-${{ inputs.branch_name }} || true
       - uses: addnab/docker-run-action@v3
         with:
             image: chimefrb/champss_software:${{ inputs.branch_name }}
