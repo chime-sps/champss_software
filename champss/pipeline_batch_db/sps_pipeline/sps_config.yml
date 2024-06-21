@@ -33,6 +33,7 @@ dedisp:
     dm_step: 2
     num_dms_fac: 1
     chunk_size: 40960
+    cpp: True
 ps_creation:
   normalise: False
   barycentring_mode: Fourier   # "Topocentric", "Time" and "Fourier" possible
