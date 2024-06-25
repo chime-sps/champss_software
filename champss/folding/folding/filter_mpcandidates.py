@@ -34,7 +34,8 @@ def add_candidate_to_fsdb(date_str, ra, dec, f0, dm, sigma, cand_path):
         dmm.get_dm_ymw16(payload["dec"], payload["ra"])
     )
 
-    db_api.create_followup_source(payload)
+    followup_source = db_api.create_followup_source(payload)
+    return followup_source
 
 
 def get_indices_within_radius(lati, loni, latitude, longitude, rad_deg):
