@@ -440,7 +440,7 @@ def main(
             db_api.update_followup_source(fs_id, {"active": False})
 
     # Silence Workflow errors, requires results, products, plots
-    return {}, [], []
+    return fold_details, [], []
 
 
 if __name__ == "__main__":
