@@ -420,7 +420,7 @@ def main(
         log.info("Updating FollowUpSource with folding history")
         folding_history = source.folding_history
         fold_details = {
-            "date": date,
+            "date": date.strftime("%Y%m%d"),
             "archive_fname": archive_fname,
             "SN": float(SN_arr),
             "path_to_plot": plot_fname,
