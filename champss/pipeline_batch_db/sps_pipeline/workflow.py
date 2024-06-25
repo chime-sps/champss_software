@@ -35,7 +35,7 @@ perpetual_processing_services = ["processing-manager", "processing-cleanup"]
 
 # Sometimes a Docker Swarm task gets stuck in pending/running state
 # indefinitely for unknown reasons...
-task_timeout_seconds = 60 * 40  # 40 minutes
+task_timeout_seconds = 60 * 60  # 40 minutes
 
 
 def message_slack(
