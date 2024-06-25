@@ -439,8 +439,9 @@ def main(
             )
             db_api.update_followup_source(fs_id, {"active": False})
 
+    fold_details["date"] = fold_details["date"].strftime("%Y%m%d")
     # Silence Workflow errors, requires results, products, plots
-    return {}, [], []
+    return fold_details, [], []
 
 
 if __name__ == "__main__":
