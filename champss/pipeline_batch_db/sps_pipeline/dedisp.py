@@ -4,10 +4,11 @@ import os
 
 import docker
 import numpy as np
+
+# from sps_dedispersion.fdmt.cpu_fdmt import FDMT
 from prometheus_client import Summary
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_dedispersion.dedisperse import dedisperse
-from sps_dedispersion.fdmt.cpu_fdmt import FDMT
 from sps_pipeline import utils
 
 log = logging.getLogger(__package__)
@@ -38,10 +39,8 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
         f" { date :%Y-%m-%d}"
     )
     fdmt_config = config.dedisp.fdmt
-    if fdmt_config.num_dms_fac > skybeam.nchan:
-        num_dms_fac = skybeam.nchan
-    else:
-        num_dms_fac = fdmt_config.num_dms_fac
+    num_dms_fac = fdmt_config.num_dms_fac
+
     # check config for maximum dm to process
     if config.dedisp.maxdm:
         maxdm = np.min([pointing.maxdm, config.dedisp.maxdm])
@@ -57,14 +56,44 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
         )
         + 1
     ) * num_dms_fac
-    fdmt = FDMT(
-        fmin=FREQ_BOTTOM,
-        fmax=FREQ_TOP,
-        nchan=skybeam.nchan,
-        maxDT=num_dms,
-        num_threads=num_threads,
+    nsamps = fdmt_config.chunk_size + num_dms
+
+    if fdmt_config.cpp == True:
+        log.info("Using C++ FDMT")
+        from dmt.libdmt import FDMT
+
+        fdmt = FDMT(
+            FREQ_BOTTOM,
+            FREQ_TOP,
+            skybeam.nchan,
+            nsamps,
+            TSAMP,
+            dt_max=num_dms,
+            dt_min=0,
+            dt_step=fdmt_config.dm_step,
+        )
+        fdmt.set_num_threads(num_threads)  # may want to cap at 8 threads
+    else:
+        log.info("Using Python FDMT")
+        from sps_dedispersion.fdmt.cpu_fdmt import FDMT
+
+        fdmt = FDMT(
+            fmin=FREQ_BOTTOM,
+            fmax=FREQ_TOP,
+            nchan=skybeam.nchan,
+            maxDT=num_dms,
+            num_threads=num_threads,
+        )
+
+    dts = dedisperse(
+        fdmt,
+        skybeam,
+        fdmt_config.chunk_size,
+        num_dms,
+        fdmt_config.dm_step,
+        fdmt_config.cpp,
     )
-    dts = dedisperse(fdmt, skybeam, fdmt_config.chunk_size, fdmt_config.dm_step)
+
     log.info(
         f"FDMT Dedispersion ({pointing.ra :.2f} {pointing.dec :.2f}) completed with"
         f" { len(dts.dedisp_ts) } DM steps"

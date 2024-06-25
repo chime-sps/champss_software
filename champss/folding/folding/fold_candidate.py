@@ -75,6 +75,7 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     with open(ephem_path, "w") as file:
         for row in ephem:
             line = "\t".join(row)
+            line.expandtabs(8)
             file.write(line + "\n")
 
     if fs_id:
@@ -133,6 +134,12 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Base directory for raw data",
 )
 @click.option(
+    "--candpath",
+    type=str,
+    default="",
+    help="Path to candidate file",
+)
+@click.option(
     "--write-to-db",
     is_flag=True,
     help="Set folded_status to True in the processes database.",
@@ -156,6 +163,7 @@ def main(
     db_host,
     db_name,
     basepath,
+    candpath="",
     write_to_db=False,
     using_workflow=False,
     overwrite_folding=False,
@@ -239,10 +247,29 @@ def main(
         dec = coords.dec
         dir_suffix = "candidates"
         name = candidate_name(ra, dec)
+    elif candpath and write_to_db:
+        from folding.filter_mpcandidates import add_candidate_to_fsdb
+        from sps_common.interfaces import MultiPointingCandidate
+
+        date_str = date.strftime("%Y%m%d")
+        mpc = MultiPointingCandidate.read(candpath)
+        ra = mpc.ra
+        dec = mpc.dec
+        f0 = mpc.best_freq
+        dm = mpc.best_dm
+        sigma = mpc.best_sigma
+        dir_suffix = "candidates"
+        name = candidate_name(ra, dec)
+
+        followup_source = add_candidate_to_fsdb(
+            date_str, ra, dec, f0, dm, sigma, candpath
+        )
+        print(followup_source)
+        fs_id = followup_source._id
     else:
         log.error(
-            "Must provide either a pulsar name, FollowUpSource ID, or candidate RA"
-            " and DEC"
+            "Must provide either a pulsar name, FollowUpSource ID, candidate path, or"
+            " candidate RA and DEC"
         )
         return
 
@@ -376,7 +403,7 @@ def main(
     create_FT = f"pam -T -F {archive_fname} -e FT"
     subprocess.run(create_FT, shell=True, capture_output=True, text=True)
 
-    SNprof, SN_arr = plot_candidate_archive(
+    SNprof, SN_arr, plot_fname = plot_candidate_archive(
         archive_fname,
         sigma,
         dm,
@@ -396,6 +423,7 @@ def main(
             "date": date,
             "archive_fname": archive_fname,
             "SN": float(SN_arr),
+            "path_to_plot": plot_fname,
         }
         fold_dates = [entry["date"].date() for entry in folding_history]
         if date.date() in fold_dates:
@@ -411,8 +439,9 @@ def main(
             )
             db_api.update_followup_source(fs_id, {"active": False})
 
+    fold_details["date"] = fold_details["date"].strftime("%Y%m%d")
     # Silence Workflow errors, requires results, products, plots
-    return {}, [], []
+    return fold_details, [], []
 
 
 if __name__ == "__main__":
