@@ -1,4 +1,4 @@
-version: 1
+version: "2"
 
 name: champss-processing
 
@@ -15,6 +15,9 @@ deployments:
     site: chime
     image: chimefrb/workflow:latest
     replicas: 1
+    resources:
+      ram: 1G
+      cores: 2
   - name: champss-deployment
     site: chime
     image: chimefrb/champss_software:workflow_test
@@ -22,6 +25,9 @@ deployments:
     # 8 Workflow Runner container replicas per node
     # (which is usually the most our nodes can support)
     replicas: 16
+    resources:
+      ram: 80G
+      cores: 60
 
 pipeline:
   runs_on: champss-deployment

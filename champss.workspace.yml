@@ -1,0 +1,87 @@
+workspace: champss
+
+sites:
+  - local
+  - chime
+  - champss
+
+archive:
+  mounts:
+    chime: "/data/chime/baseband/processed" # + /workflow/<name_of_pipeline>/<work_id>
+
+http:
+  baseurls:
+    configs:
+      - http://frb-vsop:37015/v2
+    pipelines:
+      - http://frb-vsop:37015/v2
+    schedules:
+      - http://frb-vsop:37015/v2
+    buckets:
+      - http://frb-vsop.chime:8004
+      - https://frb.chimenet.ca/buckets/
+    results:
+      - http://frb-vsop.chime:8005
+      - https://frb.chimenet.ca/results/
+
+config:
+  archive:
+    results: true
+    plots:
+      methods: ["move", "copy", "delete"]
+      storage: "posix"
+    products:
+      methods: ["move", "copy", "delete"]
+      storage: "posix"
+  slack:
+
+deployers:
+  champss:
+    docker:
+      client_url: tcp://sps-archiver.chime:2375
+      volumes:
+        sps-data:
+          type: "volume"
+          target: "/data/chime/sps/"
+          driver_config:
+              driver: local
+              driver_opts:
+                  type: "nfs"
+                  o: "rw,nfsvers=4.0,noatime,nodiratime,soft,addr=10.9.50.22"
+                  device: ":/data/chime/sps/"
+        baseband-data:
+          type: "volume"
+          target: "/data/chime/baseband/processed/"
+          driver_config:
+            driver: local
+            driver_opts:
+              type: nfs
+              o: nfsvers=4.0,noatime,nodiratime,soft,addr=10.5.2.20,rw
+              device: ":/data/archive/chime/baseband/processed/"
+      networks:
+        pipeline-network:
+      constraints: ["node.labels.compute == true"]
+      labels:
+        type: "champss-processing"
+  chime:
+    docker:
+      client_url: tcp://frb-vsop.chime:2375
+      volumes:
+        sps-data:
+          type: "volume"
+          target: "/data/chime/sps/"
+          driver_config:
+              driver: local
+              driver_opts:
+                  type: "nfs"
+                  o: "rw,nfsvers=4.0,noatime,nodiratime,soft,addr=10.9.50.22"
+                  device: ":/data/chime/sps/"
+        baseband-data:
+          type: "volume"
+          target: "/data/chime/baseband/processed/"
+          driver_config:
+            driver: local
+            driver_opts:
+              type: nfs
+              o: nfsvers=4.0,noatime,nodiratime,soft,addr=10.5.2.20,rw
+              device: ":/data/archive/chime/baseband/processed/"
