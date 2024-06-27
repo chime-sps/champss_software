@@ -1,0 +1,137 @@
+version: 1
+
+name: champss-processing
+
+schedule:
+  cronspec: "0 0 * * *"
+  lives: -1
+
+defaults:
+  user: CHAMPSS
+  site: local
+
+deployments:
+  - name: workflow-deployment
+    site: chime
+    image: chimefrb/workflow:latest
+    replicas: 1
+  - name: champss-deployment
+    site: chime
+    image: chimefrb/champss_software:workflow_test
+    # We have two SPS nodes, so this will be deployed as
+    # 8 Workflow Runner container replicas per node
+    # (which is usually the most our nodes can support)
+    replicas: 16
+
+pipeline:
+  runs_on: champss-deployment
+  steps:
+    - name: date
+      stage: 1
+      runs_on: workflow-deployment
+      work:
+        function: workflow.helpers.date.get
+        parameters:
+          format: "%Y%m%d"
+    - name: find-pipeline-processes
+      stage: 2
+      matrix:
+        date: ["${{ pipeline.date.results.output }}"]
+      work:
+        function: sps_pipeline.processing.find_all_pipeline_processes
+        parameters:
+          db_port: 27017
+          db_host: sps-archiver
+          db_name: sps-processing
+          date: ${{ matrix.date }}
+        tags:
+          - find-pipeline
+          - ${{ matrix.date }}
+    - name: run-pipeline-processes
+      stage: 3
+      matrix:
+        info: ${{ pipeline.find-pipeline-processes.results.info }}
+        date: ["${{ pipeline.date.results.output }}"]
+      work:
+        function: sps_pipeline.pipeline.main
+        parameters:
+          date: ${{ matrix.date }}
+          stack: True
+          plot: True
+          plot_threshold: 8.0
+          ra: ${{ matrix.info.ra }}
+          dec: ${{ matrix.info.dec }}
+          num_threads: ${{ matrix.info.cores_needed }}
+          db_port: 27017
+          db_host: sps-archiver
+          db_name: sps-processing
+          basepath: /data/chime/sps/sps_processing/
+          stackpath: /data/chime/sps/sps_processing/
+          using_docker: True
+        tags:
+          - run-pipeline
+          - ${{ matrix.date }}
+          - ${{ matrix.info.ra }}
+          - ${{ matrix.info.dec }}
+          - ${{ matrix.info.maxdm }}
+          - ${{ matrix.info.nchan }}
+          - ${{ matrix.info.memory_needed }}
+          - ${{ matrix.info.cores_needed }}
+    - name: run-multipointing-processes
+      stage: 4
+      matrix:
+        date: ["${{ pipeline.date.results.output }}"]
+      work:
+        function: sps_multi_pointing.mp_pipeline.cli
+        parameters:
+          output: /data/chime/sps/sps_processing
+          get_from_db: True
+          date: ${{ matrix.date }}
+          plot: True
+          plot_cands: True
+          plot_all_pulsars: True
+          db: True
+          plot_threshold: 8
+          plot_dm_threshold: 3
+          db_port: 27017
+          db_host: sps-archiver
+          db_name: sps-processing
+          run_name: "daily_${{ matrix.date }}"
+        tags:
+          - run-multipointing
+          - ${{ matrix.date }}
+    - name: find-folding-processes
+      stage: 5
+      matrix:
+        date: ["${{ pipeline.date.results.output }}"]
+      work:
+        function: sps_pipeline.processing.find_all_folding_processes
+        parameters:
+          date: ${{ matrix.date }}
+          db_host: sps-archiver
+          db_port: 27017
+          db_name: sps-processing
+        tags:
+          - find-folding
+          - ${{ matrix.date }}
+    - name: run-all-folding-processes
+      stage: 6
+      matrix:
+        info: ${{ pipeline.find-folding-processes.results.info }}
+        date: ["${{ pipeline.date.results.output }}"]
+      work:
+        function: folding.fold_candidate.main
+        parameters:
+          date: ${{ matrix.date }}
+          fs_id: ${{ matrix.info.fs_id }}
+          db_host: sps-archiver
+          db_port: 27017
+          db_name: sps-processing
+          using_workflow: True
+        tags:
+          - run-folding
+          - ${{ matrix.date }}
+          - ${{ matrix.info.fs_id }}
+          - ${{ matrix.info.ra }}
+          - ${{ matrix.info.dec }}
+          - ${{ matrix.info.dm }}
