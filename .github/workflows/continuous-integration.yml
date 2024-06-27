@@ -13,7 +13,7 @@ jobs:
     uses: chime-sps/champss_software/.github/workflows/image.yml@main
     secrets: inherit
     with:
-      image_tag: 'workflow-test'
+      image_tag: 'workflow_test'
       build_locally: false
   # Avoid double checks from bot's automated release PR
   # precommit:
