@@ -415,16 +415,16 @@ def main(
     )
 
     log.info(f"SN of folded profile: {SN_arr}")
+    fold_details = {
+        "date": date,
+        "archive_fname": archive_fname,
+        "SN": float(SN_arr),
+        "path_to_plot": plot_fname,
+    }
 
     if fs_id and write_to_db:
         log.info("Updating FollowUpSource with folding history")
         folding_history = source.folding_history
-        fold_details = {
-            "date": date,
-            "archive_fname": archive_fname,
-            "SN": float(SN_arr),
-            "path_to_plot": plot_fname,
-        }
         fold_dates = [entry["date"].date() for entry in folding_history]
         if date.date() in fold_dates:
             index = fold_dates.index(date.date())
