@@ -225,6 +225,7 @@ class PowerSpectraSearch:
                         log.info(f"DM: {data[injection_index]['DM']}")
                         log.info(f"sigma: {data[injection_index]['sigma']}")
                         log.info(f"frequency: {data[injection_index]['frequency']}")
+                        #log.info("frequency: 25")
                         pulse = np.array(data[injection_index]["profile"])
                         frequency = data[injection_index]["frequency"]
                         DM = data[injection_index]["DM"]
@@ -244,7 +245,6 @@ class PowerSpectraSearch:
             injection_DMs = []
             injection_bins_original = []
             log.info("No artificial pulse injected.")
-        log.info(f'injection_bins_original: {injection_bins_original}')
         search_start = time.time()
         ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         # compute harmonic bins based on power spectra properties

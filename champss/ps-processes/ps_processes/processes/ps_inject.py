@@ -80,12 +80,49 @@ def generate(noise=False):
 
     return prof
 
+def x_to_chi2(x, df):
+    '''This function returns the approximate equivalent chi2 value for a normal distribution sigma.
+    This function returns results with no greater than 3% error as long as sigma < 8.29 OR df > 30.
+
+    Inputs:
+    --------
+        x (float): value in a normal distribution
+        df (int) : degrees of freedom in your chi-squared distribution
+
+    Returns:
+    --------
+        chi2 (float): approximate chi-squared value
+    '''
+    
+    #Note about A&S 26.4.16: I found this returned higher-error results than the x > 30 approximation
+    
+    if x < 8.29:
+        #scipy breaks at x > 8.293ish
+        mean = 0.0
+        sd = 1.0
+        
+        # Calculate the cumulative distribution function (CDF) of normal distribution
+        p = stats.norm.cdf(x, loc=mean, scale=sd)
+        
+        # Calculate the cumulative distribution function (CDF) of chi-squared distribution
+        chi2 = stats.chi2.ppf(p, df)
+
+        return chi2
+    
+    else:
+        #A&S 26.4.17
+        #can improve precision by including h_nu if I had values for higher sigma
+        chi2 = df*(1 - 2/(9*df) + x*np.sqrt(2/(9*df)))**2.99
+
+        return chi2
+
 
 class Injection:
     """This class allows pulse injection."""
 
     def __init__(self, pspec_obj, phase_prof, sigma, true_f, true_dm):
         self.pspec = pspec_obj.power_spectra
+        self.ndays = pspec_obj.num_days
         self.pspec_obj = pspec_obj
         self.birdies = pspec_obj.bad_freq_indices
         self.f = true_f
@@ -101,6 +138,26 @@ class Injection:
         """Return the deltaDM where the dispersion smearing is one pulse period in duration"""
         deltaDM =  1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
+
+    def sigma_to_power(self, n_harm):
+        '''This function converts an input Gaussian sigma to an approximately equivalent power.
+
+        Inputs:
+        -------
+            nharm (int): number of harmonics before the Nyquist cutoff frequency
+
+        Returns:
+        -------
+            power (int): approximate equivalent power
+        '''
+
+        df = 2*self.ndays*n_harm
+        chi2 = x_to_chi2(self.sigma, df)
+        #but we are adding on top of an existing chi2 distribution with power = df
+        #so...
+        power = chi2/2 - df
+    
+        return power
 
     def get_power(self):
         """
@@ -127,7 +184,7 @@ class Injection:
         
         #take the fft of the pulse
         prof_fft = fft(self.phase_prof)
-        prof_fft /= max(np.abs(prof_fft))
+        prof_fft /= np.sum(np.abs(prof_fft))
 
         #i is our index referring to the DM_labels in the target power spectrum
         #find the starting index, where the DM scale is -2
@@ -147,7 +204,7 @@ class Injection:
 
         return dispersed_prof_fft
 
-    def harmonics(self, prof_fft, df, n_harm, weights):
+    def harmonics(self, prof_fft, df, n_harm, weight):
         """
         This function calculates the array of frequency-domain harmonics for a given
         pulse profile.
@@ -179,7 +236,7 @@ class Injection:
             amplitude = prof_fft[i]*sinc(np.pi*(bin_true - current_bins))
             harmonics[(i - 1)*4:(i - 1)*4+4] = np.abs(amplitude)**2
         
-        harmonics *= weights
+        harmonics *= weight/np.sum(harmonics)
 
         return bins, harmonics
 
@@ -200,6 +257,7 @@ class Injection:
         f_nyquist = np.floor(freqs[-1] / 2)
         n_harm = int(np.floor(f_nyquist / self.f))
         prof_fft = rfft(self.phase_prof)[1:]
+        #weight = self.sigma_to_power(n_harm)
         weight = self.get_power()
         log.info(f"Injecting {n_harm} harmonics.")
 

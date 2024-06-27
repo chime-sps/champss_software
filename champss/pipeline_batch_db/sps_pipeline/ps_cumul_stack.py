@@ -8,7 +8,7 @@ log = logging.getLogger(__package__)
 
 
 def run(pointing, ps_cumul_stack_processor, monthly_power_spectra=None, injection_path = None,
-        injection_idx = None, only_store_injections = False):
+        injection_idx = None, only_injections = False):
     """
     Run the power spectra stacking and searching process.
 
@@ -47,7 +47,7 @@ def run(pointing, ps_cumul_stack_processor, monthly_power_spectra=None, injectio
             power_spectra,
         ) = ps_cumul_stack_processor.pipeline.stack_and_search(
             pointing._id, monthly_power_spectra, injection_path,
-            injection_idx, only_store_injections,
+            injection_idx, only_injections,
         )
     return ps_detections, power_spectra
 

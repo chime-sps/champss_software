@@ -850,15 +850,18 @@ def main(
 )
 @click.option(
     "--injection-idx",
+    "--ii",
     default=[],
+    type=int,
     multiple=True,
     help="Index of pulse to inject from yml file",
 )
 @click.option(
-    "--only-store-injections",
+    "--only-injections/--no-only-injections",
     default=False,
-    help="Do you only want to store the injection candidates?",
+    help="Only process clusters containing injections.",
 )
+
 def stack_and_search(
     plot,
     plot_threshold,
@@ -873,7 +876,7 @@ def stack_and_search(
     known_source_threshold,
     injection_path,
     injection_idx,
-    only_store_injections,
+    only_injections,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -963,7 +966,7 @@ def stack_and_search(
             power_spectra_monthly,
             injection_path,
             injection_idx,
-            only_store_injections,
+            only_injections,
         )
         if to_search:
             if not ps_detections:
