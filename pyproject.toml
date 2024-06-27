@@ -10,11 +10,10 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.8.1,<3.12"
 beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 beamformer = {path = "./champss/beamformer"}
 candidate-processor = {path = "./champss/candidate-processor"}
-chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
 controller = {path = "./champss/controller"}
 dmt = {git = "ssh://git@github.com/chime-sps/dmt"}
 folding = {path = "./champss/folding"}
@@ -25,8 +24,8 @@ sps-common = {path = "./champss/sps-common"}
 sps-databases = {path = "./champss/sps-databases"}
 sps-dedispersion = {path = "./champss/sps-dedispersion"}
 sps-multi-pointing = {path = "./champss/multi-pointing"}
-sps-ops = {path = "./champss/sps-ops"}
 sps_pipeline = {path = "./champss/pipeline_batch_db"}
+workflow = {git = "ssh://git@github.com/CHIMEFRB/workflow"}
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"

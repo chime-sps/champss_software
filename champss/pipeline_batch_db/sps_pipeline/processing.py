@@ -32,15 +32,11 @@ log = logging.getLogger()
 foldpath = "/data/chime/sps/archives"
 
 
-def find_and_run_all_folding_processes(
+def find_all_folding_processes(
     date,
     db_host,
     db_port,
-    db_name,
-    basepath,
-    workflow_name,
-    docker_image_name,
-    docker_password,
+    db_name
 ):
     log.setLevel(logging.INFO)
 
@@ -63,23 +59,38 @@ def find_and_run_all_folding_processes(
     ras = []
     decs = []
     dms = []
+
+    info = []
     for source in db.followup_sources.find({"active": True}):
         IDs.append(source["_id"])
         ras.append(source["ra"])
         decs.append(source["dec"])
         dms.append(source["dm"])
+        
+        info.append({"fs_id": source["_id"], "ra": source["ra"], "dec": source["dec"], "dm": source["dm"]})
+        
+    return {"info": info}, [], []
 
-    number_of_folding_processes = len(IDs)
-
+def run_all_folding_processes(
+    date,
+    db_host,
+    db_port,
+    db_name,
+    basepath,
+    workflow_name,
+    docker_image_name,
+    docker_password,
+    processes
+):
     date_string = date.strftime("%Y/%m/%d")
 
-    message_slack(f"Folding {number_of_folding_processes} candidates for {date_string}")
+    message_slack(f"Folding {len(processes)} candidates for {date_string}")
 
-    for index in range(number_of_folding_processes):
-        fs_id = IDs[index]
-        ra = ras[index]
-        dec = decs[index]
-        dm = dms[index]
+    for index in range(processes):
+        fs_id = processes[index]["fs_id"]
+        ra = processes[index]["ra"]
+        dec = processes[index]["dec"]
+        dm = processes[index]["dm"]
 
         nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
         nchan = 1024 * (2**nchan_tier)
@@ -206,6 +217,7 @@ def find_all_pipeline_processes(
             )
     log.info(f"Number of days: {len(all_days)}")
     total_processes = 0
+    info = []
     for day in all_days:
         log.info(f"Creating processes for {day}.")
         beam = np.arange(0, 224)
@@ -239,8 +251,25 @@ def find_all_pipeline_processes(
                             active_pointings[-1].dec,
                         )
                         for ap in active_pointings:
-                            db_api.get_process_from_active_pointing(ap)
+                            process = db_api.get_process_from_active_pointing(ap)
                             total_processes_day += 1
+                            if (
+                                process.is_in_stack == False 
+                                and process.quality_label != False
+                                and process.nchan < 16000
+                            ):
+                                memory_needed = int(4 + ((process.maxdm / 100) * 4))
+                                cores_needed = int(memory_needed / 3)
+                                info.append(
+                                    {
+                                        "ra": process.ra,
+                                        "dec": process.dec,
+                                        "maxdm": process.maxdm,
+                                        "nchan": process.nchan,
+                                        "memory_needed": memory_needed,
+                                        "cores_needed": cores_needed
+                                    }
+                                )
             total_processes += total_processes_day
             log.info(f"{total_processes_day} available processes created for {day}.")
             log.info(f"First coordinates : {first_coordinates}")
@@ -249,6 +278,7 @@ def find_all_pipeline_processes(
             log.error(error)
             log.info(f"Can't create processes for {day}")
     log.info(f"{total_processes} available processes in total.")
+    return {"info": info}, [], []
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -915,7 +945,13 @@ def start_processing_manager(
 
             # Start of folding phase
             if run_folding:
-                find_and_run_all_folding_processes(
+                processes, [], [] = find_all_folding_processes(
+                    date=date_to_process,
+                    db_host=db_host,
+                    db_port=db_port,
+                    db_name=db_name,
+                )
+                run_all_folding_processes(
                     date=date_to_process,
                     db_host=db_host,
                     db_port=db_port,
@@ -924,6 +960,7 @@ def start_processing_manager(
                     workflow_name=workflow_name,
                     docker_image_name=docker_image_name,
                     docker_password=docker_password,
+                    processes=processes["info"]
                 )
 
                 wait_for_no_tasks_in_states(docker_swarm_running_states)

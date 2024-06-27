@@ -5,16 +5,24 @@ on:
     branches:
       - main
   workflow_dispatch: 
+  push:
+    - workflow-test
 
 jobs:
-  # Avoid double checks from bot's automated release PR
-  precommit:
-    if: ${{ github.actor != 'github-actions' }}
-    uses: chime-sps/champss_software/.github/workflows/precommit.yml@main
-    secrets: inherit
-  benchmark:
-    if: ${{ github.actor != 'github-actions' }}
-    uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
+  test-image:
+    uses: chime-sps/champss_software/.github/workflows/image.yml@main
     secrets: inherit
     with:
-      branch_name: ${{ github.head_ref || github.ref_name || 'none' }}
+      image_tag: 'workflow-test'
+      build_locally: false
+  # Avoid double checks from bot's automated release PR
+  # precommit:
+  #  if: ${{ github.actor != 'github-actions' }}
+  #  uses: chime-sps/champss_software/.github/workflows/precommit.yml@main
+  #  secrets: inherit
+  # benchmark:
+  #  if: ${{ github.actor != 'github-actions' }}
+  #  uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
+  #  secrets: inherit
+  #  with:
+  #    branch_name: ${{ github.head_ref || github.ref_name || 'none' }}

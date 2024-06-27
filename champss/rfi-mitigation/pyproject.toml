@@ -10,7 +10,7 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.8.1,<3.12"
 spshuff = {path = "../spshuff"}
 sps-common = {path = "../sps-common"}
 astropy = "~5.2"
