@@ -6,7 +6,8 @@ on:
       - main
   workflow_dispatch: 
   push:
-    - workflow-test
+    branches:
+      - workflow-test
 
 jobs:
   test-image:
