@@ -1,7 +1,6 @@
 import datetime as dt
 import os
 import re
-import subprocess
 
 import astropy.units as u
 import matplotlib.pyplot as plt
@@ -68,7 +67,7 @@ def find_central_obs(directory, F0, DM, message=True):
     return central_obs_par
 
 
-def load_profiles(directory, F0, DM, RA, DEC, load_only=False, max_npbin=256):
+def load_profiles(archives, max_npbin=256):
     """
     Finds central observation and uses its ephemeris as the reference epoch for all
     other archives Apply this ephemeris to the archives, creating new archives with
@@ -83,30 +82,14 @@ def load_profiles(directory, F0, DM, RA, DEC, load_only=False, max_npbin=256):
     Returns intensity data for each observation loaded
     """
 
-    if not load_only:
-        central_obs_par = find_central_obs(directory, F0, DM)
-
-        # Apply this ephemeris to each archive file, so that they have an absolute start time to reference
-        print("Applying central observation ephemeris...")
-        subprocess.run(
-            [
-                "pam",
-                "-E",
-                central_obs_par,
-                "-e",
-                ".newar.FT",
-                f"cand*{round(DM,2)}*{round(F0,2)}*-??.FT",
-            ],
-            cwd=directory,
-        )
-
     print("Loading in altered archive files...")
     profs = []
     times = []
     PEPOCHs = []
-    for filename in sorted(os.listdir(directory)):
-        f = os.path.join(directory, filename)
-        if os.path.isfile(f) and filename.endswith(".newar.FT"):
+    print(archives)
+    for filename in sorted(archives):
+        f = filename.replace(".ar", ".FT")
+        if os.path.isfile(f) and f.endswith(".FT"):
             print(f)
             data_ar, F, T, source, tel = readpsrarch(f)
             data_ar = data_ar.squeeze()
@@ -122,10 +105,11 @@ def load_profiles(directory, F0, DM, RA, DEC, load_only=False, max_npbin=256):
             PEPOCHs.append(PEPOCH)
 
     if np.unique(PEPOCHs).size > 1:
-        print(
-            "WARNING: not all profiles references to the same PEPOCHs, re-apply same"
-            " ephemeris to all archives"
+        log.error(
+            "Not all profiles reference the same PEPOCHs, re-apply same ephemeris to"
+            " all archives"
         )
+        return
     T0 = Time(PEPOCHs[0], format="mjd")
 
     npbin = len(profs[0])
@@ -137,10 +121,14 @@ def load_profiles(directory, F0, DM, RA, DEC, load_only=False, max_npbin=256):
         ).sum(2)
         npbin = max_npbin
 
-    raj = RA
-    decj = DEC
+    RA = get_archive_parameter(f, "RAJD")
+    DEC = get_archive_parameter(f, "DECJD")
+    F0 = get_archive_parameter(f, "F0")
+    DM = get_archive_parameter(f, "DM")
+    directory = os.path.dirname(archives[0])
+
     times = Time(times, format="mjd")
-    t_bary = get_ssb_delay(raj, decj, times)
+    t_bary = get_ssb_delay(RA, DEC, times)
     dts = times + t_bary
     dts = dts - T0
     dts = dts.to_value("second")
