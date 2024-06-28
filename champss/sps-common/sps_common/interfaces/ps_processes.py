@@ -307,7 +307,7 @@ class PowerSpectra:
             )
 
     @classmethod
-    def read(cls, filename, nbit=32, use_shared_memory=True):
+    def read(cls, filename, nbit=32, use_shared_memory=False):
         """
         Read the power spectrum saved.
 
@@ -321,6 +321,8 @@ class PowerSpectra:
 
         shared_memory: bool
             Keep spectra in shared memory
+            Reading multiple PowerSpectra with shared_memory enabled may lead to the shared
+            memory not being cleaned up.
 
         Returns
         =======
