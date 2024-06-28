@@ -157,118 +157,6 @@ def dbexcepthook(type, value, tb):
         f" {((pipeline_end_time - pipeline_start_time) / 60):.2f} minutes"
     )
 
-
-@click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option(
-    "--date",
-    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
-    required=False,
-    help="Date of data to process. Default = Today in UTC",
-)
-@click.option(
-    "--stack/--no-stack",
-    "-s",
-    default=False,
-    help="Whether to stack the power spectra",
-)
-@click.option(
-    "--fdmt/--no-fdmt",
-    default=True,
-    help="Whether to use fdmt for dedispersion",
-)
-@click.option(
-    "--rfi-beamform/--no-rfi-beamform",
-    default=True,
-    help="Whether to run rfi mitigation during beamforming instead of separately",
-)
-@click.option(
-    "--plot/--no-plot",
-    default=False,
-    help="Whether to create candidate plots",
-)
-@click.option(
-    "--plot-threshold",
-    default=0.0,
-    type=float,
-    help="Sigma threshold above which the candidate plots are created",
-)
-@click.argument("ra", type=click.FloatRange(-180, 360))
-@click.argument("dec", type=click.FloatRange(-90, 90))
-@click.argument(
-    "components",
-    type=click.Choice(
-        ["all", "quant", "rfi", "beamform", "dedisp", "ps", "hhat", "search", "cleanup"]
-    ),
-    nargs=-1,
-)
-@click.option(
-    "--num-threads",
-    default=None,
-    type=int,
-    help=(
-        "Number of multiprocessing threads to use. If no value is given, "
-        "the calculated config's value will be used."
-    ),
-)
-@click.option(
-    "--db-port",
-    default=27017,
-    type=int,
-    help="Port used for the mongodb database.",
-)
-@click.option(
-    "--db-host",
-    default="localhost",
-    type=str,
-    help="Host used for the mongodb database.",
-)
-@click.option(
-    "--db-name",
-    default="sps",
-    type=str,
-    help="Name used for the mongodb database.",
-)
-@click.option(
-    "--basepath",
-    default="./",
-    type=str,
-    help="Path for created files. Default './'",
-)
-@click.option(
-    "--stackpath",
-    default=None,
-    type=str,
-    help=(
-        "Path for the cumulative stack. As default the basepath from the config is"
-        " used."
-    ),
-)
-@click.option(
-    "--using-pyroscope/--not-using-pyroscope",
-    default=False,
-    help="Whether to profile this function using Pyroscope or not",
-)
-@click.option(
-    "--using-docker/--not-using-docker",
-    default=False,
-    help="Whether this run is being used with Workflow + Docker Swarm",
-)
-@click.option(
-    "--known-source-threshold",
-    "--kst",
-    default=np.inf,
-    type=float,
-    help=(
-        "Threshold under which known sources are filtered based on the previously"
-        " strongest detection of that source in that pointing."
-    ),
-)
-@click.option(
-    "--config-file",
-    default="sps_config.yml",
-    type=str,
-    help="Name of used config. Default: sps_config.yml",
-)
 def main(
     date,
     stack,
@@ -321,7 +209,7 @@ def main(
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
 
-    if isinstance(date, str):
+    if isinstance(date, str) or isinstance(date, int):
         for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
             try:
                 date = dt.datetime.strptime(str(date), date_format)

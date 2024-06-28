@@ -39,7 +39,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name):
 
     log.info(f"Filtering candidates for {date}")
 
-    if isinstance(date, str):
+    if isinstance(date, str) or isinstance(date, int):
         for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
             try:
                 date = dt.datetime.strptime(str(date), date_format)
@@ -218,7 +218,7 @@ def find_all_pipeline_processes(
     log.setLevel(logging.INFO)
     db_utils.connect(host=db_host, port=db_port, name=db_name)
 
-    if isinstance(date, str):
+    if isinstance(date, str) or isinstance(date, int):
         for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
             try:
                 date = dt.datetime.strptime(str(date), date_format)

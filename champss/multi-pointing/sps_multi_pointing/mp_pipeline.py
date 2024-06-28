@@ -83,98 +83,6 @@ def apply_logging_config(config, log_file="./logs/default.log"):
             log.debug("Set %s level to: %s", module_name, level)
 
 
-@click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option(
-    "-o",
-    "--output",
-    default="./",
-    type=str,
-    help="Base path for the output.",
-)
-@click.option(
-    "--file-path",
-    default=None,
-    type=str,
-    help="Path to candidates files.",
-)
-@click.option(
-    "--get-from-db/--do-not-get-from-db",
-    default=False,
-    is_flag=True,
-    help="Read file locations from database instead of using --file-path.",
-)
-@click.option(
-    "--date",
-    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
-    required=False,
-    help="First date of candidates when grabbing from db. Default = All days.",
-)
-@click.option(
-    "--ndays",
-    default=1,
-    type=float,
-    help="Number of days to process when --date is used for the first day.",
-)
-@click.option(
-    "--plot",
-    default=False,
-    is_flag=True,
-    help="Plots the multi pointing grouper output",
-)
-@click.option(
-    "--plot-cands/--no-plot-cands",
-    default=False,
-    help="Whether to create candidate plots",
-)
-@click.option("--db/--no-db", default=False, help="Whether to write to database")
-@click.option("--csv/--no-csv", default=True, help="Whether to write summary csv.")
-@click.option(
-    "--plot-threshold",
-    default=0.0,
-    type=float,
-    help="Sigma threshold above which the candidate plots are created",
-)
-@click.option(
-    "--plot-dm-threshold",
-    default=2.0,
-    type=float,
-    help="DM threshold above which the candidate plots are created",
-)
-@click.option(
-    "--plot-all-pulsars/--no-plot-all-pulsars",
-    default=False,
-    help="Plot all known pulsars if plot_cands is turned on.",
-)
-@click.option(
-    "--db-port",
-    default=27017,
-    type=int,
-    help="Port used for the mongodb database.",
-)
-@click.option(
-    "--db-host",
-    default="localhost",
-    type=str,
-    help="Host used for the mongodb database.",
-)
-@click.option(
-    "--db-name",
-    default="sps",
-    type=str,
-    help="Name used for the mongodb database.",
-)
-@click.option(
-    "--num-threads",
-    default=32,
-    type=int,
-    help="Number of threads for parallel jobs.",
-)
-@click.option(
-    "--run-name",
-    default=None,
-    type=str,
-    help="Name of the output folder inside the output/mp_runs folder.",
-)
 def cli(
     output,
     file_path,
@@ -195,7 +103,7 @@ def cli(
     run_name,
 ):
     """Slow Pulsar Search multiple-pointing candidate processing."""
-    if isinstance(date, str):
+    if isinstance(date, str) or isinstance(date, int):
         for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
             try:
                 date = dt.datetime.strptime(str(date), date_format)
