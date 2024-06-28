@@ -3,6 +3,7 @@ import math
 import numpy as np
 import pandas as pd
 from sps_databases import db_api, db_utils
+import datetime as dt
 
 
 def add_candidate_to_fsdb(date_str, ra, dec, f0, dm, sigma, cand_path):
