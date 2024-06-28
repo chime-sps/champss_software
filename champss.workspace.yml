@@ -12,10 +12,13 @@ archive:
 http:
   baseurls:
     configs:
+      - http://localhost:37015/v2
       - http://frb-vsop:37015/v2
     pipelines:
+      - http://localhost:37015/v2
       - http://frb-vsop:37015/v2
     schedules:
+      - http://localhost:37015/v2
       - http://frb-vsop:37015/v2
     buckets:
       - http://frb-vsop.chime:8004
@@ -61,8 +64,6 @@ deployers:
       networks:
         pipeline-network:
       constraints: ["node.labels.compute == true"]
-      labels:
-        type: "champss-processing"
   chime:
     docker:
       client_url: tcp://frb-vsop.chime:2375

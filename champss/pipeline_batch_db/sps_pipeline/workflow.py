@@ -357,12 +357,14 @@ def clear_workflow_buckets(workflow_buckets_name):
             limit=100,
             projection={"id": True},
         )
+        print(buckets_list)
         while len(buckets_list) != 0:
             buckets_list = buckets_api.view(
                 query={"pipeline": workflow_buckets_name},
                 limit=100,
                 projection={"id": True},
             )
+            print(buckets_list)
             bucket_ids_to_delete = [bucket["id"] for bucket in buckets_list]
             log.info(f"Will delete buckets entries with ids: {bucket_ids_to_delete}")
             buckets_api.delete_ids(ids=bucket_ids_to_delete)
@@ -372,6 +374,7 @@ def clear_workflow_buckets(workflow_buckets_name):
                 projection={"id": True},
             )
     except Exception as error:
+        print(error)
         pass
 
 
