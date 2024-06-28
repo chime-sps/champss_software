@@ -88,7 +88,15 @@ def add_knownsource_to_fsdb(ephem_path):
 
 
 def add_candidate_to_fsdb(
-    date_str, ra, dec, f0, dm, sigma, cand_path="", source_type="sd_candidate"
+    date_str,
+    ra,
+    dec,
+    f0,
+    dm,
+    sigma,
+    cand_path="",
+    source_type="sd_candidate",
+    path_to_ephemeris=None,
 ):
     """Create a payload for a candidate to be input in the followup sources database."""
     from beamformer.utilities.dm import DMMap
@@ -117,6 +125,7 @@ def add_candidate_to_fsdb(
         "followup_duration": duration,
         "active": True,
         "path_to_candidates": [cand_path],
+        "path_to_ephemeris": path_to_ephemeris,
     }
 
     payload["dm_galactic_ne_2001_max"] = float(
@@ -128,3 +137,21 @@ def add_candidate_to_fsdb(
 
     db_api.create_followup_source(payload)
     print(f"Added {name} to the follow-up source database")
+
+
+def add_mdcand_from_candpath(candpath, date):
+    from sps_common.interfaces import MultiPointingCandidate
+
+    date_str = date.strftime("%Y%m%d")
+    mpc = MultiPointingCandidate.read(candpath)
+    ra = mpc.ra
+    dec = mpc.dec
+    f0 = mpc.best_freq
+    dm = mpc.best_dm
+    sigma = mpc.best_sigma
+
+    followup_source = add_candidate_to_fsdb(
+        date_str, ra, dec, f0, dm, sigma, candpath, source_type="md_candidate"
+    )
+    print(followup_source)
+    fs_id = followup_source._id
