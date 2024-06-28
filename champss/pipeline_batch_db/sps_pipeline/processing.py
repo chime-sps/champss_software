@@ -32,17 +32,20 @@ log = logging.getLogger()
 foldpath = "/data/chime/sps/archives"
 
 
-def find_all_folding_processes(
-    date,
-    db_host,
-    db_port,
-    db_name
-):
+def find_all_folding_processes(date, db_host, db_port, db_name):
     log.setLevel(logging.INFO)
 
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
 
     log.info(f"Filtering candidates for {date}")
+
+    if isinstance(date, str) or isinstance(date, int):
+        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
+            try:
+                date = dt.datetime.strptime(str(date), date_format)
+                break
+            except ValueError:
+                continue
 
     Filter(
         cand_obs_date=date,
@@ -66,10 +69,18 @@ def find_all_folding_processes(
         ras.append(source["ra"])
         decs.append(source["dec"])
         dms.append(source["dm"])
-        
-        info.append({"fs_id": source["_id"], "ra": source["ra"], "dec": source["dec"], "dm": source["dm"]})
-        
+
+        info.append(
+            {
+                "fs_id": source["_id"],
+                "ra": source["ra"],
+                "dec": source["dec"],
+                "dm": source["dm"],
+            }
+        )
+
     return {"info": info}, [], []
+
 
 def run_all_folding_processes(
     date,
@@ -80,7 +91,7 @@ def run_all_folding_processes(
     workflow_name,
     docker_image_name,
     docker_password,
-    processes
+    processes,
 ):
     date_string = date.strftime("%Y/%m/%d")
 
@@ -144,6 +155,7 @@ def run_all_folding_processes(
         )
 
 
+"""
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--full-transit/--no-full-transit",
@@ -196,12 +208,24 @@ def run_all_folding_processes(
         " first day."
     ),
 )
+"""
+
+
 def find_all_pipeline_processes(
     full_transit, db_port, db_host, db_name, complete, date, ndays
 ):
     """Find all available processes and add them to the database."""
     log.setLevel(logging.INFO)
     db_utils.connect(host=db_host, port=db_port, name=db_name)
+
+    if isinstance(date, str) or isinstance(date, int):
+        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
+            try:
+                date = dt.datetime.strptime(str(date), date_format)
+                break
+            except ValueError:
+                continue
+
     strat = PointingStrategist(create_db=False)
     if not date:
         all_days = glob(os.path.join(datpath, "*/*/*"))
@@ -254,7 +278,7 @@ def find_all_pipeline_processes(
                             process = db_api.get_process_from_active_pointing(ap)
                             total_processes_day += 1
                             if (
-                                process.is_in_stack == False 
+                                process.is_in_stack == False
                                 and process.quality_label != False
                                 and process.nchan < 16000
                             ):
@@ -267,7 +291,7 @@ def find_all_pipeline_processes(
                                         "maxdm": process.maxdm,
                                         "nchan": process.nchan,
                                         "memory_needed": memory_needed,
-                                        "cores_needed": cores_needed
+                                        "cores_needed": cores_needed,
                                     }
                                 )
             total_processes += total_processes_day
@@ -960,7 +984,7 @@ def start_processing_manager(
                     workflow_name=workflow_name,
                     docker_image_name=docker_image_name,
                     docker_password=docker_password,
-                    processes=processes["info"]
+                    processes=processes["info"],
                 )
 
                 wait_for_no_tasks_in_states(docker_swarm_running_states)
