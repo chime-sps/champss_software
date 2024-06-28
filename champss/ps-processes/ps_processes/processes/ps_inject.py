@@ -1,6 +1,8 @@
 import logging
 import os
 import numpy as np
+import scipy.stats as stats
+from scipy.special import chdtri
 from scipy.fft import fft, rfft
 from sps_common.constants import FREQ_BOTTOM, FREQ_TOP, DM_CONSTANT
 from sps_databases import db_api
@@ -94,10 +96,7 @@ def x_to_chi2(x, df):
         chi2 (float): approximate chi-squared value
     '''
     
-    #Note about A&S 26.4.16: I found this returned higher-error results than the x > 30 approximation
-    
-    if x < 8.29:
-        #scipy breaks at x > 8.293ish
+    if x <= 7.3:
         mean = 0.0
         sd = 1.0
         
@@ -110,9 +109,18 @@ def x_to_chi2(x, df):
         return chi2
     
     else:
-        #A&S 26.4.17
-        #can improve precision by including h_nu if I had values for higher sigma
-        chi2 = df*(1 - 2/(9*df) + x*np.sqrt(2/(9*df)))**2.99
+        #A&S 26.2.23. This is the inverse of the operation for logp in PRESTO
+        A = 2.515517
+        B = 0.802853
+        C = 0.010328
+        D = 1.432788
+        E = 0.189269
+        F = 0.001308
+        const = np.array([F, E - x*F, D - C - x*E, 1 - B - x*D, -(x + A)])
+        t = np.roots(const)[1]
+        prob = np.exp(-t**2/2)
+        
+        chi2 = chdtri(df, prob)
 
         return chi2
 
@@ -155,7 +163,7 @@ class Injection:
         chi2 = x_to_chi2(self.sigma, df)
         #but we are adding on top of an existing chi2 distribution with power = df
         #so...
-        power = chi2/2 - df
+        power = chi2/2
     
         return power
 
@@ -202,9 +210,9 @@ class Injection:
             dispersed_prof_fft[i] = prof_fft * kernels[key]
             #log.info(f'DM = {self.trial_dms[i]}, first harm power = {np.abs(dispersed_prof_fft[i, 1])**2}')
 
-        return dispersed_prof_fft
+        return dispersed_prof_fft, i0
 
-    def harmonics(self, prof_fft, df, n_harm, weight):
+    def harmonics(self, prof_fft, df, n_harm):
         """
         This function calculates the array of frequency-domain harmonics for a given
         pulse profile.
@@ -235,8 +243,6 @@ class Injection:
             bins[(i - 1)*4:(i - 1)*4+4] = current_bins
             amplitude = prof_fft[i]*sinc(np.pi*(bin_true - current_bins))
             harmonics[(i - 1)*4:(i - 1)*4+4] = np.abs(amplitude)**2
-        
-        harmonics *= weight/np.sum(harmonics)
 
         return bins, harmonics
 
@@ -257,8 +263,8 @@ class Injection:
         f_nyquist = np.floor(freqs[-1] / 2)
         n_harm = int(np.floor(f_nyquist / self.f))
         prof_fft = rfft(self.phase_prof)[1:]
-        #weight = self.sigma_to_power(n_harm)
-        weight = self.get_power()
+        weight = self.sigma_to_power(n_harm)
+        log.info(f'Injected power = {weight}')
         log.info(f"Injecting {n_harm} harmonics.")
 
         harms = []
@@ -266,14 +272,17 @@ class Injection:
         # connect to database and find number of spectral channels in observation
         obs = db_api.get_observation(self.pspec_obj.obs_id[0])
         nchans = db_api.get_pointing(obs.pointing_id).nchans
-        dispersed_prof_fft = self.disperse(kernels, kernel_scaling)
+        dispersed_prof_fft, i0 = self.disperse(kernels, kernel_scaling)
         
         for i in range(len(dispersed_prof_fft)):
-            bins, harm = self.harmonics(dispersed_prof_fft[i], df, n_harm, weight)
+            bins, harm = self.harmonics(dispersed_prof_fft[i], df, n_harm)
             harms.append(harm)
             dms.append(i)
 
-        return np.asarray(harms), bins, dms
+        harms = np.asarray(harms)
+        harms *= weight/np.sum(harms[i0])
+
+        return harms, bins, dms
 
 
 def main(pspec, injection_profile="random", num_injections=1):

@@ -17,7 +17,7 @@ import numpy as np
 @click.option(
         "--file-name",
         "--fn",
-        default = "test_injections.yaml",
+        default = "test_injections.yml",
         type = str,
         help = ("Name of target file")
 )

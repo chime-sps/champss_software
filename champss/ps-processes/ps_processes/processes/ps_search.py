@@ -225,7 +225,6 @@ class PowerSpectraSearch:
                         log.info(f"DM: {data[injection_index]['DM']}")
                         log.info(f"sigma: {data[injection_index]['sigma']}")
                         log.info(f"frequency: {data[injection_index]['frequency']}")
-                        #log.info("frequency: 25")
                         pulse = np.array(data[injection_index]["profile"])
                         frequency = data[injection_index]["frequency"]
                         DM = data[injection_index]["DM"]
