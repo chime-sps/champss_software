@@ -198,7 +198,7 @@ def cli(
     if isinstance(date, str):
         for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
             try:
-                date = dt.datetime.strptime(date, date_format)
+                date = dt.datetime.strptime(str(date), date_format)
                 break
             except ValueError:
                 continue

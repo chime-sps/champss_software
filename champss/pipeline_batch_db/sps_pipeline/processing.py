@@ -42,7 +42,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name):
     if isinstance(date, str):
         for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
             try:
-                date = dt.datetime.strptime(date, date_format)
+                date = dt.datetime.strptime(str(date), date_format)
                 break
             except ValueError:
                 continue
@@ -221,7 +221,7 @@ def find_all_pipeline_processes(
     if isinstance(date, str):
         for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
             try:
-                date = dt.datetime.strptime(date, date_format)
+                date = dt.datetime.strptime(str(date), date_format)
                 break
             except ValueError:
                 continue
