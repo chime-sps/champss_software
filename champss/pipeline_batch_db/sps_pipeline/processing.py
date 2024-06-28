@@ -155,6 +155,7 @@ def run_all_folding_processes(
         )
 
 
+"""
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--full-transit/--no-full-transit",
@@ -207,6 +208,9 @@ def run_all_folding_processes(
         " first day."
     ),
 )
+"""
+
+
 def find_all_pipeline_processes(
     full_transit, db_port, db_host, db_name, complete, date, ndays
 ):
