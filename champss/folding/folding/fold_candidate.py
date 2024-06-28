@@ -130,7 +130,7 @@ def main(
     """
 
     if using_workflow:
-        if isinstance(date, str):
+        if isinstance(date, str) or isinstance(date, int):
             for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
                 try:
                     date = dt.datetime.strptime(str(date), date_format)
