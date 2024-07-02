@@ -76,6 +76,7 @@ def read_cands_summaries(file):
             cand_summary["features"] = candidate.features
             cand_summary["datetimes"] = datetimes
             cand_summary["nharm"] = candidate.nharm
+            cand_summary["best_harmonic_sum"] = candidate.best_harmonic_sum
 
             all_cands.append(cand_summary)
         return all_cands

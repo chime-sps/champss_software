@@ -279,6 +279,7 @@ class SinglePointingCandidateGroup:
             "summed_raw_harmonic_powers": summed_raw_harmonic_powers,
             "all_summaries": sorted_members,
             "best_nharm": max_sigma_cand["nharm"],
+            "best_harmonic_sum": max_sigma_cand["best_harmonic_sum"],
         }
 
         self.group_summary.update(reduced_summary)
