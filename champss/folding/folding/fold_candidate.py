@@ -20,6 +20,34 @@ from folding.plot_candidate import plot_candidate_archive
 from sps_databases import db_api, db_utils
 
 
+def update_folding_history(id, payload):
+    """
+    Updates a followup_source with the given attribute and values as a dict.
+
+    Parameters
+    ----------
+    id: str or ObjectId
+        The id of the followup source to be updated
+
+    payload: dict
+        The dict of the attributes and values to be updated
+
+    Returns
+    -------
+    followup_source: dict
+        The dict of the updated followup source
+    """
+    db = db_utils.connect()
+    payload["last_changed"] = dt.datetime.now()
+    if isinstance(id, str):
+        id = ObjectId(id)
+    return db.followup_sources.find_one_and_update(
+        {"_id": id},
+        {"$push": payload},
+        return_document=pymongo.ReturnDocument.AFTER,
+    )
+
+
 def apply_logging_config(level):
     """
     Applies logging settings from the given configuration.
@@ -431,7 +459,7 @@ def main(
             folding_history[index] = fold_details
         else:
             folding_history.append(fold_details)
-        db_api.update_followup_source(fs_id, {"folding_history": folding_history})
+            update_folding_history(fs_id, {"folding_history": fold_details})
         if len(folding_history) >= source.followup_duration:
             log.info(
                 f"Finished follow-up duration of {source.followup_duration} days,"
