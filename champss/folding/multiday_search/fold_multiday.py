@@ -83,7 +83,7 @@ def main(fs_id, db_port, db_host, db_name, basepath):
     source = db_api.get_followup_source(fs_id)
     ra = source.ra
     dec = source.dec
-    dates_with_data = find_all_dates_with_data(ra, dec, basepath, Nday=10)
+    dates_with_data = find_all_dates_with_data(ra, dec, basepath, Nday=4)
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
         fold_candidate.main(
