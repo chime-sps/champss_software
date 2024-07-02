@@ -44,7 +44,7 @@ jobs:
           push: true
   build-image-and-save-to-local:
     if: ${{ inputs.build_locally == true }}
-    runs-on: testbed
+    runs-on: ${{ inputs.runs_on }}
     steps:
       - uses: actions/checkout@v3
         with:
