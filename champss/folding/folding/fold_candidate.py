@@ -37,10 +37,10 @@ def update_folding_history(id, payload):
     followup_source: dict
         The dict of the updated followup source
     """
+    import pymongo
     from bson.objectid import ObjectId
 
     db = db_utils.connect()
-    payload["last_changed"] = dt.datetime.now()
     if isinstance(id, str):
         id = ObjectId(id)
     return db.followup_sources.find_one_and_update(
