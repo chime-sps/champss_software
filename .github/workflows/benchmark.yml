@@ -14,6 +14,7 @@ jobs:
     with:
       image_tag: ${{ inputs.branch_name || 'none' }}
       build_locally: true
+      runs_on: testbed
   run-tests:
     needs: update-image
     runs-on: testbed # Image is only saved here

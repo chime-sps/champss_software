@@ -26,5 +26,4 @@ jobs:
     secrets: inherit
     with:
       image_tag: 'test'
-      build_locally: true
-      runs_on: 'sps-archiver'
+      build_locally: false
