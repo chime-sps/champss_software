@@ -1,15 +1,8 @@
 import glob
 
 import click
-import numpy as np
-from astropy import units as u
-from astropy.coordinates import SkyCoord
-from beamformer.utilities.dm import DMMap
 from foldutils.database_utils import add_knownsource_to_fsdb, scrape_ephemeris
 from sps_databases import db_api, db_utils
-from sps_multi_pointing.known_source_sifter.add_tzpar_sources import (
-    ra_dec_from_ecliptic,
-)
 
 
 @click.command()
