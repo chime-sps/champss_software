@@ -41,8 +41,19 @@ from multiday_search.phase_aligned_search import ExploreGrid
     is_flag=True,
     help="Apply P0 and P1 from phase search to archives and display diagnostic plot",
 )
+@click.option(
+    "--write-to-db",
+    is_flag=True,
+    help="Set folded_status to True in the processes database.",
+)
 def main(
-    fs_id, db_port, db_host, db_name, phase_accuracy, load_only=False, full_plot=False
+    fs_id,
+    db_port,
+    db_host,
+    db_name,
+    phase_accuracy,
+    full_plot=False,
+    write_to_db=False,
 ):
     db_utils.connect(host=db_host, port=db_port, name=db_name)
     source = db_api.get_followup_source(fs_id)
@@ -98,7 +109,27 @@ def main(
     )
     explore_grid.plot(squeeze=False)
 
-    if full_plot:
+    coherentsearch_summary = {
+        "date": datetime.datetime.now(),
+        "SN": np.max(explore_grid.SNmax),
+        "f0": optimal_parameters[0],
+        "f1": optimal_parameters[1],
+        "profile": explore_grid.profiles_aligned.sum(0).tolist(),
+        "gridsearch_file": data["directory"] + "/explore_grid.npz",
+    }
+    coherentsearch_history = source.coherentsearch_history
+    search_dates = [entry["date"].date() for entry in coherentsearch_history]
+    coherentsearch_history.append(coherentsearch_summary)
+    if write_to_db:
+        log.info("Updating FollowUpSource with coherent search results")
+        db_api.update_followup_source(
+            fs_id, {"coherentsearch_history": coherentsearch_history}
+        )
+
+    if not full_plot:
+        # Silence Workflow errors, requires results, products, plots
+        return coherentsearch_summary, [], []
+    else:
         # Rewrite new ephemeris using new P0 and P1
 
         f0_optimal = optimal_parameters[0] + F0_incoherent
