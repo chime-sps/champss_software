@@ -1,11 +1,7 @@
-import datetime as dt
 import os
-import re
 
 import astropy.units as u
-import matplotlib.pyplot as plt
 import numpy as np
-import psrchive
 from astropy.constants import au, c
 from astropy.coordinates import (
     BarycentricTrueEcliptic,
@@ -15,7 +11,6 @@ from astropy.coordinates import (
 )
 from astropy.time import Time
 from folding.archive_utils import *
-from scipy.ndimage import uniform_filter
 
 
 def get_ssb_delay(raj, decj, times):
@@ -33,38 +28,6 @@ def get_ssb_delay(raj, decj, times):
         e_dot_p = np.dot(earth_xyz[:, i], psr_xyz)
         t_bary.append(e_dot_p * au.value / c.value)
     return np.array(t_bary) * u.s
-
-
-def find_central_obs(directory, F0, DM, message=True):
-    print("Finding oldest observation...")
-    dates = []
-    for filename in sorted(os.listdir(directory)):
-        f = os.path.join(directory, filename)
-        if os.path.isfile(f) and filename.endswith(".ar"):
-            if str(round(DM, 2)) in filename:
-                date_txt = re.search(r"([0-9]{4}\-[0-9]{2}\-[0-9]{2})", f)[0]
-                z = date_txt.split("-")
-                date = dt.date(int(z[0]), int(z[1]), int(z[2]))
-                dates.append(date)
-
-    oldest_obs_date = min(dates)
-    central_obs_date = dt.date.fromordinal(
-        int(np.median([date.toordinal() for date in dates]))
-    )
-    if message:
-        print(f"Oldest observation is {oldest_obs_date}")
-        print(
-            f"Center observation is {central_obs_date}, referencing ephemeris to this"
-            " date"
-        )
-    # first_obs_par = f"{directory}/cand_{round(DM, 2)}_{round(F0, 2)}_" + oldest_obs_date.strftime('%Y-%m-%d') + ".par"
-    central_obs_par = (
-        f"{directory}/cand_{round(DM, 2)}_{round(F0, 2)}_"
-        + central_obs_date.strftime("%Y-%m-%d")
-        + ".par"
-    )
-
-    return central_obs_par
 
 
 def load_profiles(archives, max_npbin=256):
