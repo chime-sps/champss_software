@@ -1,3 +1,4 @@
+import numpy as np
 from sps_databases import db_api, db_utils
 
 
@@ -62,7 +63,7 @@ def add_knownsource_to_fsdb(ephem_path):
     """Create a payload for a known source to be input in the followup sources
     database.
     """
-    db_utils.connect()
+    db = db_utils.connect()
     payload = scrape_ephemeris(ephem_path)
 
     fs = db.followup_sources.find_one({"source_name": payload["source_name"]})
@@ -102,7 +103,7 @@ def add_candidate_to_fsdb(
     from beamformer.utilities.dm import DMMap
 
     dmm = DMMap()
-    db_utils.connect()
+    db = db_utils.connect()
 
     if source_type == "md_candidate":
         duration = 30
@@ -112,7 +113,9 @@ def add_candidate_to_fsdb(
         print("must be either md or sd candidate")
         return
 
-    name = f"{date_str}_{source_type[:2]}_{ra}_{dec}_{f0}_{dm}"
+    ra_name = np.round(float(ra), 2)
+    dec_name = np.round(float(dec), 2)
+    name = f"{date_str}_{source_type[:2]}_{ra_name}_{dec_name}_{f0}_{dm}"
 
     payload = {
         "source_type": source_type,
@@ -135,8 +138,16 @@ def add_candidate_to_fsdb(
         dmm.get_dm_ymw16(payload["dec"], payload["ra"])
     )
 
-    db_api.create_followup_source(payload)
-    print(f"Added {name} to the follow-up source database")
+    fs = db.followup_sources.find_one({"source_name": payload["source_name"]})
+    if not fs:
+        print(f"Adding {payload['source_name']} to the follow-up source database.")
+        followup_source = db_api.create_followup_source(payload)
+        return followup_source
+    else:
+        print(
+            f"Source {payload['source_name']} already in the follow-up source database."
+        )
+        return fs
 
 
 def add_mdcand_from_candpath(candpath, date):
@@ -153,5 +164,5 @@ def add_mdcand_from_candpath(candpath, date):
     followup_source = add_candidate_to_fsdb(
         date_str, ra, dec, f0, dm, sigma, candpath, source_type="md_candidate"
     )
-    print(followup_source)
-    fs_id = followup_source._id
+    fs_id = followup_source["_id"]
+    return fs_id
