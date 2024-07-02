@@ -17,7 +17,7 @@ candidate-processor = {path = "./champss/candidate-processor"}
 chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
 controller = {path = "./champss/controller"}
 dmt = {git = "ssh://git@github.com/chime-sps/dmt"}
-folding = {path = "./champss/folding"}
+folding = {path = "./champss/folding", develop=true}
 ps-processes = {path = "./champss/ps-processes"}
 rfi-mitigation = {path = "./champss/rfi-mitigation"}
 spshuff = {path = "./champss/spshuff"}
