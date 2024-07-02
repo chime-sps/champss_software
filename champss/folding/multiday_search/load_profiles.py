@@ -73,7 +73,7 @@ def load_profiles(archives, max_npbin=256):
             " all archives"
         )
         return
-    T0 = Time(PEPOCHs[0], format="mjd")
+    T0 = Time(T[0], format="mjd")
 
     npbin = len(profs[0])
     profs = np.array(profs)
