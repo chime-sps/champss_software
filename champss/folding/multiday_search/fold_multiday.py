@@ -124,7 +124,7 @@ def main(
     dm = source.dm
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    dates_with_data = find_all_dates_with_data(ra, dec, basepath, Nday=4)
+    dates_with_data = find_all_dates_with_data(ra, dec, basepath, Nday=10)
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
         docker_name = f"{docker_name_prefix}-{date}-{fs_id}"
