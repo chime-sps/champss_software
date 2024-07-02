@@ -1,8 +1,11 @@
+import datetime
+
 import click
 import numpy as np
 from folding.archive_utils import read_par
 from multiday_search.load_profiles import load_profiles
 from multiday_search.phase_aligned_search import ExploreGrid
+from sps_databases import db_api, db_utils
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -56,7 +59,9 @@ def main(
     write_to_db=False,
 ):
     db_utils.connect(host=db_host, port=db_port, name=db_name)
+    print(fs_id)
     source = db_api.get_followup_source(fs_id)
+    print(source)
     source_type = source.source_type
     if source_type != "md_candidate":
         log.error(f"Source {fs_id} is not a multi-day candidate, exiting...")
@@ -93,6 +98,7 @@ def main(
     delta_f1max = 2 * f1_max
 
     T = data["T"]  # Time from first observation to last observation
+    print(T)
     npbin = data["npbin"]  # Number of phase bins
     M_f0 = int(npbin * phase_accuracy)
     # factor of 2, since we reference to central observation
