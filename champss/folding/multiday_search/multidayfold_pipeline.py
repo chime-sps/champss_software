@@ -5,6 +5,7 @@ import click
 import multiday_search.confirm_cand as confirm_cand
 import multiday_search.fold_multiday as fold_multiday
 from foldutils.database_utils import add_mdcand_from_candpath
+from sps_databases import db_api, db_utils, models
 
 log = logging.getLogger()
 
@@ -35,7 +36,9 @@ log = logging.getLogger()
     help="Name used for the mongodb database.",
 )
 def main(candpath, db_port, db_host, db_name):
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     fs_id = add_mdcand_from_candpath(candpath, dt.datetime.now())
+    print(fs_id)
     fold_multiday.main(
         [
             "--fs_id",
@@ -46,8 +49,10 @@ def main(candpath, db_port, db_host, db_name):
             db_name,
             "--db-host",
             db_host,
-        ]
+        ],
+        standalone_mode=False,
     )
+    print("outside of fold_multiday")
     confirm_cand.main(
         [
             "--fs_id",
@@ -58,7 +63,8 @@ def main(candpath, db_port, db_host, db_name):
             db_name,
             "--db-host",
             db_host,
-        ]
+        ],
+        standalone_mode=False,
     )
 
     # Silence Workflow errors, requires results, products, plots
