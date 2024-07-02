@@ -22,8 +22,9 @@ jobs:
   #  with:
   #    branch_name: ${{ github.head_ref || github.ref_name || 'none' }}
   test-image:
-    uses: chime-sps/champss_software/.github/workflows/image.yml@main
+    uses: chime-sps/champss_software/.github/workflows/image.yml@folding_featureupdates
     secrets: inherit
     with:
       image_tag: 'test'
-      build_locally: false
+      build_locally: true
+      runs_on: 'sps-archiver'
