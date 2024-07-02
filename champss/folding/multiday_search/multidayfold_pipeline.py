@@ -70,7 +70,7 @@ def main(
     workflow_name,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
-    fs_id = add_mdcand_from_candpath(candpath, dt.datetime.now())
+    fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
     print(fs_id)
 
     docker_name_prefix = "fold-multiday"
