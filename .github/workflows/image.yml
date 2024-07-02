@@ -7,6 +7,9 @@ on:
         type: string
       build_locally:
         type: boolean
+      runs_on:
+        type: string
+        default: 'testbed'
 
 jobs:
   build-image-and-push-to-remote:
@@ -14,7 +17,7 @@ jobs:
     # supported CPUs for the image to build. Use testbed, as steps will be too slow
     # when processing is running on site + testbed upload speed is much faster
     if: ${{ inputs.build_locally == false }}
-    runs-on: testbed
+    runs-on: ${{ inputs.runs_on }}
     steps:
       - uses: actions/checkout@v3
         with:
