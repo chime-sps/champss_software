@@ -13,13 +13,8 @@ from sps_databases import db_api, db_utils, models
 log = logging.getLogger()
 
 
-def find_all_dates_with_data(fs_id, db_host, db_port, db_name, basepath):
+def find_all_dates_with_data(ra, dec, basepath, Nday=10):
     log.setLevel(logging.INFO)
-
-    db_utils.connect(host=db_host, port=db_port, name=db_name)
-    source = db_api.get_followup_source(fs_id)
-    ra = source.ra
-    dec = source.dec
 
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
     os.chdir(f"{basepath}")
@@ -42,6 +37,10 @@ def find_all_dates_with_data(fs_id, db_host, db_port, db_name, basepath):
         if len(files) > 0:
             print(filepath, len(files))
             dates_with_data.append(date.strftime("%Y%m%d"))
+
+        if len(dates_with_data) >= Nday:
+            return dates_with_data
+
     return dates_with_data
 
 
@@ -77,9 +76,11 @@ def find_all_dates_with_data(fs_id, db_host, db_port, db_name, basepath):
     help="Base directory for raw data",
 )
 def main(fs_id, db_port, db_host, db_name, basepath):
-    dates_with_data = find_all_dates_with_data(
-        fs_id, db_host, db_port, db_name, basepath
-    )
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+    source = db_api.get_followup_source(fs_id)
+    ra = source.ra
+    dec = source.dec
+    dates_with_data = find_all_dates_with_data(ra, dec, basepath, Nday=10)
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
         fold_candidate.main(
