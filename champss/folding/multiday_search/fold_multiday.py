@@ -29,17 +29,20 @@ def find_all_dates_with_data(ra, dec, basepath, Nday=10):
 
         date = dt.datetime(year, month, day)
 
-        active_pointing = pst.get_single_pointing(ra, dec, date)
+        datelow = dt.datetime(2024, 1, 31)
+        datehigh = dt.datetime(2024, 12, 31)
+        if (date > datelow) and (date < datehigh):
+            active_pointing = pst.get_single_pointing(ra, dec, date)
 
-        files = get_data_list(
-            active_pointing[0].max_beams, basepath=basepath, extn="dat"
-        )
-        if len(files) > 0:
-            print(filepath, len(files))
-            dates_with_data.append(date.strftime("%Y%m%d"))
+            files = get_data_list(
+                active_pointing[0].max_beams, basepath=basepath, extn="dat"
+            )
+            if len(files) > 0:
+                print(filepath, len(files))
+                dates_with_data.append(date.strftime("%Y%m%d"))
 
-        if len(dates_with_data) >= Nday:
-            return dates_with_data
+            if len(dates_with_data) >= Nday:
+                return dates_with_data
 
     return dates_with_data
 
