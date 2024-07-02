@@ -4,17 +4,26 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch: 
+  workflow_dispatch:
+  push:
+    branches:
+      - folding_featureupdates
 
 jobs:
   # Avoid double checks from bot's automated release PR
-  precommit:
-    if: ${{ github.actor != 'github-actions' }}
-    uses: chime-sps/champss_software/.github/workflows/precommit.yml@main
-    secrets: inherit
-  benchmark:
-    if: ${{ github.actor != 'github-actions' }}
-    uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
+  # precommit:
+  #  if: ${{ github.actor != 'github-actions' }}
+  #  uses: chime-sps/champss_software/.github/workflows/precommit.yml@main
+  #  secrets: inherit
+  # benchmark:
+  #  if: ${{ github.actor != 'github-actions' }}
+  #  uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
+  #  secrets: inherit
+  #  with:
+  #    branch_name: ${{ github.head_ref || github.ref_name || 'none' }}
+  test-image:
+    uses: chime-sps/champss_software/.github/workflows/image.yml@main
     secrets: inherit
     with:
-      branch_name: ${{ github.head_ref || github.ref_name || 'none' }}
+      image_tag: 'test'
+      build_locally: false

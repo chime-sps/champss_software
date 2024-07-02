@@ -10,6 +10,10 @@ from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from sps_databases import db_api, db_utils, models
 
+from sps_pipeline.workflow import (
+    schedule_workflow_job,
+)
+
 log = logging.getLogger()
 
 
@@ -78,32 +82,86 @@ def find_all_dates_with_data(ra, dec, basepath, Nday=10):
     default="/data/chime/sps/raw/",
     help="Base directory for raw data",
 )
-def main(fs_id, db_port, db_host, db_name, basepath):
+@click.option(
+    "--docker-image-name",
+    default="chimefrb/champss_software:latest",
+    type=str,
+    help="Which Docker Image name to use.",
+)
+@click.option(
+    "--docker-password",
+    default="",
+    type=str,
+    help="chimefrb DockerHub private registry password",
+)
+@click.option(
+    "--docker-name-prefix",
+    default="",
+    type=str,
+    help="What prefix to apply to the Docker Service name",
+)
+@click.option(
+    "--workflow-name",
+    default="champss-processing",
+    type=str,
+    help="Which Worklow DB to create/use.",
+)
+def main(
+    fs_id,
+    db_port,
+    db_host,
+    db_name,
+    basepath,
+    docker_image_name,
+    docker_password,
+    docker_name_prefix,
+    workflow_name,
+):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     source = db_api.get_followup_source(fs_id)
     ra = source.ra
     dec = source.dec
+    dm = source.dm
+    nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
+    nchan = 1024 * (2**nchan_tier)
     dates_with_data = find_all_dates_with_data(ra, dec, basepath, Nday=4)
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
-        fold_candidate.main(
-            [
-                "--date",
-                date,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-host",
-                db_host,
-                "--fs_id",
-                fs_id,
-                "--write-to-db",
-            ],
-            standalone_mode=False,
+        docker_name = f"{docker_name_prefix}-{date}-{fs_id}"
+        docker_memory_reservation = (nchan / 1024) * 8
+        docker_mounts = [
+            "/data/chime/sps/raw:/data/chime/sps/raw",
+            "/data/chime/sps/archives:/data/chime/sps/archives",
+        ]
+
+        workflow_function = "folding.fold_candidate.main"
+        workflow_params = {
+            "date": date,
+            "fs_id": fs_id,
+            "db_host": db_host,
+            "db_port": db_port,
+            "db_name": db_name,
+            "write_to_db": True,
+            "using_workflow": True,
+        }
+        workflow_tags = [
+            "fold",
+            "multiday",
+            date,
+            fs_id,
+        ]
+
+        schedule_workflow_job(
+            docker_image_name,
+            docker_mounts,
+            docker_name,
+            docker_memory_reservation,
+            docker_password,
+            workflow_name,
+            workflow_function,
+            workflow_params,
+            workflow_tags,
         )
-    # Silence Workflow errors, requires results, products, plots
-    return {}, [], []
 
 
 if __name__ == "__main__":

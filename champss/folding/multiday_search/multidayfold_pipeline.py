@@ -7,6 +7,13 @@ import multiday_search.fold_multiday as fold_multiday
 from foldutils.database_utils import add_mdcand_from_candpath
 from sps_databases import db_api, db_utils, models
 
+from sps_pipeline.workflow import (
+    docker_swarm_pending_states,
+    docker_swarm_running_states,
+    wait_for_no_tasks_in_states,
+    schedule_workflow_job,
+)
+
 log = logging.getLogger()
 
 
@@ -35,10 +42,38 @@ log = logging.getLogger()
     type=str,
     help="Name used for the mongodb database.",
 )
-def main(candpath, db_port, db_host, db_name):
+@click.option(
+    "--docker-image-name",
+    default="chimefrb/champss_software:test",
+    type=str,
+    help="Which Docker Image name to use.",
+)
+@click.option(
+    "--docker-password",
+    default="",
+    type=str,
+    help="chimefrb DockerHub private registry password",
+)
+@click.option(
+    "--workflow-name",
+    default="champss-processing",
+    type=str,
+    help="Which Worklow DB to create/use.",
+)
+def main(
+    candpath,
+    db_port,
+    db_host,
+    db_name,
+    docker_image_name,
+    docker_password,
+    workflow_name,
+):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     fs_id = add_mdcand_from_candpath(candpath, dt.datetime.now())
     print(fs_id)
+
+    docker_name_prefix = "fold-multiday"
     fold_multiday.main(
         [
             "--fs_id",
@@ -49,26 +84,61 @@ def main(candpath, db_port, db_host, db_name):
             db_name,
             "--db-host",
             db_host,
-        ],
-        standalone_mode=False,
-    )
-    print("outside of fold_multiday")
-    confirm_cand.main(
-        [
-            "--fs_id",
-            fs_id,
-            "--db-port",
-            db_port,
-            "--db-name",
-            db_name,
-            "--db-host",
-            db_host,
+            "--docker-image-name",
+            docker_image_name,
+            "--docker-password",
+            docker_password,
+            "--docker-name-prefix",
+            docker_name_prefix,
+            "--workflow-name",
+            workflow_name,
         ],
         standalone_mode=False,
     )
 
-    # Silence Workflow errors, requires results, products, plots
-    return {}, [], []
+    # To Do (Chris): add docker_name_prefix attribute to wait_for_no_tasks_in_states
+    # wait_for_no_tasks_in_states(docker_swarm_pending_states, docker_name_prefix)
+    # wait_for_no_tasks_in_states(docker_swarm_running_states, docker_name_prefix)
+    wait_for_no_tasks_in_states(docker_swarm_pending_states)
+    wait_for_no_tasks_in_states(docker_swarm_running_states)
+
+    print("outside of fold_multiday")
+
+    docker_name_prefix = "multiday"
+    docker_name = f"{docker_name_prefix}-{fs_id}"
+    docker_memory_reservation = 64
+    docker_mounts = [
+        "/data/chime/sps/raw:/data/chime/sps/raw",
+        "/data/chime/sps/archives:/data/chime/sps/archives",
+    ]
+
+    workflow_function = "multiday_search.confirm_cand.main"
+    workflow_params = {
+        "fs_id": fs_id,
+        "db_host": db_host,
+        "db_port": db_port,
+        "db_name": db_name,
+    }
+    workflow_tags = [
+        "multiday",
+        fs_id,
+    ]
+    schedule_workflow_job(
+        docker_image_name,
+        docker_mounts,
+        docker_name,
+        docker_memory_reservation,
+        docker_password,
+        workflow_name,
+        workflow_function,
+        workflow_params,
+        workflow_tags,
+    )
+
+    wait_for_no_tasks_in_states(docker_swarm_pending_states)
+    wait_for_no_tasks_in_states(docker_swarm_running_states)
+
+    # Can add Slack alerts here
 
 
 if __name__ == "__main__":
