@@ -1,7 +1,14 @@
 import datetime
+import logging
 
 import click
 import numpy as np
+
+# set these up before importing any SPS packages
+log_stream = logging.StreamHandler()
+logging.root.addHandler(log_stream)
+log = logging.getLogger(__name__)
+
 from folding.archive_utils import read_par
 from multiday_search.load_profiles import load_profiles, load_unwrapped_archives
 from multiday_search.phase_aligned_search import ExploreGrid
@@ -108,15 +115,17 @@ def main(
     )
     plot_name = explore_grid.plot(fullplot=False)
 
-    coherentsearch_summary = {
-        "date": datetime.datetime.now(),
-        "SN": np.max(explore_grid.SNmax),
-        "f0": optimal_parameters[0],
-        "f1": optimal_parameters[1],
-        "profile": explore_grid.profiles_aligned.sum(0).tolist(),
-        "gridsearch_file": data["directory"] + "/explore_grid.npz",
-        "path_to_plot": plot_name,
-    }
+    coherentsearch_summary = [
+        {
+            "date": datetime.datetime.now(),
+            "SN": float(np.max(explore_grid.SNmax)),
+            "f0": float(optimal_parameters[0]),
+            "f1": float(optimal_parameters[1]),
+            "profile": explore_grid.profiles_aligned.sum(0).tolist(),
+            "gridsearch_file": data["directory"] + "/explore_grid.npz",
+            "path_to_plot": plot_name,
+        }
+    ]
     if write_to_db:
         log.info("Updating FollowUpSource with coherent search results")
         db_api.update_followup_source(
