@@ -20,6 +20,36 @@ from folding.plot_candidate import plot_candidate_archive
 from sps_databases import db_api, db_utils
 
 
+def update_folding_history(id, payload):
+    """
+    Updates a followup_source with the given attribute and values as a dict.
+
+    Parameters
+    ----------
+    id: str or ObjectId
+        The id of the followup source to be updated
+
+    payload: dict
+        The dict of the attributes and values to be updated
+
+    Returns
+    -------
+    followup_source: dict
+        The dict of the updated followup source
+    """
+    import pymongo
+    from bson.objectid import ObjectId
+
+    db = db_utils.connect()
+    if isinstance(id, str):
+        id = ObjectId(id)
+    return db.followup_sources.find_one_and_update(
+        {"_id": id},
+        {"$push": payload},
+        return_document=pymongo.ReturnDocument.AFTER,
+    )
+
+
 def apply_logging_config(level):
     """
     Applies logging settings from the given configuration.
@@ -217,7 +247,7 @@ def main(
             fold_dates = [entry["date"].date() for entry in source.folding_history]
             if not overwrite_folding and date.date() in fold_dates:
                 log.info(f"Already folded on {date.date()}, skipping...")
-                return
+                return {}, [], []
 
         f0 = source.f0
         ra = source.ra
@@ -271,7 +301,7 @@ def main(
             "Must provide either a pulsar name, FollowUpSource ID, candidate path, or"
             " candidate RA and DEC"
         )
-        return
+        return {}, [], []
 
     directory_path = f"/data/chime/sps/archives/{dir_suffix}"
 
@@ -307,7 +337,7 @@ def main(
 
     if not os.path.exists(ephem_path):
         log.error(f"Ephemeris file {ephem_path} not found")
-        return
+        return {}, [], []
 
     outdir = coord_path
     fname = f"/{year}-{month:02}-{day:02}.fil"
@@ -323,7 +353,7 @@ def main(
         )
     if not data_list:
         log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
-        return
+        return {}, [], []
 
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
@@ -415,6 +445,12 @@ def main(
     )
 
     log.info(f"SN of folded profile: {SN_arr}")
+    fold_details = {
+        "date": date,
+        "archive_fname": archive_fname,
+        "SN": float(SN_arr),
+        "path_to_plot": plot_fname,
+    }
 
     fold_details = {
         "date": date,
@@ -432,7 +468,7 @@ def main(
             folding_history[index] = fold_details
         else:
             folding_history.append(fold_details)
-        db_api.update_followup_source(fs_id, {"folding_history": folding_history})
+            update_folding_history(fs_id, {"folding_history": fold_details})
         if len(folding_history) >= source.followup_duration:
             log.info(
                 f"Finished follow-up duration of {source.followup_duration} days,"

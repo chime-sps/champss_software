@@ -4,6 +4,11 @@ version = "0.1.1"
 description = "Folding SPS candidates and known pulsars"
 authors = ["Robert Main <robert.main@mcgill.ca>"]
 readme = "README.md"
+packages = [
+    { include = "folding" },
+    { include = "multiday_search" },
+    { include = "foldutils"},
+]
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
@@ -14,11 +19,12 @@ matplotlib = "^3.7.1"
 numpy = "^1.24.3"
 scipy = "^1.10.1"
 beamformer = {path = "../beamformer"}
-chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
+chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api", tag = "v3.4.0"}
 sps-common = {path = "../sps-common"}
 sps-databases = {path = "../sps-databases"}
 docker = "^6.1.3"
 slack-sdk = "^3.26.1"
+numba = "^0.58"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"

@@ -87,7 +87,6 @@ def plot_candidate_archive(fn, sigma, dm, f0, ra, dec, coord_path, known=" "):
             f"f0: {f0}\n"
         )
     else:
-        print("Not a known pulsar")
         parameters_text = (
             f"Incoherent $\\sigma$: {sigma}\n"
             f"Folded $\\sigma$: {SNR_val}\n"

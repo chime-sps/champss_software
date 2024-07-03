@@ -4,17 +4,27 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch: 
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
 
 jobs:
   # Avoid double checks from bot's automated release PR
   precommit:
-    if: ${{ github.actor != 'github-actions' }}
+    if: ${{ github.actor != 'github-actions' && github.event_name == 'pull_request' }}
     uses: chime-sps/champss_software/.github/workflows/precommit.yml@main
     secrets: inherit
   benchmark:
-    if: ${{ github.actor != 'github-actions' }}
+    if: ${{ github.actor != 'github-actions' && github.event_name == 'pull_request' }}
     uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
     secrets: inherit
     with:
-      branch_name: ${{ github.head_ref || github.ref_name || 'none' }}
+      branch_name: ${{ github.head_ref || 'benchmark' }}
+  test:
+    if: ${{ github.actor != 'github-actions' && github.event_name == 'push' && github.ref_name != 'main' && contains(github.event.head_commit.message, '[test]') }}
+    uses: chime-sps/champss_software/.github/workflows/image.yml@main
+    secrets: inherit
+    with:
+      image_tag: ${{ github.ref_name || 'test' }}
+      build_locally: false

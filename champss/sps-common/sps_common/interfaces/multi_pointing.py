@@ -195,6 +195,15 @@ class MultiPointingCandidate:
     all_sigmas (np.ndarray):
 
         The sigmas of all candidates.
+
+    best_nharm (int):
+
+        nharm where the best candidate was detected
+
+    best_harmonic_sum (int):
+
+        best_harmonic_sum of the strongest candidate. Not based on nharm used
+        in teh search but the harm_sigma_curve.
     """
 
     all_dms = attrib(type=list)
@@ -222,6 +231,7 @@ class MultiPointingCandidate:
     all_summaries = attrib(type=list)
     best_candidate_object = attrib(type=SinglePointingCandidate, default=None)
     best_nharm = attrib(converter=int, default=None)
+    best_harmonic_sum = attrib(converter=int, default=None)
     classification: CandidateClassification = attrib(default=None)
     known_source: KnownSourceClassification = attrib(default=None)
     datetimes = attrib(
