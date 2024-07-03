@@ -87,7 +87,7 @@ def load_profiles(archives, max_npbin=256):
             PEPOCHs.append(PEPOCH)
 
     if np.unique(PEPOCHs).size > 1:
-        log.error(
+        print(
             "Not all profiles reference the same PEPOCHs, re-apply same ephemeris to"
             " all archives"
         )
