@@ -253,3 +253,5 @@ class ExploreGrid:
         plot_name = f"{self.directory}/phase_search_{round(self.DM,2)}_{round(self.f0_incoherent,2)}.png"
         print(f"Saving diagnostic plot to {plot_name}")
         plt.savefig(plot_name, bbox_inches="tight")
+        plt.close()
+        return plot_name
