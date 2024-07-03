@@ -30,6 +30,16 @@ def get_ssb_delay(raj, decj, times):
     return np.array(t_bary) * u.s
 
 
+def unwrap_profiles(profiles, dts, f0, f1):
+    npbin = profiles.shape[-1]
+    dphis = f0 * dts + 0.5 * f1 * dts**2
+    i_phis = (dphis * npbin).astype("int")
+    profs_shifted = np.zeros_like(profiles)
+    for k, prof in enumerate(profiles):
+        profs_shifted[k] = np.roll(prof, -i_phis[k], axis=-1)
+    return profs_shifted
+
+
 def load_profiles(archives, max_npbin=256):
     """
     Finds central observation and uses its ephemeris as the reference epoch for all
@@ -45,7 +55,7 @@ def load_profiles(archives, max_npbin=256):
     Returns intensity data for each observation loaded
     """
 
-    print("Loading in altered archive files...")
+    print("Loading in archive files...")
     profs = []
     times = []
     PEPOCHs = []
@@ -73,7 +83,7 @@ def load_profiles(archives, max_npbin=256):
             " all archives"
         )
         return
-    T0 = Time(T[0], format="mjd")
+    T0 = Time(PEPOCH, format="mjd")
 
     npbin = len(profs[0])
     profs = np.array(profs)
@@ -100,6 +110,7 @@ def load_profiles(archives, max_npbin=256):
 
     param_dict = dict(
         {
+            "archives": archives,
             "profiles": profs,
             "times": times,
             "F0": F0,
@@ -112,3 +123,71 @@ def load_profiles(archives, max_npbin=256):
         }
     )
     return param_dict
+
+
+def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfbin=128):
+    """
+    Finds central observation and uses its ephemeris as the reference epoch for all
+    other archives Apply this ephemeris to the archives, creating new archives with
+    .newar extension Barycenters the squeezed archives (pulse profiles)
+
+    Parameters
+    ----------
+    directory: string, location of archives
+    DM, RA, DEC: float, from incoherent search
+    load_only: Bool, set to True if only wanting to load the archive files
+
+    Returns intensity data for each observation loaded
+    """
+
+    print("Loading and unwrapping full archives...")
+    times = []
+    PEPOCHs = []
+
+    F0_incoherent = optimal_parameters[0]
+    F1_incoherent = optimal_parameters[1]
+    for i, f in enumerate(sorted(archives)):
+        print(f)
+        data_ar, F, times, source, tel = readpsrarch(f)
+        data_ar = data_ar.squeeze()
+        data_ar = data_ar - np.median(data_ar, axis=-1, keepdims=True)
+
+        RA = get_archive_parameter(f, "RAJD")
+        DEC = get_archive_parameter(f, "DECJD")
+        F0 = get_archive_parameter(f, "F0")
+        PEPOCH = get_archive_parameter(f, "PEPOCH")
+        PEPOCHs.append(PEPOCH)
+        T0 = Time(PEPOCH, format="mjd")
+
+        times = Time(times, format="mjd")
+        t_bary = get_ssb_delay(RA, DEC, times)
+        dts = times + t_bary - T0
+        dts = dts.to_value("second")
+        dF0 = F0 - F0_incoherent
+        dF1 = F1_incoherent
+
+        data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, -dF1)
+        if i == 0:
+            data_F = data_unwrapped.sum(0)
+            data_T = data_unwrapped.sum(1)
+        else:
+            data_F += data_unwrapped.sum(0)
+            data_T += data_unwrapped.sum(1)
+
+    npbin = data_F.shape[-1]
+    if npbin > max_npbin:
+        print(f"Binning to {max_npbin} phase bins.")
+        data_F = data_F.reshape(
+            data_F.shape[0], max_npbin, data_F.shape[1] // max_npbin
+        ).sum(2)
+        data_T = data_T.reshape(
+            data_T.shape[0], max_npbin, data_T.shape[1] // max_npbin
+        ).sum(2)
+        npbin = max_npbin
+    nfbin = data_F.shape[0]
+    if nfbin > max_nfbin:
+        print(f"Binning to {max_nfbin} frequency bins.")
+        data_F = data_F.reshape(max_nfbin, data_F.shape[0] // max_nfbin, -1).sum(1)
+        nfbin = max_nfbin
+
+    return data_T, data_F
