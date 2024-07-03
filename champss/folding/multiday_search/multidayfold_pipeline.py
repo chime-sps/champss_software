@@ -117,6 +117,7 @@ def main(
         "db_host": db_host,
         "db_port": db_port,
         "db_name": db_name,
+        "write_to_db": True,
     }
     workflow_tags = [
         "multiday",
