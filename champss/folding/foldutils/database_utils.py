@@ -142,7 +142,7 @@ def add_candidate_to_fsdb(
     if not fs:
         print(f"Adding {payload['source_name']} to the follow-up source database.")
         fs_id = db_api.create_followup_source(payload)
-        fs = db.followup_sources.find_one({"_id": fs_id})
+        fs = db.followup_sources.find_one({"source_name": payload["source_name"]})
         return fs
     else:
         print(
