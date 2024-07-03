@@ -121,7 +121,7 @@ def main(
             "SN": float(np.max(explore_grid.SNmax)),
             "f0": float(optimal_parameters[0]),
             "f1": float(optimal_parameters[1]),
-            "profile": explore_grid.profiles_aligned.sum(0).tolist(),
+            # "profile": explore_grid.profiles_aligned.sum(0).tolist(),
             "gridsearch_file": data["directory"] + "/explore_grid.npz",
             "path_to_plot": plot_name,
         }
