@@ -247,7 +247,7 @@ def main(
             fold_dates = [entry["date"].date() for entry in source.folding_history]
             if not overwrite_folding and date.date() in fold_dates:
                 log.info(f"Already folded on {date.date()}, skipping...")
-                return
+                return {}, [], []
 
         f0 = source.f0
         ra = source.ra
@@ -301,7 +301,7 @@ def main(
             "Must provide either a pulsar name, FollowUpSource ID, candidate path, or"
             " candidate RA and DEC"
         )
-        return
+        return {}, [], []
 
     directory_path = f"/data/chime/sps/archives/{dir_suffix}"
 
@@ -337,7 +337,7 @@ def main(
 
     if not os.path.exists(ephem_path):
         log.error(f"Ephemeris file {ephem_path} not found")
-        return
+        return {}, [], []
 
     outdir = coord_path
     fname = f"/{year}-{month:02}-{day:02}.fil"
@@ -353,7 +353,7 @@ def main(
         )
     if not data_list:
         log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
-        return
+        return {}, [], []
 
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
