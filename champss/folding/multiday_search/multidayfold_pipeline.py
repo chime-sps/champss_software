@@ -104,7 +104,7 @@ def main(
     wait_for_no_tasks_in_states(docker_swarm_pending_states)
     wait_for_no_tasks_in_states(docker_swarm_running_states)
 
-    print("Finished multiday folding, beginning coherent search")
+    print("Finished multiday folding, beginning the coherent search")
 
     docker_name_prefix = "multiday"
     docker_name = f"{docker_name_prefix}-{fs_id}"
