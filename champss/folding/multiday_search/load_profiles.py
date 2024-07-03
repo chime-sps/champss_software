@@ -181,7 +181,11 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
             data_T = data_unwrapped.sum(1)
         else:
             data_F += data_unwrapped.sum(0)
-            data_T += data_unwrapped.sum(1)
+            # Sometimes the data_T shape mismatch, need to diagnose
+            try:
+                data_T += data_unwrapped.sum(1)
+            except ValueError:
+                print("Data_T shape mismatch, skipping")
 
     npbin = data_F.shape[-1]
     if npbin > max_npbin:
