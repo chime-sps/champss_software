@@ -922,7 +922,7 @@ def create_followup_source(payload):
         query, doc, upsert=True, return_document=pymongo.ReturnDocument.AFTER
     )
     followup_source._id = rc["_id"]
-    return followup_source
+    return followup_source._id
 
 
 def get_followup_source(followup_source_id):
