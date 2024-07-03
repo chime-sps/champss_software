@@ -106,7 +106,7 @@ def main(
     np.savez(
         data["directory"] + "/explore_grid.npz", f0s=f0s, f1s=f1s, chi2_grid=chi2_grid
     )
-    explore_grid.plot(fullplot=False)
+    plot_name = explore_grid.plot(fullplot=False)
 
     coherentsearch_summary = {
         "date": datetime.datetime.now(),
@@ -115,6 +115,7 @@ def main(
         "f1": optimal_parameters[1],
         "profile": explore_grid.profiles_aligned.sum(0).tolist(),
         "gridsearch_file": data["directory"] + "/explore_grid.npz",
+        "path_to_plot": plot_name,
     }
     if write_to_db:
         log.info("Updating FollowUpSource with coherent search results")
