@@ -14,7 +14,7 @@ python = ">=3.8,<3.12"
 beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 beamformer = {path = "../beamformer"}
 candidate-processor = {path = "../candidate-processor"}
-chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
+chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api", tag = "v3.4.0"}
 folding = {path = "../folding"}
 ps-processes = {path = "../ps-processes"}
 rfi-mitigation = {path = "../rfi-mitigation"}

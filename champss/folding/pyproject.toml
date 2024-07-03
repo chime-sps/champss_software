@@ -19,7 +19,7 @@ matplotlib = "^3.7.1"
 numpy = "^1.24.3"
 scipy = "^1.10.1"
 beamformer = {path = "../beamformer"}
-chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
+chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api", tag = "v3.4.0"}
 sps-common = {path = "../sps-common"}
 sps-databases = {path = "../sps-databases"}
 docker = "^6.1.3"

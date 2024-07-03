@@ -284,8 +284,8 @@ docs = ["mkdocs-material (>=8)", "mkdocstrings-python (>=0.8.3,<0.9.0)", "pytkdo
 [package.source]
 type = "git"
 url = "ssh://git@github.com/CHIMEFRB/frb-api"
-reference = "HEAD"
-resolved_reference = "06fab91d24d5e47442cbc5dbebe531d36c59909c"
+reference = "v3.4.0"
+resolved_reference = "4d1a34846d1a5002c5e67e8ae2585fe4535b3d48"
 
 [[package]]
 name = "chime-frb-constants"
@@ -2308,4 +2308,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "a297024c79ac0961b54f53af4408ba3ad616a81680e03a8339cf9edf9e06c323"
+content-hash = "be67461d5442f850d739139b864621fbba8e6f544c243746cdedb35ec745f8e1"
