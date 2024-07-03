@@ -7,14 +7,17 @@ on:
         type: string
       build_locally:
         type: boolean
+      runs_on:
+        type: string
+        default: 'testbed'
 
 jobs:
   build-image-and-push-to-remote:
     # NEEDS to run on self-hosted GitHub runners because spshuff requires AVX2
     # supported CPUs for the image to build. Use testbed, as steps will be too slow
-    # when processing is running on site + testbed upload speed is much faster
+    # when processing is running on site + testbed upload speed to DockerHub is much faster
     if: ${{ inputs.build_locally == false }}
-    runs-on: testbed
+    runs-on: 'testbed'
     steps:
       - uses: actions/checkout@v3
         with:
@@ -41,7 +44,7 @@ jobs:
           push: true
   build-image-and-save-to-local:
     if: ${{ inputs.build_locally == true }}
-    runs-on: testbed
+    runs-on: ${{ inputs.runs_on }}
     steps:
       - uses: actions/checkout@v3
         with:
