@@ -14,7 +14,6 @@ python = ">=3.8,<3.12"
 beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 beamformer = {path = "./champss/beamformer"}
 candidate-processor = {path = "./champss/candidate-processor"}
-chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
 controller = {path = "./champss/controller"}
 dmt = {git = "ssh://git@github.com/chime-sps/dmt"}
 folding = {path = "./champss/folding", develop=true}
@@ -26,7 +25,7 @@ sps-databases = {path = "./champss/sps-databases"}
 sps-dedispersion = {path = "./champss/sps-dedispersion"}
 sps-multi-pointing = {path = "./champss/multi-pointing"}
 sps-ops = {path = "./champss/sps-ops"}
-sps_pipeline = {path = "./champss/pipeline_batch_db"}
+sps_pipeline = {path = "./champss/pipeline_batch_db", develop=true}
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"

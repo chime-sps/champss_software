@@ -473,8 +473,8 @@ docs = ["mkdocs-material (>=8)", "mkdocstrings-python (>=0.8.3,<0.9.0)", "pytkdo
 [package.source]
 type = "git"
 url = "ssh://git@github.com/CHIMEFRB/frb-api"
-reference = "HEAD"
-resolved_reference = "06fab91d24d5e47442cbc5dbebe531d36c59909c"
+reference = "v3.4.0"
+resolved_reference = "4d1a34846d1a5002c5e67e8ae2585fe4535b3d48"
 
 [[package]]
 name = "chime-frb-constants"
@@ -922,7 +922,7 @@ develop = true
 [package.dependencies]
 astropy = "~5.2"
 beamformer = {path = "../beamformer"}
-chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
+chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api", tag = "v3.4.0"}
 click = "^8.1.4"
 docker = "^6.1.3"
 h5py = "~3.9"
@@ -3067,14 +3067,14 @@ description = "CHIME SPS Pipeline"
 optional = false
 python-versions = ">=3.8,<3.12"
 files = []
-develop = false
+develop = true
 
 [package.dependencies]
 astropy = "~5.2"
 beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 beamformer = {path = "../beamformer"}
 candidate-processor = {path = "../candidate-processor"}
-chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
+chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api", tag = "v3.4.0"}
 click = "^8.1.4"
 docker = "^6.1.3"
 folding = {path = "../folding"}
@@ -3338,4 +3338,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "6542e97e2b8f4d3d805e715d6efb63375126c448717bed11c14371fa1f31fc08"
+content-hash = "64d32e02e558c5ec5bab586930e6ce1c5113cf21daab7ccbba00bea547c5b798"
