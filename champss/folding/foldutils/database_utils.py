@@ -105,17 +105,20 @@ def add_candidate_to_fsdb(
     dmm = DMMap()
     db = db_utils.connect()
 
+    ra_name = np.round(float(ra), 2)
+    dec_name = np.round(float(dec), 2)
+    f0_name = np.round(float(f0), 6)
+    dm_name = np.round(float(dm), 2)
+
     if source_type == "md_candidate":
         duration = 30
+        name = f"{source_type[:2]}_{ra_name}_{dec_name}_{f0_name}_{dm_name}"
     elif source_type == "sd_candidate":
         duration = 1
+        name = f"{date_str}_{source_type[:2]}_{ra_name}_{dec_name}_{f0_name}_{dm_name}"
     else:
         print("must be either md or sd candidate")
         return
-
-    ra_name = np.round(float(ra), 2)
-    dec_name = np.round(float(dec), 2)
-    name = f"{date_str}_{source_type[:2]}_{ra_name}_{dec_name}_{f0}_{dm}"
 
     payload = {
         "source_type": source_type,
