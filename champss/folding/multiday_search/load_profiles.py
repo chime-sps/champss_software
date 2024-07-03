@@ -42,19 +42,28 @@ def unwrap_profiles(profiles, dts, f0, f1):
 
 def load_profiles(archives, max_npbin=256):
     """
-    Finds central observation and uses its ephemeris as the reference epoch for all
-    other archives Apply this ephemeris to the archives, creating new archives with
-    .newar extension Barycenters the squeezed archives (pulse profiles)
+    Load profiles from archive files.
 
-    Parameters
-    ----------
-    directory: string, location of archives
-    DM, RA, DEC: float, from incoherent search
-    load_only: Bool, set to True if only wanting to load the archive files
+    Args:
+        archives (list): List of archive file paths.
+        max_npbin (int, optional): Maximum number of phase bins. Defaults to 256.
 
-    Returns intensity data for each observation loaded
+    Returns:
+        dict: Dictionary containing the following parameters:
+            - "archives": List of archive file paths.
+            - "profiles": Array of loaded profiles.
+            - "times": Array of time values.
+            - "F0": Value of F0 parameter.
+            - "DM": Value of DM parameter.
+            - "RA": Value of RAJD parameter.
+            - "DEC": Value of DECJD parameter.
+            - "directory": Directory of the first archive file.
+            - "npbin": Number of phase bins.
+            - "T": Maximum time difference from reference.
+
+    Raises:
+        ValueError: If not all profiles reference the same PEPOCHs.
     """
-
     print("Loading in archive files...")
     profs = []
     times = []
@@ -82,7 +91,8 @@ def load_profiles(archives, max_npbin=256):
             "Not all profiles reference the same PEPOCHs, re-apply same ephemeris to"
             " all archives"
         )
-        return
+        raise ValueError("Not all profiles reference the same PEPOCHs")
+
     T0 = Time(PEPOCH, format="mjd")
 
     npbin = len(profs[0])
@@ -127,17 +137,16 @@ def load_profiles(archives, max_npbin=256):
 
 def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfbin=128):
     """
-    Finds central observation and uses its ephemeris as the reference epoch for all
-    other archives Apply this ephemeris to the archives, creating new archives with
-    .newar extension Barycenters the squeezed archives (pulse profiles)
+    Load and unwrap full archives.
 
-    Parameters
-    ----------
-    directory: string, location of archives
-    DM, RA, DEC: float, from incoherent search
-    load_only: Bool, set to True if only wanting to load the archive files
+    Args:
+        archives (list): List of archive file paths.
+        optimal_parameters (list): list containing optimal F0, F1
+        max_npbin (int, optional): Maximum number of phase bins. Defaults to 256.
+        max_nfbin (int, optional): Maximum number of frequency bins. Defaults to 128.
 
-    Returns intensity data for each observation loaded
+    Returns:
+        tuple: A tuple containing the data arrays for time and frequency.
     """
 
     print("Loading and unwrapping full archives...")
