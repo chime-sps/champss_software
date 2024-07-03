@@ -15,9 +15,9 @@ jobs:
   build-image-and-push-to-remote:
     # NEEDS to run on self-hosted GitHub runners because spshuff requires AVX2
     # supported CPUs for the image to build. Use testbed, as steps will be too slow
-    # when processing is running on site + testbed upload speed is much faster
+    # when processing is running on site + testbed upload speed to DockerHub is much faster
     if: ${{ inputs.build_locally == false }}
-    runs-on: ${{ inputs.runs_on }}
+    runs-on: 'testbed'
     steps:
       - uses: actions/checkout@v3
         with:
