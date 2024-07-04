@@ -34,6 +34,8 @@ pytest = "^7.3.2"
 
 [tool.poetry.scripts]
 fold_candidate = "folding.fold_candidate:main"
+confirm_cand = "multiday_search.confirm_cand:main"
+multidayfold_pipeline = "multiday_search.multidayfold_pipeline:main"
 
 [build-system]
 requires = ["poetry-core"]
