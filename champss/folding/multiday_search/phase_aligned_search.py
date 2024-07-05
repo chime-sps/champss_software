@@ -118,7 +118,7 @@ class ExploreGrid:
         f1best_plot = self.optimal_parameters[1] * 1e15
         axs[0, 0].pcolormesh(1e6 * self.f0s, 1e15 * self.f1s, self.chi2_grid.T)
         axs[0, 0].scatter(
-            -f0best_plot, -f1best_plot, color="tab:orange", marker="x", s=20
+            -f0best_plot, f1best_plot, color="tab:orange", marker="x", s=20
         )
         axs[0, 0].set_xlabel(r"$\Delta f_0 (\mu Hz)$")
         axs[0, 0].set_ylabel(r"$f_1$ (1e-15 s/s)")
