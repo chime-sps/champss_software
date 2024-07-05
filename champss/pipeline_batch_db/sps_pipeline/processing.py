@@ -16,7 +16,7 @@ from beamformer.strategist.strategist import PointingStrategist
 from folding.filter_mpcandidates import Filter
 from sps_databases import db_api, db_utils, models
 from sps_pipeline.pipeline import datpath, main
-from sps_pipeline.utils import get_pointings_from_list
+from sps_pipeline.utils import get_pointings_from_list, convert_date_to_datetime
 from sps_pipeline.workflow import (
     clear_workflow_buckets,
     docker_swarm_pending_states,
@@ -61,13 +61,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name):
 
     log.info(f"Filtering candidates for {date}")
 
-    if isinstance(date, str) or isinstance(date, int):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(str(date), date_format)
-                break
-            except ValueError:
-                continue
+    date = convert_date_to_datetime(date)
 
     Filter(
         cand_obs_date=date,
@@ -186,13 +180,7 @@ def run_all_folding_processes(
     docker_service_name_prefix,
     docker_password,
 ):
-    if isinstance(date, str) or isinstance(date, int):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(str(date), date_format)
-                break
-            except ValueError:
-                continue
+    date = convert_date_to_datetime(date)
 
     date_string = date.strftime("%Y/%m/%d")
 
@@ -310,13 +298,7 @@ def find_all_pipeline_processes(
     full_transit, db_port, db_host, db_name, complete, date, ndays
 ):
     """Find all available processes and add them to the database."""
-    if isinstance(date, str) or isinstance(date, int):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(str(date), date_format)
-                break
-            except ValueError:
-                continue
+    date = convert_date_to_datetime(date)
 
     log.setLevel(logging.INFO)
     db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -524,13 +506,7 @@ def run_all_pipeline_processes(
     docker_password,
 ):
     """Process all unprocessed processes in the database for a given range."""
-    if isinstance(date, str) or isinstance(date, int):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(str(date), date_format)
-                break
-            except ValueError:
-                continue
+    date = convert_date_to_datetime(date)
 
     log.setLevel(logging.INFO)
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -776,13 +752,7 @@ def start_processing_manager(
     signal.signal(signal.SIGABRT, remove_processing_services)
     signal.signal(signal.SIGTERM, remove_processing_services)
 
-    if isinstance(date, str) or isinstance(date, int):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(str(date), date_format)
-                break
-            except ValueError:
-                continue
+    date = convert_date_to_datetime(date)
 
     log.setLevel(logging.INFO)
 
@@ -1282,13 +1252,7 @@ def start_processing_services(
     run_folding,
 ):
     # Please run "docker login" in your CLI to allow retrieval of the images
-    if isinstance(date, str) or isinstance(date, int):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(str(date), date_format)
-                break
-            except ValueError:
-                continue
+    date = convert_date_to_datetime(date)
 
     log.setLevel(logging.INFO)
 
@@ -1305,8 +1269,9 @@ def start_processing_services(
         "command": (
             f"start-processing-manager --db-host {db_host} --db-port"
             f" {db_port} --db-name {db_name} --start-date {start_date} --number-of-days"
-            f" {number_of_days} --basepath {basepath} --foldpath {foldpath}"
-            f" --workflow-buckets-name-prefix {workflow_buckets_name_prefix} --docker-image-name"
+            f" {number_of_days} --basepath {basepath} --foldpath"
+            f" {foldpath} --workflow-buckets-name-prefix"
+            f" {workflow_buckets_name_prefix} --docker-image-name"
             f" {pipeline_docker_image_name} --run-pipeline"
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
             f" {run_folding}"

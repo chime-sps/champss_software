@@ -7,11 +7,10 @@ import multiday_search.fold_multiday as fold_multiday
 from foldutils.database_utils import add_mdcand_from_candpath
 from sps_databases import db_api, db_utils, models
 from sps_pipeline.workflow import (
-    docker_swarm_pending_states,
+    clear_workflow_buckets,
     docker_swarm_running_states,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
-    clear_workflow_buckets,
 )
 
 log = logging.getLogger()
