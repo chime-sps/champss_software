@@ -705,7 +705,7 @@ def run_all_pipeline_processes(
 )
 @click.option(
     "--docker-password-filepath",
-    default="/run/secrets/DOCKERHUB_PASSWORD",
+    default="/run/secrets/DOCKER_PASSWORD",
     required=True,
     type=str,
     help="The path to the file containing the DockerHub password.",
@@ -753,7 +753,7 @@ def start_processing_manager(
     signal.signal(signal.SIGABRT, remove_processing_services)
     signal.signal(signal.SIGTERM, remove_processing_services)
 
-    date = convert_date_to_datetime(date)
+    start_date = convert_date_to_datetime(start_date)
 
     log.setLevel(logging.INFO)
 
@@ -1253,7 +1253,7 @@ def start_processing_services(
     run_folding,
 ):
     # Please run "docker login" in your CLI to allow retrieval of the images
-    date = convert_date_to_datetime(date)
+    start_date = convert_date_to_datetime(start_date)
 
     log.setLevel(logging.INFO)
 
@@ -1341,7 +1341,9 @@ def remove_processing_services(signal, frame):
         if "processing" in service.name and service.name != "processing-manager"
     ]
 
-    log.info(f"Removing processing services: \n{processing_services}")
+    log.info(
+        f"Removing processing services: \n{[service.name for service in processing_services]}"
+    )
 
     for service in processing_services:
         try:
