@@ -80,6 +80,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name):
     dms = []
 
     info = []
+
     for source in db.followup_sources.find({"active": True}):
         IDs.append(source["_id"])
         ras.append(source["ra"])
