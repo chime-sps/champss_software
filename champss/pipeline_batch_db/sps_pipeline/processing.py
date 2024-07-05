@@ -1317,6 +1317,7 @@ def start_processing_services(
 
     log.info(f"Creating Docker Service: \n{docker_service_manager}")
     docker_client.services.create(**docker_service_manager)
+
     log.info(f"Creating Docker Service: \n{docker_service_pipeline_image_clenaup}")
     docker_client.services.create(**docker_service_pipeline_image_clenaup)
 
