@@ -12,17 +12,17 @@ exclude = [
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
 beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
-beamformer = {path = "../beamformer"}
-candidate-processor = {path = "../candidate-processor"}
+beamformer = {path = "../beamformer", develop=true}
+candidate-processor = {path = "../candidate-processor", develop=true}
 chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api", tag = "v3.4.0"}
-folding = {path = "../folding"}
-ps-processes = {path = "../ps-processes"}
-rfi-mitigation = {path = "../rfi-mitigation"}
-spshuff = {path = "../spshuff"}
-sps-common = {path = "../sps-common"}
-sps-databases = {path = "../sps-databases"}
-sps-dedispersion = {path = "../sps-dedispersion"}
-sps-multi-pointing = {path = "../multi-pointing"}
+folding = {path = "../folding", develop=true}
+ps-processes = {path = "../ps-processes", develop=true}
+rfi-mitigation = {path = "../rfi-mitigation", develop=true}
+spshuff = {path = "../spshuff", develop=true}
+sps-common = {path = "../sps-common", develop=true}
+sps-databases = {path = "../sps-databases", develop=true}
+sps-dedispersion = {path = "../sps-dedispersion", develop=true}
+sps-multi-pointing = {path = "../multi-pointing", develop=true}
 astropy = "~5.2"
 click = "^8.1.4"
 docker = "^6.1.3"

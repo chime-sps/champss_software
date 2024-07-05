@@ -11,8 +11,8 @@ exclude = [
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
-spshuff = {path = "../spshuff"}
-sps-common = {path = "../sps-common"}
+spshuff = {path = "../spshuff", develop=true}
+sps-common = {path = "../sps-common", develop=true}
 astropy = "~5.2"
 h5py = "~3.9"
 jplephem = "^2.18"
