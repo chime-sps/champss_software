@@ -1253,8 +1253,6 @@ def start_processing_services(
     run_folding,
 ):
     # Please run "docker login" in your CLI to allow retrieval of the images
-    start_date = convert_date_to_datetime(start_date)
-
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
