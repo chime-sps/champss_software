@@ -11,9 +11,9 @@ exclude = [
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
-spshuff = {path = "../spshuff"}
-sps-common = {path = "../sps-common"}
-sps-databases = {path = "../sps-databases"}
+spshuff = {path = "../spshuff", develop=true}
+sps-common = {path = "../sps-common", develop=true}
+sps-databases = {path = "../sps-databases", develop=true}
 matplotlib = "^3.7.1"
 numpy = "^1.24.3"
 pandas = "^2.0.3"
