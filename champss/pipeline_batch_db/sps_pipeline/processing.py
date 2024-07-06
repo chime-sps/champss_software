@@ -54,7 +54,13 @@ log = logging.getLogger()
     type=str,
     help="Name used for the mongodb database.",
 )
-def find_all_folding_processes(date, db_host, db_port, db_name):
+@click.option(
+    "--basepath",
+    default="/data/chime/sps/sps_processing",
+    type=str,
+    help="Path for created files during pipeline step.",
+)
+def find_all_folding_processes(date, db_host, db_port, db_name, basepath):
     log.setLevel(logging.INFO)
 
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -69,6 +75,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name):
         db_port=db_port,
         db_name=db_name,
         write_to_db=True,
+        basepath=basepath,
     )
 
     log.info(f"Candidate filtering complete")
@@ -1025,7 +1032,7 @@ def start_processing_manager(
                     docker_image=docker_image_name,
                     docker_mounts=[
                         "/data/chime/sps/raw:/data/chime/sps/raw",
-                        "/data/chime/sps/sps_processing:/data/chime/sps/sps_processing",
+                        f"{basepath}:{basepath}",
                     ],
                     docker_name=f"{docker_service_name_prefix}-{date_string}",
                     docker_memory_reservation=50,
@@ -1096,6 +1103,8 @@ def start_processing_manager(
                         db_port,
                         "--db-name",
                         db_name,
+                        "--basepath",
+                        basepath,
                     ],
                     standalone_mode=False,
                 )

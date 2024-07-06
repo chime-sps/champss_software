@@ -66,7 +66,7 @@ def save_container_logs(service):
         for log_chunk in log_generator:
             log_text += log_chunk.decode("utf-8").strip() + "\n"
 
-        path = f"/data/chime/sps/sps_processing/logs/containers/{service.name}.log"
+        path = f"/data/chime/sps/logs/services/{service.name}.log"
         with open(path, "w") as file:
             file.write(log_text)
     except Exception as error:

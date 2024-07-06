@@ -30,10 +30,16 @@ from sps_databases import db_api, db_utils
     type=str,
     help="Name used for the mongodb database.",
 )
-def foldinfo_csv(date, db_host, db_port, db_name):
+@click.option(
+    "--basepath",
+    default="/data/chime/sps/sps_processing",
+    type=str,
+    help="Path for created files during pipeline step.",
+)
+def foldinfo_csv(date, db_host, db_port, db_name, basepath):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     date_str = date.strftime("%Y%m%d")
-    fname = f"/data/chime/sps/sps_processing/mp_runs/daily_{date_str}/all_mp_cands.csv"
+    fname = f"{basepath}/mp_runs/daily_{date_str}/all_mp_cands.csv"
     df = pd.read_csv(fname)
 
     mp_cands = df["file_name"].values
