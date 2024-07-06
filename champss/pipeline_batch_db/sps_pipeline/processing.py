@@ -1303,6 +1303,7 @@ def start_processing_services(
         # e.g. avoid double-mounting basepath and stackpath when they are the same
         "mounts": [
             "/data/chime/sps/raw:/data/chime/sps/raw",
+            "/data/chime/sps/logs:/data/chime/sps/logs",
             f"{basepath}:{basepath}",
             f"{foldpath}:{foldpath}",
             # Need this mount so container can access host machine's Docker Client
