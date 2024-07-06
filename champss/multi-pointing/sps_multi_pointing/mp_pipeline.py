@@ -198,6 +198,8 @@ def cli(
     """Slow Pulsar Search multiple-pointing candidate processing."""
     date = convert_date_to_datetime(date)
 
+    run_name = run_name.replace("/", "")
+
     config = load_config()
     if run_name:
         run_label = run_name
