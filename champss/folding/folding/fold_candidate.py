@@ -159,12 +159,6 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Name used for the mongodb database.",
 )
 @click.option(
-    "--basepath",
-    type=str,
-    default="/data/chime/sps/raw/",
-    help="Base directory for raw data",
-)
-@click.option(
     "--foldpath",
     default="/data/chime/sps/archives",
     type=str,
@@ -199,7 +193,6 @@ def main(
     db_port,
     db_host,
     db_name,
-    basepath,
     foldpath,
     candpath="",
     write_to_db=False,
@@ -347,7 +340,9 @@ def main(
     data_list = []
     for active_pointing in ap:
         data_list.extend(
-            get_data_list(active_pointing.max_beams, basepath=basepath, extn="dat")
+            get_data_list(
+                active_pointing.max_beams, basepath="/data/chime/sps/raw/", extn="dat"
+            )
         )
     if not data_list:
         log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
@@ -373,12 +368,12 @@ def main(
         turns = 10
 
     if not os.path.isfile(fil):
-        log.info(f"Beamforming..., basepath {basepath}")
+        log.info(f"Beamforming...")
         sbf = SkyBeamFormer(
             extn="dat",
             update_db=False,
             min_data_frac=0.5,
-            basepath=basepath,
+            basepath="/data/chime/sps/raw/",
             add_local_median=True,
             detrend_data=True,
             detrend_nsamp=32768,

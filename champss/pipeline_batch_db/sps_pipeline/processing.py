@@ -232,6 +232,7 @@ def run_all_folding_processes(
             "db_host": db_host,
             "db_port": db_port,
             "db_name": db_name,
+            "foldpath": foldpath,
             "write_to_db": True,
             "using_workflow": True,
         }

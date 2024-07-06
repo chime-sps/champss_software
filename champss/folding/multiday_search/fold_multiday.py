@@ -75,12 +75,6 @@ def find_all_dates_with_data(ra, dec, basepath, Nday=10):
     help="Name used for the mongodb database.",
 )
 @click.option(
-    "--basepath",
-    type=str,
-    default="/data/chime/sps/raw/",
-    help="Base directory for raw data",
-)
-@click.option(
     "--foldpath",
     default="/data/chime/sps/archives",
     type=str,
@@ -118,7 +112,6 @@ def main(
     db_port,
     db_host,
     db_name,
-    basepath,
     foldpath,
     workflow_buckets_name,
     docker_image_name,
@@ -132,7 +125,7 @@ def main(
     dm = source.dm
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    dates_with_data = find_all_dates_with_data(ra, dec, basepath, Nday=10)
+    dates_with_data = find_all_dates_with_data(ra, dec, "/data/chime/sps/raw/", Nday=10)
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
         docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"

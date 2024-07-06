@@ -27,12 +27,6 @@ log = logging.getLogger(__name__)
     help="Path to candidate file",
 )
 @click.option(
-    "--basepath",
-    type=str,
-    default="/data/chime/sps/raw/",
-    help="Base directory for raw data",
-)
-@click.option(
     "--foldpath",
     default="/data/chime/sps/archives",
     type=str,
@@ -79,7 +73,6 @@ log = logging.getLogger(__name__)
 )
 def main(
     candpath,
-    basepath,
     foldpath,
     db_port,
     db_host,
@@ -105,8 +98,6 @@ def main(
         [
             "--fs_id",
             fs_id,
-            "--basepath",
-            basepath,
             "--foldpath",
             foldpath,
             "--db-port",
