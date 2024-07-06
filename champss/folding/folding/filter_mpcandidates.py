@@ -50,6 +50,7 @@ def Filter(
     db_name="sps",
     write_to_db=False,
     basepath="/data/chime/sps/sps_processing",
+    foldpath="/data/chime/sps/archives",
 ):
     """
     Read a day's worth of multi-pointing candidates, retrieve a set of the most
@@ -240,9 +241,7 @@ def Filter(
                 "sd_candidate",
             )
 
-    npz_filename = (
-        f"/data/chime/sps/archives/candidates/filtered_cands/cands_{date_str}_filtered"
-    )
+    npz_filename = f"{foldpath}/candidates/filtered_cands/cands_{date_str}_filtered"
     if save_candidates:
         print("Saving filtered data...")
         np.savez(

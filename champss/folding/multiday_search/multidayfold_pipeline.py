@@ -27,6 +27,18 @@ log = logging.getLogger(__name__)
     help="Path to candidate file",
 )
 @click.option(
+    "--basepath",
+    type=str,
+    default="/data/chime/sps/raw/",
+    help="Base directory for raw data",
+)
+@click.option(
+    "--foldpath",
+    default="/data/chime/sps/archives",
+    type=str,
+    help="Path for created files during fold step.",
+)
+@click.option(
     "--db-port",
     default=27017,
     type=int,
@@ -67,6 +79,8 @@ log = logging.getLogger(__name__)
 )
 def main(
     candpath,
+    basepath,
+    foldpath,
     db_port,
     db_host,
     db_name,
@@ -91,6 +105,10 @@ def main(
         [
             "--fs_id",
             fs_id,
+            "--basepath",
+            basepath,
+            "--foldpath",
+            foldpath,
             "--db-port",
             db_port,
             "--db-name",
@@ -118,7 +136,7 @@ def main(
     docker_memory_reservation = 64
     docker_mounts = [
         "/data/chime/sps/raw:/data/chime/sps/raw",
-        "/data/chime/sps/archives:/data/chime/sps/archives",
+        f"{foldpath}:{foldpath}",
     ]
 
     workflow_buckets_name = (

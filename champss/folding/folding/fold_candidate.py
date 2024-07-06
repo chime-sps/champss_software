@@ -165,6 +165,12 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Base directory for raw data",
 )
 @click.option(
+    "--foldpath",
+    default="/data/chime/sps/archives",
+    type=str,
+    help="Path for created files during fold step.",
+)
+@click.option(
     "--candpath",
     type=str,
     default="",
@@ -194,6 +200,7 @@ def main(
     db_host,
     db_name,
     basepath,
+    foldpath,
     candpath="",
     write_to_db=False,
     using_workflow=False,
@@ -298,7 +305,7 @@ def main(
         )
         return {}, [], []
 
-    directory_path = f"/data/chime/sps/archives/{dir_suffix}"
+    directory_path = f"{foldpath}/{dir_suffix}"
 
     year = date.year
     month = date.month
@@ -433,6 +440,7 @@ def main(
         dec,
         coord_path,
         known,
+        foldpath,
     )
 
     log.info(f"SN of folded profile: {SN_arr}")

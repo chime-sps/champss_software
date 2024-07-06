@@ -60,7 +60,13 @@ log = logging.getLogger()
     type=str,
     help="Path for created files during pipeline step.",
 )
-def find_all_folding_processes(date, db_host, db_port, db_name, basepath):
+@click.option(
+    "--foldpath",
+    default="/data/chime/sps/archives",
+    type=str,
+    help="Path for created files during fold step.",
+)
+def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpath):
     log.setLevel(logging.INFO)
 
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -76,6 +82,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath):
         db_name=db_name,
         write_to_db=True,
         basepath=basepath,
+        foldpath=foldpath,
     )
 
     log.info(f"Candidate filtering complete")
@@ -1105,6 +1112,8 @@ def start_processing_manager(
                         db_name,
                         "--basepath",
                         basepath,
+                        "--foldpath",
+                        foldpath,
                     ],
                     standalone_mode=False,
                 )

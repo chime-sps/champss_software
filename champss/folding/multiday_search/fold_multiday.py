@@ -81,6 +81,12 @@ def find_all_dates_with_data(ra, dec, basepath, Nday=10):
     help="Base directory for raw data",
 )
 @click.option(
+    "--foldpath",
+    default="/data/chime/sps/archives",
+    type=str,
+    help="Path for created files during fold step.",
+)
+@click.option(
     "--workflow-buckets-name",
     default="champss-processing",
     type=str,
@@ -113,6 +119,7 @@ def main(
     db_host,
     db_name,
     basepath,
+    foldpath,
     workflow_buckets_name,
     docker_image_name,
     docker_service_name_prefix,
@@ -132,7 +139,7 @@ def main(
         docker_memory_reservation = (nchan / 1024) * 8
         docker_mounts = [
             "/data/chime/sps/raw:/data/chime/sps/raw",
-            "/data/chime/sps/archives:/data/chime/sps/archives",
+            f"{foldpath}:{foldpath}",
         ]
 
         workflow_function = "folding.fold_candidate.main"
