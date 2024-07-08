@@ -12,11 +12,11 @@ on:
 jobs:
   # Avoid double checks from bot's automated release PR
   precommit:
-    if: ${{ github.actor != 'github-actions' && github.event_name == 'pull_request' }}
+    if: ${{ github.actor != 'github-actions' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
     uses: chime-sps/champss_software/.github/workflows/precommit.yml@main
     secrets: inherit
   benchmark:
-    if: ${{ github.actor != 'github-actions' && github.event_name == 'pull_request' }}
+    if: ${{ github.actor != 'github-actions' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
     uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
     secrets: inherit
     with:
