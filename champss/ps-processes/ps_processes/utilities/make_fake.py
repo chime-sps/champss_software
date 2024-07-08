@@ -8,7 +8,7 @@ import numpy as np
 @click.command()
 @click.option(
         "--n-injections",
-        "-n",
+        "--n",
         default = 1,
         type = int,
         help = ("Number of injections")
@@ -35,9 +35,9 @@ def get(n_injections, file_name, injection_path):
         load_profs = np.load(injection_path)
         n_injections = len(load_profs)
     
-    frequencies = np.random.uniform(0.1, 100, n_injections)
+    frequencies = np.random.uniform(0.1, 80, n_injections)
     dms = np.random.uniform(3, 200, n_injections)
-    sigmas = np.random.uniform(10, 20, n_injections)
+    sigmas = np.random.uniform(1, 17, n_injections)
     data = []
     print(f"Creating {n_injections} fake pulsars into {injection_path}")
     

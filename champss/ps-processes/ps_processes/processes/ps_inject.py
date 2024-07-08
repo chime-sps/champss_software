@@ -1,5 +1,6 @@
 import logging
 import os
+import math
 import numpy as np
 import scipy.stats as stats
 from scipy.special import chdtri
@@ -147,8 +148,10 @@ class Injection:
         deltaDM =  1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
 
-    def sigma_to_power(self, n_harm):
-        '''This function converts an input Gaussian sigma to an approximately equivalent power.
+    def sigma_to_power(self):
+        '''This function converts an input Gaussian sigma to an approximately equivalent power. In order to do so,
+        we have to estimate the number of summed harmonics in our final profile. This code was largely written by 
+        Scott Ransom.
 
         Inputs:
         -------
@@ -158,22 +161,26 @@ class Injection:
         -------
             power (int): approximate equivalent power
         '''
+        # Compute the normalized powers of the injected profile (Sum of pows == 1)
+        prof_fft = rfft(self.phase_prof)
+        norm_pows = np.abs(prof_fft[1:])**2.0
+        norm_pows /= norm_pows.sum()
+        assert(math.isclose(norm_pows.sum(), 1.0))
+        Nallharms = len(norm_pows)
 
-        df = 2*self.ndays*n_harm
-        chi2 = x_to_chi2(self.sigma, df)
-        #but we are adding on top of an existing chi2 distribution with power = df
-        #so...
-        power = chi2/2
-    
-        return power
+        # Compute the theoretical power in the harmonics where we will inject
+        # a significant amount of our power (i.e. > 1%)
+        Nsignif = int(((norm_pows/norm_pows.max())>0.01).sum())
+        log.info(f'Nsignif = {Nsignif}')
+        power = x_to_chi2(self.sigma, int(Nsignif*self.ndays))/2
 
-    def get_power(self):
-        """
-        This function converts an SNR in standard deviation to an SNR in power.
+        # Now compute the theoretical power for each harmonic to inject. We will
+        # add this value to the current stack. Note that we are subtracting the
+        # predicted amount of power due to the means of the power spectra.
+        Nsignif = 6
+        power_to_inject = power - Nsignif * self.ndays
 
-        From Scott Ransom's PRESTO suite.
-        """
-        return self.sigma**2 / 2.0 + np.log(np.sqrt(np.pi / 2) * self.sigma)
+        return power_to_inject
 
     def disperse(self, kernels, kernel_scaling):
         '''
@@ -192,7 +199,6 @@ class Injection:
         
         #take the fft of the pulse
         prof_fft = fft(self.phase_prof)
-        prof_fft /= np.sum(np.abs(prof_fft))
 
         #i is our index referring to the DM_labels in the target power spectrum
         #find the starting index, where the DM scale is -2
@@ -222,7 +228,6 @@ class Injection:
                 prof (ndarray)   : pulse phase profile
                 df (float)       : frequency bin width in target spectrum
                 n_harm (int)     : the number of harmonics before the Nyquist frequency
-                weights (arr)    : the weight of each harmonic, calculated at the true DM
         Returns:
         ________
                 harmonics (ndarray) : Fourier-transformed harmonics of the profile convolved with
@@ -262,9 +267,9 @@ class Injection:
         df = freqs[1] - freqs[0]
         f_nyquist = np.floor(freqs[-1] / 2)
         n_harm = int(np.floor(f_nyquist / self.f))
-        prof_fft = rfft(self.phase_prof)[1:]
-        weight = self.sigma_to_power(n_harm)
-        log.info(f'Injected power = {weight}')
+        power = self.sigma_to_power()        
+
+        log.info(f'Injected power = {power}')
         log.info(f"Injecting {n_harm} harmonics.")
 
         harms = []
@@ -280,7 +285,8 @@ class Injection:
             dms.append(i)
 
         harms = np.asarray(harms)
-        harms *= weight/np.sum(harms[i0])
+        harms *= power/np.sum(harms[i0])
+        log.info(f'Total harmonic power = {np.sum(harms[i0])}')
 
         return harms, bins, dms
 
@@ -370,6 +376,7 @@ def main(pspec, injection_profile="random", num_injections=1):
         # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
         # not change the object
         injected_indices = np.ix_(dms_temp, bins_temp)
+        log.info(f'Mean of pre-injection indices = {np.mean(pspec.power_spectra[injected_indices])}')
         pspec.power_spectra[injected_indices] += injection.astype(
             pspec.power_spectra.dtype
         )
