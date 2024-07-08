@@ -15,7 +15,7 @@ import numpy as np
 import numpy.lib.recfunctions as rfn
 from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
-from sps_databases.db_api import get_nearby_known_sources
+from sps_databases.db_api import get_nearby_known_sources, update_period_to_current_epoch
 from sps_multi_pointing.known_source_sifter import known_source_filters
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ class KnownSourceSifter:
         ks_collection = get_nearby_known_sources(0, 0, np.infty)  # get all sources
         ks_database = np.empty(
             shape=len(ks_collection),
-            dtype=[
+      dtype=[
                 ("source_name", "<U15"),
                 ("pos_ra_deg", "<f4"),
                 ("pos_dec_deg", "<f4"),
@@ -83,6 +83,7 @@ class KnownSourceSifter:
                 ("dm", "<f4"),
                 ("dm_error", "<f4"),
                 ("spin_period_s", "<f4"),
+                ("current_spin_period_s", "<f4"),
                 ("spin_period_s_error", "<f4"),
             ],  # the dtype has some unused fields trimmed out
         )
@@ -97,6 +98,7 @@ class KnownSourceSifter:
                 ks.dm,
                 ks.dm_error,
                 ks.spin_period_s,
+                update_period_to_current_epoch(ks.spin_period_s),
                 ks.spin_period_s_error,
             )
 
