@@ -1302,5 +1302,4 @@ def update_period_to_current_epoch(cand):
     current_epoch = Time(dt.datetime.today())
     diff_epoch = (current_epoch - detect_epoch).sec
     P = P0 - diff_epoch * P1
-    print("bruhhhh")
     return P
