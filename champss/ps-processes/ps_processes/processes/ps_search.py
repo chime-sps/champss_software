@@ -114,25 +114,26 @@ class PowerSpectraSearch:
         Filter all known sources that were ever above this threshold in an observation of this pointing
     """
 
+    cluster_config = attribute(validator=instance_of(dict))
     num_harm = attribute(validator=instance_of(int), default=32)
     sigma_min = attribute(validator=instance_of(float), default=5.0)
     padded_length = attribute(validator=instance_of(int), default=1048576)
     precompute_harms = attribute(validator=instance_of(bool), default=True)
     num_threads = attribute(validator=instance_of(int), default=8)
     cluster_scale_factor: float = attribute(default=10)
-    dbscan_eps: float = attribute(default=0.125)
-    dbscan_min_samples: int = attribute(default=5)
-    clustering_max_ndetect: int = attribute(default=30000)
-    group_duplicate_freqs: bool = attribute(default=True)
-    clustering_metric_method: str = attribute(default="rhp_norm_by_min_nharm")
-    clustering_metric_combination: str = attribute(default="multiply")
-    clustering_method: str = attribute(default="DBSCAN")
-    clustering_min_freq: float = attribute(default=0)
-    clustering_ignore_nharm1: bool = attribute(default=False)
-    filter_by_nharm: bool = attribute(default=False)
+    # dbscan_eps: float = attribute(default=0.125)
+    # dbscan_min_samples: int = attribute(default=5)
+    # clustering_max_ndetect: int = attribute(default=30000)
+    # group_duplicate_freqs: bool = attribute(default=True)
+    # clustering_metric_method: str = attribute(default="rhp_norm_by_min_nharm")
+    # clustering_metric_combination: str = attribute(default="multiply")
+    # clustering_method: str = attribute(default="DBSCAN")
+    # clustering_min_freq: float = attribute(default=0)
+    # clustering_ignore_nharm1: bool = attribute(default=False)
+    # filter_by_nharm: bool = attribute(default=False)
     use_nsum_per_bin: bool = attribute(default=False)
     mp_chunk_size: bool = attribute(default=10)
-    cluster_dm_cut: bool = attribute(default=-1)
+    # cluster_dm_cut: bool = attribute(default=-1)
     known_source_threshold: float = attribute(default=np.inf)
     full_harm_bins = attribute(init=False)
     update_db = attribute(default=True, validator=instance_of(bool))
@@ -157,27 +158,6 @@ class PowerSpectraSearch:
             16,
             32,
         ], "The number of harmonics must be a power of 2 up to 32"
-
-    @clustering_metric_method.validator
-    def _validate_metric_method(self, attribute, value):
-        assert value in [
-            "rhp_norm_by_min_nharm",
-            "rhp_overlap",
-        ], "metric_method must be either 'rhp_norm_by_min_nharm' or 'rhp_overlap'"
-
-    @clustering_metric_combination.validator
-    def _validate_metric_combination(self, attribute, value):
-        assert value in [
-            "multiply",
-            "replace",
-        ], "metric_combination must be either 'multiply' or 'replace'"
-
-    @clustering_method.validator
-    def _validate_clustering_method(self, attribute, value):
-        assert value in [
-            "DBSCAN",
-            "HDBSCAN",
-        ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
 
     def search(self, pspec, inject=False):
         """
@@ -353,20 +333,20 @@ class PowerSpectraSearch:
             log.warning("No detections made. Further processing will not be completed.")
             return None
         log.info("Clustering the detections")
-        clusterer_dict = dict(
-            cluster_scale_factor=self.cluster_scale_factor,
-            dbscan_eps=self.dbscan_eps,
-            dbscan_min_samples=self.dbscan_min_samples,
-            max_ndetect=self.clustering_max_ndetect,
-            sigma_detection_threshold=self.sigma_min,
-            group_duplicate_freqs=self.group_duplicate_freqs,
-            metric_method=self.clustering_metric_method,
-            metric_combination=self.clustering_metric_combination,
-            clustering_method=self.clustering_method,
-            min_freq=self.clustering_min_freq,
-            ignore_nharm1=self.clustering_ignore_nharm1,
-        )
-        clusterer = Clusterer(**clusterer_dict)
+        # clusterer_dict = dict(
+        #     cluster_scale_factor=self.cluster_scale_factor,
+        #     dbscan_eps=self.dbscan_eps,
+        #     dbscan_min_samples=self.dbscan_min_samples,
+        #     max_ndetect=self.clustering_max_ndetect,
+        #     sigma_detection_threshold=self.sigma_min,
+        #     group_duplicate_freqs=self.group_duplicate_freqs,
+        #     metric_method=self.clustering_metric_method,
+        #     metric_combination=self.clustering_metric_combination,
+        #     clustering_method=self.clustering_method,
+        #     min_freq=self.clustering_min_freq,
+        #     ignore_nharm1=self.clustering_ignore_nharm1,
+        # )
+        clusterer = Clusterer(**self.cluster_config)
         cluster_dm_spacing = pspec.dms[1] - pspec.dms[0]
         cluster_df_spacing = pspec.freq_labels[1]
         (
@@ -379,9 +359,6 @@ class PowerSpectraSearch:
             cluster_dm_spacing,
             cluster_df_spacing,
             plot_fname="",
-            filter_nharm=self.filter_by_nharm,
-            remove_harm_idx=False,
-            cluster_dm_cut=self.cluster_dm_cut,
         )
 
         log.info(f"Total number of candidate clusters={len(clusters)}")

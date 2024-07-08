@@ -351,10 +351,10 @@ class Clusterer:
     """
 
     cluster_scale_factor: float = attribute(default=10)
-    dbscan_eps: float = attribute(default=0.125)
+    dbscan_eps: float = attribute(default=1)
     dbscan_min_samples: int = attribute(default=5)
     max_ndetect: int = attribute(
-        default=30000
+        default=50000
     )  # 32-bit max_ndetect x max_ndetect matrix is ~4GB
     sigma_detection_threshold: int = attribute(default=5)
     group_duplicate_freqs: bool = attribute(default=True)
@@ -364,6 +364,10 @@ class Clusterer:
     min_freq: float = attribute(default=0)
     ignore_nharm1: bool = attribute(default=False)
     rogue_harmpow_scheme: str = attribute(default="tweak")
+    filter_nharm: bool = attribute(default=False)
+    remove_harm_idx: bool = attribute(default=False)
+    cluster_dm_cut: float = attribute(default=-1)
+    overlap_scale: float = attribute(default=1)
 
     @metric_method.validator
     def _validate_metric_method(self, attribute, value):
@@ -394,7 +398,7 @@ class Clusterer:
             "alt",
         ], "harmpow_scheme must be 'presto', 'tweak' or 'alt'"
 
-    def calculate_metric_rhp_overlap(self, rhplist, idx0, idx1, *args, scale=1):
+    def calculate_metric_rhp_overlap(self, rhplist, idx0, idx1, *args):
         """Calculate harmonic distance between two detections
         1 - scale*len(set.intersection(rhp0, rhp1))
 
@@ -409,7 +413,7 @@ class Clusterer:
         """
         rhp0 = rhplist[idx0]
         rhp1 = rhplist[idx1]
-        out_metric = 1 - scale * len(set.intersection(rhp0, rhp1))
+        out_metric = 1 - len(set.intersection(rhp0, rhp1))
         return out_metric
 
     def calculate_metric_rhp_overlap_normbyminnharm(
@@ -561,11 +565,9 @@ class Clusterer:
                     "calculate_harm_metric set to"
                     " calculate_metric_rhp_overlap_normbyminnharm"
                 )
-                scale = 1
             elif self.metric_method == "rhp_overlap":
                 calculate_harm_metric = self.calculate_metric_rhp_overlap
                 log.debug("calculate_harm_metric set to calculate_metric_rhp_overlap")
-                scale = 1 / max(detections["nharm"])
 
             # Organise raw harmonic power bins into supersets
             # This restricts the parameter space for which you need to calcualte the harmonic metric
@@ -615,8 +617,9 @@ class Clusterer:
                     f" {len(id_group)}"
                 )
                 for i in itertools.combinations(id_group, 2):
-                    metric = calculate_harm_metric(
-                        rhps, i[0], i[1], detections, scale=scale
+                    metric = (
+                        calculate_harm_metric(rhps, i[0], i[1], detections)
+                        * self.overlap_scale
                     )
                     if self.group_duplicate_freqs:
                         index_0, index_1 = np.meshgrid(harm[i[0]], harm[i[1]])
@@ -683,9 +686,6 @@ class Clusterer:
         cluster_dm_spacing,
         cluster_df_spacing,
         plot_fname="",
-        filter_nharm=False,
-        remove_harm_idx=False,
-        cluster_dm_cut=-1,
     ):
         """
         Make clusters from detections. This calls the cluster function, and packages up
@@ -727,12 +727,12 @@ class Clusterer:
                 if lbl == -1:
                     continue
                 cluster = Cluster.from_raw_detections(detections[cluster_labels == lbl])
-                if cluster_dm_cut >= cluster.dm:
+                if self.cluster_dm_cut >= cluster.dm:
                     zero_dm_count += 1
                     continue
-                if filter_nharm:
+                if self.filter_nharm:
                     cluster.filter_nharm()
-                if remove_harm_idx:
+                if self.remove_harm_idx:
                     cluster.remove_harm_idx()
                     cluster.remove_harm_pow()
                 clusters[current_label] = cluster
@@ -747,7 +747,8 @@ class Clusterer:
                 current_label += 1
         if zero_dm_count:
             log.info(
-                f"Filtered {zero_dm_count} clusters below or equal {cluster_dm_cut} DM."
+                f"Filtered {zero_dm_count} clusters below or equal"
+                f" {self.cluster_dm_cut} DM."
             )
         used_detections_len = len(detections)
         return clusters, summary, sig_limit, used_detections_len
