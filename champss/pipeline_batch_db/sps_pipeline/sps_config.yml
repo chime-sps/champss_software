@@ -146,7 +146,7 @@ ps:
       filter_nharm: False
       cluster_dm_cut: 2
       max_ndetect: 50000
-      overlap_scale: 1.1
+      overlap_scale: 0.0
       metric_combination: replace
       metric_method: power_overlap
 
@@ -297,9 +297,13 @@ ps_cumul_stack:
     sigma_min: 6.0
     precompute_harms: True
     use_nsum_per_bin: True
-    dbscan_eps: 1
-    cluster_scale_factor: 10
-    dbscan_min_samples: 5
-    filter_by_nharm: False
-    cluster_dm_cut: 2
-    clustering_max_ndetect: 100000
+    cluster_config:
+      dbscan_eps: 1
+      cluster_scale_factor: 10
+      dbscan_min_samples: 5
+      filter_nharm: False
+      cluster_dm_cut: 2
+      max_ndetect: 90000
+      overlap_scale: 1.1
+      metric_combination: replace
+      metric_method: power_overlap
