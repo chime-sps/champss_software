@@ -146,8 +146,9 @@ ps:
       filter_nharm: False
       cluster_dm_cut: 2
       max_ndetect: 50000
-      overlap_scale: 1.5
+      overlap_scale: 1.1
       metric_combination: replace
+      metric_method: power_overlap
 
 cands:
   harmonics: {}

@@ -374,6 +374,7 @@ class Clusterer:
         assert value in [
             "rhp_norm_by_min_nharm",
             "rhp_overlap",
+            "power_overlap",
         ], "metric_method must be either 'rhp_norm_by_min_nharm' or 'rhp_overlap'"
 
     @metric_combination.validator
@@ -436,6 +437,34 @@ class Clusterer:
         out_metric = 1 - len(set.intersection(rhp0, rhp1)) / min(
             detections["nharm"][idx0], detections["nharm"][idx1]
         )
+        return out_metric
+
+    def calculate_metric_power_overlap(self, rhplist, idx0, idx1, detections, **kwargs):
+        """
+        Calculate harmonic distance based on the power in overlapping bins.
+
+        Args:
+            rhplist (list): list of sets of PowerSpectra bins used in the sum (aka non-zero values of 'harm_idx' in detections)
+            idx0 (int): index of 1st detection (must correspond to the same index in rhplist)
+            idx1 (int): index of 2nd detection
+            detections (np.ndarray): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
+
+        Returns:
+            _type_: _description_
+        """
+        intersect_bins, intersect_idx0, intersect_idx1 = np.intersect1d(
+            detections[idx0]["harm_idx"],
+            detections[idx1]["harm_idx"],
+            return_indices=True,
+        )
+        total_power_1 = np.sum(detections[idx0]["harm_pow"])
+        total_power_2 = np.sum(detections[idx1]["harm_pow"])
+        intersec_power_1 = np.sum(detections[idx0]["harm_pow"][intersect_idx0])
+        intersec_power_2 = np.sum(detections[idx1]["harm_pow"][intersect_idx1])
+        power_overlap = max(
+            intersec_power_1 / total_power_1, intersec_power_2 / total_power_2
+        )
+        out_metric = 1 - power_overlap
         return out_metric
 
     def cluster(
@@ -568,6 +597,9 @@ class Clusterer:
             elif self.metric_method == "rhp_overlap":
                 calculate_harm_metric = self.calculate_metric_rhp_overlap
                 log.debug("calculate_harm_metric set to calculate_metric_rhp_overlap")
+            elif self.metric_method == "power_overlap":
+                calculate_harm_metric = self.calculate_metric_power_overlap
+                log.debug("calculate_harm_metric set to calculate_metric_power_overlap")
 
             # Organise raw harmonic power bins into supersets
             # This restricts the parameter space for which you need to calcualte the harmonic metric
