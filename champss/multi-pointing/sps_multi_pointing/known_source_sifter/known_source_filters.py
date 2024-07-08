@@ -218,15 +218,16 @@ def compare_frequency(
         used_delta_freq = 9.70127682e-04 / cand_nharm
     else:
         used_delta_freq = candidate.delta_freq
+    current_period = known_sources["current_spin_period_s"]
     for harm in harms:
         bayes_factor_harm = gaussian_bayes(
             candidate.best_freq * harm,
             used_delta_freq * harm,
-            1 / known_sources["spin_period_s"],
+            1 / current_period,
             mu_min,
             mu_max,
             sigma_mu=known_sources["spin_period_s_error"]
-            / known_sources["spin_period_s"] ** 2,
+            / current_period ** 2,
         )
         bayes_factor = np.max((bayes_factor, bayes_factor_harm), axis=0)
 
