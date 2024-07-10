@@ -85,7 +85,7 @@ def generate(noise=False):
 
 def x_to_chi2(x, df):
     '''This function returns the approximate equivalent chi2 value for a normal distribution sigma.
-    This function returns results with no greater than 3% error as long as sigma < 8.29 OR df > 30.
+    This function returns results with no greater than 0.01% error.
 
     Inputs:
     --------
@@ -162,9 +162,10 @@ class Injection:
             power (int): approximate equivalent power
         '''
         # Compute the normalized powers of the injected profile (Sum of pows == 1)
-        prof_fft = rfft(self.phase_prof)
-        norm_pows = np.abs(prof_fft[1:])**2.0
-        norm_pows /= norm_pows.sum()
+        prof_fft = rfft(self.phase_prof)[1:]
+        norm_pows = np.abs(prof_fft)**2.0
+        maxpower = norm_pows.sum()
+        norm_pows /= maxpower
         assert(math.isclose(norm_pows.sum(), 1.0))
         Nallharms = len(norm_pows)
 
@@ -172,17 +173,20 @@ class Injection:
         # a significant amount of our power (i.e. > 1%)
         Nsignif = int(((norm_pows/norm_pows.max())>0.01).sum())
         log.info(f'Nsignif = {Nsignif}')
-        power = x_to_chi2(self.sigma, int(Nsignif*self.ndays))/2
+        power = x_to_chi2(self.sigma, 2*Nsignif*self.ndays)/2
+        log.info(f'Total theoretical power = {power}')
 
         # Now compute the theoretical power for each harmonic to inject. We will
         # add this value to the current stack. Note that we are subtracting the
         # predicted amount of power due to the means of the power spectra.
-        Nsignif = 6
-        power_to_inject = power - Nsignif * self.ndays
 
-        return power_to_inject
+        power -= Nsignif * self.ndays
+        scaled_fft = prof_fft[:Nsignif] * np.sqrt(power / maxpower)
+        log.info(f'Sum of scaled_fft power = {np.sum(np.abs(scaled_fft)**2)}')
 
-    def disperse(self, kernels, kernel_scaling):
+        return scaled_fft, Nsignif
+
+    def disperse(self, prof_fft, kernels, kernel_scaling):
         '''
         This function disperses an input pulse profile over a range of -2*deltaDM to 2*deltaDM according
         to the algorithm specified above.
@@ -197,8 +201,6 @@ class Injection:
                                           dispersed profile values
         '''
         
-        #take the fft of the pulse
-        prof_fft = fft(self.phase_prof)
 
         #i is our index referring to the DM_labels in the target power spectrum
         #find the starting index, where the DM scale is -2
@@ -208,12 +210,12 @@ class Injection:
         #find the stopping index, where the DM scale is +2
         i_max = np.argmin(np.abs((self.true_dm + 2*self.deltaDM) - self.trial_dms))
         log.info(f'Stopping DM: {self.trial_dms[i_max]}')
-        dispersed_prof_fft = np.zeros((len(self.trial_dms), len(self.phase_prof)), dtype = 'complex_')
+        dispersed_prof_fft = np.zeros((len(self.trial_dms), len(prof_fft)), dtype = 'complex_')
         dms = self.trial_dms[i_min:i_max + 1]
 
         for i in range(i_min, i_max + 1):
             key = np.argmin(np.abs(np.abs((self.trial_dms[i] - self.true_dm)/self.deltaDM) - kernel_scaling))
-            dispersed_prof_fft[i] = prof_fft * kernels[key]
+            dispersed_prof_fft[i] = prof_fft * kernels[key, :len(prof_fft)]
             #log.info(f'DM = {self.trial_dms[i]}, first harm power = {np.abs(dispersed_prof_fft[i, 1])**2}')
 
         return dispersed_prof_fft, i0
@@ -237,17 +239,18 @@ class Injection:
         bins = np.zeros((4*n_harm)).astype(int)
 
         #now evaluate sinc-modified power at each of the first 10 harmonics
-        for i in range(1, n_harm + 1):
-            f_harm = i*self.f
+        for i in range(n_harm):
+            
+            f_harm = (i+1)*self.f
             bin_true = f_harm/df
             bin_below = np.floor(bin_true)
             bin_above = np.ceil(bin_true)
 
             #use 2 bins on either side
             current_bins = np.array([bin_below - 1, bin_below, bin_above, bin_above + 1])
-            bins[(i - 1)*4:(i - 1)*4+4] = current_bins
+            bins[i*4:i*4+4] = current_bins
             amplitude = prof_fft[i]*sinc(np.pi*(bin_true - current_bins))
-            harmonics[(i - 1)*4:(i - 1)*4+4] = np.abs(amplitude)**2
+            harmonics[i*4:i*4+4] = np.abs(amplitude)**2
 
         return bins, harmonics
 
@@ -267,17 +270,19 @@ class Injection:
         df = freqs[1] - freqs[0]
         f_nyquist = np.floor(freqs[-1] / 2)
         n_harm = int(np.floor(f_nyquist / self.f))
-        power = self.sigma_to_power()        
+        scaled_prof_fft, Nsignif = self.sigma_to_power()
+        log.info(f'Theoretical power at true DM on top of distribution = {np.sum(np.abs(scaled_prof_fft)**2)}')
+        
+        if Nsignif < n_harm:
+            n_harm = Nsignif
 
-        log.info(f'Injected power = {power}')
         log.info(f"Injecting {n_harm} harmonics.")
 
+        dispersed_prof_fft, i0 = self.disperse(scaled_prof_fft, kernels, kernel_scaling)
+        log.info(f'Power injected at true DM prior to sinc-interpolation: {np.sum(np.abs(dispersed_prof_fft[i0])**2)}')
+        
         harms = []
-        dms = [] 
-        # connect to database and find number of spectral channels in observation
-        obs = db_api.get_observation(self.pspec_obj.obs_id[0])
-        nchans = db_api.get_pointing(obs.pointing_id).nchans
-        dispersed_prof_fft, i0 = self.disperse(kernels, kernel_scaling)
+        dms = []
         
         for i in range(len(dispersed_prof_fft)):
             bins, harm = self.harmonics(dispersed_prof_fft[i], df, n_harm)
@@ -285,8 +290,9 @@ class Injection:
             dms.append(i)
 
         harms = np.asarray(harms)
-        harms *= power/np.sum(harms[i0])
-        log.info(f'Total harmonic power = {np.sum(harms[i0])}')
+        log.info(f'shape of harms = {harms.shape}')
+
+        log.info(f'Actual power injected at true DM on top of distribution = {np.sum(harms[i0])}')
 
         return harms, bins, dms
 
