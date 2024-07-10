@@ -153,10 +153,6 @@ class Injection:
         we have to estimate the number of summed harmonics in our final profile. This code was largely written by 
         Scott Ransom.
 
-        Inputs:
-        -------
-            nharm (int): number of harmonics before the Nyquist cutoff frequency
-
         Returns:
         -------
             power (int): approximate equivalent power
@@ -172,9 +168,7 @@ class Injection:
         # Compute the theoretical power in the harmonics where we will inject
         # a significant amount of our power (i.e. > 1%)
         Nsignif = int(((norm_pows/norm_pows.max())>0.01).sum())
-        log.info(f'Nsignif = {Nsignif}')
         power = x_to_chi2(self.sigma, 2*Nsignif*self.ndays)/2
-        log.info(f'Total theoretical power = {power}')
 
         # Now compute the theoretical power for each harmonic to inject. We will
         # add this value to the current stack. Note that we are subtracting the
@@ -182,7 +176,6 @@ class Injection:
 
         power -= Nsignif * self.ndays
         scaled_fft = prof_fft[:Nsignif] * np.sqrt(power / maxpower)
-        log.info(f'Sum of scaled_fft power = {np.sum(np.abs(scaled_fft)**2)}')
 
         return scaled_fft, Nsignif
 
@@ -193,6 +186,7 @@ class Injection:
 
         Inputs:
         -------
+                prof_fft (arr) : FFT array to disperse, not including the zeroth harmonic
                 kernels (arr)  : 2D array containing the smeared impulse function kernels
                 kernel_scaling (arr): a 1D array containing the labels of kernels in units of DM/deltaDM
         Returns:
@@ -204,7 +198,8 @@ class Injection:
 
         #i is our index referring to the DM_labels in the target power spectrum
         #find the starting index, where the DM scale is -2
-        i_min = np.argmin(np.abs((self.true_dm -2*self.deltaDM) - self.trial_dms))
+
+        i_min = np.argmin(np.abs((self.true_dm - 2*self.deltaDM) - self.trial_dms))
         log.info(f'Starting DM: {self.trial_dms[i_min]}')
         i0 = np.argmin(np.abs(self.true_dm - self.trial_dms))
         #find the stopping index, where the DM scale is +2
@@ -215,8 +210,7 @@ class Injection:
 
         for i in range(i_min, i_max + 1):
             key = np.argmin(np.abs(np.abs((self.trial_dms[i] - self.true_dm)/self.deltaDM) - kernel_scaling))
-            dispersed_prof_fft[i] = prof_fft * kernels[key, :len(prof_fft)]
-            #log.info(f'DM = {self.trial_dms[i]}, first harm power = {np.abs(dispersed_prof_fft[i, 1])**2}')
+            dispersed_prof_fft[i] = prof_fft * kernels[key, 1:len(prof_fft)+1]
 
         return dispersed_prof_fft, i0
 
@@ -227,9 +221,9 @@ class Injection:
 
         Inputs:
         _______
-                prof (ndarray)   : pulse phase profile
-                df (float)       : frequency bin width in target spectrum
-                n_harm (int)     : the number of harmonics before the Nyquist frequency
+                prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic
+                df (float)        : frequency bin width in target spectrum
+                n_harm (int)      : the number of harmonics before the Nyquist frequency
         Returns:
         ________
                 harmonics (ndarray) : Fourier-transformed harmonics of the profile convolved with
@@ -261,8 +255,8 @@ class Injection:
 
         Returns:
         _______
-                fake_pspec (array): 2D power grid of form (trial DM, frequency)
-                bins (array)      : 1D array of bin indices at which the pulse was injected
+                harms (arr): 2D power grid of form (trial DM, frequency)
+                bins (arr) : 1D array of bin indices at which the pulse was injected
         """
 
         # pull frequency bins from target power spectrum
@@ -271,7 +265,6 @@ class Injection:
         f_nyquist = np.floor(freqs[-1] / 2)
         n_harm = int(np.floor(f_nyquist / self.f))
         scaled_prof_fft, Nsignif = self.sigma_to_power()
-        log.info(f'Theoretical power at true DM on top of distribution = {np.sum(np.abs(scaled_prof_fft)**2)}')
         
         if Nsignif < n_harm:
             n_harm = Nsignif
@@ -279,7 +272,6 @@ class Injection:
         log.info(f"Injecting {n_harm} harmonics.")
 
         dispersed_prof_fft, i0 = self.disperse(scaled_prof_fft, kernels, kernel_scaling)
-        log.info(f'Power injected at true DM prior to sinc-interpolation: {np.sum(np.abs(dispersed_prof_fft[i0])**2)}')
         
         harms = []
         dms = []
@@ -290,9 +282,6 @@ class Injection:
             dms.append(i)
 
         harms = np.asarray(harms)
-        log.info(f'shape of harms = {harms.shape}')
-
-        log.info(f'Actual power injected at true DM on top of distribution = {np.sum(harms[i0])}')
 
         return harms, bins, dms
 
@@ -375,19 +364,17 @@ def main(pspec, injection_profile="random", num_injections=1):
         parameters = np.array(
             [injection_profile[1], injection_profile[2], injection_profile[3]]
         )
-        np.savetxt(f"Injection_{i}_params.txt", parameters)
-        np.savetxt(f"Injection_{i}_profile.txt", injection_profile[0])
         dms.append(dms_temp)
         bins.append(bins_temp)
+        
         # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
         # not change the object
         injected_indices = np.ix_(dms_temp, bins_temp)
-        log.info(f'Mean of pre-injection indices = {np.mean(pspec.power_spectra[injected_indices])}')
+
         pspec.power_spectra[injected_indices] += injection.astype(
             pspec.power_spectra.dtype
         )
-     
-        log.info("Replacing power spectrum with injected power spectrum")
+
         i += 1
     pspec.power_spectra[:, zero_bins] = 0
 
