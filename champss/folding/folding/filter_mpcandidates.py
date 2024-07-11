@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 import pandas as pd
-from folding.foldutils.database_utils import add_candidate_to_fsdb
+from foldutils.database_utils import add_candidate_to_fsdb
 from sps_databases import db_api, db_utils
 
 
