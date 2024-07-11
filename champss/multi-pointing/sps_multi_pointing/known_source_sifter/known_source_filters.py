@@ -7,6 +7,8 @@ Adpated from frb-l2l3 on 20200202.
 
 
 import numpy as np
+import datetime as dt
+from astropy.time import Time
 
 # from sps_common.constants import TELESCOPE_ROTATION_ANGLE
 # from sps_common.config import search_freq_range_from_dc
@@ -533,6 +535,32 @@ def search_freq_range_from_dc(dc, base_freq=50.0, nphi=0):
             freq_max = base_freq * 32 / nphi_dc
 
     return freq_min, freq_max
+
+def update_period_to_current_epoch(source, new_epoch): 
+    """
+    Calculates period of known source based on new epoch, rather than the observation epoch. 
+
+    Parameters
+    ----------
+    source: KnownSource
+        The known source class object to be updated
+
+    new_epoch: datetime 
+        Datetime of new epoch
+
+    Returns
+    -------
+    P: int
+        The updated period of the known source
+    """
+    P0 = source.spin_period_s
+    P1 = source.spin_period_derivative
+    print('bruh')
+    # detect_epoch = Time(cand.spin_period_epoch, format='mjd')
+    # new_epoch = Time(new_epoch)
+    # diff_epoch = (new_epoch - detect_epoch).sec
+    # P = P0 + diff_epoch * P1
+    return P
 
 
 if __name__ == "__main__":

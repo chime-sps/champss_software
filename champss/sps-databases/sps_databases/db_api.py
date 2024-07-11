@@ -1280,26 +1280,3 @@ def update_pulsars_in_pointing(pointing_id, pulsar_name, pulsar_dict):
             else:
                 updated_pointing = initial_pointing
     return updated_pointing
-
-
-def update_period_to_current_epoch(cand): 
-    """
-    Calculates period of known source based on current epoch, rather than the observation epoch. 
-
-    Parameters
-    ----------
-    cand: KnownSource
-        The known source class object to be updated
-
-    Returns
-    -------
-    P: int
-        The updated period of the known source
-    """
-    P0 = cand.spin_period_s
-    P1 = cand.spin_period_derivative
-    detect_epoch = Time(cand.spin_period_epoch, format='mjd')
-    current_epoch = Time(dt.datetime.today())
-    diff_epoch = (current_epoch - detect_epoch).sec
-    P = P0 - diff_epoch * P1
-    return P

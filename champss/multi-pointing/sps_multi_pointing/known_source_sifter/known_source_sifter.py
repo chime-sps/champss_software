@@ -12,10 +12,11 @@ import os
 
 import attr
 import numpy as np
+import datetime as dt
 import numpy.lib.recfunctions as rfn
 from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
-from sps_databases.db_api import get_nearby_known_sources, update_period_to_current_epoch
+from sps_databases.db_api import get_nearby_known_sources
 from sps_multi_pointing.known_source_sifter import known_source_filters
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,7 @@ class KnownSourceSifter:
                 ks.dm,
                 ks.dm_error,
                 ks.spin_period_s,
-                update_period_to_current_epoch(ks.spin_period_s),
+                update_period_to_current_epoch(ks.spin_period_s, dt.datetime.today()),
                 ks.spin_period_s_error,
             )
 
