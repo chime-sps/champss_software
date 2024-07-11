@@ -1,6 +1,5 @@
 import datetime as dt
 import logging
-import os
 import time
 
 import click
@@ -55,6 +54,25 @@ def message_slack(
         log.info(error)
 
 
+def save_container_logs(service):
+    try:
+        log_text = ""
+        log_generator = service.logs(
+            details=True,
+            stdout=True,
+            stderr=True,
+            follow=False,
+        )
+        for log_chunk in log_generator:
+            log_text += log_chunk.decode("utf-8").strip() + "\n"
+
+        path = f"/data/chime/sps/logs/services/{service.name}.log"
+        with open(path, "w") as file:
+            file.write(log_text)
+    except Exception as error:
+        log.info(f"Error dumping logs at {path}: {error} (will skip gracefully).")
+
+
 def get_service_created_at_datetime(service):
     try:
         datetime = dt.datetime.strptime(
@@ -63,12 +81,13 @@ def get_service_created_at_datetime(service):
         return datetime
     except Exception as error:
         log.info(
-            f"Error parsing CreatedAt for service {service}: {error} (will skip gracefully)."
+            f"Error parsing CreatedAt for service {service}: {error} (will skip"
+            " gracefully)."
         )
         return None
 
 
-def wait_for_no_tasks_in_states(states_to_wait_for_none):
+def wait_for_no_tasks_in_states(states_to_wait_for_none, docker_service_name_prefix=""):
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
@@ -92,6 +111,7 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                     service
                     for service in docker_client.services.list()
                     if "processing" in service.name
+                    and docker_service_name_prefix in service.name
                     and service.name not in perpetual_processing_services
                 ],
                 # Sort from oldest to newest to find finished services to remove
@@ -123,41 +143,9 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             f"Removing finished service {service.name} in state"
                             f" {task_state}."
                         )
-                        # Dump logs of multiprocessing container before removing it
-                        if "processing-mp" in service.name:
-                            try:
-                                date = service.name.split("-")[-1]
-
-                                log_text = ""
-                                log_generator = service.logs(
-                                    details=True,
-                                    stdout=True,
-                                    stderr=True,
-                                    follow=False,
-                                )
-                                for log_chunk in log_generator:
-                                    log_text += log_chunk.decode("utf-8")
-
-                                path = f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log"
-                                directory = os.path.dirname(path)
-
-                                if not os.path.exists(directory):
-                                    os.makedirs(directory)
-                                    log.info(f"Created directory: {directory}")
-
-                                with open(
-                                    path,
-                                    "w",
-                                ) as file:
-                                    file.write(log_text)
-                            except Exception as error:
-                                log.info(
-                                    "Error dumping logs for service"
-                                    f" {service.name}: {error} (will skip"
-                                    " gracefully)."
-                                )
 
                         try:
+                            save_container_logs(service)
                             service.remove()
                         except Exception as error:
                             log.info(
@@ -171,16 +159,17 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             log.info(
                                 f"Service {service.name} has been ruuning for more than"
                                 f" {(task_timeout_seconds  * 2) / 60} minutes in state"
-                                f" {task_state}, implying frozen task on 1st or 2nd final"
-                                f" Workflow runner attempt. Will remove service."
+                                f" {task_state}, implying frozen task on 1st or 2nd"
+                                " final Workflow runner attempt. Will remove service."
                             )
 
                             try:
+                                save_container_logs(service)
                                 service.remove()
                             except Exception as error:
                                 log.info(
-                                    f"Error removing service {service.name}: {error} (will"
-                                    " skip gracefully)."
+                                    f"Error removing service {service.name}:"
+                                    f" {error} (will skip gracefully)."
                                 )
                         # Task in state running, and we want to wait for no running states
                         # Loop will continue
@@ -194,11 +183,12 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             log.info(
                                 f"Service {service.name} has been pending for more than"
                                 f" {(task_timeout_seconds  * 2) / 60} minutes in state"
-                                f" {task_state}, implying failed Docker task scheduling. Will"
-                                " remove service."
+                                f" {task_state}, implying failed Docker task"
+                                " scheduling. Will remove service."
                             )
 
                             try:
+                                save_container_logs(service)
                                 service.remove()
                             except Exception as error:
                                 log.info(
@@ -226,7 +216,7 @@ def schedule_workflow_job(
     docker_name,
     docker_memory_reservation,
     docker_password,
-    workflow_name,
+    workflow_buckets_name,
     workflow_function,
     workflow_params,
     workflow_tags,
@@ -249,7 +239,9 @@ def schedule_workflow_job(
     workflow_user = "CHAMPSS"
 
     try:
-        work = Work(pipeline=workflow_name, site=workflow_site, user=workflow_user)
+        work = Work(
+            pipeline=workflow_buckets_name, site=workflow_site, user=workflow_user
+        )
         work.function = workflow_function
         work.parameters = workflow_params
         work.tags = workflow_tags
@@ -288,12 +280,13 @@ def schedule_workflow_job(
         docker_service = {
             "image": docker_image,
             # Can't have dots or slashes in Docker Service names
+            # All Docker Services made with this function will be prefixed with "processing-"
             "name": f"processing-{docker_name.replace('.', '_').replace('/', '')}",
             # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
                 "workflow run"
-                f" {workflow_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
+                f" {workflow_buckets_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
                 f" {workflow_site} --lifetime 1 --sleep-time 0"
             ),
             # Using template Docker variables as in-container environment variables
@@ -331,14 +324,13 @@ def schedule_workflow_job(
 
         docker_client.services.create(**docker_service)
 
-        # Wait a few seconds before querying Docker Swarm again
-        time.sleep(2)
+        wait_for_no_tasks_in_states(docker_swarm_pending_states)
 
         return work_id[0]
     except Exception as error:
         log.info(
-            f"Failed to deposit Work and create Docker Service for {docker_name}: {error}."
-            " Will not schedule this task."
+            f"Failed to deposit Work and create Docker Service for {docker_name}:"
+            f" {error}. Will not schedule this task."
         )
         return ""
 
@@ -380,7 +372,6 @@ def clear_workflow_buckets(workflow_buckets_name):
             )
     except Exception as error:
         print(error)
-        pass
 
 
 @click.command()

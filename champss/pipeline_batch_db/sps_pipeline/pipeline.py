@@ -321,13 +321,7 @@ def main(
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
 
-    if isinstance(date, str):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(date, date_format)
-                break
-            except ValueError:
-                continue
+    date = utils.convert_date_to_datetime(date)
 
     date_string = date.strftime("%Y/%m/%d")
 
@@ -520,7 +514,7 @@ def main(
                 f"_{active_pointing.sub_pointing}"
             )
 
-            # Compute number of threads required. 
+            # Compute number of threads required.
             # Currently based on the number of channels of the input data
 
             ntime_factor = int(
