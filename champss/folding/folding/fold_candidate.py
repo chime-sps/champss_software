@@ -18,6 +18,7 @@ from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from folding.plot_candidate import plot_candidate_archive
 from sps_databases import db_api, db_utils
+from sps_pipeline.utils import convert_date_to_datetime
 
 
 def update_folding_history(id, payload):
@@ -158,10 +159,10 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Name used for the mongodb database.",
 )
 @click.option(
-    "--basepath",
+    "--foldpath",
+    default="/data/chime/sps/archives",
     type=str,
-    default="/data/chime/sps/raw/",
-    help="Base directory for raw data",
+    help="Path for created files during fold step.",
 )
 @click.option(
     "--candpath",
@@ -192,7 +193,7 @@ def main(
     db_port,
     db_host,
     db_name,
-    basepath,
+    foldpath,
     candpath="",
     write_to_db=False,
     using_workflow=False,
@@ -227,13 +228,7 @@ def main(
     """
 
     if using_workflow:
-        if isinstance(date, str):
-            for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-                try:
-                    date = dt.datetime.strptime(date, date_format)
-                    break
-                except ValueError:
-                    continue
+        date = convert_date_to_datetime(date)
 
     db_utils.connect(host=db_host, port=db_port, name=db_name)
     pst = PointingStrategist(create_db=False)
@@ -303,7 +298,7 @@ def main(
         )
         return {}, [], []
 
-    directory_path = f"/data/chime/sps/archives/{dir_suffix}"
+    directory_path = f"{foldpath}/{dir_suffix}"
 
     year = date.year
     month = date.month
@@ -312,17 +307,13 @@ def main(
     if dir_suffix == "candidates":
         log.info(f"Setting up pointing for {round(ra, 2)} {round(dec, 2)}...")
         coord_path = f"{directory_path}/{round(ra, 2)}_{round(dec, 2)}"
-        archive_fname = (
-            f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}"
-        )
+        archive_fname = f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}"
         if not os.path.exists(coord_path):
             os.makedirs(coord_path)
         else:
             log.info(f"Directory '{coord_path}' already exists.")
         if not ephem_path:
-            ephem_path = (
-                f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}.par"
-            )
+            ephem_path = f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}.par"
             create_ephemeris(name, ra, dec, dm, date, f0, ephem_path, fs_id)
     elif dir_suffix == "known_sources":
         log.info(f"Setting up pointing for {psr}...")
@@ -349,7 +340,9 @@ def main(
     data_list = []
     for active_pointing in ap:
         data_list.extend(
-            get_data_list(active_pointing.max_beams, basepath=basepath, extn="dat")
+            get_data_list(
+                active_pointing.max_beams, basepath="/data/chime/sps/raw/", extn="dat"
+            )
         )
     if not data_list:
         log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
@@ -375,12 +368,12 @@ def main(
         turns = 10
 
     if not os.path.isfile(fil):
-        log.info(f"Beamforming..., basepath {basepath}")
+        log.info(f"Beamforming...")
         sbf = SkyBeamFormer(
             extn="dat",
             update_db=False,
             min_data_frac=0.5,
-            basepath=basepath,
+            basepath="/data/chime/sps/raw/",
             add_local_median=True,
             detrend_data=True,
             detrend_nsamp=32768,
@@ -442,6 +435,7 @@ def main(
         dec,
         coord_path,
         known,
+        foldpath,
     )
 
     log.info(f"SN of folded profile: {SN_arr}")
@@ -458,7 +452,7 @@ def main(
         "SN": float(SN_arr),
         "path_to_plot": plot_fname,
     }
-    
+
     if fs_id and write_to_db:
         log.info("Updating FollowUpSource with folding history")
         folding_history = source.folding_history

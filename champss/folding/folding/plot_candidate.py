@@ -7,7 +7,17 @@ from astropy.time import Time
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
 
 
-def plot_candidate_archive(fn, sigma, dm, f0, ra, dec, coord_path, known=" "):
+def plot_candidate_archive(
+    fn,
+    sigma,
+    dm,
+    f0,
+    ra,
+    dec,
+    coord_path,
+    known=" ",
+    foldpath="/data/chime/sps/archives",
+):
     data, F, T, psr, tel = readpsrarch(fn)
     print(data.shape)
 
@@ -108,9 +118,7 @@ def plot_candidate_archive(fn, sigma, dm, f0, ra, dec, coord_path, known=" "):
     )
     plt.savefig(coord_path + f"/{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png")
 
-    img_path = (
-        f"/data/chime/sps/archives/plots/folded_candidate_plots/{T0.isot[:10]}-plots/"
-    )
+    img_path = f"{foldpath}/plots/folded_candidate_plots/{T0.isot[:10]}-plots/"
     if not os.path.exists(img_path):
         os.makedirs(img_path)
     else:

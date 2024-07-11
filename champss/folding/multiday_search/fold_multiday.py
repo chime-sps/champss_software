@@ -9,10 +9,8 @@ import numpy as np
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from sps_databases import db_api, db_utils, models
-
-from sps_pipeline.workflow import (
-    schedule_workflow_job,
-)
+from sps_pipeline.workflow import schedule_workflow_job
+from sps_pipeline.utils import convert_date_to_datetime
 
 log = logging.getLogger()
 
@@ -77,10 +75,16 @@ def find_all_dates_with_data(ra, dec, basepath, Nday=10):
     help="Name used for the mongodb database.",
 )
 @click.option(
-    "--basepath",
+    "--foldpath",
+    default="/data/chime/sps/archives",
     type=str,
-    default="/data/chime/sps/raw/",
-    help="Base directory for raw data",
+    help="Path for created files during fold step.",
+)
+@click.option(
+    "--workflow-buckets-name",
+    default="champss-processing",
+    type=str,
+    help="Which Worklow DB to create/use.",
 )
 @click.option(
     "--docker-image-name",
@@ -89,33 +93,30 @@ def find_all_dates_with_data(ra, dec, basepath, Nday=10):
     help="Which Docker Image name to use.",
 )
 @click.option(
-    "--docker-password",
-    default="",
-    type=str,
-    help="chimefrb DockerHub private registry password",
-)
-@click.option(
-    "--docker-name-prefix",
-    default="",
+    "--docker-service-name-prefix",
+    default="fold-multiday",
     type=str,
     help="What prefix to apply to the Docker Service name",
 )
 @click.option(
-    "--workflow-name",
-    default="champss-processing",
+    "--docker-password",
+    prompt=True,
+    confirmation_prompt=False,
+    hide_input=True,
+    required=True,
     type=str,
-    help="Which Worklow DB to create/use.",
+    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
 def main(
     fs_id,
     db_port,
     db_host,
     db_name,
-    basepath,
+    foldpath,
+    workflow_buckets_name,
     docker_image_name,
+    docker_service_name_prefix,
     docker_password,
-    docker_name_prefix,
-    workflow_name,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     source = db_api.get_followup_source(fs_id)
@@ -124,14 +125,14 @@ def main(
     dm = source.dm
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    dates_with_data = find_all_dates_with_data(ra, dec, basepath, Nday=10)
+    dates_with_data = find_all_dates_with_data(ra, dec, "/data/chime/sps/raw/", Nday=10)
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
-        docker_name = f"{docker_name_prefix}-{date}-{fs_id}"
+        docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
         docker_memory_reservation = (nchan / 1024) * 8
         docker_mounts = [
             "/data/chime/sps/raw:/data/chime/sps/raw",
-            "/data/chime/sps/archives:/data/chime/sps/archives",
+            f"{foldpath}:{foldpath}",
         ]
 
         workflow_function = "folding.fold_candidate.main"
@@ -157,7 +158,7 @@ def main(
             docker_name,
             docker_memory_reservation,
             docker_password,
-            workflow_name,
+            workflow_buckets_name,
             workflow_function,
             workflow_params,
             workflow_tags,

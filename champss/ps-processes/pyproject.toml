@@ -11,10 +11,10 @@ exclude = [
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
-rfi-mitigation = {path = "../rfi-mitigation"}
-spshuff = {path = "../spshuff"}
-sps-common = {path = "../sps-common"}
-sps-databases = {path = "../sps-databases"}
+rfi-mitigation = {path = "../rfi-mitigation", develop=true}
+spshuff = {path = "../spshuff", develop=true}
+sps-common = {path = "../sps-common", develop=true}
+sps-databases = {path = "../sps-databases", develop=true}
 h5py = "~3.9"
 jplephem = "^2.18"
 numpy = "^1.24.3"

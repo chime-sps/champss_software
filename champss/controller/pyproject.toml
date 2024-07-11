@@ -10,11 +10,11 @@ exclude = [
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
-beamformer = {path = "../beamformer"}
+beamformer = {path = "../beamformer", develop=true}
 beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
-spshuff = {path = "../spshuff"}
-sps-common = {path = "../sps-common"}
-sps-databases = {path = "../sps-databases"}
+spshuff = {path = "../spshuff", develop=true}
+sps-common = {path = "../sps-common", develop=true}
+sps-databases = {path = "../sps-databases", develop=true}
 async-exit-stack = "^1.0.1"
 click = "^8.1.4"
 msgpack-python = "^0.5.6"
