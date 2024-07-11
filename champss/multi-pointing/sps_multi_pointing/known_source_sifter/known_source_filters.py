@@ -555,10 +555,13 @@ def update_period_to_current_epoch(source, new_epoch):
     """
     P0 = source.spin_period_s
     P1 = source.spin_period_derivative
-    detect_epoch = Time(source.spin_period_epoch, format='mjd')
-    new_epoch = Time(new_epoch)
-    diff_epoch = (new_epoch - detect_epoch).sec
-    P = P0 + diff_epoch * P1
+    if P1 > 0:
+        detect_epoch = Time(source.spin_period_epoch, format='mjd')
+        new_epoch = Time(new_epoch)
+        diff_epoch = (new_epoch - detect_epoch).sec
+        P = P0 + diff_epoch * P1
+    else:
+        P = P0
     return P
 
 
