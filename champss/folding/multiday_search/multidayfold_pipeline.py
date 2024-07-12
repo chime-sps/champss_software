@@ -150,7 +150,7 @@ def main(
         "confirm",
         fs_id,
     ]
-    schedule_workflow_job(
+    work_id = schedule_workflow_job(
         docker_image_name,
         docker_mounts,
         docker_name,
@@ -165,6 +165,9 @@ def main(
     wait_for_no_tasks_in_states(docker_swarm_running_states, docker_service_name_prefix)
 
     # Can add Slack alerts here
+    print("Finished multiday search")
+    foldresults_dict = {"coherentsearch_work_id": work_id}
+    return foldresults_dict, [], []
 
 
 if __name__ == "__main__":
