@@ -1,6 +1,5 @@
 """Simpe API to gather collection data using pymongo."""
 import datetime as dt
-from astropy.time import Time
 
 import pymongo
 import pytz
