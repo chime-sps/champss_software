@@ -4,7 +4,6 @@ import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.time import Time
-from psrqpy import QueryATNF
 
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
 from sps_databases.db_api import get_nearby_known_sources
