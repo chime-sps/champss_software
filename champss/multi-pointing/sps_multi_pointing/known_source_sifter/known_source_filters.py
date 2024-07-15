@@ -536,7 +536,7 @@ def search_freq_range_from_dc(dc, base_freq=50.0, nphi=0):
 
     return freq_min, freq_max
 
-def update_period_to_current_epoch(source, new_epoch): 
+def change_spin_period(source, new_epoch): 
     """
     Calculates period of known source based on new epoch, rather than the observation epoch. 
 
