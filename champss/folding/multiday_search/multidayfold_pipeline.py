@@ -111,9 +111,9 @@ def main(
             "--docker-service-name-prefix",
             docker_service_name_prefix,
             "--workflow-buckets-name",
-            docker_password,
-            "--docker-password",
             workflow_buckets_name,
+            "--docker-password",
+            docker_password,
         ],
         standalone_mode=False,
     )
