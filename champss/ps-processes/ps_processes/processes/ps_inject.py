@@ -224,13 +224,15 @@ class Injection:
                 prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic
                 df (float)        : frequency bin width in target spectrum
                 n_harm (int)      : the number of harmonics before the Nyquist frequency
+                N (int)           : number of bins over which to perform sinc interpolation. Default 4. 
         Returns:
         ________
                 harmonics (ndarray) : Fourier-transformed harmonics of the profile convolved with
                                         [cycles] number of Delta functions
         """
-        harmonics = np.zeros((4*n_harm))
-        bins = np.zeros((4*n_harm)).astype(int)
+        N = 4
+        harmonics = np.zeros((N*n_harm))
+        bins = np.zeros((N*n_harm)).astype(int)
 
         #now evaluate sinc-modified power at each of the first 10 harmonics
         for i in range(n_harm):
@@ -242,9 +244,9 @@ class Injection:
 
             #use 2 bins on either side
             current_bins = np.array([bin_below - 1, bin_below, bin_above, bin_above + 1])
-            bins[i*4:i*4+4] = current_bins
+            bins[i*N:(i + 1)*N] = current_bins
             amplitude = prof_fft[i]*sinc(np.pi*(bin_true - current_bins))
-            harmonics[i*4:i*4+4] = np.abs(amplitude)**2
+            harmonics[i*N:(i + 1)*N] = np.abs(amplitude)**2
 
         return bins, harmonics
 

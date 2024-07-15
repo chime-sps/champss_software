@@ -29,15 +29,36 @@ import numpy as np
         help = ("Path to injection profile npy file")
 )
 
+@click.option(
+        "--focus",
+        default = None,
+        help = ("Iterates over selected field (sigma, frequency, or DM)."
+)
+
 def get(n_injections, file_name, injection_path):
     
     if injection_path != 'random':
         load_profs = np.load(injection_path)
         n_injections = len(load_profs)
     
-    frequencies = np.random.uniform(0.1, 80, n_injections)
-    dms = np.random.uniform(3, 200, n_injections)
-    sigmas = np.random.uniform(1, 17, n_injections)
+    if focus == 'frequency' or focus == 'freq':
+        frequencies = np.linspace(0.1, 50, n_injections)
+
+    else:
+        frequencies = np.random.uniform(0.1, 50, n_injections)
+    
+    if focus == 'dm' or focus == 'DM':
+        dms = np.linspace(3, 200, n_injections)
+    
+    else:
+        dms = np.random.uniform(3, 200, n_injections)
+    
+    if focus == 'sigma' or focus == 'sig':
+        sigmas = np.linspace(6, 17, n_injections)
+
+    else:
+        sigmas = np.random.uniform(6, 17, n_injections)
+    
     data = []
     print(f"Creating {n_injections} fake pulsars into {injection_path}")
     
