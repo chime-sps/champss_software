@@ -129,11 +129,11 @@ def plot_candidate_archive(
 
     for source in sources:
         ks_name = source.source_name 
-        atnf_check = QueryATNF(condition=f"PSRJ == '{ks_name}'").num_pulsars
-        if atnf_check > 0:
-            published = True
-        else:
+        ks_epoch = source.spin_period_epoch
+        if ks_epoch == 45000.0:
             published = False
+        else:
+            published = True
         ks_ra = round(source.pos_ra_deg, 2)
         ks_dec = round(source.pos_dec_deg, 2)
         ks_f0 = round(1 / source.spin_period_s, 4)
