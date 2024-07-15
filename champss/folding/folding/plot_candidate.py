@@ -4,6 +4,8 @@ import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.time import Time
+from psrqpy import QueryATNF
+
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
 from sps_databases.db_api import get_nearby_known_sources
 
@@ -117,21 +119,29 @@ def plot_candidate_archive(
         backgroundcolor="white",
     )
 
-    radius = 7
+    radius = 5
     sources = get_nearby_known_sources(ra, dec, radius)
 
     ks_text = (
         f'Known sources within {radius} degrees\n'
     )
 
+
     for source in sources:
-        ks_name = source.source_name  
+        ks_name = source.source_name 
+        atnf_check = QueryATNF(condition=f"PSRJ == '{ks_name}'").num_pulsars
+        if atnf_check > 0:
+            published = True
+        else:
+            published = False
         ks_ra = round(source.pos_ra_deg, 2)
         ks_dec = round(source.pos_dec_deg, 2)
         ks_f0 = round(1 / source.spin_period_s, 4)
         ks_dm = round(source.dm, 2)
-        ks_text += f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0} \n"
-
+        if published: 
+            ks_text += f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0} \n"
+        else:
+            ks_text += f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0}, Unpublished \n"
 
     def get_text_height(text, fontsize=10):
         renderer = fig.canvas.get_renderer()
