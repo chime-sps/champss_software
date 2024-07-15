@@ -7,7 +7,6 @@ Adpated from frb-l2l3 on 20200202.
 
 
 import numpy as np
-import datetime as dt
 from astropy.time import Time
 
 # from sps_common.constants import TELESCOPE_ROTATION_ANGLE
