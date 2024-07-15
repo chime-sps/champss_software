@@ -103,7 +103,7 @@ def find_all_dates_with_data(ra, dec, basepath, Nday=10):
     prompt=True,
     confirmation_prompt=False,
     hide_input=True,
-    required=True,
+    required=False,
     type=str,
     help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
