@@ -12,7 +12,7 @@ import os
 
 import attr
 import numpy as np
-import datetime as dt
+from astropy.time import Time
 import numpy.lib.recfunctions as rfn
 from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
@@ -99,7 +99,7 @@ class KnownSourceSifter:
                 ks.dm,
                 ks.dm_error,
                 ks.spin_period_s,
-                change_spin_period(ks.spin_period_s, dt.datetime.today()),
+                change_spin_period(ks.spin_period_s, Time.now()),
                 ks.spin_period_s_error,
             )
 

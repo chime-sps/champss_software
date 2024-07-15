@@ -545,8 +545,8 @@ def change_spin_period(source, new_epoch):
     source: KnownSource
         The known source class object to be updated
 
-    new_epoch: datetime 
-        Datetime of new epoch
+    new_epoch: astropy Time
+        Date of new epoch 
 
     Returns
     -------
