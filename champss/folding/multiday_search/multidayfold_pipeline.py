@@ -67,7 +67,7 @@ log = logging.getLogger(__name__)
     prompt=True,
     confirmation_prompt=False,
     hide_input=True,
-    required=True,
+    required=False,
     type=str,
     help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
@@ -88,10 +88,17 @@ def main(
     if docker_password == "" or docker_password is None:
         # Possibly this function is running in a Workflow runner container
         # and the password is in a secret file
-        with open("/run/secrets/DOCKER_PASSWORD") as docker_password_file:
-            # Need the password so that schedue_workflow_job can login to DockerHub
-            # and pull private images to spawn Docker containers
-            docker_password = docker_password_file.read()
+        docker_password_filepath = "/run/secrets/DOCKER_PASSWORD"
+        try:
+            with open(docker_password_filepath) as docker_password_file:
+                # Need the password so that schedue_workflow_job can login to DockerHub
+                # and pull private images to spawn Docker containers
+                docker_password = docker_password_file.read()
+        except Exception as error:
+            log.info(
+                f"Could not read DockerHub password from {docker_password_filepath}: {error} "
+                f"Will attempt under assumption that 'docker login' command was already called."
+            )
 
     docker_service_name_prefix = "fold-multiday"
 

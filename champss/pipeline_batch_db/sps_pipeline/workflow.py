@@ -236,10 +236,9 @@ def schedule_workflow_job(
         docker_client.login(username="chimefrb", password=docker_password)
     except Exception as error:
         log.info(
-            f"Failed to login to DockerHub to schedule {docker_name}: {error}."
-            " Will not schedule this task."
+            f"Failed to login to DockerHub: {error}. "
+            f"Will try to schedule this task anyway."
         )
-        return ""
 
     workflow_site = "chime"
     workflow_user = "CHAMPSS"
@@ -263,6 +262,12 @@ def schedule_workflow_job(
 
         docker_volumes = [
             docker.types.Mount(
+                # Bind mount the Docker socket to allow Docker-in-Docker (Workflow-in-Workflow) usage
+                target="/var/run/docker.sock",
+                source="/var/run/docker.sock",
+                type="bind",
+            ),
+            docker.types.Mount(
                 # Only way I know of to add custom shared memory size allocations with Docker Swarm
                 target="/dev/shm",
                 source="",  # Source value must be empty for tmpfs mounts
@@ -270,7 +275,7 @@ def schedule_workflow_job(
                 tmpfs_size=int(
                     100 * 1e9
                 ),  # Just give it 100GB of a shared memory upper-limit
-            )
+            ),
         ]
 
         for mount_path in docker_mounts:
@@ -342,9 +347,15 @@ def schedule_workflow_job(
         return work_id[0]
     except Exception as error:
         log.info(
-            f"Failed to deposit Work and create Docker Service for {docker_name}:"
-            f" {error}. Will not schedule this task."
+            f"Failed to deposit Work or create Docker Service: {error}. "
+            f"Will not schedule this task."
         )
+
+        try:
+            work.delete()
+        except Exception as error:
+            log.info(f"Failed to delete dangling Work: {error}.")
+
         return ""
 
 
