@@ -226,7 +226,13 @@ def schedule_workflow_job(
 
     docker_client = docker.from_env()
 
+    # This is needed to spawn a Docker Sevice if the Docker Image is on
+    # a private registry (e.g. ou chimefrb DockerHub account)
     try:
+        docker_password_secret_name = "DOCKER_PASSWORD"
+        docker_password_secret_id = docker_client.secrets.list(
+            filters={"name": docker_password_secret_name}
+        )[0].id
         docker_client.login(username="chimefrb", password=docker_password)
     except Exception as error:
         log.info(
@@ -314,6 +320,13 @@ def schedule_workflow_job(
             # to communicate with other containers (MongoDB, Prometheus, etc) that are
             # also manually added to this network
             "networks": ["pipeline-network"],
+            # Secrets are put into /run/secrets/<secret_name> inside the container
+            # (in the case that a Workflow runner will also spawn Workflow runners)
+            "secrets": [
+                docker.types.SecretReference(
+                    docker_password_secret_id, docker_password_secret_name
+                )
+            ],
         }
 
         log.info(f"Creating Docker Service: \n{docker_service}")

@@ -85,6 +85,14 @@ def main(
     fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
     print(fs_id)
 
+    if docker_password == "" or docker_password is None:
+        # Possibly this function is running in a Workflow runner container
+        # and the password is in a secret file
+        with open("/run/secrets/DOCKER_PASSWORD") as docker_password_file:
+            # Need the password so that schedue_workflow_job can login to DockerHub
+            # and pull private images to spawn Docker containers
+            docker_password = docker_password_file.read()
+
     docker_service_name_prefix = "fold-multiday"
 
     workflow_buckets_name = (
