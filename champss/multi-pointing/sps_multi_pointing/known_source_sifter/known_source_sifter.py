@@ -99,7 +99,7 @@ class KnownSourceSifter:
                 ks.dm,
                 ks.dm_error,
                 ks.spin_period_s,
-                update_period_to_current_epoch(ks.spin_period_s, dt.datetime.today()),
+                change_spin_period(ks.spin_period_s, dt.datetime.today()),
                 ks.spin_period_s_error,
             )
 
