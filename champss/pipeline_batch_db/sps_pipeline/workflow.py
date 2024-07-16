@@ -251,8 +251,8 @@ def schedule_workflow_job(
         work.parameters = workflow_params
         work.tags = workflow_tags
         work.config.archive.results = True
-        work.config.archive.plots = "pass"
-        work.config.archive.products = "pass"
+        work.config.archive.plots = "bypass"
+        work.config.archive.products = "bypass"
         work.retries = 1
         work.timeout = task_timeout_seconds
 
