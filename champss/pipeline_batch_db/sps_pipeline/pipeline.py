@@ -520,7 +520,7 @@ def main(
                 f"_{active_pointing.sub_pointing}"
             )
 
-            # Compute number of threads required. 
+            # Compute number of threads required.
             # Currently based on the number of channels of the input data
 
             ntime_factor = int(
