@@ -320,13 +320,13 @@ class SinglePointingCandidate:
     def harm_sigma_curve(self):
         """Return sigma as a function of summed harmonics."""
         raw_power_curve = self.best_raw_harmonic_powers
-        dm_sigma_curve = np.zeros(len(raw_power_curve))
-        for i in range(len(dm_sigma_curve)):
+        harm_sigma_curve = np.zeros(len(raw_power_curve))
+        for i in range(len(harm_sigma_curve)):
             # sigma_sum_powers aso accepts array inputs which might be faster
-            dm_sigma_curve[i] = sigma_sum_powers(
+            harm_sigma_curve[i] = sigma_sum_powers(
                 raw_power_curve[: i + 1].sum(), self.num_days * (i + 1)
             )
-        return dm_sigma_curve
+        return harm_sigma_curve
 
     @property
     def masked_harmonics(self):

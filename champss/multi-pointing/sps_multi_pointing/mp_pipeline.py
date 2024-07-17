@@ -258,7 +258,7 @@ def cli(
     sp_grouper = grouper.SinglePointingCandidateGrouper(
         **OmegaConf.to_container(config.grouper)
     )
-    mp_cands = sp_grouper.group(sp_cands)
+    mp_cands = sp_grouper.group(sp_cands, num_threads=num_threads)
     log.info(f"Number of multi-pointing candidates: {len(mp_cands)}")
     try:
         db_client = db_utils.connect(host=db_host, port=db_port, name=db_name)
