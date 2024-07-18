@@ -162,6 +162,7 @@ class Injection:
         norm_pows = np.abs(prof_fft)**2.0
         maxpower = norm_pows.sum()
         norm_pows /= maxpower
+        log.info(f'norm_pows.sum() = {norm_pows.sum()}')
         assert(math.isclose(norm_pows.sum(), 1.0))
         Nallharms = len(norm_pows)
 

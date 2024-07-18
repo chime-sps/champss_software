@@ -32,33 +32,36 @@ import numpy as np
 @click.option(
         "--focus",
         default = None,
-        help = ("Iterates over selected field (sigma, frequency, or DM)."
+        help = ("Iterates over selected field (sigma, frequency, or DM).")
 )
 
-def get(n_injections, file_name, injection_path):
+
+def get(n_injections, file_name, injection_path, focus):
     
     if injection_path != 'random':
         load_profs = np.load(injection_path)
         n_injections = len(load_profs)
     
     if focus == 'frequency' or focus == 'freq':
-        frequencies = np.linspace(0.1, 50, n_injections)
-
-    else:
-        frequencies = np.random.uniform(0.1, 50, n_injections)
+        frequencies = np.logspace(-2, 2.7, n_injections)
+        dms = 107.3817479147*np.ones(n_injections)
+        sigmas = 11.28372911*np.ones(n_injections)
     
-    if focus == 'dm' or focus == 'DM':
+    elif focus == 'dm' or focus == 'DM':
         dms = np.linspace(3, 200, n_injections)
+        frequencies = 8.138748235982394*np.ones(n_injections)
+        sigmas = 11.28372911*np.ones(n_injections)
     
-    else:
-        dms = np.random.uniform(3, 200, n_injections)
-    
-    if focus == 'sigma' or focus == 'sig':
+    elif focus == 'sigma' or focus == 'sig':
         sigmas = np.linspace(6, 17, n_injections)
-
+        dms = 107.3817479147*np.ones(n_injections)
+        frequencies = 8.138748235982394*np.ones(n_injections)
+    
     else:
         sigmas = np.random.uniform(6, 17, n_injections)
-    
+        frequencies = np.random.uniform(0.1, 50, n_injections)
+        dms = np.random.uniform(3, 200, n_injections)
+
     data = []
     print(f"Creating {n_injections} fake pulsars into {injection_path}")
     
