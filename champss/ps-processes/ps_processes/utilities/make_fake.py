@@ -57,6 +57,11 @@ def get(n_injections, file_name, injection_path, focus):
         dms = 107.3817479147*np.ones(n_injections)
         frequencies = 8.138748235982394*np.ones(n_injections)
     
+    elif focus == 'duty':
+        frequencies = 8.138748235982394*np.ones(n_injections)
+        dms = 107.3817479147*np.ones(n_injections)
+        sigmas = 11.28372911*np.ones(n_injections)
+
     else:
         sigmas = np.random.uniform(6, 17, n_injections)
         frequencies = np.random.uniform(0.1, 50, n_injections)
