@@ -162,7 +162,7 @@ class Injection:
         norm_pows = np.abs(prof_fft)**2.0
         maxpower = norm_pows.sum()
         norm_pows /= maxpower
-        log.info(f'norm_pows.sum() = {norm_pows.sum()}')
+        #check the sum of powers is 1
         assert(math.isclose(norm_pows.sum(), 1.0))
         Nallharms = len(norm_pows)
 
@@ -184,6 +184,8 @@ class Injection:
         '''
         This function disperses an input pulse profile over a range of -2*deltaDM to 2*deltaDM according
         to the algorithm specified above.
+
+        A more detailed walk-through of the algorithm can be found in reyniersquillace/RadioTime/Kernel_Dedispersion.
 
         Inputs:
         -------
@@ -208,7 +210,8 @@ class Injection:
         log.info(f'Stopping DM: {self.trial_dms[i_max]}')
         dispersed_prof_fft = np.zeros((len(self.trial_dms), len(prof_fft)), dtype = 'complex_')
         dms = self.trial_dms[i_min:i_max + 1]
-
+        
+        #load the dispersion kernels and multiply our pulse profile by them
         for i in range(i_min, i_max + 1):
             key = np.argmin(np.abs(np.abs((self.trial_dms[i] - self.true_dm)/self.deltaDM) - kernel_scaling))
             dispersed_prof_fft[i] = prof_fft * kernels[key, 1:len(prof_fft)+1]
