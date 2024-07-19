@@ -7,6 +7,7 @@ Adpated from frb-l2l3 on 20200202.
 
 
 import numpy as np
+from astropy.time import Time
 
 # from sps_common.constants import TELESCOPE_ROTATION_ANGLE
 # from sps_common.config import search_freq_range_from_dc
@@ -218,15 +219,15 @@ def compare_frequency(
         used_delta_freq = 9.70127682e-04 / cand_nharm
     else:
         used_delta_freq = candidate.delta_freq
+    current_period = known_sources["current_spin_period_s"]
     for harm in harms:
         bayes_factor_harm = gaussian_bayes(
             candidate.best_freq * harm,
             used_delta_freq * harm,
-            1 / known_sources["spin_period_s"],
+            1 / current_period,
             mu_min,
             mu_max,
-            sigma_mu=known_sources["spin_period_s_error"]
-            / known_sources["spin_period_s"] ** 2,
+            sigma_mu=known_sources["spin_period_s_error"] / current_period**2,
         )
         bayes_factor = np.max((bayes_factor, bayes_factor_harm), axis=0)
 
@@ -535,6 +536,36 @@ def search_freq_range_from_dc(dc, base_freq=50.0, nphi=0):
             freq_max = base_freq * 32 / nphi_dc
 
     return freq_min, freq_max
+
+
+def change_spin_period(source, new_epoch):
+    """
+    Calculates period of known source based on new epoch, rather than the observation
+    epoch.
+
+    Parameters
+    ----------
+    source: KnownSource
+        The known source class object to be updated
+
+    new_epoch: astropy Time
+        Date of new epoch
+
+    Returns
+    -------
+    P: int
+        The updated period of the known source
+    """
+    P0 = source.spin_period_s
+    P1 = source.spin_period_derivative
+    if P1 > 0:
+        detect_epoch = Time(source.spin_period_epoch, format="mjd")
+        new_epoch = Time(new_epoch)
+        diff_epoch = (new_epoch - detect_epoch).sec
+        P = P0 + diff_epoch * P1
+    else:
+        P = P0
+    return P
 
 
 if __name__ == "__main__":
