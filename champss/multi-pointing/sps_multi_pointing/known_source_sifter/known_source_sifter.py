@@ -13,6 +13,7 @@ import os
 import attr
 import numpy as np
 import numpy.lib.recfunctions as rfn
+from astropy.time import Time
 from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
 from sps_databases.db_api import get_nearby_known_sources
@@ -83,6 +84,7 @@ class KnownSourceSifter:
                 ("dm", "<f4"),
                 ("dm_error", "<f4"),
                 ("spin_period_s", "<f4"),
+                ("current_spin_period_s", "<f4"),
                 ("spin_period_s_error", "<f4"),
             ],  # the dtype has some unused fields trimmed out
         )
@@ -97,6 +99,7 @@ class KnownSourceSifter:
                 ks.dm,
                 ks.dm_error,
                 ks.spin_period_s,
+                change_spin_period(ks.spin_period_s, Time.now()),
                 ks.spin_period_s_error,
             )
 
