@@ -1,4 +1,3 @@
-import datetime as dt
 import logging
 import os
 import subprocess
@@ -307,13 +306,17 @@ def main(
     if dir_suffix == "candidates":
         log.info(f"Setting up pointing for {round(ra, 2)} {round(dec, 2)}...")
         coord_path = f"{directory_path}/{round(ra, 2)}_{round(dec, 2)}"
-        archive_fname = f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}"
+        archive_fname = (
+            f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}"
+        )
         if not os.path.exists(coord_path):
             os.makedirs(coord_path)
         else:
             log.info(f"Directory '{coord_path}' already exists.")
         if not ephem_path:
-            ephem_path = f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}.par"
+            ephem_path = (
+                f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}.par"
+            )
             create_ephemeris(name, ra, dec, dm, date, f0, ephem_path, fs_id)
     elif dir_suffix == "known_sources":
         log.info(f"Setting up pointing for {psr}...")

@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy.time import Time
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
+from sps_databases.db_api import get_nearby_known_sources
 
 
 def plot_candidate_archive(
@@ -51,7 +52,7 @@ def plot_candidate_archive(
     ax1 = plt.subplot2grid((3, 4), (1, 0), colspan=2, rowspan=2)
     ax3 = plt.subplot2grid((3, 4), (1, 2), colspan=2, rowspan=2)
 
-    plt.subplots_adjust(hspace=0.05, wspace=0.05)
+    plt.subplots_adjust(hspace=0.05, wspace=0.05, bottom=0.4)
 
     ax0.set_title(f"{psr} {T0.isot[:10]}", fontsize=18)
 
@@ -108,7 +109,7 @@ def plot_candidate_archive(
 
     ax0.text(
         1.05,
-        1.0,
+        1.05,
         parameters_text,
         transform=ax0.transAxes,
         fontsize=18,
@@ -116,6 +117,58 @@ def plot_candidate_archive(
         ha="left",
         backgroundcolor="white",
     )
+
+    radius = 5
+    sources = get_nearby_known_sources(ra, dec, radius)
+
+    ks_text = f"Known sources within {radius} degrees\n"
+
+    for source in sources:
+        ks_name = source.source_name
+        ks_epoch = source.spin_period_epoch
+        if ks_epoch == 45000.0:
+            published = False
+        else:
+            published = True
+        ks_ra = round(source.pos_ra_deg, 2)
+        ks_dec = round(source.pos_dec_deg, 2)
+        ks_f0 = round(1 / source.spin_period_s, 4)
+        ks_dm = round(source.dm, 2)
+        if published:
+            ks_text += f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0} \n"
+        else:
+            ks_text += (
+                f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0},"
+                " Unpublished \n"
+            )
+
+    def get_text_height(text, fontsize=10):
+        renderer = fig.canvas.get_renderer()
+        t = fig.text(0.5, 0.01, text, ha="center", fontsize=fontsize)
+        bbox = t.get_window_extent(renderer)
+        fig_height = fig.get_size_inches()[1] * fig.dpi
+        text_height = bbox.height / fig_height
+        t.remove()
+        return text_height
+
+    text_height = get_text_height(ks_text)
+
+    bottom_margin = 0.1 + text_height
+    plt.subplots_adjust(bottom=bottom_margin, top=0.9, left=0.1, right=0.9)
+
+    fig.text(0.1, 0.01, ks_text, ha="left", fontsize=10)
+
+    # ax1.text(
+    #     0.0,
+    #     -0.3,
+    #     ks_text,
+    #     transform=ax1.transAxes,
+    #     fontsize=10,
+    #     va="top",
+    #     ha="left",
+    #     backgroundcolor="white",
+    # )
+
     plt.savefig(coord_path + f"/{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png")
 
     img_path = f"{foldpath}/plots/folded_candidate_plots/{T0.isot[:10]}-plots/"
