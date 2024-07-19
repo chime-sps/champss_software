@@ -63,8 +63,7 @@ def get_service_created_at_datetime(service):
         return datetime
     except Exception as error:
         log.info(
-            f"Error parsing CreatedAt for service {service}: {error} (will skip"
-            " gracefully)."
+            f"Error parsing CreatedAt for service {service}: {error} (will skip gracefully)."
         )
         return None
 
@@ -172,16 +171,16 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             log.info(
                                 f"Service {service.name} has been ruuning for more than"
                                 f" {(task_timeout_seconds  * 2) / 60} minutes in state"
-                                f" {task_state}, implying frozen task on 1st or 2nd"
-                                " final Workflow runner attempt. Will remove service."
+                                f" {task_state}, implying frozen task on 1st or 2nd final"
+                                f" Workflow runner attempt. Will remove service."
                             )
 
                             try:
                                 service.remove()
                             except Exception as error:
                                 log.info(
-                                    f"Error removing service {service.name}:"
-                                    f" {error} (will skip gracefully)."
+                                    f"Error removing service {service.name}: {error} (will"
+                                    " skip gracefully)."
                                 )
                         # Task in state running, and we want to wait for no running states
                         # Loop will continue
@@ -195,8 +194,8 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             log.info(
                                 f"Service {service.name} has been pending for more than"
                                 f" {(task_timeout_seconds  * 2) / 60} minutes in state"
-                                f" {task_state}, implying failed Docker task"
-                                " scheduling. Will remove service."
+                                f" {task_state}, implying failed Docker task scheduling. Will"
+                                " remove service."
                             )
 
                             try:
@@ -338,8 +337,8 @@ def schedule_workflow_job(
         return work_id[0]
     except Exception as error:
         log.info(
-            f"Failed to deposit Work and create Docker Service for {docker_name}:"
-            f" {error}. Will not schedule this task."
+            f"Failed to deposit Work and create Docker Service for {docker_name}: {error}."
+            " Will not schedule this task."
         )
         return ""
 
@@ -381,6 +380,7 @@ def clear_workflow_buckets(workflow_buckets_name):
             )
     except Exception as error:
         print(error)
+        pass
 
 
 @click.command()

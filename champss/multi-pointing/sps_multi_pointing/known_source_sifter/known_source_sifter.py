@@ -12,8 +12,8 @@ import os
 
 import attr
 import numpy as np
-import numpy.lib.recfunctions as rfn
 from astropy.time import Time
+import numpy.lib.recfunctions as rfn
 from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
 from sps_databases.db_api import get_nearby_known_sources
@@ -74,7 +74,7 @@ class KnownSourceSifter:
         ks_collection = get_nearby_known_sources(0, 0, np.infty)  # get all sources
         ks_database = np.empty(
             shape=len(ks_collection),
-            dtype=[
+      dtype=[
                 ("source_name", "<U15"),
                 ("pos_ra_deg", "<f4"),
                 ("pos_dec_deg", "<f4"),

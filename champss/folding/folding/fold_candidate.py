@@ -458,7 +458,7 @@ def main(
         "SN": float(SN_arr),
         "path_to_plot": plot_fname,
     }
-
+    
     if fs_id and write_to_db:
         log.info("Updating FollowUpSource with folding history")
         folding_history = source.folding_history

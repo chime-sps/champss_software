@@ -9,7 +9,10 @@ import numpy as np
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from sps_databases import db_api, db_utils, models
-from sps_pipeline.workflow import schedule_workflow_job
+
+from sps_pipeline.workflow import (
+    schedule_workflow_job,
+)
 
 log = logging.getLogger()
 
