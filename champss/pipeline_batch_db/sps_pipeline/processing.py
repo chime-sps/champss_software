@@ -16,7 +16,7 @@ from beamformer.strategist.strategist import PointingStrategist
 from folding.filter_mpcandidates import Filter
 from sps_databases import db_api, db_utils, models
 from sps_pipeline.pipeline import datpath, main
-from sps_pipeline.utils import get_pointings_from_list, convert_date_to_datetime
+from sps_pipeline.utils import convert_date_to_datetime, get_pointings_from_list
 from sps_pipeline.workflow import (
     clear_workflow_buckets,
     docker_swarm_pending_states,
@@ -1360,7 +1360,8 @@ def remove_processing_services(signal, frame):
     ]
 
     log.info(
-        f"Removing processing services: \n{[service.name for service in processing_services]}"
+        "Removing processing services:"
+        f" \n{[service.name for service in processing_services]}"
     )
 
     for service in processing_services:
