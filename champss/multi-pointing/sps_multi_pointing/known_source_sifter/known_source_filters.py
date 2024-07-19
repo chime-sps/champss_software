@@ -227,8 +227,7 @@ def compare_frequency(
             1 / current_period,
             mu_min,
             mu_max,
-            sigma_mu=known_sources["spin_period_s_error"]
-            / current_period ** 2,
+            sigma_mu=known_sources["spin_period_s_error"] / current_period**2,
         )
         bayes_factor = np.max((bayes_factor, bayes_factor_harm), axis=0)
 
@@ -535,9 +534,11 @@ def search_freq_range_from_dc(dc, base_freq=50.0, nphi=0):
 
     return freq_min, freq_max
 
-def change_spin_period(source, new_epoch): 
+
+def change_spin_period(source, new_epoch):
     """
-    Calculates period of known source based on new epoch, rather than the observation epoch. 
+    Calculates period of known source based on new epoch, rather than the observation
+    epoch.
 
     Parameters
     ----------
@@ -545,7 +546,7 @@ def change_spin_period(source, new_epoch):
         The known source class object to be updated
 
     new_epoch: astropy Time
-        Date of new epoch 
+        Date of new epoch
 
     Returns
     -------
@@ -555,7 +556,7 @@ def change_spin_period(source, new_epoch):
     P0 = source.spin_period_s
     P1 = source.spin_period_derivative
     if P1 > 0:
-        detect_epoch = Time(source.spin_period_epoch, format='mjd')
+        detect_epoch = Time(source.spin_period_epoch, format="mjd")
         new_epoch = Time(new_epoch)
         diff_epoch = (new_epoch - detect_epoch).sec
         P = P0 + diff_epoch * P1
