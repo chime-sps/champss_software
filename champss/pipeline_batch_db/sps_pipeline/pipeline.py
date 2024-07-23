@@ -289,6 +289,13 @@ def dbexcepthook(type, value, tb):
     default=False,
     help="Only process clusters containing injections.",
 )
+
+@click.option(
+    "--cutoff-frequency/--no-cutoff-frequency",
+    default = True,
+    help = "Don't search for pulsars about 100Hz.",
+)
+
 def main(
     date,
     stack,
@@ -312,6 +319,7 @@ def main(
     injection_path,
     injection_idx,
     only_injections,
+    cutoff_frequency,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -638,6 +646,7 @@ def main(
                         injection_path,
                         injection_idx,
                         only_injections,
+                        cutoff_frequency,
                         obs_folder,
                         prefix,
                     )
@@ -862,6 +871,12 @@ def main(
     help="Only process clusters containing injections.",
 )
 
+@click.option(
+    "--cutoff-frequency/--no-cutoff-frequency",
+    default = True,
+    help = "Don't search for pulsars about 100Hz.",
+)
+
 def stack_and_search(
     plot,
     plot_threshold,
@@ -877,6 +892,7 @@ def stack_and_search(
     injection_path,
     injection_idx,
     only_injections,
+    cutoff_frequency,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.

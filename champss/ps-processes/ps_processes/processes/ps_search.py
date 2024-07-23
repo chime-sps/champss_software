@@ -180,7 +180,7 @@ class PowerSpectraSearch:
             "HDBSCAN",
         ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
 
-    def search(self, pspec, injection_path, injection_indices, only_injections):
+    def search(self, pspec, injection_path, injection_indices, only_injections, cutoff_frequency):
         """
         Run the search.
 
@@ -371,6 +371,7 @@ class PowerSpectraSearch:
                 power_cutoff_per_harmonic,
                 injection_bins_original,
                 injection_DMs,
+                cutoff_frequency,
             ),
             zip(dm_indices, dm_split),
         )
@@ -461,6 +462,7 @@ class PowerSpectraSearch:
         power_cutoff_per_harmonic,
         injection_bins_original,
         injection_DMs,
+        cutoff_frequency,
         dm_indices,
         dms,
     ):
@@ -563,10 +565,11 @@ class PowerSpectraSearch:
                     replace_last = False
                     detection_freq = freq_labels[idx] / harm
                     # skipping candidates with period less than 10 time samples
-                    if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (
-                        0.1 / TSAMP
-                    ):
-                        continue
+                    if cutoff_frequency:
+                        if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (
+                            0.1 / TSAMP
+                        ):
+                            continue
                     if sigmas is None:
                         if type(used_nsum) == np.ndarray:
                             used_nsum_detec_loop = used_nsum[idx]

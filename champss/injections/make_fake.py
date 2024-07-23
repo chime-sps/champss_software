@@ -43,9 +43,10 @@ def get(n_injections, file_name, injection_path, focus):
         n_injections = len(load_profs)
     
     if focus == 'frequency' or focus == 'freq':
-        frequencies = np.logspace(-2, 2.7, n_injections)
+        #frequencies = np.logspace(1.8, 2.3, n_injections)
+        frequencies = np.logspace(2, 2.3, n_injections)
         dms = 107.3817479147*np.ones(n_injections)
-        sigmas = 11.28372911*np.ones(n_injections)
+        sigmas = 17.28372911*np.ones(n_injections)
     
     elif focus == 'dm' or focus == 'DM':
         dms = np.linspace(3, 200, n_injections)
