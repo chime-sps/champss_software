@@ -289,13 +289,11 @@ def dbexcepthook(type, value, tb):
     default=False,
     help="Only process clusters containing injections.",
 )
-
 @click.option(
     "--cutoff-frequency/--no-cutoff-frequency",
-    default = True,
-    help = "Don't search for pulsars about 100Hz.",
+    default=True,
+    help="Don't search for pulsars about 100Hz.",
 )
-
 def main(
     date,
     stack,
@@ -870,13 +868,11 @@ def main(
     default=False,
     help="Only process clusters containing injections.",
 )
-
 @click.option(
     "--cutoff-frequency/--no-cutoff-frequency",
-    default = True,
-    help = "Don't search for pulsars about 100Hz.",
+    default=True,
+    help="Don't search for pulsars about 100Hz.",
 )
-
 def stack_and_search(
     plot,
     plot_threshold,
@@ -957,7 +953,10 @@ def stack_and_search(
             ps_detections_monthly,
             power_spectra_monthly,
         ) = ps_cumul_stack_processor.pipeline.load_and_search_monthly(
-            closest_pointing._id
+            closest_pointing._id,
+            injection_path,
+            injection_idx,
+            only_injections,
         )
         ps_stack = db_api.get_ps_stack(closest_pointing._id)
         if ps_detections_monthly:

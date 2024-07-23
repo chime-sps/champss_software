@@ -124,6 +124,7 @@ def run_interface(
     plot=False,
     plot_threshold=0,
     write_hrc=False,
+    update_db=False,
 ):
     """
     Search a `pointing` for periodicity candidates. Candidates will be written out in a
@@ -173,11 +174,13 @@ def run_interface(
             psdc, power_spectra
         )
         spcc.write(ps_candidates)
-        payload = {
-            "path_candidate_file": path.abspath(ps_candidates),
-            "num_total_candidates": len(spcc.candidates),
-        }
-        db_api.append_ps_stack(pointing._id, payload)
+        if update_db:
+            # For now don't write to db, I'll think later about how to turn this on and off
+            payload = {
+                "path_candidate_file": path.abspath(ps_candidates),
+                "num_total_candidates": len(spcc.candidates),
+            }
+            db_api.append_ps_stack(pointing._id, payload)
         if plot:
             if cand_path is None:
                 plot_folder = f"{stack_root_folder}/plots"
