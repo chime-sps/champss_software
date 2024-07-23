@@ -5,8 +5,7 @@ import time
 import click
 import docker
 from workflow.definitions.work import Work
-from workflow.http.buckets import Buckets
-from workflow.http.results import Results
+from workflow.http.context import HTTPContext
 from slack_sdk import WebClient
 
 log = logging.getLogger()
@@ -369,23 +368,21 @@ def schedule_workflow_job(
 def clear_workflow_buckets(workflow_buckets_name):
     """Function to empty given SPS Buckets collection on-site."""
     try:
-        print("test")
-        buckets_api = Buckets()
-        print(buckets_api)
+        http_context = HTTPContext()
+        buckets_api = http_context.buckets
         # Bucket API only allows 100 deletes per request
         buckets_list = buckets_api.view(
             query={"pipeline": workflow_buckets_name},
             limit=100,
             projection={"id": True},
         )
-        print(buckets_list)
+        log.info(f"Initial buckets entries: {buckets_list}")
         while len(buckets_list) != 0:
             buckets_list = buckets_api.view(
                 query={"pipeline": workflow_buckets_name},
                 limit=100,
                 projection={"id": True},
             )
-            print(buckets_list)
             bucket_ids_to_delete = [bucket["id"] for bucket in buckets_list]
             log.info(f"Will delete buckets entries with ids: {bucket_ids_to_delete}")
             buckets_api.delete_ids(ids=bucket_ids_to_delete)
@@ -394,6 +391,7 @@ def clear_workflow_buckets(workflow_buckets_name):
                 limit=100,
                 projection={"id": True},
             )
+        log.info(f"Final buckets entries: {buckets_list}")
     except Exception as error:
         print(error)
 
@@ -410,11 +408,13 @@ def clear_workflow_results(workflow_results_name):
     log.setLevel(logging.INFO)
 
     try:
-        results_api = Results()
+        http_context = HTTPContext()
+        results_api = http_context.results
         # Results API only allows 10 deletes per request
         results_list = results_api.view(
             query={}, pipeline=workflow_results_name, limit=10, projection={"id": 1}
         )
+        log.info(f"Initial results entries: {results_list}")
         while len(results_list) != 0:
             result_ids_to_delete = [result["id"] for result in results_list]
             log.info(f"Will delete results entries with ids: {result_ids_to_delete}")
@@ -424,6 +424,7 @@ def clear_workflow_results(workflow_results_name):
             results_list = results_api.view(
                 query={}, pipeline=workflow_results_name, limit=10, projection={"id": 1}
             )
+        log.info(f"Final results entries: {results_list}")
     except Exception as error:
         pass
 
@@ -431,7 +432,8 @@ def clear_workflow_results(workflow_results_name):
 def get_work_from_buckets(workflow_buckets_name, work_id, failover_to_results):
     log.setLevel(logging.INFO)
 
-    workflow_buckets_api = Buckets()
+    http_context = HTTPContext()
+    workflow_buckets_api = http_context.buckets
     workflow_buckets_list = workflow_buckets_api.view(
         query={"pipeline": workflow_buckets_name, "id": work_id},
         limit=1,
@@ -470,7 +472,8 @@ def get_work_from_buckets(workflow_buckets_name, work_id, failover_to_results):
 def get_work_from_results(workflow_results_name, work_id, failover_to_buckets):
     log.setLevel(logging.INFO)
 
-    workflow_results_api = Results()
+    http_context = HTTPContext()
+    workflow_results_api = http_context.results
     workflow_results_list = workflow_results_api.view(
         query={"id": work_id},
         pipeline=workflow_results_name,
