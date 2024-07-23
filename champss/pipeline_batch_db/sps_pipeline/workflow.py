@@ -298,7 +298,7 @@ def schedule_workflow_job(
             "command": (
                 "workflow run"
                 f" {workflow_buckets_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
-                f" {workflow_site} --lifetime 1 --sleep-time 0"
+                f" {workflow_site} --lives 1 --sleep 1"
             ),
             # Using template Docker variables as in-container environment variables
             # that allow us this access out-of-container information
