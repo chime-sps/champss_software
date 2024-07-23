@@ -4,9 +4,9 @@ import time
 
 import click
 import docker
-from chime_frb_api.modules.buckets import Buckets
-from chime_frb_api.modules.results import Results
-from chime_frb_api.workflow import Work
+from workflow.definitions.work import Work
+from workflow.http.buckets import Buckets
+from workflow.http.results import Results
 from slack_sdk import WebClient
 
 log = logging.getLogger()
