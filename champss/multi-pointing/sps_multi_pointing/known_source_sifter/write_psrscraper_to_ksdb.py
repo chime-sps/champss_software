@@ -89,6 +89,7 @@ if __name__ == "__main__":
                 "spin_period_derivative": 0.0,
                 "spin_period_derivative_error": 0.0,
                 "spin_period_epoch": 45000.0,  # placeholder, older than psrcat so as not to overwrite
+                "survey": survey,
             }
-            print(psrname, ra, dec, P0, DM)
+            print(psrname, ra, dec, P0, DM, survey)
             add_source_to_database(payload)
