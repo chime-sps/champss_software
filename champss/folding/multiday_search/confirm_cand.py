@@ -51,6 +51,11 @@ from sps_databases import db_api, db_utils
     is_flag=True,
     help="Set folded_status to True in the processes database.",
 )
+@click.option(
+    "--check-cands",
+    is_flag=True,
+    help="Output possible candidates.",
+)
 def main(
     fs_id,
     db_port,
@@ -58,11 +63,23 @@ def main(
     db_name,
     phase_accuracy,
     write_to_db=False,
+    check_cands=False,
 ):
-    db_utils.connect(host=db_host, port=db_port, name=db_name)
-    print(fs_id)
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+    if check_cands:
+        print("Possible candidates:")
+        candidates = db.followup_sources.find({"source_type": "md_candidate"})
+        for cand in candidates:
+            print(
+                cand["_id"],
+                cand["path_to_ephemeris"],
+                len(cand["folding_history"]),
+                "archives",
+            )
+        return
+
     source = db_api.get_followup_source(fs_id)
-    print(source)
+    print(fs_id, source)
     source_type = source.source_type
     if source_type != "md_candidate":
         log.error(f"Source {fs_id} is not a multi-day candidate, exiting...")
