@@ -623,6 +623,7 @@ class HhatStack:
 class KnownSource:
     source_type = attrib(converter=int)
     source_name = attrib(converter=str)
+    survey = attrib(converter=str)
     pos_ra_deg = attrib(converter=float)
     pos_dec_deg = attrib(converter=float)
     pos_error_semimajor_deg = attrib(converter=float)
@@ -638,7 +639,6 @@ class KnownSource:
     spin_period_derivative_error = attrib(default=0, converter=float, type=float)
     spin_period_epoch = attrib(default=0, converter=float, type=float)
     detection_history = attrib(default=[], type=list)
-    survey = attrib(converter=str)
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )
