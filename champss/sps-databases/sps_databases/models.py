@@ -638,7 +638,7 @@ class KnownSource:
     spin_period_derivative_error = attrib(default=0, converter=float, type=float)
     spin_period_epoch = attrib(default=0, converter=float, type=float)
     detection_history = attrib(default=[], type=list)
-    survey = attrib(default=[], converter=str, type=str)
+    survey = attrib(converter=str)
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )
