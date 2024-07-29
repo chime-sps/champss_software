@@ -51,6 +51,11 @@ from sps_databases import db_api, db_utils
     is_flag=True,
     help="Set folded_status to True in the processes database.",
 )
+@click.option(
+    "--check-cands",
+    is_flag=True,
+    help="Output possible candidates.",
+)
 def main(
     fs_id,
     db_port,
@@ -58,11 +63,23 @@ def main(
     db_name,
     phase_accuracy,
     write_to_db=False,
+    check_cands=False,
 ):
-    db_utils.connect(host=db_host, port=db_port, name=db_name)
-    print(fs_id)
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+    if check_cands:
+        print("Possible candidates:")
+        candidates = db.followup_sources.find({"source_type": "md_candidate"})
+        for cand in candidates:
+            print(
+                cand["_id"],
+                cand["path_to_ephemeris"],
+                len(cand["folding_history"]),
+                "archives",
+            )
+        return
+
     source = db_api.get_followup_source(fs_id)
-    print(source)
+    print(fs_id, source)
     source_type = source.source_type
     if source_type != "md_candidate":
         log.error(f"Source {fs_id} is not a multi-day candidate, exiting...")
@@ -141,12 +158,23 @@ def main(
     directory = data["directory"]
     with open(par_file) as input:
         with open(optimal_par_file, "w") as output:
+            output.write("# Created: " + str(datetime.datetime.now()) + "\n")
+            output.write("# F0 and F1 from CHAMPSS coherent search\n")
             for line in input:
-                if line.strip("\n")[0:2] != "F0":
+                key = line.split()[0]
+                if key == "F0":
+                    F0_output = f"F0 {str(f0_optimal)} 1 \n"
+                    output.write(F0_output)
+                    F1_output = f"F1 {str(-f1_optimal)} 1 \n"
+                    output.write(F1_output)
+                elif key == "RAJ":
+                    RA_output = f"{line.strip()} 1 \n"
+                    output.write(RA_output)
+                elif key == "DECJ":
+                    DEC_output = f"{line.strip()} 1 \n"
+                    output.write(DEC_output)
+                else:
                     output.write(line)
-            ### rewrite without \t
-            output.write("\t".join(["F0", str(f0_optimal)]) + "\n")
-            output.write("\t".join(["F1", str(-f1_optimal)]) + "\n")
 
     explore_grid.plot(fullplot=True)
     return coherentsearch_summary, [], []
