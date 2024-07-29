@@ -192,7 +192,6 @@ class PowerSpectraPipeline:
         injection_path,
         injection_idx,
         only_injections,
-        cutoff_frequency,
         filepath="./",
         prefix="",
     ):
@@ -318,7 +317,6 @@ class StackSearchPipeline:
         injection_path=None,
         injection_idx=None,
         only_store_injections=False,
-        cutoff_frequency=True,
     ):
         """
         Process the monthly stack.
@@ -411,7 +409,7 @@ class StackSearchPipeline:
         injection_path=None,
         injection_idx=None,
         only_store_injections=False,
-        cutoff_frequency=True,
+        cutoff_frequency=100.,
     ):
         """
         Process the cumulative stack.

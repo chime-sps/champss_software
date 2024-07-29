@@ -123,7 +123,8 @@ def x_to_chi2(x, df):
         
         chi2 = chdtri(df, prob)
 
-        return chi2
+        #normalize to CHAMPSS power spectrum by dividing by 2
+        return chi2/2
 
 
 class Injection:
@@ -169,7 +170,8 @@ class Injection:
         # Compute the theoretical power in the harmonics where we will inject
         # a significant amount of our power (i.e. > 1%)
         Nsignif = int(((norm_pows/norm_pows.max())>0.01).sum())
-        power = x_to_chi2(self.sigma, 2*Nsignif*self.ndays)/2
+        log.info(f'Number of significant harmonics = {Nsignif}')
+        power = x_to_chi2(self.sigma, 2*Nsignif*self.ndays)
 
         # Now compute the theoretical power for each harmonic to inject. We will
         # add this value to the current stack. Note that we are subtracting the
@@ -228,12 +230,13 @@ class Injection:
                 prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic
                 df (float)        : frequency bin width in target spectrum
                 n_harm (int)      : the number of harmonics before the Nyquist frequency
-                N (int)           : number of bins over which to perform sinc interpolation. Default 4. 
         Returns:
         ________
                 harmonics (ndarray) : Fourier-transformed harmonics of the profile convolved with
                                         [cycles] number of Delta functions
         """
+        #Because of the rapid drop-off of the sinc function, adding further interpolation bins gives a negligible increase
+        #in power fidelity. Therefore we've hard-coded 4 bins.
         N = 4
         harmonics = np.zeros((N*n_harm))
         bins = np.zeros((N*n_harm)).astype(int)
@@ -268,10 +271,10 @@ class Injection:
         # pull frequency bins from target power spectrum
         freqs = self.pspec_obj.freq_labels
         df = freqs[1] - freqs[0]
-        f_nyquist = np.floor(freqs[-1] / 2)
+        f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
         scaled_prof_fft, Nsignif = self.sigma_to_power()
-        
+        print(f'Nyquist cutoff frequency = {f_nyquist} Hz.')
         if Nsignif < n_harm:
             n_harm = Nsignif
 

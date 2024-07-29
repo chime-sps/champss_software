@@ -565,11 +565,12 @@ class PowerSpectraSearch:
                     replace_last = False
                     detection_freq = freq_labels[idx] / harm
                     # skipping candidates with period less than 10 time samples
-                    if cutoff_frequency:
-                        if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (
-                            0.1 / TSAMP
-                        ):
-                            continue
+
+                    if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (
+                        cutoff_frequency / 1000 / TSAMP
+                    ):
+                        continue
+                        
                     if sigmas is None:
                         if type(used_nsum) == np.ndarray:
                             used_nsum_detec_loop = used_nsum[idx]

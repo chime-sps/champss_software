@@ -290,9 +290,9 @@ def dbexcepthook(type, value, tb):
     help="Only process clusters containing injections.",
 )
 @click.option(
-    "--cutoff-frequency/--no-cutoff-frequency",
-    default=True,
-    help="Don't search for pulsars about 100Hz.",
+    "--cutoff-frequency",
+    default=100,
+    help="Frequency at which to stop processing candidates.",
 )
 def main(
     date,
@@ -349,7 +349,6 @@ def main(
     # Logging in multiprocessing child processes with Linux default
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
-
     if isinstance(date, str):
         for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
             try:
@@ -669,6 +668,7 @@ def main(
                             injection_path,
                             injection_idx,
                             only_injections,
+                            cutoff_frequency,
                         )
                     gc.collect()
                 if stack:
@@ -869,9 +869,9 @@ def main(
     help="Only process clusters containing injections.",
 )
 @click.option(
-    "--cutoff-frequency/--no-cutoff-frequency",
-    default=True,
-    help="Don't search for pulsars about 100Hz.",
+    "--cutoff-frequency",
+    default=100,
+    help="Frequency at which to stop processing candidates.",
 )
 def stack_and_search(
     plot,
@@ -899,6 +899,7 @@ def stack_and_search(
     - search: run the searching of the cumulative stack
     - search-monthly: run the searching of the monthly stack
     """
+
     multiprocessing.set_start_method("forkserver")
     sys.excepthook = dbexcepthook
     global pipeline_start_time
@@ -957,6 +958,7 @@ def stack_and_search(
             injection_path,
             injection_idx,
             only_injections,
+            cutoff_frequency,
         )
         ps_stack = db_api.get_ps_stack(closest_pointing._id)
         if ps_detections_monthly:
@@ -982,6 +984,7 @@ def stack_and_search(
             injection_path,
             injection_idx,
             only_injections,
+            cutoff_frequency,
         )
         if to_search:
             if not ps_detections:
