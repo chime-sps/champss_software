@@ -149,14 +149,19 @@ class Injection:
         deltaDM =  1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
 
-    def sigma_to_power(self):
+    def sigma_to_power(self, n_harm):
         '''This function converts an input Gaussian sigma to an approximately equivalent power. In order to do so,
         we have to estimate the number of summed harmonics in our final profile. This code was largely written by 
         Scott Ransom.
 
+        Inputs:
+        -------
+            n_harm (int): number of harmonics before the Nyquist cutoff frequency
         Returns:
         -------
-            power (int): approximate equivalent power
+            scaled_fft (arr): the first Nsignif harmonics of the FFT of the pulse profile, scaled so that the sum
+            of the powers will equal the input sigma, and not including the zeroth harmonic
+
         '''
         # Compute the normalized powers of the injected profile (Sum of pows == 1)
         prof_fft = rfft(self.phase_prof)[1:]
@@ -170,7 +175,7 @@ class Injection:
         # Compute the theoretical power in the harmonics where we will inject
         # a significant amount of our power (i.e. > 1%)
         Nsignif = int(((norm_pows/norm_pows.max())>0.01).sum())
-        log.info(f'Number of significant harmonics = {Nsignif}')
+            
         power = x_to_chi2(self.sigma, 2*Nsignif*self.ndays)
 
         # Now compute the theoretical power for each harmonic to inject. We will
@@ -178,9 +183,16 @@ class Injection:
         # predicted amount of power due to the means of the power spectra.
 
         power -= Nsignif * self.ndays
-        scaled_fft = prof_fft[:Nsignif] * np.sqrt(power / maxpower)
 
-        return scaled_fft, Nsignif
+        #if there are fewer significant harmonics than there are harmonics that fit 
+        #then use Nsignif
+        #otherwise only take harmonics that fit before the Nyquist cutoff frequency
+        if Nsignif < n_harm:
+            n_harm = Nsignif
+
+        scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
+
+        return scaled_fft
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
         '''
@@ -210,17 +222,20 @@ class Injection:
         #find the stopping index, where the DM scale is +2
         i_max = np.argmin(np.abs((self.true_dm + 2*self.deltaDM) - self.trial_dms))
         log.info(f'Stopping DM: {self.trial_dms[i_max]}')
-        dispersed_prof_fft = np.zeros((len(self.trial_dms), len(prof_fft)), dtype = 'complex_')
-        dms = self.trial_dms[i_min:i_max + 1]
+        
+        #reminder; we are inclusive of i_max because that's the last index into which we want to inject
+        target_dm_idx = np.arange(i_min, i_max + 1)
+        dms = self.trial_dms[target_dm_idx]
+        dispersed_prof_fft = np.zeros((len(dms), len(prof_fft)), dtype = 'complex_')
         
         #load the dispersion kernels and multiply our pulse profile by them
-        for i in range(i_min, i_max + 1):
-            key = np.argmin(np.abs(np.abs((self.trial_dms[i] - self.true_dm)/self.deltaDM) - kernel_scaling))
+        for i in range(len(dms)):
+            key = np.argmin(np.abs(np.abs((dms[i] - self.true_dm)/self.deltaDM) - kernel_scaling))
             dispersed_prof_fft[i] = prof_fft * kernels[key, 1:len(prof_fft)+1]
 
-        return dispersed_prof_fft, i0
+        return dispersed_prof_fft, target_dm_idx
 
-    def harmonics(self, prof_fft, df, n_harm):
+    def harmonics(self, prof_fft, df, N = 4):
         """
         This function calculates the array of frequency-domain harmonics for a given
         pulse profile.
@@ -230,14 +245,15 @@ class Injection:
                 prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic
                 df (float)        : frequency bin width in target spectrum
                 n_harm (int)      : the number of harmonics before the Nyquist frequency
+                N (int)           : number of bins over which to sinc-interpolate the harmonic
         Returns:
         ________
                 harmonics (ndarray) : Fourier-transformed harmonics of the profile convolved with
                                         [cycles] number of Delta functions
         """
+        n_harm = len(prof_fft)
         #Because of the rapid drop-off of the sinc function, adding further interpolation bins gives a negligible increase
-        #in power fidelity. Therefore we've hard-coded 4 bins.
-        N = 4
+        #in power fidelity. Hence the default is 4. 
         harmonics = np.zeros((N*n_harm))
         bins = np.zeros((N*n_harm)).astype(int)
 
@@ -273,22 +289,16 @@ class Injection:
         df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
-        scaled_prof_fft, Nsignif = self.sigma_to_power()
-        print(f'Nyquist cutoff frequency = {f_nyquist} Hz.')
-        if Nsignif < n_harm:
-            n_harm = Nsignif
-
+        scaled_prof_fft = self.sigma_to_power(n_harm)
         log.info(f"Injecting {n_harm} harmonics.")
 
-        dispersed_prof_fft, i0 = self.disperse(scaled_prof_fft, kernels, kernel_scaling)
+        dispersed_prof_fft, dms = self.disperse(scaled_prof_fft, kernels, kernel_scaling)
         
         harms = []
-        dms = []
-        
+
         for i in range(len(dispersed_prof_fft)):
-            bins, harm = self.harmonics(dispersed_prof_fft[i], df, n_harm)
+            bins, harm = self.harmonics(dispersed_prof_fft[i], df)
             harms.append(harm)
-            dms.append(i)
 
         harms = np.asarray(harms)
 
