@@ -208,6 +208,15 @@ class PowerSpectraSearch:
             PowerSpectraDetectionClusters object with the properties of all the
             detections clusters from the pointing.
         """
+        ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
+        # compute harmonic bins based on power spectra properties
+        if not self.precompute_harms:
+            self.full_harm_bins = np.vstack(
+                (
+                    np.arange(0, ps_length),
+                    harmonic_sum(self.num_harm, np.zeros(ps_length))[1],
+                )
+            ).astype(np.int32)
         if injection_path is not None:
             presets = [
                 "gaussian",
@@ -240,7 +249,9 @@ class PowerSpectraSearch:
                         profile = [pulse, sigma, frequency, DM]
 
                         current_injection_bins, current_injection_DMs = ps_inject.main(
-                            pspec, profile
+                            pspec,
+                            self.full_harm_bins,
+                            profile,
                         )
 
                         # injection_DMs are indices of the altered injection trials
@@ -252,15 +263,6 @@ class PowerSpectraSearch:
             injection_bins_original = []
             log.info("No artificial pulse injected.")
         search_start = time.time()
-        ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
-        # compute harmonic bins based on power spectra properties
-        if not self.precompute_harms:
-            self.full_harm_bins = np.vstack(
-                (
-                    np.arange(0, len(ps_length)),
-                    harmonic_sum(self.num_harm, np.zeros(len(ps_length)))[1],
-                )
-            ).astype(np.int32)
 
         filtered_sources = []
         if self.known_source_threshold is not np.inf:

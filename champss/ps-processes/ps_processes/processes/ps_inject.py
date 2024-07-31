@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 from scipy.fft import fft, rfft
 from scipy.special import chdtri
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP
+from sps_common.interfaces.utilities import sigma_sum_powers
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
@@ -117,7 +118,7 @@ def x_to_chi2(x, df):
         # Calculate the cumulative distribution function (CDF) of chi-squared distribution
         chi2 = stats.chi2.ppf(p, df)
 
-        return chi2
+        return chi2 / 2
 
     else:
         # A&S 26.2.23. This is the inverse of the operation for logp in PRESTO
@@ -140,7 +141,7 @@ def x_to_chi2(x, df):
 class Injection:
     """This class allows pulse injection."""
 
-    def __init__(self, pspec_obj, phase_prof, sigma, true_f, true_dm):
+    def __init__(self, pspec_obj, full_harm_bins, phase_prof, sigma, true_f, true_dm):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
         self.pspec_obj = pspec_obj
@@ -153,6 +154,9 @@ class Injection:
         self.phase_prof = phase_prof
         self.sigma = sigma
         self.power_threshold = 1
+        self.full_harm_bins = full_harm_bins
+        self.rescale_to_expected_sigma = True
+        self.use_rfi_information = False
 
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in
@@ -306,9 +310,10 @@ class Injection:
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
         scaled_prof_fft = self.sigma_to_power(n_harm)
+        used_nharm = len(scaled_prof_fft)
         log.info(f"Injecting {n_harm} harmonics.")
 
-        dispersed_prof_fft, dms = self.disperse(
+        dispersed_prof_fft, dm_indices = self.disperse(
             scaled_prof_fft, kernels, kernel_scaling
         )
 
@@ -320,10 +325,71 @@ class Injection:
 
         harms = np.asarray(harms)
 
-        return harms, bins, dms
+        # estimate sigma
+        true_dm_injection_index = self.true_dm_trial - dm_indices[0]
+        bins_reshaped = bins.reshape(used_nharm, -1)
+        allowed_harmonics = np.array([1, 2, 4, 8, 16, 32])
+        used_search_harmonics = allowed_harmonics[
+            allowed_harmonics * self.f <= f_nyquist
+        ]
+        all_summed_powers = []
+        all_summed_powers_no_bg = []
+        all_nsums = []
+        all_nharms = []
+        for search_harmonic in used_search_harmonics:
+            used_injection_harmonic = min(search_harmonic, used_nharm)
+            last_bins = bins_reshaped[used_injection_harmonic - 1, :]
+            for bin in last_bins:
+                bins_in_sum = self.full_harm_bins[:, self.full_harm_bins[0, :] == bin][
+                    :used_injection_harmonic
+                ]
+                _, _, bin_indices = np.intersect1d(
+                    bins_in_sum, bins, return_indices=True
+                )
+                summed_power = harms[true_dm_injection_index, bin_indices].sum()
+                nsum = search_harmonic * self.ndays
+                # If search nharm is higher than injected nharm
+                # Or are there other reasons?
+                if search_harmonic > len(bin_indices):
+                    bin_difference = len(bins_in_sum) - len(bin_indices)
+                    summed_power += bin_difference * self.ndays
+                # Add background
+                all_summed_powers_no_bg.append(summed_power)
+                summed_power += nsum
+                all_summed_powers.append(summed_power)
+                all_nsums.append(nsum)
+                all_nharms.append(search_harmonic)
+        all_summed_powers = np.array(all_summed_powers)
+        all_summed_powers_no_bg = np.array(all_summed_powers_no_bg)
+        all_nsums = np.array(all_nsums)
+        all_nharms = np.array(all_nharms)
+        possible_sigmas = sigma_sum_powers(all_summed_powers, all_nsums)
+        best_sigma_trial = np.nanargmax(possible_sigmas)
+        best_nharm = all_nharms[best_sigma_trial]
+        best_sigma = possible_sigmas[best_sigma_trial]
+
+        log.info(
+            f"Expected detection at {best_sigma:.2f} sigma with {best_nharm} harmonics."
+        )
+        if self.rescale_to_expected_sigma:
+            expected_power = (
+                x_to_chi2(self.sigma, self.ndays * best_nharm * 2)
+                - self.ndays * best_nharm
+            )
+            harms *= expected_power / all_summed_powers_no_bg[best_sigma_trial]
+            log.info(
+                f"Rescaling injection so that it should be detected at {self.sigma}."
+            )
+
+        return harms, bins, dm_indices
 
 
-def main(pspec, injection_profile="random", num_injections=1):
+def main(
+    pspec,
+    full_harm_bins,
+    injection_profile="random",
+    num_injections=1,
+):
     """
     This function runs the injection.
 
@@ -395,7 +461,7 @@ def main(pspec, injection_profile="random", num_injections=1):
     zero_bins = pspec.power_spectra[0, :] == 0
     for injection_profile in injection_profiles:
         injection, bins_temp, dms_temp = Injection(
-            pspec, *injection_profile
+            pspec, full_harm_bins, *injection_profile
         ).injection()
         if len(injection) == 0:
             log.info("Pulsar too weak.")
