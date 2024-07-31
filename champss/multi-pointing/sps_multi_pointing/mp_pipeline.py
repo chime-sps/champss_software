@@ -16,6 +16,7 @@ from sps_common.interfaces.multi_pointing import KnownSourceLabel
 from sps_databases import db_api, db_utils
 from sps_multi_pointing import classifier, data_reader, grouper, utilities
 from sps_multi_pointing.known_source_sifter.known_source_sifter import KnownSourceSifter
+from sps_pipeline.utils import convert_date_to_datetime
 
 log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
@@ -195,13 +196,10 @@ def cli(
     run_name,
 ):
     """Slow Pulsar Search multiple-pointing candidate processing."""
-    if isinstance(date, str):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(date, date_format)
-                break
-            except ValueError:
-                continue
+    date = convert_date_to_datetime(date)
+
+    run_name = run_name.replace("/", "")
+
     config = load_config()
     if run_name:
         run_label = run_name
@@ -260,7 +258,7 @@ def cli(
     sp_grouper = grouper.SinglePointingCandidateGrouper(
         **OmegaConf.to_container(config.grouper)
     )
-    mp_cands = sp_grouper.group(sp_cands)
+    mp_cands = sp_grouper.group(sp_cands, num_threads=num_threads)
     log.info(f"Number of multi-pointing candidates: {len(mp_cands)}")
     try:
         db_client = db_utils.connect(host=db_host, port=db_port, name=db_name)

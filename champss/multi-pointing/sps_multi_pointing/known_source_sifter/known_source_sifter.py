@@ -7,11 +7,13 @@ Adapted to SPS 20210204
 
 
 import logging
+import operator
 import os
 
 import attr
 import numpy as np
 import numpy.lib.recfunctions as rfn
+from astropy.time import Time
 from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
 from sps_databases.db_api import get_nearby_known_sources
@@ -38,6 +40,11 @@ class KnownSourceSifter:
     threshold: float
         The likelihood threshold to determine if a candidate matches a known source.
         Default = 1.0
+
+    rfi_check: dict
+        Dictionary containing details of a quick RFI check before the knwon source sifter is run.
+        Dicotinary keys should be the name of a candidate attribute and each field should be a dict
+        containing a 'threshold' key which is the upper limit for that parameter.
     """
 
     ks_filters = attr.ib(
@@ -49,6 +56,7 @@ class KnownSourceSifter:
         validator=instance_of(list),
     )
     threshold = attr.ib(default=1.0, validator=instance_of(float))
+    rfi_check = attr.ib(default={}, validator=instance_of(dict))
     config_init = attr.ib(init=False)
     ks_database = attr.ib(init=False)
     ks_filter_names = attr.ib(init=False)
@@ -76,6 +84,7 @@ class KnownSourceSifter:
                 ("dm", "<f4"),
                 ("dm_error", "<f4"),
                 ("spin_period_s", "<f4"),
+                ("current_spin_period_s", "<f4"),
                 ("spin_period_s_error", "<f4"),
             ],  # the dtype has some unused fields trimmed out
         )
@@ -90,6 +99,7 @@ class KnownSourceSifter:
                 ks.dm,
                 ks.dm_error,
                 ks.spin_period_s,
+                change_spin_period(ks.spin_period_s, Time.now()),
                 ks.spin_period_s_error,
             )
 
@@ -116,6 +126,13 @@ class KnownSourceSifter:
         candidate: MultiPointingCandidate
             MultiPointingCandidate class instance with additional field of known_source_matches.
         """
+        rfi_label = self.apply_rfi_check(candidate)
+        if rfi_label:
+            candidate.known_source = KnownSourceClassification(
+                KnownSourceLabel(0), np.asarray([])
+            )
+            return candidate
+
         ks_db_freq, ks_db_no_freq, n_ks = known_sources_subset(
             ks_database=self.ks_database,
             pos_filter=pos_filter,
@@ -260,6 +277,29 @@ class KnownSourceSifter:
         probability = bayes_factor * prior / (1 + bayes_factor * prior)
 
         return probability
+
+    def apply_rfi_check(self, candidate):
+        """
+        Simple RFI check for candidates with clear RFI-like parameters.
+
+        Parameters
+        ----------
+        candidate : class
+            Class should be ``MultiPointingCandidate``.
+
+        Returns
+        -------
+        rfi_label: bool
+            True if was identified as RFI
+        """
+        for check in self.rfi_check:
+            threshold = self.rfi_check[check]["threshold"]
+            check_val = getattr(candidate, check, None)
+            comparator = getattr(operator, self.rfi_check[check].get("operator", "gt"))
+            if check_val is not None:
+                if comparator(check_val, threshold):
+                    return True
+        return False
 
 
 def known_sources_subset(ks_database, pos_filter=False, ra=0, dec=0, radius=5.0):

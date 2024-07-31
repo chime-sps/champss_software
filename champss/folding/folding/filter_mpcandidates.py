@@ -2,39 +2,8 @@ import math
 
 import numpy as np
 import pandas as pd
+from foldutils.database_utils import add_candidate_to_fsdb
 from sps_databases import db_api, db_utils
-
-
-def add_candidate_to_fsdb(date_str, ra, dec, f0, dm, sigma, cand_path):
-    """Create a payload for a candidate to be input in the followup sources database."""
-    from beamformer.utilities.dm import DMMap
-
-    dmm = DMMap()
-    db = db_utils.connect()
-
-    name = f"{date_str}_sd_{ra}_{dec}_{f0}_{dm}"
-
-    payload = {
-        "source_type": "sd_candidate",
-        "source_name": name,
-        "ra": ra,
-        "dec": dec,
-        "f0": f0,
-        "dm": dm,
-        "candidate_sigma": sigma,
-        "followup_duration": 1,
-        "active": True,
-        "path_to_candidates": [cand_path],
-    }
-
-    payload["dm_galactic_ne_2001_max"] = float(
-        dmm.get_dm_ne2001(payload["dec"], payload["ra"])
-    )
-    payload["dm_galactic_ymw_2016_max"] = float(
-        dmm.get_dm_ymw16(payload["dec"], payload["ra"])
-    )
-
-    db_api.create_followup_source(payload)
 
 
 def get_indices_within_radius(lati, loni, latitude, longitude, rad_deg):
@@ -80,6 +49,8 @@ def Filter(
     db_host="sps-archiver",
     db_name="sps",
     write_to_db=False,
+    basepath="/data/chime/sps/sps_processing",
+    foldpath="/data/chime/sps/archives",
 ):
     """
     Read a day's worth of multi-pointing candidates, retrieve a set of the most
@@ -106,7 +77,7 @@ def Filter(
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
 
     date_str = cand_obs_date.strftime("%Y%m%d")
-    fname = f"/data/chime/sps/sps_processing/mp_runs/daily_{date_str}/all_mp_cands.csv"
+    fname = f"{basepath}/mp_runs/daily_{date_str}/all_mp_cands.csv"
     df = pd.read_csv(fname)
 
     SNthresh = min_sigma
@@ -260,12 +231,17 @@ def Filter(
         print("Writing candidates to FollowUpSource database...")
         for i in range(len(decs)):
             add_candidate_to_fsdb(
-                date_str, ras[i], decs[i], f0s[i], dms[i], sigmas[i], cand_paths[i]
+                date_str,
+                ras[i],
+                decs[i],
+                f0s[i],
+                dms[i],
+                sigmas[i],
+                cand_paths[i],
+                "sd_candidate",
             )
 
-    npz_filename = (
-        f"/data/chime/sps/archives/candidates/filtered_cands/cands_{date_str}_filtered"
-    )
+    npz_filename = f"{foldpath}/candidates/filtered_cands/cands_{date_str}_filtered"
     if save_candidates:
         print("Saving filtered data...")
         np.savez(

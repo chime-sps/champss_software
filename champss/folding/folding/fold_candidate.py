@@ -1,4 +1,3 @@
-import datetime as dt
 import logging
 import os
 import subprocess
@@ -18,6 +17,37 @@ from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from folding.plot_candidate import plot_candidate_archive
 from sps_databases import db_api, db_utils
+from sps_pipeline.utils import convert_date_to_datetime
+
+
+def update_folding_history(id, payload):
+    """
+    Updates a followup_source with the given attribute and values as a dict.
+
+    Parameters
+    ----------
+    id: str or ObjectId
+        The id of the followup source to be updated
+
+    payload: dict
+        The dict of the attributes and values to be updated
+
+    Returns
+    -------
+    followup_source: dict
+        The dict of the updated followup source
+    """
+    import pymongo
+    from bson.objectid import ObjectId
+
+    db = db_utils.connect()
+    if isinstance(id, str):
+        id = ObjectId(id)
+    return db.followup_sources.find_one_and_update(
+        {"_id": id},
+        {"$push": payload},
+        return_document=pymongo.ReturnDocument.AFTER,
+    )
 
 
 def apply_logging_config(level):
@@ -75,6 +105,7 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     with open(ephem_path, "w") as file:
         for row in ephem:
             line = "\t".join(row)
+            line.expandtabs(8)
             file.write(line + "\n")
 
     if fs_id:
@@ -127,10 +158,16 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Name used for the mongodb database.",
 )
 @click.option(
-    "--basepath",
+    "--foldpath",
+    default="/data/chime/sps/archives",
     type=str,
-    default="/data/chime/sps/raw/",
-    help="Base directory for raw data",
+    help="Path for created files during fold step.",
+)
+@click.option(
+    "--candpath",
+    type=str,
+    default="",
+    help="Path to candidate file",
 )
 @click.option(
     "--write-to-db",
@@ -155,7 +192,8 @@ def main(
     db_port,
     db_host,
     db_name,
-    basepath,
+    foldpath,
+    candpath="",
     write_to_db=False,
     using_workflow=False,
     overwrite_folding=False,
@@ -189,13 +227,7 @@ def main(
     """
 
     if using_workflow:
-        if isinstance(date, str):
-            for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-                try:
-                    date = dt.datetime.strptime(date, date_format)
-                    break
-                except ValueError:
-                    continue
+        date = convert_date_to_datetime(date)
 
     db_utils.connect(host=db_host, port=db_port, name=db_name)
     pst = PointingStrategist(create_db=False)
@@ -209,7 +241,7 @@ def main(
             fold_dates = [entry["date"].date() for entry in source.folding_history]
             if not overwrite_folding and date.date() in fold_dates:
                 log.info(f"Already folded on {date.date()}, skipping...")
-                return
+                return {}, [], []
 
         f0 = source.f0
         ra = source.ra
@@ -239,14 +271,33 @@ def main(
         dec = coords.dec
         dir_suffix = "candidates"
         name = candidate_name(ra, dec)
+    elif candpath and write_to_db:
+        from folding.filter_mpcandidates import add_candidate_to_fsdb
+        from sps_common.interfaces import MultiPointingCandidate
+
+        date_str = date.strftime("%Y%m%d")
+        mpc = MultiPointingCandidate.read(candpath)
+        ra = mpc.ra
+        dec = mpc.dec
+        f0 = mpc.best_freq
+        dm = mpc.best_dm
+        sigma = mpc.best_sigma
+        dir_suffix = "candidates"
+        name = candidate_name(ra, dec)
+
+        followup_source = add_candidate_to_fsdb(
+            date_str, ra, dec, f0, dm, sigma, candpath
+        )
+        print(followup_source)
+        fs_id = followup_source._id
     else:
         log.error(
-            "Must provide either a pulsar name, FollowUpSource ID, or candidate RA"
-            " and DEC"
+            "Must provide either a pulsar name, FollowUpSource ID, candidate path, or"
+            " candidate RA and DEC"
         )
-        return
+        return {}, [], []
 
-    directory_path = f"/data/chime/sps/archives/{dir_suffix}"
+    directory_path = f"{foldpath}/{dir_suffix}"
 
     year = date.year
     month = date.month
@@ -280,7 +331,7 @@ def main(
 
     if not os.path.exists(ephem_path):
         log.error(f"Ephemeris file {ephem_path} not found")
-        return
+        return {}, [], []
 
     outdir = coord_path
     fname = f"/{year}-{month:02}-{day:02}.fil"
@@ -292,11 +343,13 @@ def main(
     data_list = []
     for active_pointing in ap:
         data_list.extend(
-            get_data_list(active_pointing.max_beams, basepath=basepath, extn="dat")
+            get_data_list(
+                active_pointing.max_beams, basepath="/data/chime/sps/raw/", extn="dat"
+            )
         )
     if not data_list:
         log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
-        return
+        return {}, [], []
 
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
@@ -318,12 +371,12 @@ def main(
         turns = 10
 
     if not os.path.isfile(fil):
-        log.info(f"Beamforming..., basepath {basepath}")
+        log.info(f"Beamforming...")
         sbf = SkyBeamFormer(
             extn="dat",
             update_db=False,
             min_data_frac=0.5,
-            basepath=basepath,
+            basepath="/data/chime/sps/raw/",
             add_local_median=True,
             detrend_data=True,
             detrend_nsamp=32768,
@@ -376,7 +429,7 @@ def main(
     create_FT = f"pam -T -F {archive_fname} -e FT"
     subprocess.run(create_FT, shell=True, capture_output=True, text=True)
 
-    SNprof, SN_arr = plot_candidate_archive(
+    SNprof, SN_arr, plot_fname = plot_candidate_archive(
         archive_fname,
         sigma,
         dm,
@@ -385,25 +438,34 @@ def main(
         dec,
         coord_path,
         known,
+        foldpath,
     )
 
     log.info(f"SN of folded profile: {SN_arr}")
+    fold_details = {
+        "date": date,
+        "archive_fname": archive_fname,
+        "SN": float(SN_arr),
+        "path_to_plot": plot_fname,
+    }
+
+    fold_details = {
+        "date": date,
+        "archive_fname": archive_fname,
+        "SN": float(SN_arr),
+        "path_to_plot": plot_fname,
+    }
 
     if fs_id and write_to_db:
         log.info("Updating FollowUpSource with folding history")
         folding_history = source.folding_history
-        fold_details = {
-            "date": date,
-            "archive_fname": archive_fname,
-            "SN": float(SN_arr),
-        }
         fold_dates = [entry["date"].date() for entry in folding_history]
         if date.date() in fold_dates:
             index = fold_dates.index(date.date())
             folding_history[index] = fold_details
         else:
             folding_history.append(fold_details)
-        db_api.update_followup_source(fs_id, {"folding_history": folding_history})
+            update_folding_history(fs_id, {"folding_history": fold_details})
         if len(folding_history) >= source.followup_duration:
             log.info(
                 f"Finished follow-up duration of {source.followup_duration} days,"
@@ -411,8 +473,9 @@ def main(
             )
             db_api.update_followup_source(fs_id, {"active": False})
 
+    fold_details["date"] = fold_details["date"].strftime("%Y%m%d")
     # Silence Workflow errors, requires results, products, plots
-    return {}, [], []
+    return fold_details, [], []
 
 
 if __name__ == "__main__":

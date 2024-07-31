@@ -4,6 +4,7 @@ import datetime
 import enum
 import logging
 import os
+import warnings
 from itertools import repeat
 from multiprocessing import Pool
 
@@ -266,12 +267,15 @@ class SinglePointingCandidate:
     @property
     def dm_max_curve(self):
         """Return the dm curve where the maximum is taken along the frequency axis."""
-        return self.dm_freq_sigma["sigmas"].max(1)
+        return np.nanmax(self.dm_freq_sigma["sigmas"], 1)
 
     @property
     def freq_max_curve(self):
         """Return the freq curve where the maximum is taken along the dm axis."""
-        return self.dm_freq_sigma["sigmas"].max(0)
+        # with np.errstate(all='ignore'):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return np.nanmax(self.dm_freq_sigma["sigmas"], 0)
 
     @property
     def delta_dm(self):
@@ -288,7 +292,7 @@ class SinglePointingCandidate:
         """Return the dm curve for the freq value with the freq value of the cluster."""
         # Another possibility would be using the row containing the maximum sigma,
         # but this may actually be something that was not found by the search
-        best_freq_index = np.argmin(np.abs(self.dm_freq_sigma["freqs"] - self.freq))
+        best_freq_index = np.nanargmin(np.abs(self.dm_freq_sigma["freqs"] - self.freq))
         return self.dm_freq_sigma["sigmas"][:, best_freq_index]
 
     @property
@@ -296,7 +300,7 @@ class SinglePointingCandidate:
         """Return the dm curve for the freq value with the freq value of the cluster."""
         # Another possibility would be using the row containing the maximum sigma,
         # but this may actually be something that was not found by the search
-        best_dm_index = np.argmin(np.abs(self.dm_freq_sigma["dms"] - self.dm))
+        best_dm_index = np.nanargmin(np.abs(self.dm_freq_sigma["dms"] - self.dm))
         return self.dm_freq_sigma["sigmas"][best_dm_index, :]
 
     @property
@@ -307,7 +311,7 @@ class SinglePointingCandidate:
     @property
     def best_raw_harmonic_powers(self):
         """Return the raw harmonic powers at the candidate DM."""
-        best_dm_index = np.argmin(
+        best_dm_index = np.nanargmin(
             np.abs(self.raw_harmonic_powers_array["dms"] - self.dm)
         )
         raw_power_curve = self.raw_harmonic_powers_array["powers"][best_dm_index, :, 0]
@@ -317,13 +321,13 @@ class SinglePointingCandidate:
     def harm_sigma_curve(self):
         """Return sigma as a function of summed harmonics."""
         raw_power_curve = self.best_raw_harmonic_powers
-        dm_sigma_curve = np.zeros(len(raw_power_curve))
-        for i in range(len(dm_sigma_curve)):
+        harm_sigma_curve = np.zeros(len(raw_power_curve))
+        for i in range(len(harm_sigma_curve)):
             # sigma_sum_powers aso accepts array inputs which might be faster
-            dm_sigma_curve[i] = sigma_sum_powers(
+            harm_sigma_curve[i] = sigma_sum_powers(
                 raw_power_curve[: i + 1].sum(), self.num_days * (i + 1)
             )
-        return dm_sigma_curve
+        return harm_sigma_curve
 
     @property
     def masked_harmonics(self):
@@ -337,14 +341,14 @@ class SinglePointingCandidate:
     @property
     def best_harmonic_sum(self):
         """Returns the number of summed harmonics which results in the highest sigma."""
-        best_harmonic_sum_index = np.argmax(self.harm_sigma_curve) + 1
+        best_harmonic_sum_index = np.nanargmax(self.harm_sigma_curve) + 1
         return best_harmonic_sum_index
 
     @property
     def strongest_harmonic_frequency(self):
         """Returns the frequency of the harmonic which has the strongest raw power."""
-        strongest_harm_index = np.argmax(self.best_raw_harmonic_powers)
-        dm_index = np.argmin(np.abs(self.raw_harmonic_powers_array["dms"] - self.dm))
+        strongest_harm_index = np.nanargmax(self.best_raw_harmonic_powers)
+        dm_index = np.nanargmin(np.abs(self.raw_harmonic_powers_array["dms"] - self.dm))
         freq_labels = self.raw_harmonic_powers_array["freqs"][dm_index, :, 0]
         strongest_freq = freq_labels[strongest_harm_index]
         return strongest_freq
@@ -374,7 +378,7 @@ class SinglePointingCandidate:
     @property
     def sigma_unweighted(self):
         """Returns the best sigma without correction nsum."""
-        return np.max(self.sigmas_per_harmonic_sum["sigmas_unweighted"])
+        return np.nanmax(self.sigmas_per_harmonic_sum["sigmas_unweighted"])
 
     @property
     def masked_fraction_at_best_sigma(self):
@@ -382,7 +386,7 @@ class SinglePointingCandidate:
         return (
             1
             - self.sigmas_per_harmonic_sum["weight_fraction"][
-                np.argmax(self.sigmas_per_harmonic_sum["sigmas_weighted"])
+                np.nanargmax(self.sigmas_per_harmonic_sum["sigmas_weighted"])
             ]
         )
 

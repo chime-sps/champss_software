@@ -1,28 +1,45 @@
-import astropy.units as u
+import datetime
+import logging
+
 import click
-import matplotlib.pyplot as plt
 import numpy as np
-import psrchive
-import scipy as sp
-from astropy.constants import au, c
-from astropy.coordinates import (
-    BarycentricTrueEcliptic,
-    EarthLocation,
-    SkyCoord,
-    get_body_barycentric,
-)
-from astropy.time import Time
-from folding.archive_utils import *
-from load_profiles import *
-from phase_aligned_search import *
-from scipy.ndimage import uniform_filter
+
+# set these up before importing any SPS packages
+log_stream = logging.StreamHandler()
+logging.root.addHandler(log_stream)
+log = logging.getLogger(__name__)
+
+from folding.archive_utils import read_par
+from multiday_search.load_profiles import load_profiles, load_unwrapped_archives
+from multiday_search.phase_aligned_search import ExploreGrid
+from sps_databases import db_api, db_utils
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option("--dm", type=float, required=True, help="DM")
-@click.option("--f0", type=float, required=True, help="F0")
-@click.option("--ra", type=float, required=True, help="RA")
-@click.option("--dec", type=float, required=True, help="DEC")
+@click.option(
+    "--fs_id",
+    type=str,
+    default="",
+    help="FollowUpSource ID, to fold from database values",
+)
+@click.option(
+    "--db-port",
+    default=27017,
+    type=int,
+    help="Port used for the mongodb database.",
+)
+@click.option(
+    "--db-host",
+    default="sps-archiver",
+    type=str,
+    help="Host used for the mongodb database.",
+)
+@click.option(
+    "--db-name",
+    default="sps",
+    type=str,
+    help="Name used for the mongodb database.",
+)
 @click.option(
     "--phase_accuracy",
     type=float,
@@ -30,112 +47,137 @@ from scipy.ndimage import uniform_filter
     help="required accuracy in pulse phase, which determines step size",
 )
 @click.option(
-    "--load_only",
+    "--write-to-db",
     is_flag=True,
-    help="Load archives without changing their epoch",
+    help="Set folded_status to True in the processes database.",
 )
 @click.option(
-    "--full_plot",
+    "--check-cands",
     is_flag=True,
-    help="Apply P0 and P1 from phase search to archives and display diagnostic plot",
-)
-@click.option(
-    "--no_search",
-    is_flag=True,
-    help="Don't perform P0/P1 search",
+    help="Output possible candidates.",
 )
 def main(
-    ra, dec, dm, f0, phase_accuracy, load_only=False, full_plot=False, no_search=False
+    fs_id,
+    db_port,
+    db_host,
+    db_name,
+    phase_accuracy,
+    write_to_db=False,
+    check_cands=False,
 ):
-    # Find values directly from par file
-    directory = (
-        "/data/chime/sps/archives/candidates/"
-        + f"{round(ra,2)}"
-        + "_"
-        + f"{round(dec,2)}"
-    )
-    print(f"Searching in directory {directory}...")
-    # par_file = find_oldest_obs(directory, f0, dm, message=False)
-    par_file = find_central_obs(directory, f0, dm, message=False)
-    par_vals = read_par(par_file)
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+    if check_cands:
+        print("Possible candidates:")
+        candidates = db.followup_sources.find({"source_type": "md_candidate"})
+        for cand in candidates:
+            print(
+                cand["_id"],
+                cand["path_to_ephemeris"],
+                len(cand["folding_history"]),
+                "archives",
+            )
+        return
 
+    source = db_api.get_followup_source(fs_id)
+    print(fs_id, source)
+    source_type = source.source_type
+    if source_type != "md_candidate":
+        log.error(f"Source {fs_id} is not a multi-day candidate, exiting...")
+        return
+
+    if source.folding_history:
+        fold_dates = [entry["date"].date() for entry in source.folding_history]
+        fold_SN = [entry["SN"] for entry in source.folding_history]
+        archives = [entry["archive_fname"] for entry in source.folding_history]
+    else:
+        log.error(f"Source {fs_id} has no folding history in db, exiting...")
+        return
+
+    par_file = source.path_to_ephemeris
+    par_vals = read_par(par_file)
     DM_incoherent = par_vals["DM"]
     F0_incoherent = par_vals["F0"]
-    P0_incoherent = 1 / F0_incoherent
     RA = par_vals["RAJD"]
     DEC = par_vals["DECJD"]
 
-    if not no_search:
-        data = load_profiles(
-            directory, F0_incoherent, DM_incoherent, RA, DEC, load_only
+    data = load_profiles(archives)
+
+    dF0 = 1 / 86164.1  # 1 day alias (can reduce by 2x if necessary)
+    f0_min = F0_incoherent - dF0
+    f0_max = F0_incoherent + dF0
+    f0_lims = (f0_min, f0_max)
+    delta_f0max = f0_max - f0_min
+
+    f1_max = 1e-12  # Upper limit based on known pulsars, or expected barycentric shift
+    f1_lims = (
+        -f1_max,
+        f1_max,
+    )  # Negative or positive to account for position error
+    delta_f1max = 2 * f1_max
+
+    T = data["T"]  # Time from first observation to last observation
+    npbin = data["npbin"]  # Number of phase bins
+    M_f0 = int(npbin * phase_accuracy)
+    # factor of 2, since we reference to central observation
+    f0_points = 2 * int(delta_f0max * T * npbin / M_f0)
+    f1_points = 2 * int(0.5 * delta_f1max * T**2 * npbin / M_f0)
+
+    print(f"Running search with {f0_points} f0 bins, {f1_points} f1 bins")
+
+    explore_grid = ExploreGrid(data, f0_lims, f1_lims, f0_points, f1_points)
+    f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
+
+    np.savez(
+        data["directory"] + "/explore_grid.npz", f0s=f0s, f1s=f1s, chi2_grid=chi2_grid
+    )
+    plot_name = explore_grid.plot(fullplot=False)
+
+    coherentsearch_summary = [
+        {
+            "date": datetime.datetime.now(),
+            "SN": float(np.max(explore_grid.SNmax)),
+            "f0": float(optimal_parameters[0]),
+            "f1": float(optimal_parameters[1]),
+            # "profile": explore_grid.profiles_aligned.sum(0).tolist(),
+            "gridsearch_file": data["directory"] + "/explore_grid.npz",
+            "path_to_plot": plot_name,
+        }
+    ]
+    if write_to_db:
+        log.info("Updating FollowUpSource with coherent search results")
+        db_api.update_followup_source(
+            fs_id, {"coherentsearch_history": coherentsearch_summary}
         )
 
-        # Eventually delta f0_max will be determined using power vs. freq plot
-        f0_min = F0_incoherent - 15e-6
-        f0_max = F0_incoherent + 15e-6
-        f0_lims = (f0_min, f0_max)
-        delta_f0max = f0_max - f0_min
+    # Rewrite new ephemeris using new F0 and F1
 
-        f1_max = (
-            1e-13  # Upper limit based on known pulsars, or expected barycentric shift
-        )
-        f1_lims = (
-            -f1_max,
-            f1_max,
-        )  # Negative or positive to account for position error
-        delta_f1max = 2 * f1_max
+    f0_optimal = optimal_parameters[0] + F0_incoherent
+    f1_optimal = optimal_parameters[1]
 
-        T = data["T"]  # Time from first observation to last observation
-        npbin = data["npbin"]  # Number of phase bins
-        M_f0 = int(npbin * phase_accuracy)
-        # factor of 2, since we reference to central observation
-        f0_points = 2 * int(delta_f0max * T * npbin / M_f0)
-        f1_points = 2 * int(0.5 * delta_f1max * T**2 * npbin / M_f0)
+    optimal_par_file = par_file.replace(".par", "_optimal.par")
+    directory = data["directory"]
+    with open(par_file) as input:
+        with open(optimal_par_file, "w") as output:
+            output.write("# Created: " + str(datetime.datetime.now()) + "\n")
+            output.write("# F0 and F1 from CHAMPSS coherent search\n")
+            for line in input:
+                key = line.split()[0]
+                if key == "F0":
+                    F0_output = f"F0 {str(f0_optimal)} 1 \n"
+                    output.write(F0_output)
+                    F1_output = f"F1 {str(-f1_optimal)} 1 \n"
+                    output.write(F1_output)
+                elif key == "RAJ":
+                    RA_output = f"{line.strip()} 1 \n"
+                    output.write(RA_output)
+                elif key == "DECJ":
+                    DEC_output = f"{line.strip()} 1 \n"
+                    output.write(DEC_output)
+                else:
+                    output.write(line)
 
-        print(f"Running search with {f0_points} f0 bins, {f1_points} f1 bins")
-
-        explore_grid = ExploreGrid(data, f0_lims, f1_lims, f0_points, f1_points)
-        f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
-
-        np.savez(directory + "/explore_grid.npz", f0s=f0s, f1s=f1s, chi2_grid=chi2_grid)
-
-        explore_grid.plot(squeeze=False)
-
-    if full_plot:
-        # Rewrite new ephemeris using new P0 and P1
-
-        f0_optimal = optimal_parameters[0] + F0_incoherent
-        print(f0_optimal)
-        f1_optimal = optimal_parameters[1]
-
-        first_obs_par = find_oldest_obs(directory, F0_incoherent, DM_incoherent)
-        optimal_par_file = directory + "/" + "optimal_par"
-
-        with open(first_obs_par) as input:
-            with open(optimal_par_file, "w") as output:
-                for line in input:
-                    if line.strip("\n")[0:2] != "F0":
-                        output.write(line)
-                output.write("\t".join(["F0", str(f0_optimal)]) + "\n")
-                output.write("\t".join(["F1", str(-f1_optimal)]) + "\n")
-
-        subprocess.run(
-            ["pam", "-E", optimal_par_file, "-m", "cand*.newar"], cwd=directory
-        )
-
-        # Create archive scrunched in time
-        subprocess.run(["pam", "-T", "-e", ".T", "cand*.newar"], cwd=directory)
-
-        # Create archive scrunched in frequency
-        subprocess.run(["pam", "-F", "-e", ".F", "cand*.newar"], cwd=directory)
-
-        # Create archive scrunched in both
-        subprocess.run(["pam", "-FT", "-e", ".FT", "cand*.newar"], cwd=directory)
-
-        # Concatenate the modified archives
-        subprocess.run(["psradd", "*.T", "-o", "added.T"], cwd=directory)
-
-        explore_grid.plot(squeeze=True)
+    explore_grid.plot(fullplot=True)
+    return coherentsearch_summary, [], []
 
 
 if __name__ == "__main__":

@@ -9,6 +9,9 @@ grouper:
   dbscan_eps: 1.1
   freq_scale: 1
   dm_scale: 0.1
+  ra_scale: 0.1
+  dec_scale: 0.1
+  metric: "chebyshev"
 
 sifter:
   threshold: 0.997
@@ -16,6 +19,16 @@ sifter:
     - ["compare_position", 1.0]
     - ["compare_dm", 2.0]
     - ["compare_frequency", 4.0]
+  rfi_check:
+    delta_freq:
+      threshold: 0.003
+      operator: gt # should exist in operator module
+    num_candidates:
+      threshold: 200
+      operator: gt # gt meaning values larger than threshold will be ignored by the ks sifter
+    best_harmonic_sum:
+      threshold: 2
+      operator: lt
 
 classifier:
   active_classifiers:
