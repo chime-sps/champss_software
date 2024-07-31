@@ -686,7 +686,7 @@ class Clusterer:
         filter_nharm=False,
         remove_harm_idx=False,
         cluster_dm_cut=-1,
-        only_injections=False
+        only_injections=False,
     ):
         """
         Make clusters from detections. This calls the cluster function, and packages up
@@ -719,10 +719,10 @@ class Clusterer:
         clusters = {}
         summary = {}
         zero_dm_count = 0
-        
+
         if not np.all(unique_labels == -1):
             # Could use old labels, but new labels prevent gaps if cluster is filtered out
-            current_label = 0 
+            current_label = 0
             for lbl in unique_labels:
                 if lbl == -1:
                     continue
