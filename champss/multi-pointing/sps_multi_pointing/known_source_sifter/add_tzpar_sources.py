@@ -103,7 +103,7 @@ def add_source_to_database(payload, db_port=27017, db_host="localhost", db_name=
         ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
         'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
         'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
-        'spin_period_derivative_error', 'spin_period_epoch']
+        'spin_period_derivative_error', 'spin_period_epoch', 'survey']
     """
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     ks = db.known_sources.find_one({"source_name": payload["source_name"]})
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
     'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
     'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
-    'spin_period_derivative_error', 'spin_period_epoch']
+    'spin_period_derivative_error', 'spin_period_epoch', 'survey']
     """
     parser = argparse.ArgumentParser(
         description=(
@@ -167,11 +167,19 @@ if __name__ == "__main__":
         type=str,
         help="Name used for the mongodb database.",
     )
+    parser.add_argument(
+        "--survey",
+        default=None,
+        type=str,
+        help="Survey for the new source",
+    )
     args = parser.parse_args()
     tzpar_path = args.path
+    print(tzpar_path)
     db_port = args.db_port
     db_host = args.db_host
     db_name = args.db_name
+    survey = args.survey
     dmm = DMMap()
     for f in sorted(glob.glob(f"{tzpar_path}/*.par")):
         payload = {}
@@ -307,7 +315,9 @@ if __name__ == "__main__":
         if "spin_period_derivative" not in payload.keys():
             payload["spin_period_derivative"] = 0.0
             payload["spin_period_derivative_error"] = 0.0
-        if len(payload.keys()) != 16:
+        if survey != None:
+            payload["survey"] = survey
+        if len(payload.keys()) < 16:
             print(f"{payload['source_name']} is not complete")
             continue
         add_source_to_database(payload, db_port, db_host, db_name)
