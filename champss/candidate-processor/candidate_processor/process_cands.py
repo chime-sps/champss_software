@@ -51,7 +51,6 @@ def process(
     =======
     None
     """
-
     if clean:
         log.info("cleaning hhat")
         data = candidate_utils.clean_hhat(data)

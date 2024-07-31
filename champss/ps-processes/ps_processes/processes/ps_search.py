@@ -6,7 +6,6 @@ from functools import partial
 from multiprocessing import Pool, shared_memory
 
 import numpy as np
-import yaml
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
@@ -180,7 +179,7 @@ class PowerSpectraSearch:
             "HDBSCAN",
         ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
 
-    def search(self, pspec, injection_path, injection_indices, only_injections, cutoff_frequency):
+    def search(self, pspec, inject=False):
         """
         Run the search.
 
@@ -201,49 +200,15 @@ class PowerSpectraSearch:
             PowerSpectraDetectionClusters object with the properties of all the
             detections clusters from the pointing.
         """
-        if injection_path is not None:
-            presets = [
-                "gaussian",
-                "subpulse",
-                "interpulse",
-                "faint",
-                "high-DM",
-                "slow",
-                "fast",
-            ]
-            if injection_path in presets:
-                profile = injection_path
-                injection_bins_original, injection_DMs = ps_inject.main(pspec, profile)
-            else:
-                injection_bins_original = []
-                injection_DMs = []
-                with open(injection_path) as file:
-                    data = yaml.load(file, Loader = yaml.Loader)
-                    if len(injection_indices) == 0:
-                        injection_indices = np.arange(len(data))
-                    for injection_index in injection_indices:
-                        log.info(f"DM: {data[injection_index]['DM']}")
-                        log.info(f"sigma: {data[injection_index]['sigma']}")
-                        log.info(f"frequency: {data[injection_index]['frequency']}")
-                        pulse = np.array(data[injection_index]["profile"])
-                        frequency = data[injection_index]["frequency"]
-                        DM = data[injection_index]["DM"]
-                        sigma = data[injection_index]["sigma"]
-
-                        profile = [pulse, sigma, frequency, DM]
-
-                        current_injection_bins, current_injection_DMs = ps_inject.main(
-                            pspec, profile
-                        )
-
-                        # injection_DMs are indices of the altered injection trials
-                        # injection_bins_original and injection_DMs are lists of lists
-                        injection_bins_original.extend(current_injection_bins)
-                        injection_DMs.extend(current_injection_DMs)
+        if inject:
+            injection_bins_original, injection_DMs = ps_inject.main(
+                pspec, "gaussian", num_injections=1
+            )
         else:
             injection_DMs = []
             injection_bins_original = []
             log.info("No artificial pulse injected.")
+
         search_start = time.time()
         ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         # compute harmonic bins based on power spectra properties
@@ -357,7 +322,7 @@ class PowerSpectraSearch:
             full_indices[i : i + self.mp_chunk_size]
             for i in range(0, len(pspec.dms), self.mp_chunk_size)
         ]
-        
+
         detection_list = pool.starmap(
             partial(
                 self.search_candidates,
@@ -370,8 +335,6 @@ class PowerSpectraSearch:
                 nsum_per_harmonic,
                 power_cutoff_per_harmonic,
                 injection_bins_original,
-                injection_DMs,
-                cutoff_frequency,
             ),
             zip(dm_indices, dm_split),
         )
@@ -419,7 +382,6 @@ class PowerSpectraSearch:
             filter_nharm=self.filter_by_nharm,
             remove_harm_idx=False,
             cluster_dm_cut=self.cluster_dm_cut,
-            only_injections=only_injections,
         )
 
         log.info(f"Total number of candidate clusters={len(clusters)}")
@@ -461,8 +423,6 @@ class PowerSpectraSearch:
         nsum_per_harmonic,
         power_cutoff_per_harmonic,
         injection_bins_original,
-        injection_DMs,
-        cutoff_frequency,
         dm_indices,
         dms,
     ):
@@ -565,12 +525,10 @@ class PowerSpectraSearch:
                     replace_last = False
                     detection_freq = freq_labels[idx] / harm
                     # skipping candidates with period less than 10 time samples
-
                     if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (
-                        cutoff_frequency / 1000 / TSAMP
+                        0.1 / TSAMP
                     ):
                         continue
-                        
                     if sigmas is None:
                         if type(used_nsum) == np.ndarray:
                             used_nsum_detec_loop = used_nsum[idx]
@@ -602,17 +560,13 @@ class PowerSpectraSearch:
                             replace_last = True
 
                     sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
-                    is_injection = False
-
-                    for injected_bins, injected_dms in zip(
-                        injection_bins_original, injection_DMs
-                    ):
-                        if dm_index in injected_dms:
-                            injection_overlap = np.intersect1d(
-                                sorted_harm_bins, injected_bins
-                            )
-                            if injection_overlap.size != 0:
-                                is_injection = True
+                    injection_bins = np.intersect1d(
+                        sorted_harm_bins, injection_bins_original
+                    )
+                    if injection_bins.size == 0:
+                        injection = False
+                    else:
+                        injection = True
 
                     if replace_last:
                         detection_list[-1] = (
@@ -631,7 +585,7 @@ class PowerSpectraSearch:
                                 )
                             ),
                             sigma,
-                            is_injection,
+                            injection,
                         )
                     else:
                         detection_list.append(
@@ -652,7 +606,7 @@ class PowerSpectraSearch:
                                     )
                                 ),
                                 sigma,
-                                is_injection,
+                                injection,
                             )
                         )
                     last_detection_freq = detection_freq
