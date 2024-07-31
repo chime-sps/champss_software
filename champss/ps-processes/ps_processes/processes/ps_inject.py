@@ -1,17 +1,13 @@
 import logging
-
+import os
+import math
 import numpy as np
-from ps_processes.processes.clustering import Clusterer
-from scipy.fft import rfft
-from sps_common.constants import FREQ_BOTTOM, FREQ_TOP
-from sps_common.interfaces import PowerSpectraDetectionClusters, SearchAlgorithm
-from sps_common.interfaces.ps_processes import PowerSpectra
-from sps_common.interfaces.utilities import (
-    harmonic_sum,
-    powersum_at_sigma,
-    sigma_sum_powers,
-)
-from sps_databases import db_api, db_utils
+import scipy.stats as stats
+from scipy.special import chdtri
+from scipy.fft import fft, rfft
+from sps_common.constants import FREQ_BOTTOM, FREQ_TOP, DM_CONSTANT
+from sps_databases import db_api
+from matplotlib import pyplot as plt
 
 log = logging.getLogger(__name__)
 
@@ -19,92 +15,29 @@ import numpy as np
 import numpy.random as rand
 
 phis = np.linspace(0, 1, 1024)
-"""
-These values come from counting by eye a sample of 200 out of the 1208 pulsars in the
-TPA dataset.
-
-Each represents the mean fraction of pulsars that have x number of subpulses.
-"""
+"""These values come from counting by eye a sample of 200 out of the 1208 pulsars
+in the TPA dataset. Each represents the mean fraction of pulsars that have x number
+of subpulses."""
 mean_zeros = 0.522394
 mean_ones = 0.40298
 mean_twos = 0.064676
 mean_threes = 0.00995
-"""These values come from approximating the FWHMs given for interpulses in the TPA
-dataset as a Gaussian distribution with a mean and a standard deviation.
-"""
-mean_gamma_interpulse = 0.021472222 / 2
-mean_std_interpulse = 0.020875266 / 2
 
+kernels = np.load(os.path.dirname(__file__) + "/kernels.npy")
+kernel_scaling = np.load(os.path.dirname(__file__) + "/kernels.meta.npy")
 
 def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
     return np.exp(-0.5 * ((x - mu) / sig) ** 2) / (sig * np.sqrt(2 * np.pi))
 
-
 def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
 
+def sinc(x):
+    """Sinc function."""
+    return np.sin(x) / x
 
-"""These FWHM bins come from the Pareto distribution of the FWHM distributions of
-the TPA dataset. Divided by 360 because they are given in degrees of phase."""
-bins = (
-    np.array(
-        [
-            [
-                5.25300000e00,
-                8.05500000e00,
-                6.18700000e00,
-                9.92300000e00,
-                1.17910000e01,
-                1.64610000e01,
-                1.45930000e01,
-                2.48670000e01,
-                2.58010000e01,
-                2.01970000e01,
-                2.29990000e01,
-                3.42070000e01,
-                4.54150000e01,
-                3.79430000e01,
-                5.38210000e01,
-                8.74450000e01,
-                1.24805000e02,
-                4.63490000e01,
-                1.17333000e02,
-                5.47550000e01,
-            ],
-            [
-                1.20038722e-01,
-                1.00677637e-01,
-                9.97095839e-02,
-                9.48693127e-02,
-                6.58276865e-02,
-                6.09874153e-02,
-                6.00193606e-02,
-                4.54985481e-02,
-                4.54985481e-02,
-                4.45304934e-02,
-                4.45304934e-02,
-                4.06582769e-02,
-                3.48499521e-02,
-                2.51694097e-02,
-                2.51694097e-02,
-                2.22652467e-02,
-                1.93610837e-02,
-                1.74249755e-02,
-                1.64569219e-02,
-                1.64569219e-02,
-            ],
-        ]
-    )
-    / 360
-)
-gammas = bins[0] / 2
-weights = bins[1]
-# normalize
-weights /= sum(weights)
-
-
-def generate(noise=False, shape=gaussian):
+def generate(noise=False):
     """
     This function generates a random pulse profile to inject.
 
@@ -113,7 +46,9 @@ def generate(noise=False, shape=gaussian):
             noise: bool
                 whether or not the pulse should be distorted by white noise
     """
-    gamma = rand.choice(gammas, p=weights)
+    u = rand.choice(np.linspace(0.01, 0.99, 1000))
+    #inverse sampling theorem for an exponential distribution with lambda = 1/15
+    gamma = -15*np.log(1 - u)/2/360    
     prof = lorentzian(phis, gamma)
     prof /= max(prof)
     subpulses = rand.choice(range(4), p=(mean_zeros, mean_ones, mean_twos, mean_threes))
@@ -122,7 +57,9 @@ def generate(noise=False, shape=gaussian):
     # the chances of having an interpulse are approximately 23/(1208 - 23), as in TPA
     roll = rand.choice(range(1208 - 23))
     if roll < 23:
-        gamma_interpulse = rand.normal(mean_gamma_interpulse, mean_std_interpulse)
+        u = rand.choice(np.linspace(0.01, 0.99, 1000))
+        #inverse sampling theorem for an exponential distribution with lambda = 1/15
+        gamma_interpulse = -15*np.log(1 - u)/2/360
         x0_inter = rand.normal(0.5, 10 / 360)
         interpulse = lorentzian(phis, gamma_interpulse, x0_inter)
         interpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(interpulse)
@@ -132,19 +69,62 @@ def generate(noise=False, shape=gaussian):
 
     # subpulses
     for i in range(subpulses):
-        gamma_sub = rand.choice(gammas, p=weights)
+        u = rand.choice(np.linspace(0.01, 0.99, 1000))
+        #inverse sampling theorem for an exponential distribution with lambda = 1/15
+        gamma_sub = -15*np.log(1 - u)/2/360
         x0_sub = 0.5 + rand.normal(0, 0.1)
         subpulse = lorentzian(phis, gamma_sub, x0_sub)
         subpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(subpulse)
         prof += subpulse
 
-    sigma = rand.choice(np.linspace(5, 25))
-
     # working on this-- the standard deviation isn't correct
     if noise:
         prof += rand.normal(0, 1, len(phis))
 
-    return prof, sigma
+    return prof
+
+def x_to_chi2(x, df):
+    '''This function returns the approximate equivalent chi2 value for a normal distribution sigma.
+    This function returns results with no greater than 0.01% error.
+
+    Inputs:
+    --------
+        x (float): value in a normal distribution
+        df (int) : degrees of freedom in your chi-squared distribution
+
+    Returns:
+    --------
+        chi2 (float): approximate chi-squared value
+    '''
+    
+    if x <= 7.3:
+        mean = 0.0
+        sd = 1.0
+        
+        # Calculate the cumulative distribution function (CDF) of normal distribution
+        p = stats.norm.cdf(x, loc=mean, scale=sd)
+        
+        # Calculate the cumulative distribution function (CDF) of chi-squared distribution
+        chi2 = stats.chi2.ppf(p, df)
+
+        return chi2
+    
+    else:
+        #A&S 26.2.23. This is the inverse of the operation for logp in PRESTO
+        A = 2.515517
+        B = 0.802853
+        C = 0.010328
+        D = 1.432788
+        E = 0.189269
+        F = 0.001308
+        const = np.array([F, E - x*F, D - C - x*E, 1 - B - x*D, -(x + A)])
+        t = np.roots(const)[1]
+        prob = np.exp(-t**2/2)
+        
+        chi2 = chdtri(df, prob)
+
+        #normalize to CHAMPSS power spectrum by dividing by 2
+        return chi2/2
 
 
 class Injection:
@@ -152,109 +132,144 @@ class Injection:
 
     def __init__(self, pspec_obj, phase_prof, sigma, true_f, true_dm):
         self.pspec = pspec_obj.power_spectra
+        self.ndays = pspec_obj.num_days
         self.pspec_obj = pspec_obj
         self.birdies = pspec_obj.bad_freq_indices
         self.f = true_f
+        self.deltaDM = self.onewrap_deltaDM() 
         self.true_dm = true_dm
         self.trial_dms = self.pspec_obj.dms
+        self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
         self.phase_prof = phase_prof
         self.sigma = sigma
+        self.power_threshold = 1
+    
+    def onewrap_deltaDM(self):
+        """Return the deltaDM where the dispersion smearing is one pulse period in duration"""
+        deltaDM =  1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
+        return deltaDM
 
-    def get_power(self):
-        """
-        This function converts an SNR in standard deviation to an SNR in power.
-
-        From Scott Ransom's PRESTO suite.
-        """
-        return self.sigma**2 / 2.0 + np.log(np.sqrt(np.pi / 2) * self.sigma)
-
-    def disperse(self, trial_DM):
-        """
-        This function "dedisperses" a pulse profile according to some error from the
-        true DM.
+    def sigma_to_power(self, n_harm):
+        '''This function converts an input Gaussian sigma to an approximately equivalent power. In order to do so,
+        we have to estimate the number of summed harmonics in our final profile. This code was largely written by 
+        Scott Ransom.
 
         Inputs:
-        _______
-                trial_dm (float)    : test DM
-
+        -------
+            n_harm (int): number of harmonics before the Nyquist cutoff frequency
         Returns:
-        ________
-                dispersed_phase_prof: a DM-smeared 1D phase profile of a pulse
-        """
+        -------
+            scaled_fft (arr): the first Nsignif harmonics of the FFT of the pulse profile, scaled so that the sum
+            of the powers will equal the input sigma, and not including the zeroth harmonic
 
-        DM_err = self.true_dm - trial_DM
+        '''
+        # Compute the normalized powers of the injected profile (Sum of pows == 1)
+        prof_fft = rfft(self.phase_prof)[1:]
+        norm_pows = np.abs(prof_fft)**2.0
+        maxpower = norm_pows.sum()
+        norm_pows /= maxpower
+        #check the sum of powers is 1
+        assert(math.isclose(norm_pows.sum(), 1.0))
+        Nallharms = len(norm_pows)
 
-        # connect to database and find number of spectral channels in observation
-        obs = db_api.get_observation(self.pspec_obj.obs_id[0])
-        nchans = db_api.get_pointing(obs.pointing_id).nchans
+        # Compute the theoretical power in the harmonics where we will inject
+        # a significant amount of our power (i.e. > 1%)
+        Nsignif = int(((norm_pows/norm_pows.max())>0.01).sum())
+            
+        power = x_to_chi2(self.sigma, 2*Nsignif*self.ndays)
 
-        # create frequency array
-        freqs = np.linspace(FREQ_TOP, FREQ_BOTTOM, nchans, endpoint=False)
-        freq_ref = np.max(freqs)
+        # Now compute the theoretical power for each harmonic to inject. We will
+        # add this value to the current stack. Note that we are subtracting the
+        # predicted amount of power due to the means of the power spectra.
 
-        # define constants
-        kDM = 1 / (2.41e-4)  # in MHz^2 s cm^3 pc^-1
-        dt = 2.56 * 512 * 0.75 * 1e-6  # s
+        power -= Nsignif * self.ndays
 
-        # calculate dispersion delay
-        delay = kDM * DM_err * (1 / freqs**2 - 1 / freq_ref**2)
+        #if there are fewer significant harmonics than there are harmonics that fit 
+        #then use Nsignif
+        #otherwise only take harmonics that fit before the Nyquist cutoff frequency
+        if Nsignif < n_harm:
+            n_harm = Nsignif
 
-        # calculate how much to shift bins
-        dd_binshift = (delay // dt).astype("int")
+        scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
 
-        # create 2D pulse profile
-        pulse2D = np.zeros((len(freqs), len(self.phase_prof)))
-        pulse2D[:] = self.phase_prof
+        return scaled_fft
 
-        # apply dispersion delay to each spectral channel of 2D pulse profile
-        for i in range(len(freqs)):
-            pulse2D[i] = np.roll(pulse2D[i], dd_binshift[i])
+    def disperse(self, prof_fft, kernels, kernel_scaling):
+        '''
+        This function disperses an input pulse profile over a range of -2*deltaDM to 2*deltaDM according
+        to the algorithm specified above.
 
-        # average all spectral channels to get 1D dispersed pulse
-        dispersed_phase_prof = pulse2D.mean(0)
+        A more detailed walk-through of the algorithm can be found in reyniersquillace/RadioTime/Kernel_Dedispersion.
 
-        return dispersed_phase_prof
+        Inputs:
+        -------
+                prof_fft (arr) : FFT array to disperse, not including the zeroth harmonic
+                kernels (arr)  : 2D array containing the smeared impulse function kernels
+                kernel_scaling (arr): a 1D array containing the labels of kernels in units of DM/deltaDM
+        Returns:
+        --------
+                dispersed_prof_fft (arr): a 2D array of size (len(DM_labels), len(prof)) containing the
+                                          dispersed profile values
+        '''
+        
 
-    def harmonics(self, prof, df, n_harm, weights):
+        #i is our index referring to the DM_labels in the target power spectrum
+        #find the starting index, where the DM scale is -2
+
+        i_min = np.argmin(np.abs((self.true_dm - 2*self.deltaDM) - self.trial_dms))
+        log.info(f'Starting DM: {self.trial_dms[i_min]}')
+        i0 = np.argmin(np.abs(self.true_dm - self.trial_dms))
+        #find the stopping index, where the DM scale is +2
+        i_max = np.argmin(np.abs((self.true_dm + 2*self.deltaDM) - self.trial_dms))
+        log.info(f'Stopping DM: {self.trial_dms[i_max]}')
+        
+        #reminder; we are inclusive of i_max because that's the last index into which we want to inject
+        target_dm_idx = np.arange(i_min, i_max + 1)
+        dms = self.trial_dms[target_dm_idx]
+        dispersed_prof_fft = np.zeros((len(dms), len(prof_fft)), dtype = 'complex_')
+        
+        #load the dispersion kernels and multiply our pulse profile by them
+        for i in range(len(dms)):
+            key = np.argmin(np.abs(np.abs((dms[i] - self.true_dm)/self.deltaDM) - kernel_scaling))
+            dispersed_prof_fft[i] = prof_fft * kernels[key, 1:len(prof_fft)+1]
+
+        return dispersed_prof_fft, target_dm_idx
+
+    def harmonics(self, prof_fft, df, N = 4):
         """
         This function calculates the array of frequency-domain harmonics for a given
         pulse profile.
 
         Inputs:
         _______
-                prof (ndarray)   : pulse phase profile
-                df (float)       : frequency bin width in target spectrum
-                n_harm (int)     : the number of harmonics before the Nyquist frequency
-                weights (arr)    : the weight of each harmonic, calculated at the true DM
+                prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic
+                df (float)        : frequency bin width in target spectrum
+                n_harm (int)      : the number of harmonics before the Nyquist frequency
+                N (int)           : number of bins over which to sinc-interpolate the harmonic
         Returns:
         ________
                 harmonics (ndarray) : Fourier-transformed harmonics of the profile convolved with
                                         [cycles] number of Delta functions
         """
-        harmonics = np.zeros(4 * n_harm)
-        bins = np.zeros(4 * n_harm).astype(int)
-        # take the fft of the pulse
-        prof_fft = rfft(prof)[1:]
+        n_harm = len(prof_fft)
+        #Because of the rapid drop-off of the sinc function, adding further interpolation bins gives a negligible increase
+        #in power fidelity. Hence the default is 4. 
+        harmonics = np.zeros((N*n_harm))
+        bins = np.zeros((N*n_harm)).astype(int)
 
-        def sinc(x):
-            """Sinc function."""
-            return np.sin(x) / x
-
-        # now evaluate sinc-modified power at each of the first 10 harmonics
+        #now evaluate sinc-modified power at each of the first 10 harmonics
         for i in range(n_harm):
-            f_harm = (i + 1) * self.f
-            bin_true = f_harm / df
-            bin_below = int(np.floor(bin_true))
-            bin_above = int(np.ceil(bin_true))
-            # use 2 bins on either side
-            current_bins = np.array(
-                [bin_below - 1, bin_below, bin_above, bin_above + 1]
-            )
-            bins[i * 4 : (i + 1) * 4] = current_bins
-            amplitude = prof_fft[i] * sinc(np.pi * (bin_true - current_bins))
-            harmonics[i * 4 : (i + 1) * 4] = np.abs(amplitude) ** 2
+            
+            f_harm = (i+1)*self.f
+            bin_true = f_harm/df
+            bin_below = np.floor(bin_true)
+            bin_above = np.ceil(bin_true)
 
-        harmonics *= weights
+            #use 2 bins on either side
+            current_bins = np.array([bin_below - 1, bin_below, bin_above, bin_above + 1])
+            bins[i*N:(i + 1)*N] = current_bins
+            amplitude = prof_fft[i]*sinc(np.pi*(bin_true - current_bins))
+            harmonics[i*N:(i + 1)*N] = np.abs(amplitude)**2
 
         return bins, harmonics
 
@@ -265,31 +280,29 @@ class Injection:
 
         Returns:
         _______
-                fake_pspec (array): 2D power grid of form (trial DM, frequency)
-                bins (array)      : 1D array of bin indices at which the pulse was injected
+                harms (arr): 2D power grid of form (trial DM, frequency)
+                bins (arr) : 1D array of bin indices at which the pulse was injected
         """
 
         # pull frequency bins from target power spectrum
-
         freqs = self.pspec_obj.freq_labels
         df = freqs[1] - freqs[0]
-        f_nyquist = np.floor(freqs[-1] / 2)
+        f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
-        prof_fft = rfft(self.phase_prof)[1:]
-        weight = self.get_power() / np.sum(np.abs(prof_fft) ** 2)
+        scaled_prof_fft = self.sigma_to_power(n_harm)
         log.info(f"Injecting {n_harm} harmonics.")
-        # weights = self.get_weights(n_harm)
-        fake_pspec = np.zeros((len(self.trial_dms), len(freqs)))
 
-        for i in range(len(self.trial_dms)):
-            # disperse input pulse and FFT
-            dispersed_prof = self.disperse(self.trial_dms[i])
-            # take FFT
-            bins, harm = self.harmonics(dispersed_prof, df, n_harm, weight)
-            # add to fake power spectrum grid
-            fake_pspec[i, bins] = harm
+        dispersed_prof_fft, dms = self.disperse(scaled_prof_fft, kernels, kernel_scaling)
+        
+        harms = []
 
-        return fake_pspec, bins
+        for i in range(len(dispersed_prof_fft)):
+            bins, harm = self.harmonics(dispersed_prof_fft[i], df)
+            harms.append(harm)
+
+        harms = np.asarray(harms)
+
+        return harms, bins, dms
 
 
 def main(pspec, injection_profile="random", num_injections=1):
@@ -301,7 +314,7 @@ def main(pspec, injection_profile="random", num_injections=1):
             injection_profile (str or tuple): either a string specifying the key that references the
                                               profile in the dictionary defaults, or a tuple with
                                               custom injection profile parameters of the format
-                                              (target power spectrum, pulse profile, sigma, frequency,
+                                              (pulse profile, sigma, frequency,
                                               DM)
             num_injections (int)            : provided if injection_profile == 'random.' How many profiles
                                               to randomly generate.
@@ -315,6 +328,7 @@ def main(pspec, injection_profile="random", num_injections=1):
         np.linspace(0.1, 100, 10000), num_injections, replace=False
     )
     default_dm = rand.choice(np.linspace(10, 200, 10000), num_injections, replace=False)
+    default_sigma = rand.choice(np.linspace(5, 20, 1000), num_injections, replace = False)
 
     defaults = {
         "gaussian": (gaussian(0.5, 0.025), 20, default_freq[0], 121.4375),
@@ -346,26 +360,41 @@ def main(pspec, injection_profile="random", num_injections=1):
 
     elif injection_profile == "random":
         for i in range(num_injections):
-            pulse, sigma = generate()
-            injection_profiles.append([pulse, sigma, default_freq[i], default_dm[i]])
+            pulse = generate()
+            injection_profiles.append([pulse, default_sigma[i], default_freq[i], default_dm[i]])
+
+    else:
+        injection_profiles.append(injection_profile)
+
     i = 0
     dms = []
     bins = []
+    # If the power is 0 nothing should be injected
+    # Here I just check the zero bins in DM0 at the start and set them all to 0 at the end
+    # There are probably easier ways to do this
+    zero_bins = pspec.power_spectra[0, :] == 0
     for injection_profile in injection_profiles:
-        injection, bins_temp = Injection(pspec, *injection_profile).injection()
-        log.info("Replacing power spectrum with injected power spectrum")
+        injection, bins_temp, dms_temp = Injection(
+            pspec, *injection_profile
+        ).injection()
+        if len(injection) == 0:
+            log.info("Pulsar too weak.")
+            continue
         parameters = np.array(
             [injection_profile[1], injection_profile[2], injection_profile[3]]
         )
-        np.savetxt(f"Injection_{i}_params.txt", parameters)
-        np.savetxt(f"Injection_{i}_profile.txt", injection_profile[0])
-        dms.append(injection_profile[3])
-        bins.extend(bins_temp)
-        pspec.power_spectra[:] += injection.astype(pspec.power_spectra.dtype)
+        dms.append(dms_temp)
+        bins.append(bins_temp)
+        
+        # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
+        # not change the object
+        injected_indices = np.ix_(dms_temp, bins_temp)
+
+        pspec.power_spectra[injected_indices] += injection.astype(
+            pspec.power_spectra.dtype
+        )
+
         i += 1
-    # below is not working
-    # print(pspec.bad_freq_indices)
-    # for birdie in pspec.bad_freq_indices:
-    #    pspec.power_spectra[birdie] += np.zeros(1).astype(pspec.power_spectra.dtype)
+    pspec.power_spectra[:, zero_bins] = 0
 
     return bins, dms
