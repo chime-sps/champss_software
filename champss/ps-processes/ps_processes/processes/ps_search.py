@@ -180,7 +180,14 @@ class PowerSpectraSearch:
             "HDBSCAN",
         ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
 
-    def search(self, pspec, injection_path, injection_indices, only_injections, cutoff_frequency):
+    def search(
+        self,
+        pspec,
+        injection_path,
+        injection_indices,
+        only_injections,
+        cutoff_frequency,
+    ):
         """
         Run the search.
 
@@ -218,7 +225,7 @@ class PowerSpectraSearch:
                 injection_bins_original = []
                 injection_DMs = []
                 with open(injection_path) as file:
-                    data = yaml.load(file, Loader = yaml.Loader)
+                    data = yaml.load(file, Loader=yaml.Loader)
                     if len(injection_indices) == 0:
                         injection_indices = np.arange(len(data))
                     for injection_index in injection_indices:
@@ -357,7 +364,7 @@ class PowerSpectraSearch:
             full_indices[i : i + self.mp_chunk_size]
             for i in range(0, len(pspec.dms), self.mp_chunk_size)
         ]
-        
+
         detection_list = pool.starmap(
             partial(
                 self.search_candidates,
@@ -570,7 +577,7 @@ class PowerSpectraSearch:
                         cutoff_frequency / 1000 / TSAMP
                     ):
                         continue
-                        
+
                     if sigmas is None:
                         if type(used_nsum) == np.ndarray:
                             used_nsum_detec_loop = used_nsum[idx]
