@@ -290,7 +290,8 @@ def dbexcepthook(type, value, tb):
 )
 @click.option(
     "--cutoff-frequency",
-    default=100,
+    default=100.0,
+    type=float,
     help="Frequency at which to stop processing candidates.",
 )
 def main(
@@ -666,7 +667,6 @@ def main(
                             injection_path,
                             injection_idx,
                             only_injections,
-                            cutoff_frequency,
                         )
                     gc.collect()
                 if stack:
