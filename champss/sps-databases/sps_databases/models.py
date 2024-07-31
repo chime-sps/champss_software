@@ -623,7 +623,6 @@ class HhatStack:
 class KnownSource:
     source_type = attrib(converter=int)
     source_name = attrib(converter=str)
-    survey = attrib(converter=str)
     pos_ra_deg = attrib(converter=float)
     pos_dec_deg = attrib(converter=float)
     pos_error_semimajor_deg = attrib(converter=float)
@@ -648,6 +647,7 @@ class KnownSource:
         converter=converters.optional(str),
         on_setattr=convert,  # type: ignore
     )
+    survey = attrib(default=None, converter=str)
 
     @property
     def id(self):
