@@ -192,6 +192,7 @@ class PowerSpectraPipeline:
         injection_path,
         injection_idx,
         only_injections,
+        cutoff_frequency,
         filepath="./",
         prefix="",
     ):
