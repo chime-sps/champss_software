@@ -320,5 +320,4 @@ if __name__ == "__main__":
         if len(payload.keys()) < 16:
             print(f"{payload['source_name']} is not complete")
             continue
-        print(payload)
         add_source_to_database(payload, db_port, db_host, db_name)
