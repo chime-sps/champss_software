@@ -183,6 +183,7 @@ class SinglePointingCandidate:
     dm_sigma_1d = attrib(type=dict, default=None)
     sigmas_per_harmonic_sum = attrib(type=dict, default=None)
     injection = attrib(type=bool, default=False)
+    injection_dict = attrib(type=dict, default={})
     datetimes = attrib(
         validator=deep_iterable(
             member_validator=instance_of(datetime.datetime),
@@ -414,6 +415,7 @@ class SinglePointingCandidate:
             sigmas_per_harmonic_sum=self.sigmas_per_harmonic_sum,
             pspec_freq_resolution=self.pspec_freq_resolution,
             injection=self.injection,
+            injection_dict=self.injection_dict,
             datetimes=self.datetimes,
         )
         return ret_dict

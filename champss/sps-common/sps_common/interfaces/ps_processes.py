@@ -664,7 +664,7 @@ class Cluster:
     sigma: float = attrib()
     nharm: int = attrib()
     harm_idx: np.ndarray = attrib()
-    injection: bool = attrib()
+    injection_index: float = attrib()
 
     @classmethod
     def from_raw_detections(cls, detections):
@@ -676,7 +676,7 @@ class Cluster:
             sigma=max_sig_det["sigma"],
             nharm=max_sig_det["nharm"],
             harm_idx=max_sig_det["harm_idx"],
-            injection=max_sig_det["injection"],
+            injection_index=max_sig_det["injection"],
             detections=detections,
         )
         return cls(**init_dict)
@@ -690,7 +690,7 @@ class Cluster:
             sigma=max_sig_det["sigma"],
             nharm=max_sig_det["nharm"],
             harm_idx=max_sig_det["harm_idx"],
-            injection=max_sig_det["injection"],
+            injection_index=max_sig_det["injection"],
             detections=detections,
         )
         return cls(**init_dict)
@@ -788,6 +788,7 @@ class PowerSpectraDetectionClusters:
     freq_spacing: float = attrib()
     obs_id: List = attrib()
     datetimes: List = attrib(default=[])
+    injection_dicts: List = attrib(default=[])
 
     @clusters.validator
     def validate_cluster(self, attribute, value):

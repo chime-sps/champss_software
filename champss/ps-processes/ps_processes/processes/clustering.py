@@ -735,7 +735,7 @@ class Clusterer:
                 if remove_harm_idx:
                     cluster.remove_harm_idx()
                     cluster.remove_harm_pow()
-                if only_injections and not cluster.injection:
+                if only_injections and cluster.injection_index == -1:
                     continue
                 clusters[current_label] = cluster
                 summary[current_label] = dict(
@@ -744,7 +744,7 @@ class Clusterer:
                     sigma=cluster.sigma,
                     nharm=cluster.nharm,
                     harm_idx=cluster.harm_idx,
-                    injection=cluster.injection,
+                    injection=cluster.injection_index,
                 )
                 current_label += 1
         if zero_dm_count:
