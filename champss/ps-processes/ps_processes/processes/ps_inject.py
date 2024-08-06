@@ -402,21 +402,10 @@ class Injection:
             harms, bins, dm_indices, used_nharm
         )
 
-        if self.rescale_to_expected_sigma:
-            rescaled_abs_prof_fft = rescale_factor * (np.abs(scaled_prof_fft) ** 2)
-            intrinsic_sigma = sigma_sum_powers(
-                rescaled_abs_prof_fft.sum() + len(rescaled_abs_prof_fft) * self.ndays,
-                len(rescaled_abs_prof_fft) * self.ndays,
-            )
-            log.info(f"Intrinsic sigma: {intrinsic_sigma:.2f}")
-        else:
-            intrinsic_sigma = self.sigma
-
         return (
             harms,
             bins,
             dm_indices,
-            intrinsic_sigma,
             predicted_nharm,
             predicted_sigma,
         )
@@ -536,7 +525,6 @@ def main(
             injection,
             bins_temp,
             dms_temp,
-            intrinsic_sigma,
             predicted_nharm,
             predicted_sigma,
         ) = Injection(pspec, full_harm_bins, **injection_dict).injection()
@@ -550,7 +538,6 @@ def main(
         # bins.append(bins_temp)
         injection_dict["dms"] = dms_temp
         injection_dict["bins"] = bins_temp
-        injection_dict["intrinsic_sigma"] = intrinsic_sigma
         injection_dict["predicted_nharm"] = predicted_nharm
         injection_dict["predicted_sigma"] = predicted_sigma
         if isinstance(injection_dict["profile"], (np.ndarray, list)):
