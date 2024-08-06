@@ -46,7 +46,7 @@ def sinc(x):
     return np.sin(x) / x
 
 
-def generate(noise=False):
+def generate_pulse(noise=False):
     """
     This function generates a random pulse profile to inject.
 
@@ -483,7 +483,7 @@ def main(
 
     elif injection_profile == "random":
         for i in range(num_injections):
-            pulse = generate()
+            pulse = generate_pulse()
             injection_profiles.append(
                 [pulse, default_sigma[i], default_freq[i], default_dm[i]]
             )
