@@ -165,7 +165,7 @@ class Injection:
         self.power_threshold = 1
         self.full_harm_bins = full_harm_bins
         self.rescale_to_expected_sigma = scale_injections
-        self.use_rfi_information = False
+        self.use_rfi_information = True
 
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in
@@ -411,6 +411,12 @@ class Injection:
             harms, bins, dm_indices, used_nharm
         )
 
+        if self.use_rfi_information:
+            # Maybe want to enable buffering this value for faster multiple injection
+            bin_fractions = self.pspec_obj.get_bin_weights_fraction()
+            # Is linear scaling the way to go?
+            harms *= bin_fractions[bins]
+
         return (
             harms,
             bins,
@@ -520,7 +526,6 @@ def main(
     else:
         injection_profiles.append(injection_profile)
 
-    i = 0
     if remove_spectra:
         log.info("Replacing spectra with expected mean value.")
         pspec.power_spectra[:] = pspec.num_days
@@ -530,6 +535,8 @@ def main(
     # Here I just check the zero bins in DM0 at the start and set them all to 0 at the end
     # There are probably easier ways to do this
     zero_bins = pspec.power_spectra[0, :] == 0
+
+    i = 0
     for injection_dict in injection_profiles:
         (
             injection,
