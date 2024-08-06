@@ -141,7 +141,16 @@ def x_to_chi2(x, df):
 class Injection:
     """This class allows pulse injection."""
 
-    def __init__(self, pspec_obj, full_harm_bins, DM, frequency, profile, sigma):
+    def __init__(
+        self,
+        pspec_obj,
+        full_harm_bins,
+        DM,
+        frequency,
+        profile,
+        sigma,
+        scale_injections=False,
+    ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
         self.pspec_obj = pspec_obj
@@ -155,7 +164,7 @@ class Injection:
         self.sigma = sigma
         self.power_threshold = 1
         self.full_harm_bins = full_harm_bins
-        self.rescale_to_expected_sigma = False
+        self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = False
 
     def onewrap_deltaDM(self):
@@ -417,6 +426,7 @@ def main(
     injection_profile="random",
     num_injections=1,
     remove_spectra=False,
+    scale_injections=False,
 ):
     """
     This function runs the injection.
@@ -527,7 +537,9 @@ def main(
             dms_temp,
             predicted_nharm,
             predicted_sigma,
-        ) = Injection(pspec, full_harm_bins, **injection_dict).injection()
+        ) = Injection(
+            pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
+        ).injection()
         if len(injection) == 0:
             log.info("Pulsar too weak.")
             continue

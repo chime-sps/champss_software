@@ -15,6 +15,7 @@ def run(
     injection_idx=None,
     only_injections=False,
     cutoff_frequency=100.0,
+    scale_injections=False,
 ):
     """
     Run the power spectra stacking and searching process.
@@ -59,6 +60,7 @@ def run(
             injection_idx,
             only_injections,
             cutoff_frequency,
+            scale_injections,
         )
     return ps_detections, power_spectra
 

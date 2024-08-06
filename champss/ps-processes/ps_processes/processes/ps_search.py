@@ -187,6 +187,7 @@ class PowerSpectraSearch:
         injection_indices,
         only_injections,
         cutoff_frequency,
+        scale_injections=False,
     ):
         """
         Run the search.
@@ -229,7 +230,12 @@ class PowerSpectraSearch:
             ]
             if injection_path in presets:
                 profile = injection_path
-                injection_dict = ps_inject.main(pspec, self.full_harm_bins, profile)
+                injection_dict = ps_inject.main(
+                    pspec,
+                    self.full_harm_bins,
+                    profile,
+                    scale_injections=scale_injections,
+                )
                 injection_dicts = injection_dict
             else:
                 injection_dicts = []
@@ -253,6 +259,7 @@ class PowerSpectraSearch:
                             pspec,
                             self.full_harm_bins,
                             injection_dict,
+                            scale_injections=scale_injections,
                         )
                         injection_dicts.extend(injection_dict)
         else:
@@ -286,7 +293,7 @@ class PowerSpectraSearch:
                 self.full_harm_bins[dummy_harmonics != 0] = 0
 
         # Calculate the used number of each days in each pixel for each harmonic sum
-        # Fromt that calculate the power_cutoff.
+        # From that calculate the power_cutoff.
         # Calculating for each DM trial would be slower.
         # The harmonics are also currently hard-coded in the search routine currently
         all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
