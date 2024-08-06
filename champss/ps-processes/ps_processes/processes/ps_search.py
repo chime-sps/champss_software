@@ -219,35 +219,6 @@ class PowerSpectraSearch:
                 )
             ).astype(np.int32)
 
-        # Calculate the used number of each days in each pixel for each harmonic sum
-        # From that calculate the power_cutoff.
-        # Calculating for each DM trial would be slower.
-        # The harmonics are also currently hard-coded in the search routine currently
-        all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
-        if self.use_nsum_per_bin:
-            power_cutoff_per_harmonic = np.zeros(
-                (6, self.padded_length // 2), dtype=float
-            )
-            nsum_per_harmonic = np.zeros((6, self.padded_length // 2), dtype=int)
-            num_days_per_bin = pspec.get_bin_weights()
-            # For masked bins make sure that 0th bins is 0
-            num_days_per_bin[0] = 0
-            if len(filtered_sources):
-                num_days_per_bin[bad_freq_indices] = 0
-            for idx_harm, harm in enumerate(all_harmonic_vals):
-                nsum_harm_bins = self.full_harm_bins[:harm]
-                nsum_current_harmonic = num_days_per_bin[nsum_harm_bins].sum(0)
-                nsum_per_harmonic[idx_harm, :] = nsum_current_harmonic
-                power_cutoff_per_harmonic[idx_harm, :] = powersum_at_sigma(
-                    self.sigma_min, nsum_current_harmonic
-                )
-                power_cutoff_per_harmonic[idx_harm, nsum_current_harmonic == 0] = np.inf
-        else:
-            nsum_per_harmonic = all_harmonic_vals * pspec.num_days
-            power_cutoff_per_harmonic = powersum_at_sigma(
-                self.sigma_min, nsum_per_harmonic
-            )
-
         if injection_path is not None:
             presets = [
                 "gaussian",
@@ -321,6 +292,35 @@ class PowerSpectraSearch:
                 )
 
                 self.full_harm_bins[dummy_harmonics != 0] = 0
+
+        # Calculate the used number of each days in each pixel for each harmonic sum
+        # From that calculate the power_cutoff.
+        # Calculating for each DM trial would be slower.
+        # The harmonics are also currently hard-coded in the search routine currently
+        all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
+        if self.use_nsum_per_bin:
+            power_cutoff_per_harmonic = np.zeros(
+                (6, self.padded_length // 2), dtype=float
+            )
+            nsum_per_harmonic = np.zeros((6, self.padded_length // 2), dtype=int)
+            num_days_per_bin = pspec.get_bin_weights()
+            # For masked bins make sure that 0th bins is 0
+            num_days_per_bin[0] = 0
+            if len(filtered_sources):
+                num_days_per_bin[bad_freq_indices] = 0
+            for idx_harm, harm in enumerate(all_harmonic_vals):
+                nsum_harm_bins = self.full_harm_bins[:harm]
+                nsum_current_harmonic = num_days_per_bin[nsum_harm_bins].sum(0)
+                nsum_per_harmonic[idx_harm, :] = nsum_current_harmonic
+                power_cutoff_per_harmonic[idx_harm, :] = powersum_at_sigma(
+                    self.sigma_min, nsum_current_harmonic
+                )
+                power_cutoff_per_harmonic[idx_harm, nsum_current_harmonic == 0] = np.inf
+        else:
+            nsum_per_harmonic = all_harmonic_vals * pspec.num_days
+            power_cutoff_per_harmonic = powersum_at_sigma(
+                self.sigma_min, nsum_per_harmonic
+            )
 
         pool = Pool(self.num_threads)
         detection_dtype = [
