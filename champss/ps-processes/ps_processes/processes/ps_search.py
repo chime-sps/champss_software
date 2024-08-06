@@ -229,7 +229,8 @@ class PowerSpectraSearch:
             ]
             if injection_path in presets:
                 profile = injection_path
-                injection_bins_original, injection_DMs = ps_inject.main(pspec, profile)
+                injection_dict = ps_inject.main(pspec, self.full_harm_bins, profile)
+                injection_dicts = injection_dict
             else:
                 injection_dicts = []
                 with open(injection_path) as file:
@@ -245,12 +246,7 @@ class PowerSpectraSearch:
                         log.info(
                             f"frequency: {injection_list[injection_index]['frequency']}"
                         )
-                        # pulse = np.array(injection_list[injection_index]["profile"])
-                        # frequency = injection_list[injection_index]["frequency"]
-                        # DM = injection_list[injection_index]["DM"]
-                        # sigma = injection_list[injection_index]["sigma"]
 
-                        # profile = [pulse, sigma, frequency, DM]
                         injection_dict = injection_list[injection_index]
 
                         injection_dict = ps_inject.main(
@@ -259,10 +255,6 @@ class PowerSpectraSearch:
                             injection_dict,
                         )
                         injection_dicts.extend(injection_dict)
-                        # injection_DMs are indices of the altered injection trials
-                        # injection_bins_original and injection_DMs are lists of lists
-                        # injection_bins_original.extend(current_injection_bins)
-                        # injection_DMs.extend(current_injection_DMs)
         else:
             injection_dicts = []
             log.info("No artificial pulse injected.")

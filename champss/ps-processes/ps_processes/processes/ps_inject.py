@@ -453,23 +453,48 @@ def main(
     default_sigma = rand.choice(np.linspace(5, 20, 1000), num_injections, replace=False)
 
     defaults = {
-        "gaussian": (gaussian(0.5, 0.025), 20, default_freq[0], 121.4375),
-        "subpulse": (
-            gaussian(0.5, 0.025) + 0.5 * gaussian(0.6, 0.015),
-            20,
-            default_freq[0],
-            121.4375,
-        ),
-        "interpulse": (
-            gaussian(0.5, 0.025) + 0.8 * gaussian(0.1, 0.02),
-            20,
-            default_freq[0],
-            121.4375,
-        ),
-        "faint": (gaussian(0.5, 0.025), 10, default_freq[0], 121.4375),
-        "high-DM": (gaussian(0.5, 0.025), 20, default_freq[0], 212.3),
-        "slow": (gaussian(0.5, 0.025), 20, 3.27, 121.4375),
-        "fast": (gaussian(0.5, 0.025), 20, 70.26, 121.4375),
+        "gaussian": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 20,
+            "frequency": default_freq[0],
+            "DM": 121.4375,
+        },
+        "subpulse": {
+            "profile": gaussian(0.5, 0.025) + 0.5 * gaussian(0.6, 0.015),
+            "sigma": 20,
+            "frequency": default_freq[0],
+            "DM": 121.4375,
+        },
+        "interpulse": {
+            "profile": gaussian(0.5, 0.025) + 0.8 * gaussian(0.1, 0.02),
+            "sigma": 20,
+            "frequency": default_freq[0],
+            "DM": 121.4375,
+        },
+        "faint": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 10,
+            "frequency": default_freq[0],
+            "DM": 121.4375,
+        },
+        "high-DM": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 20,
+            "frequency": default_freq[0],
+            "DM": 212.3,
+        },
+        "slow": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 20,
+            "frequency": 3.27,
+            "DM": 121.4375,
+        },
+        "fast": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 20,
+            "frequency": 70.26,
+            "DM": 121.4375,
+        },
     }
 
     injection_profiles = []
@@ -485,22 +510,26 @@ def main(
         for i in range(num_injections):
             pulse = generate_pulse()
             injection_profiles.append(
-                [pulse, default_sigma[i], default_freq[i], default_dm[i]]
+                {
+                    "profile": pulse,
+                    "sigma": default_sigma[i],
+                    "frequency": default_freq[i],
+                    "DM": default_dm[i],
+                }
             )
 
     else:
         injection_profiles.append(injection_profile)
 
     i = 0
-    # dms = []
-    # bins = []
-    # If the power is 0 nothing should be injected
-    # Here I just check the zero bins in DM0 at the start and set them all to 0 at the end
-    # There are probably easier ways to do this
     if remove_spectra:
         log.info("Replacing spectra with expected mean value.")
         pspec.power_spectra[:] = pspec.num_days
         pspec.bad_freq_indices = [[]]
+
+    # If the power is 0 nothing should be injected
+    # Here I just check the zero bins in DM0 at the start and set them all to 0 at the end
+    # There are probably easier ways to do this
     zero_bins = pspec.power_spectra[0, :] == 0
     for injection_dict in injection_profiles:
         (
