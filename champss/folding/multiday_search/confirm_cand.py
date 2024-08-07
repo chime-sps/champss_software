@@ -151,7 +151,7 @@ def main(
 
     # Rewrite new ephemeris using new F0 and F1
 
-    f0_optimal = optimal_parameters[0] + F0_incoherent
+    f0_optimal = optimal_parameters[0]  # + F0_incoherent
     f1_optimal = optimal_parameters[1]
 
     optimal_par_file = par_file.replace(".par", "_optimal.par")
