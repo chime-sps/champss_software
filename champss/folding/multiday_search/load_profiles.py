@@ -172,7 +172,7 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         t_bary = get_ssb_delay(RA, DEC, times)
         dts = times + t_bary - T0
         dts = dts.to_value("second")
-        dF0 = F0 - F0_incoherent
+        dF0 = F0_incoherent - F0
         dF1 = F1_incoherent
 
         data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, -dF1)
