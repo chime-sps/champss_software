@@ -79,7 +79,7 @@ class ExploreGrid:
         index_of_maximum = unravel_index(self.chi2_grid.argmax(), self.chi2_grid.shape)
 
         df0_best = f0_ax[index_of_maximum[0]]
-        f0_best = df0_best + self.f0_incoherent
+        f0_best = -df0_best + self.f0_incoherent
         f1_best = f1_ax[index_of_maximum[1]]
         self.max_indeces = index_of_maximum
 
@@ -114,7 +114,7 @@ class ExploreGrid:
         profile2D = np.tile(profile2D, (1, 2))
 
         # Search grid plot
-        f0best_plot = (self.f0_incoherent - self.optimal_parameters[0]) * 1e6
+        f0best_plot = (self.optimal_parameters[0] - self.f0_incoherent) * 1e6
         f1best_plot = self.optimal_parameters[1] * 1e15
         axs[0, 0].pcolormesh(1e6 * self.f0s, 1e15 * self.f1s, self.chi2_grid.T)
         axs[0, 0].scatter(
