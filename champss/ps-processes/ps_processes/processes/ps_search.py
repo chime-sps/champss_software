@@ -408,9 +408,6 @@ class PowerSpectraSearch:
             cluster_dm_spacing,
             cluster_df_spacing,
             plot_fname="",
-            filter_nharm=self.filter_by_nharm,
-            remove_harm_idx=False,
-            cluster_dm_cut=self.cluster_dm_cut,
             only_injections=only_injections,
         )
 
