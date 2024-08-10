@@ -149,6 +149,7 @@ ps:
       overlap_scale: 1.5
       metric_combination: replace
       metric_method: power_overlap
+      add_dm_when_replace: True
 
 cands:
   harmonics: {}
@@ -307,3 +308,4 @@ ps_cumul_stack:
       overlap_scale: 1.5
       metric_combination: replace
       metric_method: power_overlap
+      add_dm_when_replace: True

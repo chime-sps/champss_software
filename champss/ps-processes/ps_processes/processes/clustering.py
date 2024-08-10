@@ -11,6 +11,7 @@ from attr import s as attrs
 from matplotlib import pyplot as plt
 from sklearn.cluster import DBSCAN, HDBSCAN
 from sklearn.metrics import pairwise_distances
+from sklearn.metrics.pairwise import paired_distances
 from sps_common.interfaces import Cluster
 
 log = logging.getLogger(__name__)
@@ -368,6 +369,7 @@ class Clusterer:
     remove_harm_idx: bool = attribute(default=False)
     cluster_dm_cut: float = attribute(default=-1)
     overlap_scale: float = attribute(default=1)
+    add_dm_when_replace: bool = attribute(default=True)
 
     @metric_method.validator
     def _validate_metric_method(self, attribute, value):
@@ -670,6 +672,12 @@ class Clusterer:
                         elif self.metric_combination == "replace":
                             metric_array[index_0, index_1] = metric
                             metric_array[index_1, index_0] = metric
+                            if self.add_dm_when_replace:
+                                dm_dists = paired_distances(
+                                    data[index_0, :1], data[index_1, :1]
+                                )
+                                metric_array[index_0, index_1] += dm_dists
+                                metric_array[index_1, index_0] += dm_dists
                     else:
                         metric_array[index_0, index_1] = metric
                         metric_array[index_1, index_0] = metric
