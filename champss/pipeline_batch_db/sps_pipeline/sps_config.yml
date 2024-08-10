@@ -146,7 +146,7 @@ ps:
       filter_nharm: False
       cluster_dm_cut: 2
       max_ndetect: 50000
-      overlap_scale: 0.0
+      overlap_scale: 1.5
       metric_combination: replace
       metric_method: power_overlap
 
@@ -304,6 +304,6 @@ ps_cumul_stack:
       filter_nharm: False
       cluster_dm_cut: 2
       max_ndetect: 90000
-      overlap_scale: 1.1
+      overlap_scale: 1.5
       metric_combination: replace
       metric_method: power_overlap
