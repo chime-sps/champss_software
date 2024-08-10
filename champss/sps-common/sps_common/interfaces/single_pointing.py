@@ -182,6 +182,8 @@ class SinglePointingCandidate:
     raw_harmonic_powers_array = attrib(type=dict, default=None)
     dm_sigma_1d = attrib(type=dict, default=None)
     sigmas_per_harmonic_sum = attrib(type=dict, default=None)
+    injection = attrib(type=bool, default=False)
+    injection_dict = attrib(type=dict, default={})
     datetimes = attrib(
         validator=deep_iterable(
             member_validator=instance_of(datetime.datetime),
@@ -320,13 +322,13 @@ class SinglePointingCandidate:
     def harm_sigma_curve(self):
         """Return sigma as a function of summed harmonics."""
         raw_power_curve = self.best_raw_harmonic_powers
-        dm_sigma_curve = np.zeros(len(raw_power_curve))
-        for i in range(len(dm_sigma_curve)):
+        harm_sigma_curve = np.zeros(len(raw_power_curve))
+        for i in range(len(harm_sigma_curve)):
             # sigma_sum_powers aso accepts array inputs which might be faster
-            dm_sigma_curve[i] = sigma_sum_powers(
+            harm_sigma_curve[i] = sigma_sum_powers(
                 raw_power_curve[: i + 1].sum(), self.num_days * (i + 1)
             )
-        return dm_sigma_curve
+        return harm_sigma_curve
 
     @property
     def masked_harmonics(self):
@@ -412,6 +414,8 @@ class SinglePointingCandidate:
             dm_sigma_1d=self.dm_sigma_1d,
             sigmas_per_harmonic_sum=self.sigmas_per_harmonic_sum,
             pspec_freq_resolution=self.pspec_freq_resolution,
+            injection=self.injection,
+            injection_dict=self.injection_dict,
             datetimes=self.datetimes,
         )
         return ret_dict
@@ -470,6 +474,7 @@ class SinglePointingCandidateCollection:
                 ("dm", float),
                 ("nharm", int),
                 ("sigma", float),
+                ("injection", bool),
             ]
             dummy_harm_info = np.array([], dtype=harm_dtype)
 

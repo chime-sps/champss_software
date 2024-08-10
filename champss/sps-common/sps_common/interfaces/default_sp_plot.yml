@@ -36,7 +36,9 @@ panels:
   - best_harmonic_sum
   - strongest_harmonic_frequency
   - strongest_harmonic_period
+  - 
   - injection
+  - injection_dict
 - col_range:
   - 0
   - 1

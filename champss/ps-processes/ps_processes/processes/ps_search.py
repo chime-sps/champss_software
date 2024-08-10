@@ -6,6 +6,7 @@ from functools import partial
 from multiprocessing import Pool, shared_memory
 
 import numpy as np
+import yaml
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
@@ -159,7 +160,15 @@ class PowerSpectraSearch:
             32,
         ], "The number of harmonics must be a power of 2 up to 32"
 
-    def search(self, pspec, inject=False):
+    def search(
+        self,
+        pspec,
+        injection_path,
+        injection_indices,
+        only_injections,
+        cutoff_frequency,
+        scale_injections=False,
+    ):
         """
         Run the search.
 
@@ -180,25 +189,64 @@ class PowerSpectraSearch:
             PowerSpectraDetectionClusters object with the properties of all the
             detections clusters from the pointing.
         """
-        if inject:
-            injection_bins_original, injection_DMs = ps_inject.main(
-                pspec, "gaussian", num_injections=1
-            )
-        else:
-            injection_DMs = []
-            injection_bins_original = []
-            log.info("No artificial pulse injected.")
-
-        search_start = time.time()
         ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         # compute harmonic bins based on power spectra properties
         if not self.precompute_harms:
             self.full_harm_bins = np.vstack(
                 (
-                    np.arange(0, len(ps_length)),
-                    harmonic_sum(self.num_harm, np.zeros(len(ps_length)))[1],
+                    np.arange(0, ps_length),
+                    harmonic_sum(self.num_harm, np.zeros(ps_length))[1],
                 )
             ).astype(np.int32)
+
+        if injection_path is not None:
+            presets = [
+                "gaussian",
+                "subpulse",
+                "interpulse",
+                "faint",
+                "high-DM",
+                "slow",
+                "fast",
+            ]
+            if injection_path in presets:
+                profile = injection_path
+                injection_dict = ps_inject.main(
+                    pspec,
+                    self.full_harm_bins,
+                    profile,
+                    scale_injections=scale_injections,
+                )
+                injection_dicts = injection_dict
+            else:
+                injection_dicts = []
+                with open(injection_path) as file:
+                    injection_list = yaml.load(file, Loader=yaml.Loader)
+                    # injection_list are the initial injection parameters
+                    # injection_dicts are final injection parameters
+                    # Some entries from injection_list may create multiple injection or none
+                    if len(injection_indices) == 0:
+                        injection_indices = np.arange(len(injection_list))
+                    for injection_index in injection_indices:
+                        log.info(f"DM: {injection_list[injection_index]['DM']}")
+                        log.info(f"sigma: {injection_list[injection_index]['sigma']}")
+                        log.info(
+                            f"frequency: {injection_list[injection_index]['frequency']}"
+                        )
+
+                        injection_dict = injection_list[injection_index]
+
+                        injection_dict = ps_inject.main(
+                            pspec,
+                            self.full_harm_bins,
+                            injection_dict,
+                            scale_injections=scale_injections,
+                        )
+                        injection_dicts.extend(injection_dict)
+        else:
+            injection_dicts = []
+            log.info("No artificial pulse injected.")
+        search_start = time.time()
 
         filtered_sources = []
         if self.known_source_threshold is not np.inf:
@@ -226,7 +274,7 @@ class PowerSpectraSearch:
                 self.full_harm_bins[dummy_harmonics != 0] = 0
 
         # Calculate the used number of each days in each pixel for each harmonic sum
-        # Fromt that calculate the power_cutoff.
+        # From that calculate the power_cutoff.
         # Calculating for each DM trial would be slower.
         # The harmonics are also currently hard-coded in the search routine currently
         all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
@@ -274,7 +322,7 @@ class PowerSpectraSearch:
                 ),
             ),
             ("sigma", float),
-            ("injection", bool),
+            ("injection", int),
         ]
         # multiprocessing pool to run the search as a parallel process.
         log.info(
@@ -314,7 +362,8 @@ class PowerSpectraSearch:
                 pspec.freq_labels,
                 nsum_per_harmonic,
                 power_cutoff_per_harmonic,
-                injection_bins_original,
+                injection_dicts,
+                cutoff_frequency,
             ),
             zip(dm_indices, dm_split),
         )
@@ -359,6 +408,10 @@ class PowerSpectraSearch:
             cluster_dm_spacing,
             cluster_df_spacing,
             plot_fname="",
+            filter_nharm=self.filter_by_nharm,
+            remove_harm_idx=False,
+            cluster_dm_cut=self.cluster_dm_cut,
+            only_injections=only_injections,
         )
 
         log.info(f"Total number of candidate clusters={len(clusters)}")
@@ -385,6 +438,7 @@ class PowerSpectraSearch:
                 freq_spacing=cluster_df_spacing,
                 obs_id=pspec.obs_id,
                 datetimes=pspec.datetimes,
+                injection_dicts=injection_dicts,
             ),
             detections,
         )
@@ -399,7 +453,8 @@ class PowerSpectraSearch:
         freq_labels,
         nsum_per_harmonic,
         power_cutoff_per_harmonic,
-        injection_bins_original,
+        injection_dicts,
+        cutoff_frequency,
         dm_indices,
         dms,
     ):
@@ -444,8 +499,9 @@ class PowerSpectraSearch:
             Is 2D if self.use_nsum_per_bin otherwise 1D.
             In the 2D case the power cutoff is given for all frequency bins.
 
-        injection_bins_original: list
-            Bins at which a pulse was injected. [] if none
+        injection_dicts: list
+            Dictionaries containing the injection specifics, Fields "bins" and "dms" are
+            important here.
 
         dm_tuple: (int, float)
             The DM of the power spectrum to search and the index of the dm trial.
@@ -502,10 +558,12 @@ class PowerSpectraSearch:
                     replace_last = False
                     detection_freq = freq_labels[idx] / harm
                     # skipping candidates with period less than 10 time samples
+
                     if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (
-                        0.1 / TSAMP
+                        cutoff_frequency / 1000 / TSAMP
                     ):
                         continue
+
                     if sigmas is None:
                         if type(used_nsum) == np.ndarray:
                             used_nsum_detec_loop = used_nsum[idx]
@@ -537,13 +595,17 @@ class PowerSpectraSearch:
                             replace_last = True
 
                     sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
-                    injection_bins = np.intersect1d(
-                        sorted_harm_bins, injection_bins_original
-                    )
-                    if injection_bins.size == 0:
-                        injection = False
-                    else:
-                        injection = True
+                    injected_index = -1
+
+                    for list_index, injection_dict in enumerate(injection_dicts):
+                        injected_bins = injection_dict["bins"]
+                        injected_dms = injection_dict["dms"]
+                        if dm_index in injected_dms:
+                            injection_overlap = np.intersect1d(
+                                sorted_harm_bins, injected_bins
+                            )
+                            if injection_overlap.size != 0:
+                                injected_index = list_index
 
                     if replace_last:
                         detection_list[-1] = (
@@ -562,7 +624,7 @@ class PowerSpectraSearch:
                                 )
                             ),
                             sigma,
-                            injection,
+                            injected_index,
                         )
                     else:
                         detection_list.append(
@@ -583,7 +645,7 @@ class PowerSpectraSearch:
                                     )
                                 ),
                                 sigma,
-                                injection,
+                                injected_index,
                             )
                         )
                     last_detection_freq = detection_freq

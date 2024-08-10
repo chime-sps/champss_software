@@ -269,6 +269,36 @@ def dbexcepthook(type, value, tb):
     type=str,
     help="Name of used config. Default: sps_config.yml",
 )
+@click.option(
+    "--injection-path",
+    default=None,
+    type=str,
+    help="Path to yml file containing injection",
+)
+@click.option(
+    "--injection-idx",
+    "--ii",
+    default=[],
+    type=int,
+    multiple=True,
+    help="Index of pulse to inject from yml file",
+)
+@click.option(
+    "--only-injections/--no-only-injections",
+    default=False,
+    help="Only process clusters containing injections.",
+)
+@click.option(
+    "--cutoff-frequency",
+    default=100.0,
+    type=float,
+    help="Frequency at which to stop processing candidates.",
+)
+@click.option(
+    "--scale-injections/--not-scale-injections",
+    default=False,
+    help="Scale injection so that input sigma should be detected sigma.",
+)
 def main(
     date,
     stack,
@@ -289,6 +319,11 @@ def main(
     using_docker,
     known_source_threshold,
     config_file,
+    injection_path,
+    injection_idx,
+    only_injections,
+    cutoff_frequency,
+    scale_injections,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -321,13 +356,7 @@ def main(
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
 
-    if isinstance(date, str):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(date, date_format)
-                break
-            except ValueError:
-                continue
+    date = utils.convert_date_to_datetime(date)
 
     date_string = date.strftime("%Y/%m/%d")
 
@@ -520,7 +549,7 @@ def main(
                 f"_{active_pointing.sub_pointing}"
             )
 
-            # Compute number of threads required. 
+            # Compute number of threads required.
             # Currently based on the number of channels of the input data
 
             ntime_factor = int(
@@ -615,7 +644,14 @@ def main(
                 gc.collect()
                 if "search" in components:
                     ps_detections = ps_pipeline.power_spectra_search(
-                        power_spectra, obs_folder, prefix
+                        power_spectra,
+                        injection_path,
+                        injection_idx,
+                        only_injections,
+                        cutoff_frequency,
+                        scale_injections,
+                        obs_folder,
+                        prefix,
                     )
                     if ps_detections is None:
                         power_spectra.unlink_shared_memory()
@@ -635,6 +671,9 @@ def main(
                             config.cands.get(
                                 "write_harmonically_related_clusters", False
                             ),
+                            injection_path,
+                            injection_idx,
+                            only_injections,
                         )
                     gc.collect()
                 if stack:
@@ -816,6 +855,34 @@ def main(
         " strongest detection of that source in that pointing."
     ),
 )
+@click.option(
+    "--injection-path",
+    default=None,
+    help="Path to yml file containing injection",
+)
+@click.option(
+    "--injection-idx",
+    "--ii",
+    default=[],
+    type=int,
+    multiple=True,
+    help="Index of pulse to inject from yml file",
+)
+@click.option(
+    "--only-injections/--no-only-injections",
+    default=False,
+    help="Only process clusters containing injections.",
+)
+@click.option(
+    "--cutoff-frequency",
+    default=100,
+    help="Frequency at which to stop processing candidates.",
+)
+@click.option(
+    "--scale-injections/--not-scale-injections",
+    default=False,
+    help="Scale injection so that input sigma should be detected sigma.",
+)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -828,6 +895,11 @@ def stack_and_search(
     path_cumul_stack,
     cand_path,
     known_source_threshold,
+    injection_path,
+    injection_idx,
+    only_injections,
+    cutoff_frequency,
+    scale_injections,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -838,6 +910,7 @@ def stack_and_search(
     - search: run the searching of the cumulative stack
     - search-monthly: run the searching of the monthly stack
     """
+
     multiprocessing.set_start_method("forkserver")
     sys.excepthook = dbexcepthook
     global pipeline_start_time
@@ -892,7 +965,12 @@ def stack_and_search(
             ps_detections_monthly,
             power_spectra_monthly,
         ) = ps_cumul_stack_processor.pipeline.load_and_search_monthly(
-            closest_pointing._id
+            closest_pointing._id,
+            injection_path,
+            injection_idx,
+            only_injections,
+            cutoff_frequency,
+            scale_injections,
         )
         ps_stack = db_api.get_ps_stack(closest_pointing._id)
         if ps_detections_monthly:
@@ -912,7 +990,14 @@ def stack_and_search(
 
     if to_stack or to_search:
         ps_detections, power_spectra = ps_cumul_stack.run(
-            closest_pointing, ps_cumul_stack_processor, power_spectra_monthly
+            closest_pointing,
+            ps_cumul_stack_processor,
+            power_spectra_monthly,
+            injection_path,
+            injection_idx,
+            only_injections,
+            cutoff_frequency,
+            scale_injections,
         )
         if to_search:
             if not ps_detections:

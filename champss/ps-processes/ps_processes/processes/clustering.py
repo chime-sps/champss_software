@@ -718,6 +718,7 @@ class Clusterer:
         cluster_dm_spacing,
         cluster_df_spacing,
         plot_fname="",
+        only_injections=False,
     ):
         """
         Make clusters from detections. This calls the cluster function, and packages up
@@ -739,7 +740,6 @@ class Clusterer:
             sig_limit (float): The minimum sigma used when clustering.
                                If there were many detections this may be higher than the limi used in the search
         """
-
         detections, cluster_labels, sig_limit = self.cluster(
             detections_in,
             cluster_dm_spacing,
@@ -747,11 +747,11 @@ class Clusterer:
             scheme="combined",
             plot_fname=plot_fname,
         )
-
         unique_labels = np.unique(cluster_labels)
         clusters = {}
         summary = {}
         zero_dm_count = 0
+
         if not np.all(unique_labels == -1):
             # Could use old labels, but new labels prevent gaps if cluster is filtered out
             current_label = 0
@@ -767,6 +767,8 @@ class Clusterer:
                 if self.remove_harm_idx:
                     cluster.remove_harm_idx()
                     cluster.remove_harm_pow()
+                if only_injections and cluster.injection_index == -1:
+                    continue
                 clusters[current_label] = cluster
                 summary[current_label] = dict(
                     freq=cluster.freq,
@@ -774,7 +776,7 @@ class Clusterer:
                     sigma=cluster.sigma,
                     nharm=cluster.nharm,
                     harm_idx=cluster.harm_idx,
-                    injection=cluster.injection,
+                    injection=cluster.injection_index,
                 )
                 current_label += 1
         if zero_dm_count:

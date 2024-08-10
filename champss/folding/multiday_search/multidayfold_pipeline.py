@@ -7,7 +7,7 @@ import multiday_search.fold_multiday as fold_multiday
 from foldutils.database_utils import add_mdcand_from_candpath
 from sps_databases import db_api, db_utils, models
 from sps_pipeline.workflow import (
-    docker_swarm_pending_states,
+    clear_workflow_buckets,
     docker_swarm_running_states,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
@@ -25,6 +25,12 @@ log = logging.getLogger(__name__)
     type=str,
     default="",
     help="Path to candidate file",
+)
+@click.option(
+    "--foldpath",
+    default="/data/chime/sps/archives",
+    type=str,
+    help="Path for created files during fold step.",
 )
 @click.option(
     "--db-port",
@@ -45,41 +51,70 @@ log = logging.getLogger(__name__)
     help="Name used for the mongodb database.",
 )
 @click.option(
+    "--workflow-buckets-name-prefix",
+    default="champss",
+    type=str,
+    help="What prefix to include for the Worklow DB to create/use.",
+)
+@click.option(
     "--docker-image-name",
-    default="chimefrb/champss_software:test",
+    default="chimefrb/champss_software:latest",
     type=str,
     help="Which Docker Image name to use.",
 )
 @click.option(
     "--docker-password",
-    default="",
+    prompt=True,
+    confirmation_prompt=False,
+    hide_input=True,
+    required=False,
     type=str,
-    help="chimefrb DockerHub private registry password",
-)
-@click.option(
-    "--workflow-name",
-    default="champss-processing",
-    type=str,
-    help="Which Worklow DB to create/use.",
+    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
 def main(
     candpath,
+    foldpath,
     db_port,
     db_host,
     db_name,
+    workflow_buckets_name_prefix,
     docker_image_name,
     docker_password,
-    workflow_name,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
     print(fs_id)
 
-    docker_name_prefix = "fold-multiday"
+    if docker_password == "" or docker_password is None:
+        # Possibly this function is running in a Workflow runner container
+        # and the password is in a secret file
+        docker_password_filepath = "/run/secrets/DOCKER_PASSWORD"
+        try:
+            with open(docker_password_filepath) as docker_password_file:
+                # Need the password so that schedue_workflow_job can login to DockerHub
+                # and pull private images to spawn Docker containers
+                docker_password = docker_password_file.read()
+        except Exception as error:
+            log.info(
+                f"Could not read DockerHub password from {docker_password_filepath}: {error} "
+                f"Will attempt under assumption that 'docker login' command was already called."
+            )
+
+    docker_service_name_prefix = "fold-multiday"
+
+    workflow_buckets_name = (
+        f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
+    )
+    clear_workflow_buckets(
+        ["--workflow-buckets-name", workflow_buckets_name], standalone_mode=False
+    )
+
     fold_multiday.main(
         [
             "--fs_id",
             fs_id,
+            "--foldpath",
+            foldpath,
             "--db-port",
             db_port,
             "--db-name",
@@ -88,31 +123,34 @@ def main(
             db_host,
             "--docker-image-name",
             docker_image_name,
+            "--docker-service-name-prefix",
+            docker_service_name_prefix,
+            "--workflow-buckets-name",
+            workflow_buckets_name,
             "--docker-password",
             docker_password,
-            "--docker-name-prefix",
-            docker_name_prefix,
-            "--workflow-name",
-            workflow_name,
         ],
         standalone_mode=False,
     )
 
-    # To Do (Chris): add docker_name_prefix attribute to wait_for_no_tasks_in_states
-    # wait_for_no_tasks_in_states(docker_swarm_pending_states, docker_name_prefix)
-    # wait_for_no_tasks_in_states(docker_swarm_running_states, docker_name_prefix)
-    wait_for_no_tasks_in_states(docker_swarm_pending_states)
-    wait_for_no_tasks_in_states(docker_swarm_running_states)
+    wait_for_no_tasks_in_states(docker_swarm_running_states, docker_service_name_prefix)
 
     print("Finished multiday folding, beginning the coherent search")
 
-    docker_name_prefix = "multiday"
-    docker_name = f"{docker_name_prefix}-{fs_id}"
+    docker_service_name_prefix = "multiday-confirm"
+    docker_name = f"{docker_service_name_prefix}-{fs_id}"
     docker_memory_reservation = 64
     docker_mounts = [
         "/data/chime/sps/raw:/data/chime/sps/raw",
-        "/data/chime/sps/archives:/data/chime/sps/archives",
+        f"{foldpath}:{foldpath}",
     ]
+
+    workflow_buckets_name = (
+        f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
+    )
+    clear_workflow_buckets(
+        ["--workflow-buckets-name", workflow_buckets_name], standalone_mode=False
+    )
 
     workflow_function = "multiday_search.confirm_cand.main"
     workflow_params = {
@@ -124,24 +162,27 @@ def main(
     }
     workflow_tags = [
         "multiday",
+        "confirm",
         fs_id,
     ]
-    schedule_workflow_job(
+    work_id = schedule_workflow_job(
         docker_image_name,
         docker_mounts,
         docker_name,
         docker_memory_reservation,
         docker_password,
-        workflow_name,
+        workflow_buckets_name,
         workflow_function,
         workflow_params,
         workflow_tags,
     )
 
-    wait_for_no_tasks_in_states(docker_swarm_pending_states)
-    wait_for_no_tasks_in_states(docker_swarm_running_states)
+    wait_for_no_tasks_in_states(docker_swarm_running_states, docker_service_name_prefix)
 
     # Can add Slack alerts here
+    print("Finished multiday search")
+    foldresults_dict = {"coherentsearch_work_id": work_id}
+    return foldresults_dict, [], []
 
 
 if __name__ == "__main__":

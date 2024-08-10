@@ -49,6 +49,8 @@ def Filter(
     db_host="sps-archiver",
     db_name="sps",
     write_to_db=False,
+    basepath="/data/chime/sps/sps_processing",
+    foldpath="/data/chime/sps/archives",
 ):
     """
     Read a day's worth of multi-pointing candidates, retrieve a set of the most
@@ -75,7 +77,7 @@ def Filter(
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
 
     date_str = cand_obs_date.strftime("%Y%m%d")
-    fname = f"/data/chime/sps/sps_processing/mp_runs/daily_{date_str}/all_mp_cands.csv"
+    fname = f"{basepath}/mp_runs/daily_{date_str}/all_mp_cands.csv"
     df = pd.read_csv(fname)
 
     SNthresh = min_sigma
@@ -239,9 +241,7 @@ def Filter(
                 "sd_candidate",
             )
 
-    npz_filename = (
-        f"/data/chime/sps/archives/candidates/filtered_cands/cands_{date_str}_filtered"
-    )
+    npz_filename = f"{foldpath}/candidates/filtered_cands/cands_{date_str}_filtered"
     if save_candidates:
         print("Saving filtered data...")
         np.savez(

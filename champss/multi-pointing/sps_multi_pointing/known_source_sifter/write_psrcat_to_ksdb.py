@@ -111,7 +111,7 @@ if __name__ == "__main__":
                 add_source_to_database(payload)
     else:
         query = psrqpy.QueryATNF(
-            params=["name", "rajd", "decjd", "P0", "P1", "pepoch", "dm"],
+            params=["name", "rajd", "decjd", "P0", "P1", "pepoch", "dm", "survey"],
             condition="decjd > -20",
             checkupdate=True,
         )
@@ -120,6 +120,7 @@ if __name__ == "__main__":
             payload = {
                 "source_type": 1,
                 "source_name": pulsar["NAME"],
+                "survey": pulsar["SURVEY"],
                 "pos_ra_deg": pulsar["RAJD"],
                 "pos_dec_deg": pulsar["DECJD"],
                 "pos_error_semimajor_deg": pulsar["RAJD_ERR"]

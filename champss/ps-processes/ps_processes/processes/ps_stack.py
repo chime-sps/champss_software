@@ -90,6 +90,7 @@ class PowerSpectraStack:
     update_db = attribute(default=True, validator=instance_of(bool))
     max_lock_age = attribute(default=1800.0, validator=instance_of(float))
     lock = attribute(init=False, validator=instance_of(filelock._unix.UnixFileLock))
+    write_when_file_not_found = attribute(default=True, validator=instance_of(bool))
 
     @mode.validator
     def _validate_mode(self, attribute, value):
@@ -219,12 +220,7 @@ class PowerSpectraStack:
                         " database."
                     )
                 stack_file_path = ps_stack_db.datapath_cumul
-            try:
-                if not os.path.isfile(stack_file_path):
-                    raise FileNotFoundError(
-                        f"Cannot locate the {self.mode} power spectra stack"
-                        f" '{stack_file_path}'"
-                    )
+            if os.path.isfile(stack_file_path):
                 self.lock_stack(stack_file_path)
                 if self.infile_overwrite and self.mode == "month":
                     log.info(
@@ -274,26 +270,33 @@ class PowerSpectraStack:
                         return pspec
                     else:
                         return pspec_stack
-            except (OSError, FileNotFoundError) as e:
-                log.error(e)
-                log.info(
-                    f"The power spectra stack for {pspec.ra:.2f} {pspec.dec:.2f} does"
-                    " not exist, creating a new power spectra stack"
-                )
-                stack_file_path = self.get_stack_file_path(pspec)
-                self.lock_stack(stack_file_path)
-                pspec.write(stack_file_path, nbit=self.stack_nbit)
-                if self.update_db:
-                    self.update_stack_database(
-                        pspec, stack_file_path, ps_stack_db.pointing_id
+            else:
+                if self.write_when_file_not_found:
+                    log.info(
+                        "The power spectra stack for"
+                        f" {pspec.ra:.2f} {pspec.dec:.2f} does not exist, creating a"
+                        " new power spectra stack"
                     )
-                if self.mode == "cumul" and self.delete_monthly_stack:
-                    # deletes the existing monthly power spectra stack
-                    self.delete_stack(
-                        ps_stack_db.pointing_id, ps_stack_db.datapath_month
+                    stack_file_path = self.get_stack_file_path(pspec)
+                    self.lock_stack(stack_file_path)
+                    pspec.write(stack_file_path, nbit=self.stack_nbit)
+                    if self.update_db:
+                        self.update_stack_database(
+                            pspec, stack_file_path, ps_stack_db.pointing_id
+                        )
+                    if self.mode == "cumul" and self.delete_monthly_stack:
+                        # deletes the existing monthly power spectra stack
+                        self.delete_stack(
+                            ps_stack_db.pointing_id, ps_stack_db.datapath_month
+                        )
+                    self.unlock_stack()
+                else:
+                    raise FileNotFoundError(
+                        f"Cannot locate the {self.mode} power spectra stack"
+                        f" '{stack_file_path}'. Will not write new file due to"
+                        "PowerSpectraStack.write_when_file_not_found==False."
                     )
-                self.unlock_stack()
-                return pspec
+            return pspec
 
     def stack_power_spectra_infile(self, pspec, stack_file_path):
         """

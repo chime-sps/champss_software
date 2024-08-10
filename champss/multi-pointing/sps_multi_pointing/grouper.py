@@ -315,8 +315,13 @@ class SinglePointingCandidateGrouper:
     dm_spacing = attrib(default=0.10119793310713615)
     dm_scale = attrib(default=1)
     freq_scale = attrib(default=1)
+    ra_scale = attrib(default=0.0)
+    dec_scale = attrib(default=0.0)
+    metric = attrib(default="euclidean")
 
-    def group(self, cands: List[EasyDict]) -> List[MultiPointingCandidate]:
+    def group(
+        self, cands: List[EasyDict], num_threads: int = 16
+    ) -> List[MultiPointingCandidate]:
         """
         The top-level function that executes grouping and return the formed
         MultiPointingCandidate objects.
@@ -345,10 +350,29 @@ class SinglePointingCandidateGrouper:
                 for i, p in enumerate(f_dm_pairs)
             ]
         )
-        # run DBSCAN clustering algorithm on the frequency and DM data
-        dbres = DBSCAN(eps=self.dbscan_eps, min_samples=self.dbscan_min_samples).fit(
-            data[:, 1:]
-        )
+        if self.ra_scale != 0.0 or self.dec_scale != 0:
+            # Workaround for cyclical nature of ra
+            ras = np.array([candidate.ra for candidate in cands])
+            ras1 = ras.copy()
+            ras1[ras1 > 180] = 360 - ras1[ras1 > 180]
+            ras2 = ras.copy()
+            ras2[ras > 90] = 180 - ras[ras > 90]
+            ras2[ras > 270] = ras[ras > 270] - 360
+            decs = np.array([candidate.dec for candidate in cands])
+            ras1 *= self.ra_scale
+            ras2 *= self.ra_scale
+            decs *= self.dec_scale
+            data = np.concatenate(
+                [data, ras1[:, None], ras2[:, None], decs[:, None]], axis=1
+            )
+
+        dbres = DBSCAN(
+            eps=self.dbscan_eps,
+            min_samples=self.dbscan_min_samples,
+            n_jobs=num_threads,
+            metric=self.metric,
+        ).fit(data[:, 1:])
+
         labels = dbres.labels_
         uniq_labels = set(labels)
         core_samples_mask = np.zeros_like(labels, dtype=bool)

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.0](https://github.com/chime-sps/champss_software/compare/v0.3.1...v0.4.0) (2024-07-22)
+
+
+### Features
+
+* **known_source_sifter.py:** Add quick sanity check before running ks filter ([#23](https://github.com/chime-sps/champss_software/issues/23)) ([c54395e](https://github.com/chime-sps/champss_software/commit/c54395e160b6b19cde0b5fc90a59eff6afd096ec))
+* **sps_multi_pointing:** Enable position filtering and setting of used metric in spsmp ([#26](https://github.com/chime-sps/champss_software/issues/26)) ([647c851](https://github.com/chime-sps/champss_software/commit/647c851342b55a2979ae491c2b036b66d53b28aa))
+* **workflow.py:** Adding improvements to scheduling ([e3616b1](https://github.com/chime-sps/champss_software/commit/e3616b18908b53750eadecb0bb5f5fc317099ad9))
+
+
+### Bug Fixes
+
+* reverting spshuff import order ([#50](https://github.com/chime-sps/champss_software/issues/50)) ([ead46fd](https://github.com/chime-sps/champss_software/commit/ead46fdbbddcc71b4e002e4fc458bfb6cc61c786))
+* **workflow.py:** Fix bug when microseconds is not defined in Docker Service CreatedAt field ([8bf7297](https://github.com/chime-sps/champss_software/commit/8bf729710b801c3ea113a27b5ac722160fa7a6e6))
+
 ## [0.3.1](https://github.com/chime-sps/champss_software/compare/v0.3.0...v0.3.1) (2024-06-07)
 
 

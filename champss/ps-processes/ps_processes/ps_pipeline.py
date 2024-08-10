@@ -189,13 +189,25 @@ class PowerSpectraPipeline:
     def power_spectra_search(
         self,
         power_spectra_to_search,
+        injection_path,
+        injection_idx,
+        only_injections,
+        cutoff_frequency,
+        scale_injections=False,
         filepath="./",
         prefix="",
     ):
         (
             power_spectra_detection_clusters,
             power_spectra_detections,
-        ) = self._ps_search.search(power_spectra_to_search)
+        ) = self._ps_search.search(
+            power_spectra_to_search,
+            injection_path,
+            injection_idx,
+            only_injections,
+            cutoff_frequency,
+            scale_injections,
+        )
         if self.write_ps_detections and power_spectra_detection_clusters is not None:
             filename = f"{prefix}_power_spectra_detection_clusters.hdf5"
             power_spectra_detection_clusters.write(f"{filepath}/{filename}")
@@ -302,7 +314,15 @@ class StackSearchPipeline:
                 known_source_threshold=self.known_source_threshold,
             )
 
-    def load_and_search_monthly(self, pointing_id):
+    def load_and_search_monthly(
+        self,
+        pointing_id,
+        injection_path=None,
+        injection_idx=None,
+        only_store_injections=False,
+        cutoff_frequency=100.0,
+        scale_injections=False,
+    ):
         """
         Process the monthly stack.
 
@@ -365,7 +385,14 @@ class StackSearchPipeline:
                     (
                         monthly_power_spectra_detection_clusters,
                         monthly_power_spectra_detections,
-                    ) = self._ps_search.search(monthly_power_spectra)
+                    ) = self._ps_search.search(
+                        monthly_power_spectra,
+                        injection_path,
+                        injection_idx,
+                        only_store_injections,
+                        cutoff_frequency,
+                        scale_injections,
+                    )
                 else:
                     monthly_power_spectra_detection_clusters = None
             else:
@@ -381,7 +408,16 @@ class StackSearchPipeline:
 
         return monthly_power_spectra_detection_clusters, monthly_power_spectra
 
-    def stack_and_search(self, pointing_id, monthly_power_spectra=None):
+    def stack_and_search(
+        self,
+        pointing_id,
+        monthly_power_spectra=None,
+        injection_path=None,
+        injection_idx=None,
+        only_store_injections=False,
+        cutoff_frequency=100.0,
+        scale_injections=False,
+    ):
         """
         Process the cumulative stack.
 
@@ -417,7 +453,14 @@ class StackSearchPipeline:
                     (
                         monthly_power_spectra_detection_clusters,
                         monthly_power_spectra,
-                    ) = self.load_and_search_monthly(pointing_id)
+                    ) = self.load_and_search_monthly(
+                        pointing_id,
+                        injection_path,
+                        injection_idx,
+                        only_store_injections,
+                        cutoff_frequency,
+                        scale_injections,
+                    )
                 stacked_power_spectra = self._ps_stack.stack(monthly_power_spectra)
                 (
                     quality_result_cumul,
@@ -464,7 +507,14 @@ class StackSearchPipeline:
             (
                 power_spectra_detection_clusters,
                 power_spectra_detections,
-            ) = self._ps_search.search(stacked_power_spectra)
+            ) = self._ps_search.search(
+                stacked_power_spectra,
+                injection_path,
+                injection_idx,
+                only_store_injections,
+                cutoff_frequency,
+                scale_injections,
+            )
             if self.write_ps_detections:
                 stack_detection_file = (
                     ps_stack_db.datapath_cumul.split(".hdf5")[0]

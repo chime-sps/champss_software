@@ -307,7 +307,7 @@ class PowerSpectra:
             )
 
     @classmethod
-    def read(cls, filename, nbit=32, use_shared_memory=True):
+    def read(cls, filename, nbit=32, use_shared_memory=False):
         """
         Read the power spectrum saved.
 
@@ -321,6 +321,8 @@ class PowerSpectra:
 
         shared_memory: bool
             Keep spectra in shared memory
+            Reading multiple PowerSpectra with shared_memory enabled may lead to the shared
+            memory not being cleaned up.
 
         Returns
         =======
@@ -662,7 +664,7 @@ class Cluster:
     sigma: float = attrib()
     nharm: int = attrib()
     harm_idx: np.ndarray = attrib()
-    injection: bool = attrib()
+    injection_index: float = attrib()
 
     @classmethod
     def from_raw_detections(cls, detections):
@@ -674,7 +676,7 @@ class Cluster:
             sigma=max_sig_det["sigma"],
             nharm=max_sig_det["nharm"],
             harm_idx=max_sig_det["harm_idx"],
-            injection=max_sig_det["injection"],
+            injection_index=max_sig_det["injection"],
             detections=detections,
         )
         return cls(**init_dict)
@@ -688,7 +690,7 @@ class Cluster:
             sigma=max_sig_det["sigma"],
             nharm=max_sig_det["nharm"],
             harm_idx=max_sig_det["harm_idx"],
-            injection=max_sig_det["injection"],
+            injection_index=max_sig_det["injection"],
             detections=detections,
         )
         return cls(**init_dict)
@@ -786,6 +788,7 @@ class PowerSpectraDetectionClusters:
     freq_spacing: float = attrib()
     obs_id: List = attrib()
     datetimes: List = attrib(default=[])
+    injection_dicts: List = attrib(default=[])
 
     @clusters.validator
     def validate_cluster(self, attribute, value):

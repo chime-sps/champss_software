@@ -30,14 +30,31 @@ def plot_text(fig, panel, grid_points, candidate):
     text = ""
     if "values" in panel.keys():
         for value in panel["values"]:
-            val_string = truncate_number_string(getattr(candidate, value))
-            text += f"{value}: {val_string} \n"
+            if not value:
+                text += f"\n"
+                continue
+            if isinstance(getattr(candidate, value), dict):
+                val_dict = getattr(candidate, value)
+                for key in val_dict:
+                    val_string = truncate_number_string(val_dict[key])
+                    text += f"{key}: {val_string} \n"
+            else:
+                val_string = truncate_number_string(getattr(candidate, value))
+                text += f"{value}: {val_string} \n"
     if "best_candidate_values" in panel.keys():
         for value in panel["best_candidate_values"]:
-            val_string = truncate_number_string(
-                getattr(candidate.best_candidate, value)
-            )
-            text += f"{value}: {val_string} \n"
+            if not value:
+                continue
+            if isinstance(getattr(candidate.best_candidate, value), dict):
+                val_dict = getattr(candidate.best_candidate, value)
+                for key in val_dict:
+                    val_string = truncate_number_string(val_dict[key])
+                    text += f"{key}: {val_string} \n"
+            else:
+                val_string = truncate_number_string(
+                    getattr(candidate.best_candidate, value)
+                )
+                text += f"{value}: {val_string} \n"
     ax_text.text(0, 1, text, ha="left", va="top", fontsize=10)
 
 

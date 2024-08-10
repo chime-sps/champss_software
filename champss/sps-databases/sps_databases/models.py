@@ -647,6 +647,7 @@ class KnownSource:
         converter=converters.optional(str),
         on_setattr=convert,  # type: ignore
     )
+    survey = attrib(default=None, converter=str)
 
     @property
     def id(self):
