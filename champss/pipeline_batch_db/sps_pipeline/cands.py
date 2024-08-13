@@ -106,12 +106,20 @@ def run(
         db_api.update_observation(pointing.obs_id, payload)
         if plot:
             log.info("Creating candidates plots.")
-            plot_folder = f"{ file_path }/plots/"
+            if only_injections:
+                plot_folder = f"{ file_path }/plots_injections/"
+            else:
+                plot_folder = f"{ file_path }/plots/"
             candidate_plots = spcc.plot_candidates(
                 sigma_threshold=plot_threshold, folder=plot_folder
             )
             log.info(f"Plotted {len(candidate_plots)} candidate plots.")
     log.info(f"{len(spcc.candidates)} candidates.")
+    if len(spcc.candidates):
+        log.info(
+            f"Best candidate: F0: {spcc.candidates[0].freq:.3f} DM:"
+            f" {spcc.candidates[0].dm:.2f} Sigma: {spcc.candidates[0].sigma:.2f}"
+        )
 
 
 def run_interface(
@@ -125,6 +133,9 @@ def run_interface(
     plot_threshold=0,
     write_hrc=False,
     update_db=False,
+    injection_path=None,
+    injection_idx=[],
+    only_injections=False,
 ):
     """
     Search a `pointing` for periodicity candidates. Candidates will be written out in a
@@ -153,20 +164,36 @@ def run_interface(
     log.info(f"Candidate Processor of stack ({pointing.ra :.2f} {pointing.dec :.2f})")
     stack_root_folder = stack_path.rsplit("/stack/")[0]
     if cand_path is None:
-        candidate_folder = f"{stack_root_folder}/candidates"
+        if only_injections:
+            candidate_folder = f"{stack_root_folder}/injections/"
+        else:
+            candidate_folder = f"{stack_root_folder}/candidates"
     else:
-        candidate_folder = f"{cand_path}/candidates"
-    if "cumulative" in stack_path.rsplit("/stack/")[1]:
-        candidate_folder += "_cumul/"
-    else:
-        candidate_folder += "_monthly/"
+        if only_injections:
+            candidate_folder = f"{cand_path}/injections/"
+        else:
+            candidate_folder = f"{cand_path}/candidates"
+    if not only_injections:
+        if "cumulative" in stack_path.rsplit("/stack/")[1]:
+            candidate_folder += "_cumul/"
+        else:
+            candidate_folder += "_monthly/"
     os.makedirs(candidate_folder, exist_ok=True)
     base_name = path.basename(stack_path)
-    ps_candidates = (
-        f"{candidate_folder}{base_name.rstrip('.hdf5')}_"
-        f"{power_spectra.datetimes[-1].strftime('%Y%m%d')}"
-        f"_{len(power_spectra.datetimes)}_candidates.npz"
-    )
+    if only_injections:
+        # Brackets in file name may cause ls to show the file name in quotes
+        ps_candidates = (
+            f"{candidate_folder}{base_name.rstrip('.hdf5')}_"
+            f"{power_spectra.datetimes[-1].strftime('%Y%m%d')}"
+            f"_{len(power_spectra.datetimes)}_"
+            f"{injection_path.split('/')[-1]}_{str(injection_idx).replace(' ', '')}_candidates.npz"
+        )
+    else:
+        ps_candidates = (
+            f"{candidate_folder}{base_name.rstrip('.hdf5')}_"
+            f"{power_spectra.datetimes[-1].strftime('%Y%m%d')}"
+            f"_{len(power_spectra.datetimes)}_candidates.npz"
+        )
 
     with cand_ps_processing_time.labels(pointing._id, pointing.beam_row).time():
         psdc = ps_detection_clusters
@@ -186,16 +213,23 @@ def run_interface(
                 plot_folder = f"{stack_root_folder}/plots"
             else:
                 plot_folder = f"{cand_path}/plots"
-            if "cumulative" in stack_path.rsplit("/stack/")[1]:
-                plot_folder += "_cumul/"
-            else:
-                plot_folder += "_monthly/"
+            if only_injections:
+                plot_folder += "_injections/"
+                if "cumulative" in stack_path.rsplit("/stack/")[1]:
+                    plot_folder += "_cumul/"
+                else:
+                    plot_folder += "_monthly/"
             log.info(f"Creating candidates plots in {plot_folder}.")
             candidate_plots = spcc.plot_candidates(
                 sigma_threshold=plot_threshold, folder=plot_folder
             )
             log.info(f"Plotted {len(candidate_plots)} candidate plots.")
     log.info(f"{len(spcc.candidates)} candidates.")
+    if len(spcc.candidates):
+        log.info(
+            f"Best candidate: F0: {spcc.candidates[0].freq:.3f} DM:"
+            f" {spcc.candidates[0].dm:.2f} Sigma: {spcc.candidates[0].sigma:.2f}"
+        )
 
 
 def initialise(configuration, num_threads=4):

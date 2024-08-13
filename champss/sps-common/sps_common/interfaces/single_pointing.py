@@ -457,6 +457,13 @@ class SinglePointingCandidateCollection:
             iterable_validator=instance_of(list),
         )
     )
+    injections = attrib(
+        validator=deep_iterable(
+            member_validator=instance_of(dict),
+            iterable_validator=instance_of(list),
+        ),
+        default=[],
+    )
 
     @classmethod
     def read(cls, filename, verbose=True):

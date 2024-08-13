@@ -504,7 +504,6 @@ def main(
 
     injection_profiles = []
 
-    # currenlty breaking the defaults, will fix later
     if type(injection_profile) == str and injection_profile != "random":
         injection_profile = defaults[injection_profile]
         injection_profiles.append(injection_profile)

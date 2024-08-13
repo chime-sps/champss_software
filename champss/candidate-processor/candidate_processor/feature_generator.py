@@ -1045,9 +1045,7 @@ class Features:
             )
             pool.close()
             pool.join()
-        spcc_init_dict = dict(
-            candidates=spcs,
-        )
+        spcc_init_dict = dict(candidates=spcs, injections=psdc.injection_dicts)
 
         return SinglePointingCandidateCollection(**spcc_init_dict)
 
