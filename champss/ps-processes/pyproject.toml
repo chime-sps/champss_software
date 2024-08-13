@@ -33,6 +33,7 @@ pytest = "^7.3.2"
 
 [tool.poetry.scripts]
 run_ps_processes = "ps_processes.cli:main"
+create_injection_file = "ps_processes.utilities.create_injection_file:main"
 
 [build-system]
 requires = ["poetry-core"]
