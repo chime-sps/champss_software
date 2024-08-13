@@ -215,6 +215,7 @@ def run_interface(
                 plot_folder = f"{cand_path}/plots"
             if only_injections:
                 plot_folder += "_injections/"
+            else:
                 if "cumulative" in stack_path.rsplit("/stack/")[1]:
                     plot_folder += "_cumul/"
                 else:
