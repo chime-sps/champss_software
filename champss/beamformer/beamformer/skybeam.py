@@ -19,7 +19,157 @@ from sps_databases import db_api
 from spshuff import l1_io
 from threadpoolctl import threadpool_limits
 
+import numpy.ma as ma
+from scipy import linalg
+from typing import Literal
+from numpy._typing import ArrayLike
+
 log = logging.getLogger(__name__)
+
+def detrend_masked_row(data: np.ndarray, mask: np.ndarray = None, axis: int = -1,
+            type: Literal['linear', 'constant'] = 'linear',
+            bp: ArrayLike | int = 0, overwrite_data: bool = False) -> np.ndarray:
+    r"""Remove linear or constant trend along axis from masked data. Based on scipy.signal.detrend.
+
+    Parameters
+    ----------
+    data : array_like
+        The input data.
+    data : mask
+        Boolean mask with True at valid indices.
+        Should only have entries along the detrended axis.
+    axis : int, optional
+        The axis along which to detrend the data. By default this is the
+        last axis (-1).
+    type : {'linear', 'constant'}, optional
+        The type of detrending. If ``type == 'linear'`` (default),
+        the result of a linear least-squares fit to `data` is subtracted
+        from `data`.
+        If ``type == 'constant'``, only the mean of `data` is subtracted.
+    bp : array_like of ints, optional
+        A sequence of break points. If given, an individual linear fit is
+        performed for each part of `data` between two break points.
+        Break points are specified as indices into `data`. This parameter
+        only has an effect when ``type == 'linear'``.
+    overwrite_data : bool, optional
+        If True, perform in place detrending and avoid a copy. Default is False
+
+    Returns
+    -------
+    ret : ndarray
+        The detrended input data.
+
+    Notes
+    -----
+    Detrending can be interpreted as substracting a least squares fit polyonimial:
+    Setting the parameter `type` to 'constant' corresponds to fitting a zeroth degree
+    polynomial, 'linear' to a first degree polynomial. Consult the example below.
+
+    See Also
+    --------
+    numpy.polynomial.polynomial.Polynomial.fit: Create least squares fit polynomial.
+
+
+    Examples
+    --------
+    The following example detrends the function :math:`x(t) = \sin(\pi t) + 1/4`:
+
+    >>> import matplotlib.pyplot as plt
+    >>> import numpy as np
+    >>> from scipy.signal import detrend
+    ...
+    >>> t = np.linspace(-0.5, 0.5, 21)
+    >>> x = np.sin(np.pi*t) + 1/4
+    ...
+    >>> x_d_const = detrend(x, type='constant')
+    >>> x_d_linear = detrend(x, type='linear')
+    ...
+    >>> fig1, ax1 = plt.subplots()
+    >>> ax1.set_title(r"Detrending $x(t)=\sin(\pi t) + 1/4$")
+    >>> ax1.set(xlabel="t", ylabel="$x(t)$", xlim=(t[0], t[-1]))
+    >>> ax1.axhline(y=0, color='black', linewidth=.5)
+    >>> ax1.axvline(x=0, color='black', linewidth=.5)
+    >>> ax1.plot(t, x, 'C0.-',  label="No detrending")
+    >>> ax1.plot(t, x_d_const, 'C1x-', label="type='constant'")
+    >>> ax1.plot(t, x_d_linear, 'C2+-', label="type='linear'")
+    >>> ax1.legend()
+    >>> plt.show()
+
+    Alternatively, NumPy's `~numpy.polynomial.polynomial.Polynomial` can be used for
+    detrending as well:
+
+    >>> pp0 = np.polynomial.Polynomial.fit(t, x, deg=0)  # fit degree 0 polynomial
+    >>> np.allclose(x_d_const, x - pp0(t))  # compare with constant detrend
+    True
+    >>> pp1 = np.polynomial.Polynomial.fit(t, x, deg=1)  # fit degree 1 polynomial
+    >>> np.allclose(x_d_linear, x - pp1(t))  # compare with linear detrend
+    True
+
+    Note that `~numpy.polynomial.polynomial.Polynomial` also allows fitting higher
+    degree polynomials. Consult its documentation on how to extract the polynomial
+    coefficients.
+    """
+    if type not in ['linear', 'l', 'constant', 'c']:
+        raise ValueError("Trend type must be 'linear' or 'constant'.")
+    data = np.asarray(data)
+    dtype = data.dtype.char
+    if dtype not in 'dfDF':
+        dtype = 'd'
+    if type in ['constant', 'c']:
+        ret = data - np.mean(data, axis, keepdims=True)
+        return ret
+    else:
+        dshape = data.shape
+        N = dshape[axis]
+        bp = np.sort(np.unique(np.concatenate(np.atleast_1d(0, bp, N))))
+        if np.any(bp > N):
+            raise ValueError("Breakpoints must be less than length "
+                             "of data along given axis.")
+
+        # Restructure data so that axis is along first dimension and
+        #  all other dimensions are collapsed into second dimension
+        rnk = len(dshape)
+        if axis < 0:
+            axis = axis + rnk
+        newdata = np.moveaxis(data, axis, 0)
+        newdata_shape = newdata.shape
+        newdata = newdata.reshape(N, -1)
+
+        if mask is not None:
+            newmask = np.moveaxis(mask, axis, 0)
+            newmask = newmask.squeeze()
+            if newmask.shape[0] != newmask.size:
+                raise ValueError("Mask should not have multiple dimensions "
+                             "with size larger than 1.")
+                
+
+        if not overwrite_data:
+            newdata = newdata.copy()  # make sure we have a copy
+        if newdata.dtype.char not in 'dfDF':
+            newdata = newdata.astype(dtype)
+
+#        Nreg = len(bp) - 1
+        # Find leastsq fit and remove it for each piece
+        for m in range(len(bp) - 1):
+            Npts = bp[m + 1] - bp[m]
+            A = np.ones((Npts, 2), dtype)
+            A[:, 0] = np.arange(1, Npts + 1, dtype=dtype) / Npts
+            sl = slice(bp[m], bp[m + 1])
+            if mask is not None:
+                valid_points = newmask[sl]
+                A = A[valid_points]
+                if A.size:
+                    coef, resids, rank, s = linalg.lstsq(A, newdata[sl][valid_points])
+                    newdata[sl][valid_points] = newdata[sl][valid_points] - A @ coef
+            else:
+                coef, resids, rank, s = linalg.lstsq(A, newdata[sl])
+                newdata[sl] = newdata[sl] - A @ coef
+
+        # Put data back in original shape.
+        newdata[~newmask] = 0
+        newdata = newdata.reshape(newdata_shape)
+        ret = np.moveaxis(newdata, 0, axis)
+        return ret
 
 
 @attr.s(slots=True)
@@ -750,18 +900,30 @@ class SkyBeamFormer:
 
             # Only tested the first case for now
             if detrend_data and add_local_median:
-                spectra[:] = (
-                    detrend(
-                        spectra,
-                        axis=1,
-                        type="linear",
-                        bp=np.arange(0, spectra.shape[1], detrend_nsamp),
+                if spectra.shape[0] == 1:
+                    spectra[:] = (
+                        detrend_masked_row(
+                            spectra,
+                            mask=~rfi_mask,
+                            axis=1,
+                            type="linear",
+                            bp=np.arange(0, spectra.shape[1], detrend_nsamp),
+                        )
+                        + filled_local_medians
                     )
-                    + filled_local_medians
-                )
+                else:
+                    spectra[:] = (
+                        detrend(
+                            spectra,
+                            axis=1,
+                            type="linear",
+                            bp=np.arange(0, spectra.shape[1], detrend_nsamp),
+                        )
+                        + filled_local_medians
+                    )
                 # Detrending will introduce trend to masked values
                 # Could at one point use detrending method that uses masked
-                # arrays which this function does
+                # arrays which this function does not
                 if num_blocks <= 1:
                     spectra[rfi_mask] = filled_local_medians
                 else:
