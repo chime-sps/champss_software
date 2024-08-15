@@ -5,13 +5,17 @@ import logging
 from functools import partial
 from itertools import product
 from multiprocessing import Pool, set_start_method, shared_memory
+from typing import Literal
 
 import attr
 import numpy as np
+import numpy.ma as ma
 from astropy.time import Time, TimeDelta
 from attr.validators import deep_iterable, instance_of
 from beamformer.utilities.common import get_data_list
+from numpy._typing import ArrayLike
 from rfi_mitigation.pipeline import RFIPipeline
+from scipy import linalg
 from scipy.signal import detrend
 from sps_common.constants import TSAMP
 from sps_common.interfaces.beamformer import SkyBeam
@@ -19,17 +23,20 @@ from sps_databases import db_api
 from spshuff import l1_io
 from threadpoolctl import threadpool_limits
 
-import numpy.ma as ma
-from scipy import linalg
-from typing import Literal
-from numpy._typing import ArrayLike
-
 log = logging.getLogger(__name__)
 
-def detrend_masked_row(data: np.ndarray, mask: np.ndarray = None, axis: int = -1,
-            type: Literal['linear', 'constant'] = 'linear',
-            bp: ArrayLike | int = 0, overwrite_data: bool = False) -> np.ndarray:
-    r"""Remove linear or constant trend along axis from masked data. Based on scipy.signal.detrend.
+
+def detrend_masked_row(
+    data: np.ndarray,
+    mask: np.ndarray = None,
+    axis: int = -1,
+    type: Literal["linear", "constant"] = "linear",
+    bp: ArrayLike | int = 0,
+    overwrite_data: bool = False,
+) -> np.ndarray:
+    r"""
+    Remove linear or constant trend along axis from masked data. Based on
+    scipy.signal.detrend.
 
     Parameters
     ----------
@@ -109,13 +116,13 @@ def detrend_masked_row(data: np.ndarray, mask: np.ndarray = None, axis: int = -1
     degree polynomials. Consult its documentation on how to extract the polynomial
     coefficients.
     """
-    if type not in ['linear', 'l', 'constant', 'c']:
+    if type not in ["linear", "l", "constant", "c"]:
         raise ValueError("Trend type must be 'linear' or 'constant'.")
     data = np.asarray(data)
     dtype = data.dtype.char
-    if dtype not in 'dfDF':
-        dtype = 'd'
-    if type in ['constant', 'c']:
+    if dtype not in "dfDF":
+        dtype = "d"
+    if type in ["constant", "c"]:
         ret = data - np.mean(data, axis, keepdims=True)
         return ret
     else:
@@ -123,8 +130,9 @@ def detrend_masked_row(data: np.ndarray, mask: np.ndarray = None, axis: int = -1
         N = dshape[axis]
         bp = np.sort(np.unique(np.concatenate(np.atleast_1d(0, bp, N))))
         if np.any(bp > N):
-            raise ValueError("Breakpoints must be less than length "
-                             "of data along given axis.")
+            raise ValueError(
+                "Breakpoints must be less than length of data along given axis."
+            )
 
         # Restructure data so that axis is along first dimension and
         #  all other dimensions are collapsed into second dimension
@@ -139,16 +147,16 @@ def detrend_masked_row(data: np.ndarray, mask: np.ndarray = None, axis: int = -1
             newmask = np.moveaxis(mask, axis, 0)
             newmask = newmask.squeeze()
             if newmask.shape[0] != newmask.size:
-                raise ValueError("Mask should not have multiple dimensions "
-                             "with size larger than 1.")
-                
+                raise ValueError(
+                    "Mask should not have multiple dimensions with size larger than 1."
+                )
 
         if not overwrite_data:
             newdata = newdata.copy()  # make sure we have a copy
-        if newdata.dtype.char not in 'dfDF':
+        if newdata.dtype.char not in "dfDF":
             newdata = newdata.astype(dtype)
 
-#        Nreg = len(bp) - 1
+        #        Nreg = len(bp) - 1
         # Find leastsq fit and remove it for each piece
         for m in range(len(bp) - 1):
             Npts = bp[m + 1] - bp[m]
@@ -900,6 +908,7 @@ class SkyBeamFormer:
 
             # Only tested the first case for now
             if detrend_data and add_local_median:
+                # Only wokrs on 1D masks
                 if spectra.shape[0] == 1:
                     spectra[:] = (
                         detrend_masked_row(
@@ -921,9 +930,9 @@ class SkyBeamFormer:
                         )
                         + filled_local_medians
                     )
-                # Detrending will introduce trend to masked values
-                # Could at one point use detrending method that uses masked
-                # arrays which this function does not
+                    # Detrending will introduce trend to masked values
+                    # Could at one point use detrending method that uses masked
+                    # arrays which this function does not
                 if num_blocks <= 1:
                     spectra[rfi_mask] = filled_local_medians
                 else:
