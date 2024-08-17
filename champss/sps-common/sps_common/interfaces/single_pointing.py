@@ -495,7 +495,7 @@ class SinglePointingCandidateCollection:
 
         if verbose:
             log.info(f"Read {len(cand_list)} candidates from {filename}")
-        return cls(candidates=cand_list)
+        return cls(candidates=cand_list, injections=data["injection_dicts"].tolist())
 
     def write(self, filename):
         """Write candidates to npz file."""
@@ -504,6 +504,7 @@ class SinglePointingCandidateCollection:
             cand_dicts.append(spc.as_dict())
         save_dict = dict(
             candidate_dicts=cand_dicts,
+            injection_dicts=self.injections,
         )
         np.savez(filename, **save_dict)
         log.info(f"saved candidates to {filename}")
