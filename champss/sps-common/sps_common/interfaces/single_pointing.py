@@ -492,10 +492,12 @@ class SinglePointingCandidateCollection:
             cand_dict = filter_class_dict(SinglePointingCandidate, cand_dict)
             sp_cand = SinglePointingCandidate(**cand_dict)
             cand_list.append(sp_cand)
-
         if verbose:
             log.info(f"Read {len(cand_list)} candidates from {filename}")
-        return cls(candidates=cand_list, injections=data["injection_dicts"].tolist())
+        return cls(
+            candidates=cand_list,
+            injections=data.get("injection_dicts", np.empty(0)).tolist(),
+        )
 
     def write(self, filename):
         """Write candidates to npz file."""
