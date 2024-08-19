@@ -246,6 +246,7 @@ def schedule_workflow_job(
         work = Work(
             pipeline=workflow_buckets_name, site=workflow_site, user=workflow_user
         )
+
         work.function = workflow_function
         work.parameters = workflow_params
         work.tags = workflow_tags
