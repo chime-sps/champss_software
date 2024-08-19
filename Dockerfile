@@ -53,7 +53,7 @@ COPY . .
 
 RUN --mount=type=ssh,id=github_ssh_id set -ex \
     && python3 -m pip install . \
-    && get-data
+    && get-data \
     && workflow workspace set champss/pipeline_batch_db/champss.workspace.yml
 # Above "get-data" call is needed for CHIMEFRB/beam-model
 
