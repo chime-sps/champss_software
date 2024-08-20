@@ -10,11 +10,11 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.8.1,<3.12"
 beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 beamformer = {path = "../beamformer", develop=true}
 candidate-processor = {path = "../candidate-processor", develop=true}
-chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api", tag = "v3.4.0"}
+workflow-core = {git = "ssh://git@github.com/CHIMEFRB/workflow", tag = "v1.9.4"}
 folding = {path = "../folding", develop=true}
 ps-processes = {path = "../ps-processes", develop=true}
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}

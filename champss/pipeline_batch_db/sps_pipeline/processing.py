@@ -818,8 +818,8 @@ def start_processing_manager(
 
             # Start of pipeline phase
             if run_pipeline:
-                find_all_pipeline_processes(
-                    [
+                processes, [], [] = find_all_pipeline_processes.main(
+                    args=[
                         "--db-host",
                         db_host,
                         "--db-port",
@@ -874,13 +874,13 @@ def start_processing_manager(
                 workflow_buckets_name = (
                     f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
                 )
-                clear_workflow_buckets(
-                    ["--workflow-buckets-name", workflow_buckets_name],
+                clear_workflow_buckets.main(
+                    args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
 
-                run_all_pipeline_processes(
-                    [
+                run_all_pipeline_processes.main(
+                    args=[
                         "--db-host",
                         db_host,
                         "--db-port",
@@ -1031,8 +1031,8 @@ def start_processing_manager(
                 workflow_buckets_name = (
                     f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
                 )
-                clear_workflow_buckets(
-                    ["--workflow-buckets-name", workflow_buckets_name],
+                clear_workflow_buckets.main(
+                    args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
 
@@ -1101,8 +1101,8 @@ def start_processing_manager(
 
             # Start of folding phase
             if run_folding:
-                processes, [], [] = find_all_folding_processes(
-                    [
+                processes, [], [] = find_all_folding_processes.main(
+                    args=[
                         "--date",
                         date_to_process,
                         "--db-host",
@@ -1124,13 +1124,13 @@ def start_processing_manager(
                 workflow_buckets_name = (
                     f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
                 )
-                clear_workflow_buckets(
-                    ["--workflow-buckets-name", workflow_buckets_name],
+                clear_workflow_buckets.main(
+                    args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
 
-                run_all_folding_processes(
-                    [
+                run_all_folding_processes.main(
+                    args=[
                         "--date",
                         date_to_process,
                         "--db-host",
