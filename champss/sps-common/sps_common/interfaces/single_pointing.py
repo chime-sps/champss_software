@@ -482,7 +482,9 @@ class SinglePointingCandidateCollection:
     def __attrs_post_init__(self):
         """Find indices of real detections and injections."""
         all_indices = np.arange(len(self.candidates))
-        injection_flags = np.asarray([cand.injection for cand in self.candidates])
+        injection_flags = np.asarray(
+            [cand.injection for cand in self.candidates], dtype=bool
+        )
         self.real_indices = all_indices[~injection_flags]
         self.injection_indices = all_indices[injection_flags]
 

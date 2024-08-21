@@ -263,6 +263,8 @@ class PowerSpectraSearch:
                             scale_injections=scale_injections,
                         )
                         injection_dicts.extend(injection_dict)
+            for injection_index, injection_dict in enumerate(injection_dicts):
+                injection_dict["injection_index"] = injection_index
         else:
             injection_dicts = []
             log.info("No artificial pulse injected.")
@@ -446,7 +448,10 @@ class PowerSpectraSearch:
                 }
 
                 db_api.update_observation(pspec.obs_id[0], payload)
-
+        for injection_index, injection_dict in enumerate(injection_dicts):
+            # remove unneeded dict entries
+            injection_dict.pop("bins")
+            injection_dict.pop("dms")
         return (
             PowerSpectraDetectionClusters(
                 clusters=clusters,
