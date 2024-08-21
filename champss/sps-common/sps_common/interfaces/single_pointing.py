@@ -592,7 +592,7 @@ class SinglePointingCandidateCollection:
         injection_candidates_count = len(injected_candidates)
         recovered_injections = len(unique_indices)
         if verbose:
-            log.info(f"Injected Pulsars: {all_injections_count}")
+            log.info(f"Injected Pulsars:     {all_injections_count}")
             log.info(f"Injection Candidates: {injection_candidates_count}")
             log.info(f"Recovered Injections: {recovered_injections}")
 
