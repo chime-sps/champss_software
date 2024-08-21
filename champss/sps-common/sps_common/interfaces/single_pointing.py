@@ -457,6 +457,20 @@ class SinglePointingCandidateCollection:
             iterable_validator=instance_of(list),
         )
     )
+    real_indices = attrib(
+        init=False,
+        validator=deep_iterable(
+            member_validator=instance_of(int),
+            iterable_validator=instance_of(list),
+        ),
+    )
+    injection_indices = attrib(
+        init=False,
+        validator=deep_iterable(
+            member_validator=instance_of(int),
+            iterable_validator=instance_of(list),
+        ),
+    )
     injections = attrib(
         validator=deep_iterable(
             member_validator=instance_of(dict),
@@ -464,6 +478,13 @@ class SinglePointingCandidateCollection:
         ),
         default=[],
     )
+
+    def __attrs_post_init__(self):
+        """Find indices of real detections and injections."""
+        all_indices = np.arange(len(self.candidates))
+        injection_flags = np.asarray([cand.injection for cand in self.candidates])
+        self.real_indices = all_indices[~injection_flags]
+        self.injection_indices = all_indices[injection_flags]
 
     @classmethod
     def read(cls, filename, verbose=True):
@@ -548,6 +569,42 @@ class SinglePointingCandidateCollection:
         """Given scalar candidate attribute, return array with those attributes."""
         attribute_list = [getattr(cand, attribute, None) for cand in self.candidates]
         return np.asarray(attribute_list)
+
+    def get_real_candidates(self):
+        """Get candidates which have not been injected."""
+        # Converting to array for easier slicing, could also change the attribute itself to array
+        return np.asarray(self.candidates)[self.real_indices]
+
+    def get_injection_candidates(self):
+        """Get candidates which have been injected."""
+        return np.asarray(self.candidates)[self.injection_indices]
+
+    def test_injection_performance(self, verbose=True):
+        """Return dict containing details fo the injection performance."""
+        injected_candidates = self.get_injection_candidates()
+        injected_indices = np.asarray(
+            [cand.injection_dict["injection_index"] for cand in injected_candidates]
+        )
+        unique_indices, unique_counts = np.unique(injected_indices, return_counts=True)
+        all_injections_count = len(self.injections)
+        injection_candidates_count = len(injected_candidates)
+        recovered_injections = len(unique_indices)
+        if verbose:
+            log.info(f"Injected Pulsars: {all_injections_count}")
+            log.info(f"Injection Candidates: {injection_candidates_count}")
+            log.info(f"Recovered Injections: {recovered_injections}")
+
+        not_recovered = np.setdiff1d(np.arange(all_injections_count), unique_indices)
+        return_dict = {
+            "all_injections": all_injections_count,
+            "all_injection_candidates": injection_candidates_count,
+            "recovered_injection": recovered_injections,
+            "recovered_injection_indices": unique_indices,
+            "recovered_injection_counts": unique_counts,
+            "not_recovered_indices": not_recovered,
+        }
+
+        return return_dict
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})

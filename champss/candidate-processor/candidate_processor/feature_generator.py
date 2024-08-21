@@ -693,8 +693,6 @@ class Features:
         if cluster.injection_index != -1:
             injected = True
             injection_dict = injection_dicts[cluster.injection_index]
-            del injection_dict["dms"]
-            del injection_dict["bins"]
         else:
             injected = False
             injection_dict = {}
