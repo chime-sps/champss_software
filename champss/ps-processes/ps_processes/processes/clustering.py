@@ -7,8 +7,7 @@ from functools import partial
 from multiprocessing import Pool
 
 import colorcet as cc
-
-# import line_profiler
+import line_profiler
 import numpy as np
 from attr import ib as attribute
 from attr import s as attrs
@@ -19,7 +18,7 @@ from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import paired_distances
 from sps_common.interfaces import Cluster
 
-# profiler = line_profiler.LineProfiler()
+profiler = line_profiler.LineProfiler()
 
 log = logging.getLogger(__name__)
 
@@ -477,7 +476,7 @@ class Clusterer:
         out_metric = 1 - power_overlap
         return out_metric
 
-    # @profiler
+    @profiler
     def cluster(
         self,
         detections_in,
@@ -653,6 +652,7 @@ class Clusterer:
             if scheme not in ["combined", "dmfreq"]:
                 metric_array = np.ones((data.shape[0], data.shape[0]), dtype=np.float32)
 
+            self.num_threads = 1
             # to save on memory should probably alter the DMfreq_dist_metric in-place instead
             if self.num_threads == 1:
                 all_indices_0 = []
@@ -668,9 +668,8 @@ class Clusterer:
                             * self.overlap_scale
                         )
                         if self.group_duplicate_freqs:
-                            index_0, index_1 = np.meshgrid(harm[i[0]], harm[i[1]])
-                            index_0 = index_0.flatten()
-                            index_1 = index_1.flatten()
+                            index_0 = np.tile(harm[i[0]], len(harm[i[1]]))
+                            index_1 = np.repeat(harm[i[1]], len(harm[i[0]]))
                         else:
                             index_0 = i[0]
                             index_1 = i[1]
@@ -788,9 +787,8 @@ class Clusterer:
             calculate_harm_metric(rhps, i[0], i[1], detections) * self.overlap_scale
         )
         if self.group_duplicate_freqs:
-            index_0, index_1 = np.meshgrid(harm[i[0]], harm[i[1]])
-            index_0 = index_0.flatten()
-            index_1 = index_1.flatten()
+            index_0 = np.tile(harm[i[0]], len(harm[i[1]]))
+            index_1 = np.repeat(harm[i[1]], len(harm[i[0]]))
         else:
             index_0 = i[0]
             index_1 = i[1]
@@ -836,7 +834,7 @@ class Clusterer:
             scheme="combined",
             plot_fname=plot_fname,
         )
-        # profiler.print_stats()
+        profiler.print_stats()
         unique_labels = np.unique(cluster_labels)
         clusters = {}
         summary = {}
