@@ -654,6 +654,7 @@ class Clusterer:
                 metric_array = np.ones((data.shape[0], data.shape[0]), dtype=np.float32)
 
             self.num_threads = 1
+
             # to save on memory should probably alter the DMfreq_dist_metric in-place instead
             if self.num_threads == 1:
                 all_indices_0 = []
@@ -711,7 +712,6 @@ class Clusterer:
                             self.calc_harmonic_distances_index_pairs,
                             harm,
                             detections,
-                            data,
                             calculate_harm_metric,
                             rhps,
                         ),
@@ -782,7 +782,7 @@ class Clusterer:
         return detections, db.labels_, sig_limit
 
     def calc_harmonic_distances_index_pairs(
-        self, harm, detections, data, calculate_harm_metric, rhps, i
+        self, harm, detections, calculate_harm_metric, rhps, i
     ):
         metric = (
             calculate_harm_metric(rhps, i[0], i[1], detections) * self.overlap_scale
