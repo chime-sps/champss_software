@@ -7,7 +7,8 @@ from functools import partial
 from multiprocessing import Pool
 
 import colorcet as cc
-import line_profiler
+
+# import line_profiler
 import numpy as np
 from attr import ib as attribute
 from attr import s as attrs
@@ -18,7 +19,7 @@ from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import paired_distances
 from sps_common.interfaces import Cluster
 
-profiler = line_profiler.LineProfiler()
+# profiler = line_profiler.LineProfiler()
 
 log = logging.getLogger(__name__)
 
@@ -476,7 +477,7 @@ class Clusterer:
         out_metric = 1 - power_overlap
         return out_metric
 
-    @profiler
+    # @profiler
     def cluster(
         self,
         detections_in,
@@ -686,15 +687,11 @@ class Clusterer:
                                 if self.add_dm_when_replace:
                                     all_indices_0.extend(index_0.tolist())
                                     all_indices_1.extend(index_1.tolist())
-                                    # dm_dists = paired_distances(
-                                    # data[index_0, :1], data[index_1, :1]
-                                    # )
-                                    # metric_array[index_0, index_1] += dm_dists
-                                    # metric_array[index_1, index_0] += dm_dists
                         else:
                             metric_array[index_0, index_1] = metric
                             metric_array[index_1, index_0] = metric
                 if self.add_dm_when_replace:
+                    # dm calculation on full array much faster than on individual chunks
                     dm_dists = paired_distances(
                         data[all_indices_0, :1], data[all_indices_0, :1]
                     )
@@ -703,22 +700,6 @@ class Clusterer:
             else:
                 pool = Pool(self.num_threads)
                 # returns tuples of lists
-                """
-                indices_0, indices_1, metric_vals = zip(
-                    *pool.map(
-                        partial(
-                            self.calc_harmonic_distances,
-                            harm,
-                            detections,
-                            data,
-                            calculate_harm_metric,
-                            rhps,
-                        ),
-                        grouped_ids,
-                    )
-                )
-                """
-                # breakpoint()
                 index_pairs = [
                     index_pair
                     for id_group in grouped_ids
@@ -737,9 +718,9 @@ class Clusterer:
                         index_pairs,
                     )
                 )
-                # unravel everything, might be better ways
                 pool.close()
                 pool.join()
+                # unravel everything, might be better ways
                 indices_0 = [index for index_list in indices_0 for index in index_list]
                 indices_1 = [index for index_list in indices_1 for index in index_list]
                 metric_vals = np.asarray(
@@ -750,6 +731,7 @@ class Clusterer:
                     ]
                 )
                 if self.add_dm_when_replace and self.metric_combination == "replace":
+                    # dm calculation on full array much faster than on individual chunks
                     dm_dists = paired_distances(
                         data[indices_0, :1], data[indices_1, :1]
                     )
@@ -799,36 +781,6 @@ class Clusterer:
 
         return detections, db.labels_, sig_limit
 
-    def calc_harmonic_distances(
-        self, harm, detections, data, calculate_harm_metric, rhps, id_group
-    ):
-        all_indices_0 = []
-        all_indices_1 = []
-        all_metric_vals = []
-        for i in itertools.combinations(id_group, 2):
-            metric = (
-                calculate_harm_metric(rhps, i[0], i[1], detections) * self.overlap_scale
-            )
-            if self.group_duplicate_freqs:
-                index_0, index_1 = np.meshgrid(harm[i[0]], harm[i[1]])
-                index_0 = index_0.flatten()
-                index_1 = index_1.flatten()
-            else:
-                index_0 = i[0]
-                index_1 = i[1]
-
-            all_indices_0.extend(index_0.tolist())
-            all_indices_1.extend(index_1.tolist())
-            metric_vals = np.repeat(metric, len(index_0))
-
-            if self.add_dm_when_replace:
-                dm_dists = paired_distances(data[index_0, :1], data[index_1, :1])
-                metric_vals += dm_dists
-            all_metric_vals.extend(metric_vals.tolist())
-
-        return all_indices_0, all_indices_1, all_metric_vals
-
-    @profiler
     def calc_harmonic_distances_index_pairs(
         self, harm, detections, data, calculate_harm_metric, rhps, i
     ):
@@ -846,11 +798,6 @@ class Clusterer:
         metric_vals = [
             metric,
         ] * len(index_0)
-
-        # if self.add_dm_when_replace:
-        # dm_dists = paired_distances(data[index_0, :1], data[index_1, :1])
-        # metric_vals += dm_dists
-        # all_metric_vals.extend(metric_vals.tolist())
 
         return index_0.tolist(), index_1.tolist(), metric_vals
 
@@ -889,7 +836,7 @@ class Clusterer:
             scheme="combined",
             plot_fname=plot_fname,
         )
-        profiler.print_stats()
+        # profiler.print_stats()
         unique_labels = np.unique(cluster_labels)
         clusters = {}
         summary = {}
