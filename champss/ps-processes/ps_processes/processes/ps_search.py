@@ -379,7 +379,6 @@ class PowerSpectraSearch:
         detections = np.array(
             [j for sub in detection_list for j in sub], dtype=detection_dtype
         )
-        np.save("detecs", detections)
         log.info(f"Total number of detections={len(detections)}")
         if len(detections) == 0:
             log.warning("No detections made. Further processing will not be completed.")
