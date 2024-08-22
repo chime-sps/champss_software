@@ -7,7 +7,8 @@ from functools import partial
 from multiprocessing import Pool
 
 import colorcet as cc
-import line_profiler
+
+# import line_profiler
 import numpy as np
 from attr import ib as attribute
 from attr import s as attrs
@@ -18,7 +19,7 @@ from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import paired_distances
 from sps_common.interfaces import Cluster
 
-profiler = line_profiler.LineProfiler()
+# profiler = line_profiler.LineProfiler()
 
 log = logging.getLogger(__name__)
 
@@ -476,7 +477,7 @@ class Clusterer:
         out_metric = 1 - power_overlap
         return out_metric
 
-    @profiler
+    # @profiler
     def cluster(
         self,
         detections_in,
@@ -834,7 +835,7 @@ class Clusterer:
             scheme="combined",
             plot_fname=plot_fname,
         )
-        profiler.print_stats()
+        # profiler.print_stats()
         unique_labels = np.unique(cluster_labels)
         clusters = {}
         summary = {}
