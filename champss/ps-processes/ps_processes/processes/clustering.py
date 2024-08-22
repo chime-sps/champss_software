@@ -734,20 +734,24 @@ class Clusterer:
                 pool.join()
                 indices_0 = [index for index_list in indices_0 for index in index_list]
                 indices_1 = [index for index_list in indices_1 for index in index_list]
-                metric_vals = [
-                    metric_val
-                    for metric_list in metric_vals
-                    for metric_val in metric_list
-                ]
-                for index_0, index_1, metric_val in zip(
-                    indices_0, indices_1, metric_vals
-                ):
-                    if self.metric_combination == "multiply":
-                        metric_array[index_0, index_1] *= metric_val
-                        metric_array[index_1, index_0] *= metric_val
-                    elif self.metric_combination == "replace":
-                        metric_array[index_0, index_1] = metric_val
-                        metric_array[index_1, index_0] = metric_val
+                metric_vals = np.asarray(
+                    [
+                        metric_val
+                        for metric_list in metric_vals
+                        for metric_val in metric_list
+                    ]
+                )
+                if self.add_dm_when_replace and self.metric_combination == "replace":
+                    dm_dists = paired_distances(
+                        data[indices_0, :1], data[indices_1, :1]
+                    )
+                    metric_vals += dm_dists
+                if self.metric_combination == "multiply":
+                    metric_array[indices_0, indices_1] *= metric_vals
+                    metric_array[indices_1, indices_0] *= metric_vals
+                elif self.metric_combination == "replace":
+                    metric_array[indices_0, indices_1] = metric_vals
+                    metric_array[indices_1, indices_0] = metric_vals
 
             for i in range(metric_array.shape[0]):
                 metric_array[i, i] = 0
@@ -819,9 +823,6 @@ class Clusterer:
     def calc_harmonic_distances_index_pairs(
         self, harm, detections, data, calculate_harm_metric, rhps, i
     ):
-        all_indices_0 = []
-        all_indices_1 = []
-        all_metric_vals = []
         metric = (
             calculate_harm_metric(rhps, i[0], i[1], detections) * self.overlap_scale
         )
@@ -833,16 +834,16 @@ class Clusterer:
             index_0 = i[0]
             index_1 = i[1]
 
-        all_indices_0.extend(index_0.tolist())
-        all_indices_1.extend(index_1.tolist())
-        metric_vals = np.repeat(metric, len(index_0))
+        metric_vals = [
+            metric,
+        ] * len(index_0)
 
-        if self.add_dm_when_replace:
-            dm_dists = paired_distances(data[index_0, :1], data[index_1, :1])
-            metric_vals += dm_dists
-            all_metric_vals.extend(metric_vals.tolist())
+        # if self.add_dm_when_replace:
+        # dm_dists = paired_distances(data[index_0, :1], data[index_1, :1])
+        # metric_vals += dm_dists
+        # all_metric_vals.extend(metric_vals.tolist())
 
-        return all_indices_0, all_indices_1, all_metric_vals
+        return index_0.tolist(), index_1.tolist(), metric_vals
 
     def make_clusters(
         self,
