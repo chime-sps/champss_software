@@ -653,7 +653,7 @@ class Clusterer:
             if scheme not in ["combined", "dmfreq"]:
                 metric_array = np.ones((data.shape[0], data.shape[0]), dtype=np.float32)
 
-            self.num_threads = 1
+            # self.num_threads = 1
 
             # to save on memory should probably alter the DMfreq_dist_metric in-place instead
             if self.num_threads == 1:
