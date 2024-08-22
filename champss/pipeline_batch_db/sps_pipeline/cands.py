@@ -102,6 +102,8 @@ def run(
             psdc, power_spectra
         )
         spcc.write(ps_candidates)
+        if injection_path:
+            injection_performance = spcc.test_injection_performance()
         payload = {"path_candidate_file": path.abspath(ps_candidates)}
         db_api.update_observation(pointing.obs_id, payload)
         if plot:
@@ -201,6 +203,8 @@ def run_interface(
             psdc, power_spectra
         )
         spcc.write(ps_candidates)
+        if injection_path:
+            injection_performance = spcc.test_injection_performance()
         if update_db:
             # For now don't write to db, I'll think later about how to turn this on and off
             payload = {
