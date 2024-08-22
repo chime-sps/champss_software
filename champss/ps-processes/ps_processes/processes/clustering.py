@@ -358,7 +358,9 @@ class Clusterer:
             "alt" = alternate scheme, must have 4+ harmonics, the max is not the fundamental, and the max is >= 2* sum of the others
     """
 
-    cluster_scale_factor: float = attribute(default=10)
+    # cluster_scale_factor: float = attribute(default=10)
+    freq_scale_factor: float = attribute(default=0.5)
+    dm_scale_factor: float = attribute(default=0.1)
     dbscan_eps: float = attribute(default=1)
     dbscan_min_samples: int = attribute(default=5)
     max_ndetect: int = attribute(
@@ -567,11 +569,8 @@ class Clusterer:
         # make data products necessary for clustering and making the harmonic metric
         data = np.vstack(
             (
-                detections["dm"].astype(np.float32),
-                detections["freq"].astype(np.float32)
-                * np.float32(
-                    cluster_dm_spacing * self.cluster_scale_factor / cluster_df_spacing
-                ),
+                detections["dm"] / cluster_dm_spacing * self.dm_scale_factor,
+                detections["freq"] / cluster_df_spacing * self.freq_scale_factor,
             ),
             dtype=np.float32,
         ).T
