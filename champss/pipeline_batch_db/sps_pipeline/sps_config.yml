@@ -141,7 +141,8 @@ ps:
     use_nsum_per_bin: True
     cluster_config:
       dbscan_eps: 1
-      cluster_scale_factor: 10
+      dm_scale_factor: 0.1
+      freq_scale_factor: 1
       dbscan_min_samples: 5
       filter_nharm: False
       cluster_dm_cut: 2
@@ -300,7 +301,8 @@ ps_cumul_stack:
     use_nsum_per_bin: True
     cluster_config:
       dbscan_eps: 1
-      cluster_scale_factor: 10
+      dm_scale_factor: 0.1
+      freq_scale_factor: 1
       dbscan_min_samples: 5
       filter_nharm: False
       cluster_dm_cut: 2
