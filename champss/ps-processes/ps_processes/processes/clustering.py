@@ -699,7 +699,7 @@ class Clusterer:
                     metric_array[all_indices_1, all_indices_0] += dm_dists
             else:
                 pool = Pool(self.num_threads)
-                # returns tuples of lists
+                # returns tuples of lists when self.group_duplicate_freqs
                 index_pairs = [
                     index_pair
                     for id_group in grouped_ids
@@ -719,16 +719,23 @@ class Clusterer:
                 )
                 pool.close()
                 pool.join()
-                # unravel everything, might be better ways
-                indices_0 = [index for index_list in indices_0 for index in index_list]
-                indices_1 = [index for index_list in indices_1 for index in index_list]
-                metric_vals = np.asarray(
-                    [
-                        metric_val
-                        for metric_list in metric_vals
-                        for metric_val in metric_list
+                if self.group_duplicate_freqs:
+                    # unravel everything, might be better ways
+                    indices_0 = [
+                        index for index_list in indices_0 for index in index_list
                     ]
-                )
+                    indices_1 = [
+                        index for index_list in indices_1 for index in index_list
+                    ]
+                    metric_vals = np.asarray(
+                        [
+                            metric_val
+                            for metric_list in metric_vals
+                            for metric_val in metric_list
+                        ]
+                    )
+                else:
+                    metric_vals = np.asarray(metric_vals)
                 if self.add_dm_when_replace and self.metric_combination == "replace":
                     # dm calculation on full array much faster than on individual chunks
                     dm_dists = paired_distances(
@@ -787,17 +794,19 @@ class Clusterer:
             calculate_harm_metric(rhps, i[0], i[1], detections) * self.overlap_scale
         )
         if self.group_duplicate_freqs:
-            index_0 = np.tile(harm[i[0]], len(harm[i[1]]))
-            index_1 = np.repeat(harm[i[1]], len(harm[i[0]]))
+            index_0 = np.tile(harm[i[0]], len(harm[i[1]])).tolist()
+            index_1 = np.repeat(harm[i[1]], len(harm[i[0]])).tolist()
+            metric_vals = [
+                metric,
+            ] * len(index_0)
         else:
             index_0 = i[0]
             index_1 = i[1]
+            value_count = 1
 
-        metric_vals = [
-            metric,
-        ] * len(index_0)
+            metric_vals = metric
 
-        return index_0.tolist(), index_1.tolist(), metric_vals
+        return index_0, index_1, metric_vals
 
     def make_clusters(
         self,
