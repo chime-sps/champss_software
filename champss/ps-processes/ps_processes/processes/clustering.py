@@ -367,7 +367,7 @@ class Clusterer:
         default=50000
     )  # 32-bit max_ndetect x max_ndetect matrix is ~4GB
     sigma_detection_threshold: int = attribute(default=5)
-    group_duplicate_freqs: bool = attribute(default=True)
+    group_duplicate_freqs: bool = attribute(default=False)
     metric_method: str = attribute(default="rhp_norm_by_min_nharm")
     metric_combination: str = attribute(default="multiply")
     clustering_method: str = attribute(default="DBSCAN")
