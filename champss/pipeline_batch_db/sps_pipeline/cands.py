@@ -3,6 +3,7 @@ import logging
 import os
 from os import path
 
+import numpy as np
 from candidate_processor.feature_generator import Features
 from omegaconf import OmegaConf
 from prometheus_client import Summary
@@ -62,6 +63,12 @@ def run(
         Folder which is used to store data. Default: "./"
     write_hrc: bool
         Whether to write the harmonically related clusters. Default: False
+    injection_path: str
+        Path to injection file or string describing default injection type
+    injection_idx: list
+        Indices of injection file entries that are injected
+    only_injections: bool
+        Whether non-injections are filtered out. Default: False
     """
     date = utils.transit_time(pointing).date()
     log.info(
@@ -118,9 +125,13 @@ def run(
             log.info(f"Plotted {len(candidate_plots)} candidate plots.")
     log.info(f"{len(spcc.candidates)} candidates.")
     if len(spcc.candidates):
+        # Currently candidates are not sorted
+        all_sigmas = spcc.return_attribute_array("sigma")
+        best_cand_pos = np.argmax(all_sigmas)
         log.info(
-            f"Best candidate: F0: {spcc.candidates[0].freq:.3f} DM:"
-            f" {spcc.candidates[0].dm:.2f} Sigma: {spcc.candidates[0].sigma:.2f}"
+            f"Best candidate: F0: {spcc.candidates[best_cand_pos].freq:.3f} DM:"
+            f" {spcc.candidates[best_cand_pos].dm:.2f} Sigma:"
+            f" {spcc.candidates[best_cand_pos].sigma:.2f}"
         )
 
 
@@ -162,6 +173,14 @@ def run_interface(
         Sigma threshold for created candidate plots. Default: 0
     write_hrc: bool
         Whether to write the harmonically related clusters. Default: False
+    update_db: bool
+        Whether to update the update the db with the candiate file. Default: False
+    injection_path: str
+        Path to injection file or string describing default injection type
+    injection_idx: list
+        Indices of injection file entries that are injected
+    only_injections: bool
+        Whether non-injections are filtered out. Default: False
     """
     log.info(f"Candidate Processor of stack ({pointing.ra :.2f} {pointing.dec :.2f})")
     stack_root_folder = stack_path.rsplit("/stack/")[0]
@@ -206,7 +225,7 @@ def run_interface(
         if injection_path:
             injection_performance = spcc.test_injection_performance()
         if update_db:
-            # For now don't write to db, I'll think later about how to turn this on and off
+            # For now don't write to db by default, I'll think later about how to turn this on and off
             payload = {
                 "path_candidate_file": path.abspath(ps_candidates),
                 "num_total_candidates": len(spcc.candidates),
@@ -231,9 +250,13 @@ def run_interface(
             log.info(f"Plotted {len(candidate_plots)} candidate plots.")
     log.info(f"{len(spcc.candidates)} candidates.")
     if len(spcc.candidates):
+        # Currently candidates are not sorted
+        all_sigmas = spcc.return_attribute_array("sigma")
+        best_cand_pos = np.argmax(all_sigmas)
         log.info(
-            f"Best candidate: F0: {spcc.candidates[0].freq:.3f} DM:"
-            f" {spcc.candidates[0].dm:.2f} Sigma: {spcc.candidates[0].sigma:.2f}"
+            f"Best candidate: F0: {spcc.candidates[best_cand_pos].freq:.3f} DM:"
+            f" {spcc.candidates[best_cand_pos].dm:.2f} Sigma:"
+            f" {spcc.candidates[best_cand_pos].sigma:.2f}"
         )
 
 

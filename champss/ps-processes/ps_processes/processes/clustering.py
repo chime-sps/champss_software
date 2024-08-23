@@ -693,17 +693,22 @@ class Clusterer:
         the results nicely.
 
         Args:
-            detections_in (np.ndaray): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
+            detections_in (np.ndaray): detections output from PowerSpectra search - numpy structured array
+                with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow", "injection"
             cluster_dm_spacing (float): spacing between DM trials
-            plot_fname (str, optional): A plot of the detections and clusters will be made and saved to this file. Defaults to "".
-            filter_nharm (bool, optional): If True, for each cluster, only keep detections where the nharm matches that of the highest-sigma detection. Defaults to False.
-            remove_harm_idx (bool, optional): If True, remove the "harm_idx" field from the cluster detections. Defaults to False.
+            plot_fname (str, optional): A plot of the detections and clusters will be made and saved to
+                this file. Defaults to "".
+            filter_nharm (bool, optional): If True, for each cluster, only keep detections where the nharm
+                matches that of the highest-sigma detection. Defaults to False.
+            remove_harm_idx (bool, optional): If True, remove the "harm_idx" field from the cluster
+                detections. Defaults to False.
             cluster_dm_cut (float, optional): Filter all clusters equal or below this DM.
+            only_injections: bool Whether non-injections are filtered out. Default: False
 
         Returns:
             clusters (dict): A dict of Cluster objects
             summary (np.ndarray): A summary dict for the highest-sigma detection in all clusters found.
-                                  Fields are "cluster_id", "freq", "sigma", "nharm"
+                                  Fields are "cluster_id", "freq", "sigma", "nharm", "injection"
                                   cluster_id corresponds to the keys in clusters
             sig_limit (float): The minimum sigma used when clustering.
                                If there were many detections this may be higher than the limi used in the search

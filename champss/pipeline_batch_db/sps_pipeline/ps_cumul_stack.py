@@ -24,12 +24,21 @@ def run(
     =======
     ps_stack: PsStack
         PsStack object from sps-databases with information about the power spectra stack.
-
     ps_cumul_stack_processor: Wrapper
         A wrapper object containing the StackSearchPipeline configured to sps_config.yml
-
     monthly_power_spectra: PowerSpectra
         The monthly power spectra if they have been loaded already.
+    injection_path: str
+        Path to injection file or string describing default injection type
+    injection_idx: list
+        Indices of injection file entries that are injected
+    only_injections: bool
+        Whether non-injections are filtered out. Default: False
+    cutoff_frequency: float
+        Highest frequency allowed for a candidate/detection. Default: 100
+    scale_injection: bool
+        Whether to scale the injection so that the detected sigma should be
+        the same as the input sigma. Default: False
 
     Returns
     =======

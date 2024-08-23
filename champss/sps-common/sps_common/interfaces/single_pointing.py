@@ -97,6 +97,8 @@ class SinglePointingCandidate:
 
     injection (bool): bool describing whether or not a given candidate is an injection.
 
+    injection_dict (dict): Dict describing the injection parameters.
+
     ndetections (int): Number of detections clusterered in this candidate.
 
     unique_freq (np.ndarray): Array containing the unique frequencies.
@@ -449,6 +451,10 @@ class SinglePointingCandidateCollection:
     Attributes
     ----------
     candidates (List[SinglePointingCandidate]): the candidates
+    injections (List(dict)): List describing the injections that were performed
+                            beffore the search
+    injection_indices (List(int)): Indices of the candidates that were injected
+    real_indices (List(int)): Indices of the candidates that were  not injected
     """
 
     candidates = attrib(
