@@ -619,7 +619,11 @@ class Features:
         )
 
     def make_single_pointing_candidate(
-        self, pspec_meta_data: EasyDict, full_harm_bins, cluster_dict: EasyDict
+        self,
+        pspec_meta_data: EasyDict,
+        full_harm_bins,
+        injection_dicts,
+        cluster_dict: EasyDict,
     ) -> SinglePointingCandidate:
         """
         Create candidate from PowerSpectraDetectionCluster.
@@ -686,6 +690,12 @@ class Features:
             harmonics_tmp.append(cluster_max)
         harmonics_info = np.array(harmonics_tmp, dtype=harm_dtype)
         """
+        if cluster.injection_index != -1:
+            injected = True
+            injection_dict = injection_dicts[cluster.injection_index]
+        else:
+            injected = False
+            injection_dict = {}
         spc_init_dict = dict(
             freq=cluster.freq,
             dm=cluster.dm,
@@ -695,7 +705,8 @@ class Features:
             unique_freqs=cluster.unique_freqs,
             unique_dms=cluster.unique_dms,
             sigma=cluster.sigma,
-            injection=cluster.injection,
+            injection=injected,
+            injection_dict=injection_dict,
             ra=cluster_dict.ra,
             dec=cluster_dict.dec,
             features=np.array([tuple(vals)], dtype=dts),
@@ -1023,15 +1034,16 @@ class Features:
         with Pool(self.num_threads) as pool:
             spcs = pool.map(
                 partial(
-                    self.make_single_pointing_candidate, pspec_meta_data, full_harm_bins
+                    self.make_single_pointing_candidate,
+                    pspec_meta_data,
+                    full_harm_bins,
+                    psdc.injection_dicts,
                 ),
                 psdc,
             )
             pool.close()
             pool.join()
-        spcc_init_dict = dict(
-            candidates=spcs,
-        )
+        spcc_init_dict = dict(candidates=spcs, injections=psdc.injection_dicts)
 
         return SinglePointingCandidateCollection(**spcc_init_dict)
 

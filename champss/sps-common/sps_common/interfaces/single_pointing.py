@@ -97,6 +97,8 @@ class SinglePointingCandidate:
 
     injection (bool): bool describing whether or not a given candidate is an injection.
 
+    injection_dict (dict): Dict describing the injection parameters.
+
     ndetections (int): Number of detections clusterered in this candidate.
 
     unique_freq (np.ndarray): Array containing the unique frequencies.
@@ -183,6 +185,7 @@ class SinglePointingCandidate:
     dm_sigma_1d = attrib(type=dict, default=None)
     sigmas_per_harmonic_sum = attrib(type=dict, default=None)
     injection = attrib(type=bool, default=False)
+    injection_dict = attrib(type=dict, default={})
     datetimes = attrib(
         validator=deep_iterable(
             member_validator=instance_of(datetime.datetime),
@@ -414,6 +417,7 @@ class SinglePointingCandidate:
             sigmas_per_harmonic_sum=self.sigmas_per_harmonic_sum,
             pspec_freq_resolution=self.pspec_freq_resolution,
             injection=self.injection,
+            injection_dict=self.injection_dict,
             datetimes=self.datetimes,
         )
         return ret_dict
@@ -447,6 +451,10 @@ class SinglePointingCandidateCollection:
     Attributes
     ----------
     candidates (List[SinglePointingCandidate]): the candidates
+    injections (List(dict)): List describing the injections that were performed
+                            beffore the search
+    injection_indices (List(int)): Indices of the candidates that were injected
+    real_indices (List(int)): Indices of the candidates that were  not injected
     """
 
     candidates = attrib(
@@ -455,6 +463,36 @@ class SinglePointingCandidateCollection:
             iterable_validator=instance_of(list),
         )
     )
+    real_indices = attrib(
+        init=False,
+        validator=deep_iterable(
+            member_validator=instance_of(int),
+            iterable_validator=instance_of(list),
+        ),
+    )
+    injection_indices = attrib(
+        init=False,
+        validator=deep_iterable(
+            member_validator=instance_of(int),
+            iterable_validator=instance_of(list),
+        ),
+    )
+    injections = attrib(
+        validator=deep_iterable(
+            member_validator=instance_of(dict),
+            iterable_validator=instance_of(list),
+        ),
+        default=[],
+    )
+
+    def __attrs_post_init__(self):
+        """Find indices of real detections and injections."""
+        all_indices = np.arange(len(self.candidates))
+        injection_flags = np.asarray(
+            [cand.injection for cand in self.candidates], dtype=bool
+        )
+        self.real_indices = all_indices[~injection_flags]
+        self.injection_indices = all_indices[injection_flags]
 
     @classmethod
     def read(cls, filename, verbose=True):
@@ -483,10 +521,12 @@ class SinglePointingCandidateCollection:
             cand_dict = filter_class_dict(SinglePointingCandidate, cand_dict)
             sp_cand = SinglePointingCandidate(**cand_dict)
             cand_list.append(sp_cand)
-
         if verbose:
             log.info(f"Read {len(cand_list)} candidates from {filename}")
-        return cls(candidates=cand_list)
+        return cls(
+            candidates=cand_list,
+            injections=data.get("injection_dicts", np.empty(0)).tolist(),
+        )
 
     def write(self, filename):
         """Write candidates to npz file."""
@@ -495,6 +535,7 @@ class SinglePointingCandidateCollection:
             cand_dicts.append(spc.as_dict())
         save_dict = dict(
             candidate_dicts=cand_dicts,
+            injection_dicts=self.injections,
         )
         np.savez(filename, **save_dict)
         log.info(f"saved candidates to {filename}")
@@ -536,6 +577,42 @@ class SinglePointingCandidateCollection:
         """Given scalar candidate attribute, return array with those attributes."""
         attribute_list = [getattr(cand, attribute, None) for cand in self.candidates]
         return np.asarray(attribute_list)
+
+    def get_real_candidates(self):
+        """Get candidates which have not been injected."""
+        # Converting to array for easier slicing, could also change the attribute itself to array
+        return np.asarray(self.candidates)[self.real_indices]
+
+    def get_injection_candidates(self):
+        """Get candidates which have been injected."""
+        return np.asarray(self.candidates)[self.injection_indices]
+
+    def test_injection_performance(self, verbose=True):
+        """Return dict containing details fo the injection performance."""
+        injected_candidates = self.get_injection_candidates()
+        injected_indices = np.asarray(
+            [cand.injection_dict["injection_index"] for cand in injected_candidates]
+        )
+        unique_indices, unique_counts = np.unique(injected_indices, return_counts=True)
+        all_injections_count = len(self.injections)
+        injection_candidates_count = len(injected_candidates)
+        recovered_injections = len(unique_indices)
+        if verbose:
+            log.info(f"Injected Pulsars:     {all_injections_count}")
+            log.info(f"Injection Candidates: {injection_candidates_count}")
+            log.info(f"Recovered Injections: {recovered_injections}")
+
+        not_recovered = np.setdiff1d(np.arange(all_injections_count), unique_indices)
+        return_dict = {
+            "all_injections": all_injections_count,
+            "all_injection_candidates": injection_candidates_count,
+            "recovered_injection": recovered_injections,
+            "recovered_injection_indices": unique_indices,
+            "recovered_injection_counts": unique_counts,
+            "not_recovered_indices": not_recovered,
+        }
+
+        return return_dict
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})

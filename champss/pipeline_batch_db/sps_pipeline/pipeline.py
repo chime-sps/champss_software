@@ -294,6 +294,11 @@ def dbexcepthook(type, value, tb):
     type=float,
     help="Frequency at which to stop processing candidates.",
 )
+@click.option(
+    "--scale-injections/--not-scale-injections",
+    default=False,
+    help="Scale injection so that input sigma should be detected sigma.",
+)
 def main(
     date,
     stack,
@@ -318,6 +323,7 @@ def main(
     injection_idx,
     only_injections,
     cutoff_frequency,
+    scale_injections,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -644,6 +650,7 @@ def main(
                         injection_idx,
                         only_injections,
                         cutoff_frequency,
+                        scale_injections,
                         obs_folder,
                         prefix,
                     )
@@ -872,6 +879,11 @@ def main(
     default=100,
     help="Frequency at which to stop processing candidates.",
 )
+@click.option(
+    "--scale-injections/--not-scale-injections",
+    default=False,
+    help="Scale injection so that input sigma should be detected sigma.",
+)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -888,6 +900,7 @@ def stack_and_search(
     injection_idx,
     only_injections,
     cutoff_frequency,
+    scale_injections,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -958,6 +971,7 @@ def stack_and_search(
             injection_idx,
             only_injections,
             cutoff_frequency,
+            scale_injections,
         )
         ps_stack = db_api.get_ps_stack(closest_pointing._id)
         if ps_detections_monthly:
@@ -971,6 +985,10 @@ def stack_and_search(
                 plot,
                 plot_threshold,
                 config.cands.get("write_harmonically_related_clusters", False),
+                False,
+                injection_path,
+                injection_idx,
+                only_injections,
             )
     else:
         power_spectra_monthly = None
@@ -984,6 +1002,7 @@ def stack_and_search(
             injection_idx,
             only_injections,
             cutoff_frequency,
+            scale_injections,
         )
         if to_search:
             if not ps_detections:
@@ -1005,6 +1024,10 @@ def stack_and_search(
                         plot,
                         plot_threshold,
                         config.cands.get("write_harmonically_related_clusters", False),
+                        False,
+                        injection_path,
+                        injection_idx,
+                        only_injections,
                     )
     try:
         power_spectra_monthly.unlink_shared_memory()
