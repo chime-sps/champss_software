@@ -756,14 +756,39 @@ class Clusterer:
                     index_pairs, np.arange(chunk_size, index_pairs.shape[0], chunk_size)
                 )
                 for split in split_pairs:
-                    print(split[0, :])
-                    indices_0 = split[:, 0]
-                    indices_1 = split[:, 1]
                     metric_vals = (
-                        calculate_harm_metric(rhps, indices_0, indices_1, detections)
+                        calculate_harm_metric(
+                            rhps, split[:, 0], split[:, 1], detections
+                        )
                         * self.overlap_scale
                     )
-                    breakpoint()
+                    if self.group_duplicate_freqs:
+                        # kinda slow I suspect, a few to many conversion
+                        indices_0 = []
+                        indices_1 = []
+                        all_metric_vals = []
+                        for index, row in enumerate(split):
+                            indices_0_part = np.tile(
+                                harm[row[0]], len(harm[row[1]])
+                            ).tolist()
+                            indices_1_part = np.repeat(
+                                harm[row[1]], len(harm[row[0]])
+                            ).tolist()
+                            indices_0.extend(indices_0_part)
+                            indices_1.extend(indices_1_part)
+
+                            all_metric_vals.extend(
+                                [
+                                    metric_vals[index],
+                                ]
+                                * len(indices_0_part)
+                            )
+                        indices_0 = np.asarray(indices_0)
+                        indices_1 = np.asarray(indices_1)
+                        metric_vals = np.asarray(all_metric_vals)
+                    else:
+                        indices_0 = split[:, 0]
+                        indices_1 = split[:, 1]
                     if (
                         self.add_dm_when_replace
                         and self.metric_combination == "replace"
