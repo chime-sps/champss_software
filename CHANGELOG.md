@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/chime-sps/champss_software/compare/v0.4.0...v0.5.0) (2024-08-23)
+
+
+### Features
+
+* Predict sigma of injection ([#58](https://github.com/chime-sps/champss_software/issues/58)) ([281e982](https://github.com/chime-sps/champss_software/commit/281e9827aa14edfb948e114f585cd6ee998917da))
+
+
+### Bug Fixes
+
+* injection PR and precommit files ([091e317](https://github.com/chime-sps/champss_software/commit/091e317d5b2b07ed6525dd320dd5af5a415dcbb1))
+* ks filter for single day pipeline ([#59](https://github.com/chime-sps/champss_software/issues/59)) ([33a4430](https://github.com/chime-sps/champss_software/commit/33a443091d583f263c8316466bac58c387e77dda))
+
 ## [0.4.0](https://github.com/chime-sps/champss_software/compare/v0.3.1...v0.4.0) (2024-07-22)
 
 
