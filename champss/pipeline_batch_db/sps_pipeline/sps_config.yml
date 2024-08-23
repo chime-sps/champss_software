@@ -149,7 +149,7 @@ ps:
       max_ndetect: 50000
       overlap_scale: 1.5
       metric_combination: replace
-      metric_method: power_overlap
+      metric_method: power_overlap_array
       add_dm_when_replace: True
 
 cands:
@@ -309,5 +309,5 @@ ps_cumul_stack:
       max_ndetect: 90000
       overlap_scale: 1.5
       metric_combination: replace
-      metric_method: power_overlap # possible: power_overlap, rhp_norm_by_min_nharm, rhp_overlap
+      metric_method: power_overlap_array # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap
       add_dm_when_replace: True

@@ -294,6 +294,29 @@ def rogue_harmpow_filter_alt(detections):
     return np.delete(detections, filter_out_idx)
 
 
+def intersect2d_ind_filter0(ar1, ar2):
+    # Assumes unuqie values except for 0
+    # returns list of arrays
+    ar1 = np.asanyarray(ar1)
+    ar2 = np.asanyarray(ar2)
+    if len(ar1.shape) == 1:
+        ar1 = ar1[None, :]
+        ar2 = ar2[None, :]
+    aux = np.concatenate((ar1, ar2), -1)
+    aux_sort_indices = np.argsort(aux, axis=1, kind="mergesort")
+    aux = np.take_along_axis(aux, aux_sort_indices, axis=1)
+    mask = (aux[:, :-1] == aux[:, 1:]) & (aux[:, :-1] != 0)
+    # based on https://stackoverflow.com/posts/53918643/revisions
+    take = mask.sum(axis=1)
+    int2d_flat = aux[:, :-1][mask]
+    int2d_split = np.split(int2d_flat, np.cumsum(take)[:-1])
+    ar1_indices = aux_sort_indices[:, :-1][mask]
+    ar2_indices = aux_sort_indices[:, 1:][mask] - ar1.shape[1]
+    ar1_indices_split = np.split(ar1_indices, np.cumsum(take)[:-1])
+    ar2_indices_split = np.split(ar2_indices, np.cumsum(take)[:-1])
+    return int2d_split, ar1_indices_split, ar2_indices_split
+
+
 @attrs(slots=True)
 class Clusterer:
     """
@@ -387,6 +410,7 @@ class Clusterer:
             "rhp_norm_by_min_nharm",
             "rhp_overlap",
             "power_overlap",
+            "power_overlap_array",
         ], "metric_method must be either 'rhp_norm_by_min_nharm' or 'rhp_overlap'"
 
     @metric_combination.validator
@@ -477,6 +501,57 @@ class Clusterer:
             intersec_power_1 / total_power_1, intersec_power_2 / total_power_2
         )
         out_metric = 1 - power_overlap
+        return out_metric
+
+    def calculate_metric_power_overlap_array(
+        self, rhplist, idxs0, idxs1, detections, **kwargs
+    ):
+        intersect_bins, intersect_idx0, intersect_idx1 = intersect2d_ind_filter0(
+            detections["harm_idx"][idxs0],
+            detections["harm_idx"][idxs1],
+        )
+        if np.isscalar(idxs0):
+            powers_0 = np.array(
+                [
+                    (row.sum(), row[indices].sum())
+                    for row, indices in zip(
+                        detections["harm_pow"][idxs0][None, :], intersect_idx0
+                    )
+                ]
+            )
+            powers_1 = np.array(
+                [
+                    (row.sum(), row[indices].sum())
+                    for row, indices in zip(
+                        detections["harm_pow"][idxs1][None, :], intersect_idx1
+                    )
+                ]
+            )
+        else:
+            powers_0 = np.array(
+                [
+                    (row.sum(), row[indices].sum())
+                    for row, indices in zip(
+                        detections["harm_pow"][idxs0], intersect_idx0
+                    )
+                ]
+            )
+            powers_1 = np.array(
+                [
+                    (row.sum(), row[indices].sum())
+                    for row, indices in zip(
+                        detections["harm_pow"][idxs1], intersect_idx1
+                    )
+                ]
+            )
+        powers_overlap = np.stack(
+            (
+                powers_0[:, 1] / powers_0[:, 0],
+                powers_1[:, 1] / powers_1[:, 0],
+            ),
+            axis=1,
+        ).max(1)
+        out_metric = 1 - powers_overlap
         return out_metric
 
     # @profiler
@@ -610,6 +685,11 @@ class Clusterer:
             elif self.metric_method == "power_overlap":
                 calculate_harm_metric = self.calculate_metric_power_overlap
                 log.debug("calculate_harm_metric set to calculate_metric_power_overlap")
+            elif self.metric_method == "power_overlap_array":
+                calculate_harm_metric = self.calculate_metric_power_overlap_array
+                log.debug(
+                    "calculate_harm_metric set to calculate_metric_power_overlap_array"
+                )
 
             # Organise raw harmonic power bins into supersets
             # This restricts the parameter space for which you need to calcualte the harmonic metric
@@ -655,87 +735,20 @@ class Clusterer:
             # self.num_threads = 1
 
             # to save on memory should probably alter the DMfreq_dist_metric in-place instead
-            if self.num_threads == 1:
-                all_indices_0 = []
-                all_indices_1 = []
-                for ii, id_group in enumerate(grouped_ids):
-                    log.debug(
-                        f"Working on metric caculcation for group {ii}, length"
-                        f" {len(id_group)}"
-                    )
-                    for i in itertools.combinations(id_group, 2):
-                        metric = (
-                            calculate_harm_metric(rhps, i[0], i[1], detections)
-                            * self.overlap_scale
-                        )
-                        if self.group_duplicate_freqs:
-                            index_0 = np.tile(harm[i[0]], len(harm[i[1]]))
-                            index_1 = np.repeat(harm[i[1]], len(harm[i[0]]))
-                        else:
-                            index_0 = i[0]
-                            index_1 = i[1]
-
-                        if scheme == "combined":
-                            if self.metric_combination == "multiply":
-                                metric_array[index_0, index_1] *= metric
-                                metric_array[index_1, index_0] = metric_array[
-                                    index_0, index_1
-                                ]
-                            elif self.metric_combination == "replace":
-                                metric_array[index_0, index_1] = metric
-                                metric_array[index_1, index_0] = metric
-                                if self.add_dm_when_replace:
-                                    all_indices_0.extend(index_0.tolist())
-                                    all_indices_1.extend(index_1.tolist())
-                        else:
-                            metric_array[index_0, index_1] = metric
-                            metric_array[index_1, index_0] = metric
-                if self.add_dm_when_replace:
-                    # dm calculation on full array much faster than on individual chunks
-                    dm_dists = paired_distances(
-                        data[all_indices_0, :1], data[all_indices_0, :1]
-                    )
-                    metric_array[all_indices_0, all_indices_1] += dm_dists
-                    metric_array[all_indices_1, all_indices_0] += dm_dists
-            else:
-                pool = Pool(self.num_threads)
-                # returns tuples of lists when self.group_duplicate_freqs
+            if self.metric_method == "power_overlap_array":
+                # group_duplicate_freqncies not properly implemented yet
                 index_pairs = [
                     index_pair
                     for id_group in grouped_ids
                     for index_pair in list(itertools.combinations(id_group, 2))
                 ]
-                indices_0, indices_1, metric_vals = zip(
-                    *pool.map(
-                        partial(
-                            self.calc_harmonic_distances_index_pairs,
-                            harm,
-                            detections,
-                            calculate_harm_metric,
-                            rhps,
-                        ),
-                        index_pairs,
-                    )
+                index_pairs = np.asarray(index_pairs)
+                indices_0 = index_pairs[:, 0]
+                indices_1 = index_pairs[:, 1]
+                metric_vals = (
+                    calculate_harm_metric(rhps, indices_0, indices_1, detections)
+                    * self.overlap_scale
                 )
-                pool.close()
-                pool.join()
-                if self.group_duplicate_freqs:
-                    # unravel everything, might be better ways
-                    indices_0 = [
-                        index for index_list in indices_0 for index in index_list
-                    ]
-                    indices_1 = [
-                        index for index_list in indices_1 for index in index_list
-                    ]
-                    metric_vals = np.asarray(
-                        [
-                            metric_val
-                            for metric_list in metric_vals
-                            for metric_val in metric_list
-                        ]
-                    )
-                else:
-                    metric_vals = np.asarray(metric_vals)
                 if self.add_dm_when_replace and self.metric_combination == "replace":
                     # dm calculation on full array much faster than on individual chunks
                     dm_dists = paired_distances(
@@ -744,10 +757,109 @@ class Clusterer:
                     metric_vals += dm_dists
                 if self.metric_combination == "multiply":
                     metric_array[indices_0, indices_1] *= metric_vals
-                    metric_array[indices_1, indices_0] *= metric_vals
+                    metric_array[indices_1, indices_0] = metric_array[
+                        indices_0, indices_1
+                    ]
                 elif self.metric_combination == "replace":
                     metric_array[indices_0, indices_1] = metric_vals
                     metric_array[indices_1, indices_0] = metric_vals
+            else:
+                if self.num_threads == 1:
+                    all_indices_0 = []
+                    all_indices_1 = []
+                    for ii, id_group in enumerate(grouped_ids):
+                        log.debug(
+                            f"Working on metric caculcation for group {ii}, length"
+                            f" {len(id_group)}"
+                        )
+                        for i in itertools.combinations(id_group, 2):
+                            metric = (
+                                calculate_harm_metric(rhps, i[0], i[1], detections)
+                                * self.overlap_scale
+                            )
+                            if self.group_duplicate_freqs:
+                                index_0 = np.tile(harm[i[0]], len(harm[i[1]]))
+                                index_1 = np.repeat(harm[i[1]], len(harm[i[0]]))
+                            else:
+                                index_0 = i[0]
+                                index_1 = i[1]
+
+                            if scheme == "combined":
+                                if self.metric_combination == "multiply":
+                                    metric_array[index_0, index_1] *= metric
+                                    metric_array[index_1, index_0] = metric_array[
+                                        index_0, index_1
+                                    ]
+                                elif self.metric_combination == "replace":
+                                    metric_array[index_0, index_1] = metric
+                                    metric_array[index_1, index_0] = metric
+                                    if self.add_dm_when_replace:
+                                        all_indices_0.extend(index_0.tolist())
+                                        all_indices_1.extend(index_1.tolist())
+                            else:
+                                metric_array[index_0, index_1] = metric
+                                metric_array[index_1, index_0] = metric
+                    if self.add_dm_when_replace:
+                        # dm calculation on full array much faster than on individual chunks
+                        dm_dists = paired_distances(
+                            data[all_indices_0, :1], data[all_indices_0, :1]
+                        )
+                        metric_array[all_indices_0, all_indices_1] += dm_dists
+                        metric_array[all_indices_1, all_indices_0] += dm_dists
+                else:
+                    pool = Pool(self.num_threads)
+                    # returns tuples of lists when self.group_duplicate_freqs
+                    index_pairs = [
+                        index_pair
+                        for id_group in grouped_ids
+                        for index_pair in list(itertools.combinations(id_group, 2))
+                    ]
+                    indices_0, indices_1, metric_vals = zip(
+                        *pool.map(
+                            partial(
+                                self.calc_harmonic_distances_index_pairs,
+                                harm,
+                                detections,
+                                calculate_harm_metric,
+                                rhps,
+                            ),
+                            index_pairs,
+                        )
+                    )
+                    pool.close()
+                    pool.join()
+                    if self.group_duplicate_freqs:
+                        # unravel everything, might be better ways
+                        indices_0 = [
+                            index for index_list in indices_0 for index in index_list
+                        ]
+                        indices_1 = [
+                            index for index_list in indices_1 for index in index_list
+                        ]
+                        metric_vals = np.asarray(
+                            [
+                                metric_val
+                                for metric_list in metric_vals
+                                for metric_val in metric_list
+                            ]
+                        )
+                    else:
+                        metric_vals = np.asarray(metric_vals)
+                    if (
+                        self.add_dm_when_replace
+                        and self.metric_combination == "replace"
+                    ):
+                        # dm calculation on full array much faster than on individual chunks
+                        dm_dists = paired_distances(
+                            data[indices_0, :1], data[indices_1, :1]
+                        )
+                        metric_vals += dm_dists
+                    if self.metric_combination == "multiply":
+                        metric_array[indices_0, indices_1] *= metric_vals
+                        metric_array[indices_1, indices_0] *= metric_vals
+                    elif self.metric_combination == "replace":
+                        metric_array[indices_0, indices_1] = metric_vals
+                        metric_array[indices_1, indices_0] = metric_vals
 
             for i in range(metric_array.shape[0]):
                 metric_array[i, i] = 0
