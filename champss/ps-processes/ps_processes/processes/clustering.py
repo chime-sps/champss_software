@@ -17,6 +17,7 @@ from matplotlib import pyplot as plt
 from sklearn.cluster import DBSCAN, HDBSCAN
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import paired_distances
+from sklearn.neighbors import radius_neighbors_graph
 from sps_common.interfaces import Cluster
 
 # profiler = line_profiler.LineProfiler()
@@ -382,7 +383,7 @@ class Clusterer:
     """
 
     # cluster_scale_factor: float = attribute(default=10)
-    freq_scale_factor: float = attribute(default=0.5)
+    freq_scale_factor: float = attribute(default=1)
     dm_scale_factor: float = attribute(default=0.1)
     dbscan_eps: float = attribute(default=1)
     dbscan_min_samples: int = attribute(default=5)
@@ -390,7 +391,7 @@ class Clusterer:
         default=50000
     )  # 32-bit max_ndetect x max_ndetect matrix is ~4GB
     sigma_detection_threshold: int = attribute(default=5)
-    group_duplicate_freqs: bool = attribute(default=False)
+    group_duplicate_freqs: bool = attribute(default=True)
     metric_method: str = attribute(default="rhp_norm_by_min_nharm")
     metric_combination: str = attribute(default="multiply")
     clustering_method: str = attribute(default="DBSCAN")
@@ -403,6 +404,7 @@ class Clusterer:
     overlap_scale: float = attribute(default=1)
     add_dm_when_replace: bool = attribute(default=True)
     num_threads = attribute(validator=instance_of(int), default=8)
+    use_sparse: bool = attribute(default=True)
 
     @metric_method.validator
     def _validate_metric_method(self, attribute, value):
@@ -667,7 +669,12 @@ class Clusterer:
 
         if scheme in ["combined", "dmfreq"]:
             log.info("Starting freq-DM distance metric computation")
-            metric_array = pairwise_distances(data, n_jobs=self.num_threads)
+            if self.use_sparse:
+                metric_array = radius_neighbors_graph(
+                    data, 1.1 * self.dbscan_eps, p=2, mode="distance"
+                ).tolil()
+            else:
+                metric_array = pairwise_distances(data, n_jobs=self.num_threads)
             # metric_array = np.nan_to_num(metric_array, posinf=10000)
             log.info("Finished freq-DM distance metric computation")
 
@@ -732,10 +739,12 @@ class Clusterer:
             if scheme not in ["combined", "dmfreq"]:
                 metric_array = np.ones((data.shape[0], data.shape[0]), dtype=np.float32)
 
-            # self.num_threads = 1
+            self.num_threads = 1
+            # breakpoint()
 
             # to save on memory should probably alter the DMfreq_dist_metric in-place instead
             if self.metric_method == "power_overlap_array":
+                chunk_size = 2000
                 # group_duplicate_freqncies not properly implemented yet
                 index_pairs = [
                     index_pair
@@ -743,26 +752,34 @@ class Clusterer:
                     for index_pair in list(itertools.combinations(id_group, 2))
                 ]
                 index_pairs = np.asarray(index_pairs)
-                indices_0 = index_pairs[:, 0]
-                indices_1 = index_pairs[:, 1]
-                metric_vals = (
-                    calculate_harm_metric(rhps, indices_0, indices_1, detections)
-                    * self.overlap_scale
+                split_pairs = np.split(
+                    index_pairs, np.arange(chunk_size, index_pairs.shape[0], chunk_size)
                 )
-                if self.add_dm_when_replace and self.metric_combination == "replace":
-                    # dm calculation on full array much faster than on individual chunks
-                    dm_dists = paired_distances(
-                        data[indices_0, :1], data[indices_1, :1]
+                for split in split_pairs:
+                    print(split[0, :])
+                    indices_0 = split[:, 0]
+                    indices_1 = split[:, 1]
+                    metric_vals = (
+                        calculate_harm_metric(rhps, indices_0, indices_1, detections)
+                        * self.overlap_scale
                     )
-                    metric_vals += dm_dists
-                if self.metric_combination == "multiply":
-                    metric_array[indices_0, indices_1] *= metric_vals
-                    metric_array[indices_1, indices_0] = metric_array[
-                        indices_0, indices_1
-                    ]
-                elif self.metric_combination == "replace":
-                    metric_array[indices_0, indices_1] = metric_vals
-                    metric_array[indices_1, indices_0] = metric_vals
+                    if (
+                        self.add_dm_when_replace
+                        and self.metric_combination == "replace"
+                    ):
+                        # dm calculation on full array much faster than on individual chunks
+                        dm_dists = paired_distances(
+                            data[indices_0, :1], data[indices_1, :1]
+                        )
+                        metric_vals += dm_dists
+                    if self.metric_combination == "multiply":
+                        metric_array[indices_0, indices_1] *= metric_vals
+                        metric_array[indices_1, indices_0] = metric_array[
+                            indices_0, indices_1
+                        ]
+                    elif self.metric_combination == "replace":
+                        metric_array[indices_0, indices_1] = metric_vals
+                        metric_array[indices_1, indices_0] = metric_vals
             else:
                 if self.num_threads == 1:
                     all_indices_0 = []
