@@ -763,6 +763,7 @@ class Clusterer:
                         calculate_harm_metric(rhps, indices_0, indices_1, detections)
                         * self.overlap_scale
                     )
+                    breakpoint()
                     if (
                         self.add_dm_when_replace
                         and self.metric_combination == "replace"
