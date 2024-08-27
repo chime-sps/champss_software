@@ -183,6 +183,22 @@ class PowerSpectraSearch:
         inject: bool
             whether or not to inject an artificial pulse into the power spectrum
 
+        injection_path: str
+            Path to injection file or string describing default injection type
+
+        injection_indices: list
+            Indices of injection file entries that are injected
+
+        only_injections: bool
+            Whether non-injections are filtered out. Default: False
+
+        cutoff_frequency: float
+            Highest frequency allowed for a candidate/detection. Default: 100
+
+        scale_injection: bool
+            Whether to scale the injection so that the detected sigma should be
+            the same as the input sigma. Default: False
+
         Returns
         =======
         ps_detections: PowerSpectraDetectionClusters
@@ -426,6 +442,7 @@ class PowerSpectraSearch:
 
                 db_api.update_observation(pspec.obs_id[0], payload)
         for injection_index, injection_dict in enumerate(injection_dicts):
+            # remove unneeded dict entries
             injection_dict.pop("bins")
             injection_dict.pop("dms")
         return (

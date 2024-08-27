@@ -237,6 +237,7 @@ class Injection:
         --------
                 dispersed_prof_fft (arr): a 2D array of size (len(DM_labels), len(prof)) containing the
                                           dispersed profile values
+                target_dm_idx (ndarray) : dm bins of the injection
         """
 
         # i is our index referring to the DM_labels in the target power spectrum
@@ -276,6 +277,7 @@ class Injection:
                 N (int)           : number of bins over which to sinc-interpolate the harmonic
         Returns:
         ________
+                bins (ndarray) : frequency bins of the injection
                 harmonics (ndarray) : Fourier-transformed harmonics of the profile convolved with
                                         [cycles] number of Delta functions
         """
@@ -312,6 +314,9 @@ class Injection:
         Returns:
         ________
                 harms (ndarray) : (Potentially rescaled) Fourier-transformed harmonics
+                bins (ndarray) : frequency bins of the injection
+                dm_indices (ndarray) : dm bins of the injection
+                used_nharm (int) : Number of harmonics that will be injected
         """
         # estimate sigma
         true_dm_injection_index = self.true_dm_trial - dm_indices[0]
@@ -383,6 +388,10 @@ class Injection:
         _______
                 harms (arr): 2D power grid of form (trial DM, frequency)
                 bins (arr) : 1D array of bin indices at which the pulse was injected
+                dm_indices (arr): 1D array of the injected dm indices
+                predicted_nharm (int): nharm at which the injection should be detected
+                predicted_sigma (int): sigma at which the injection should be detected,
+                                        excluding the influence of the power spectrum.
         """
 
         # pull frequency bins from target power spectrum
@@ -443,13 +452,16 @@ def main(
                                               profile in the dictionary defaults, or a dict with
                                               custom injection profile keys
                                               (profile, sigma, frequency, DM)
-            num_injections (int)            : provided if injection_profile == 'random.' How many profiles
-                                              to randomly generate.
+            num_injections (int)            : provided if injection_profile == 'random.' How
+                                              many profiles to randomly generate.
+            remove_spectra (bool)           : Whether to remove the spectra. Replaced by static value
+            scale_injections (bool)         : Whether to scale the injection so that the
+                                            detected sigma should be
+                                            the same as the input sigma. Default: False
 
     Returns:
     --------
-            bins (list)                     : 2D list of bins with injected power
-            dms (list)                      : 1D list of DMs with injected power
+            injection_profiles (list(dict)) : List containing dict describing the injection.
     """
     default_freq = rand.choice(
         np.linspace(0.1, 100, 10000), num_injections, replace=False

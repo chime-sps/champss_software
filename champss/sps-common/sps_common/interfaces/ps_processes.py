@@ -635,7 +635,8 @@ class Cluster:
     Attributes:
     ===========
     detections (np.ndaray): detections output from PowerSpectra search. A numpy
-        structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx"
+        structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx",
+        "injection"
 
     Post-init:
     ==========
@@ -645,7 +646,8 @@ class Cluster:
     sigma (float): sigma of the highest-sigma detection
     nharm (int): nharm of the highest-sigma detection
     harm_idx (np.ndarray): harm_idx of the highest-sigma detection
-    injection (bool): whether the cluster is associated with an injection
+    injection_index (bool): Index of the injection in the injection_dicts list.
+                        -1 if not associated with an injection
 
     Properties
     ==========

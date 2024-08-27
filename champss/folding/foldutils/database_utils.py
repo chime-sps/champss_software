@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from sps_databases import db_api, db_utils
 
@@ -6,8 +8,8 @@ def scrape_ephemeris(ephem_path):
     from beamformer.utilities.dm import DMMap
 
     dmm = DMMap()
-
     payload = {}
+    print(ephem_path)
     with open(ephem_path) as infile:
         elong = np.nan
         elat = np.nan
@@ -54,7 +56,7 @@ def scrape_ephemeris(ephem_path):
     )
     payload["followup_duration"] = 10000
     payload["active"] = True
-    ephem_path_absolute = os.path.abspath(f)
+    ephem_path_absolute = os.path.abspath(ephem_path)
     payload["path_to_ephemeris"] = ephem_path_absolute
     return payload
 

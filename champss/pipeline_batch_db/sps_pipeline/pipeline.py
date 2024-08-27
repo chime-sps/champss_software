@@ -630,6 +630,7 @@ def main(
                     **OmegaConf.to_container(config.ps),
                     run_ps_stack=stack,
                     num_threads=num_threads,
+                    known_source_threshold=known_source_threshold,
                 )
                 # Use global to allow unlinking memory in exception hook
                 global power_spectra
