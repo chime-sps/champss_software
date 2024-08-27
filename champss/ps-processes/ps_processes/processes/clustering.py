@@ -743,6 +743,12 @@ class Clusterer:
 
             self.num_threads = 1
             # breakpoint()
+            if self.metric_combination == "multiply":
+                threshold_for_new_vals = 1
+            elif self.metric_combination == "replace":
+                threshold_for_new_vals = self.dbscan_eps
+            else:
+                threshold_for_new_vals = np.inf
 
             # to save on memory should probably alter the DMfreq_dist_metric in-place instead
             if self.metric_method == "power_overlap_array":
@@ -764,7 +770,7 @@ class Clusterer:
                         )
                         * self.overlap_scale
                     )
-                    used_indices = metric_vals < self.dbscan_eps
+                    used_indices = metric_vals < threshold_for_new_vals
                     metric_vals = metric_vals[used_indices]
                     split = split[used_indices]
                     if not len(metric_vals):
