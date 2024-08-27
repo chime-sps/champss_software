@@ -7,7 +7,8 @@ from functools import partial
 from multiprocessing import Pool
 
 import colorcet as cc
-import line_profiler
+
+# import line_profiler
 import numpy as np
 import tqdm
 from attr import ib as attribute
@@ -20,7 +21,7 @@ from sklearn.metrics.pairwise import paired_distances
 from sklearn.neighbors import radius_neighbors_graph
 from sps_common.interfaces import Cluster
 
-profiler = line_profiler.LineProfiler()
+# profiler = line_profiler.LineProfiler()
 
 log = logging.getLogger(__name__)
 
@@ -477,7 +478,7 @@ class Clusterer:
         )
         return out_metric
 
-    @profiler
+    # @profiler
     def calculate_metric_power_overlap(self, rhplist, idx0, idx1, detections, **kwargs):
         """
         Calculate harmonic distance based on the power in overlapping bins.
@@ -1030,7 +1031,7 @@ class Clusterer:
             scheme="combined",
             plot_fname=plot_fname,
         )
-        profiler.print_stats()
+        # profiler.print_stats()
         unique_labels = np.unique(cluster_labels)
         clusters = {}
         summary = {}
