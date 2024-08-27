@@ -7,9 +7,9 @@ from functools import partial
 from multiprocessing import Pool
 
 import colorcet as cc
-
-# import line_profiler
+import line_profiler
 import numpy as np
+import tqdm
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
@@ -20,7 +20,7 @@ from sklearn.metrics.pairwise import paired_distances
 from sklearn.neighbors import radius_neighbors_graph
 from sps_common.interfaces import Cluster
 
-# profiler = line_profiler.LineProfiler()
+profiler = line_profiler.LineProfiler()
 
 log = logging.getLogger(__name__)
 
@@ -402,7 +402,7 @@ class Clusterer:
     remove_harm_idx: bool = attribute(default=False)
     cluster_dm_cut: float = attribute(default=-1)
     overlap_scale: float = attribute(default=1)
-    add_dm_when_replace: bool = attribute(default=True)
+    add_dm_when_replace: bool = attribute(default=False)
     num_threads = attribute(validator=instance_of(int), default=8)
     use_sparse: bool = attribute(default=True)
 
@@ -477,6 +477,7 @@ class Clusterer:
         )
         return out_metric
 
+    @profiler
     def calculate_metric_power_overlap(self, rhplist, idx0, idx1, detections, **kwargs):
         """
         Calculate harmonic distance based on the power in overlapping bins.
@@ -505,6 +506,7 @@ class Clusterer:
         out_metric = 1 - power_overlap
         return out_metric
 
+    @profiler
     def calculate_metric_power_overlap_array(
         self, rhplist, idxs0, idxs1, detections, **kwargs
     ):
@@ -556,7 +558,7 @@ class Clusterer:
         out_metric = 1 - powers_overlap
         return out_metric
 
-    # @profiler
+    @profiler
     def cluster(
         self,
         detections_in,
@@ -755,37 +757,38 @@ class Clusterer:
                 split_pairs = np.split(
                     index_pairs, np.arange(chunk_size, index_pairs.shape[0], chunk_size)
                 )
-                for split in split_pairs:
+                for split in tqdm.tqdm(split_pairs):
                     metric_vals = (
                         calculate_harm_metric(
                             rhps, split[:, 0], split[:, 1], detections
                         )
                         * self.overlap_scale
                     )
+                    used_indices = metric_vals < self.dbscan_eps
+                    metric_vals = metric_vals[used_indices]
+                    split = split[used_indices]
+                    if not len(metric_vals):
+                        continue
                     if self.group_duplicate_freqs:
                         # kinda slow I suspect, a few to many conversion
                         indices_0 = []
                         indices_1 = []
                         all_metric_vals = []
                         for index, row in enumerate(split):
-                            indices_0_part = np.tile(
-                                harm[row[0]], len(harm[row[1]])
-                            ).tolist()
-                            indices_1_part = np.repeat(
-                                harm[row[1]], len(harm[row[0]])
-                            ).tolist()
-                            indices_0.extend(indices_0_part)
-                            indices_1.extend(indices_1_part)
+                            indices_0_part = np.tile(harm[row[0]], len(harm[row[1]]))
+                            indices_1_part = np.repeat(harm[row[1]], len(harm[row[0]]))
+                            indices_0.append(indices_0_part)
+                            indices_1.append(indices_1_part)
 
-                            all_metric_vals.extend(
+                            all_metric_vals.append(
                                 [
                                     metric_vals[index],
                                 ]
                                 * len(indices_0_part)
                             )
-                        indices_0 = np.asarray(indices_0)
-                        indices_1 = np.asarray(indices_1)
-                        metric_vals = np.asarray(all_metric_vals)
+                        indices_0 = np.concatenate(indices_0)
+                        indices_1 = np.concatenate(indices_1)
+                        metric_vals = np.concatenate(all_metric_vals)
                     else:
                         indices_0 = split[:, 0]
                         indices_1 = split[:, 1]
@@ -798,19 +801,27 @@ class Clusterer:
                             data[indices_0, :1], data[indices_1, :1]
                         )
                         metric_vals += dm_dists
+                        used_indices_dm = metric_vals < self.dbscan_eps
+                        metric_vals = metric_vals[used_indices_dm]
+                        indices_0 = indices_0[used_indices_dm]
+                        indices_1 = indices_1[used_indices_dm]
+                        if not len(metric_vals):
+                            continue
+
                     if self.metric_combination == "multiply":
                         metric_array[indices_0, indices_1] *= metric_vals
                         metric_array[indices_1, indices_0] = metric_array[
                             indices_0, indices_1
                         ]
                     elif self.metric_combination == "replace":
+                        # pass
                         metric_array[indices_0, indices_1] = metric_vals
                         metric_array[indices_1, indices_0] = metric_vals
             else:
                 if self.num_threads == 1:
                     all_indices_0 = []
                     all_indices_1 = []
-                    for ii, id_group in enumerate(grouped_ids):
+                    for ii, id_group in tqdm.tqdm(enumerate(grouped_ids)):
                         log.debug(
                             f"Working on metric caculcation for group {ii}, length"
                             f" {len(id_group)}"
@@ -834,6 +845,13 @@ class Clusterer:
                                         index_0, index_1
                                     ]
                                 elif self.metric_combination == "replace":
+                                    if self.add_dm_when_replace:
+                                        # dm calculation on full array much faster than on individual chunks
+                                        # but super slow for long arrays
+                                        dm_dists = paired_distances(
+                                            data[index_0, :1], data[index_1, :1]
+                                        )
+                                        metric += dm_dists
                                     metric_array[index_0, index_1] = metric
                                     metric_array[index_1, index_0] = metric
                                     if self.add_dm_when_replace:
@@ -842,10 +860,12 @@ class Clusterer:
                             else:
                                 metric_array[index_0, index_1] = metric
                                 metric_array[index_1, index_0] = metric
-                    if self.add_dm_when_replace:
+                    if self.add_dm_when_replace and False:
                         # dm calculation on full array much faster than on individual chunks
+                        # but super slow for long arrays
+                        log.info("Calculating DM distances")
                         dm_dists = paired_distances(
-                            data[all_indices_0, :1], data[all_indices_0, :1]
+                            data[all_indices_0, :1], data[all_indices_1, :1]
                         )
                         metric_array[all_indices_0, all_indices_1] += dm_dists
                         metric_array[all_indices_1, all_indices_0] += dm_dists
@@ -901,8 +921,9 @@ class Clusterer:
                         metric_array[indices_0, indices_1] *= metric_vals
                         metric_array[indices_1, indices_0] *= metric_vals
                     elif self.metric_combination == "replace":
-                        metric_array[indices_0, indices_1] = metric_vals
-                        metric_array[indices_1, indices_0] = metric_vals
+                        pass
+                        # metric_array[indices_0, indices_1] = metric_vals
+                        # metric_array[indices_1, indices_0] = metric_vals
 
             for i in range(metric_array.shape[0]):
                 metric_array[i, i] = 0
@@ -998,7 +1019,7 @@ class Clusterer:
             scheme="combined",
             plot_fname=plot_fname,
         )
-        # profiler.print_stats()
+        profiler.print_stats()
         unique_labels = np.unique(cluster_labels)
         clusters = {}
         summary = {}

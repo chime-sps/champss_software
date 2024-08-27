@@ -311,3 +311,5 @@ ps_cumul_stack:
       metric_combination: replace
       metric_method: rhp_norm_by_min_nharm # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap
       add_dm_when_replace: True
+      use_sparse: False
+      group_duplicate_freqs: True
