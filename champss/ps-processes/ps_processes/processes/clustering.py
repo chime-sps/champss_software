@@ -559,7 +559,7 @@ class Clusterer:
         out_metric = 1 - powers_overlap
         return out_metric
 
-    @profiler
+    # @profiler
     def cluster(
         self,
         detections_in,
