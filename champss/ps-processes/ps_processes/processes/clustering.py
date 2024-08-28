@@ -507,7 +507,7 @@ class Clusterer:
         out_metric = 1 - power_overlap
         return out_metric
 
-    @profiler
+    # @profiler
     def calculate_metric_power_overlap_array(
         self, rhplist, idxs0, idxs1, detections, **kwargs
     ):
