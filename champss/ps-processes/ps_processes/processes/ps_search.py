@@ -134,6 +134,7 @@ class PowerSpectraSearch:
     # filter_by_nharm: bool = attribute(default=False)
     use_nsum_per_bin: bool = attribute(default=False)
     mp_chunk_size: bool = attribute(default=10)
+    skip_first_n_bins: int = attribute(default=2)
     # cluster_dm_cut: bool = attribute(default=-1)
     known_source_threshold: float = attribute(default=np.inf)
     full_harm_bins = attribute(init=False)
@@ -382,6 +383,7 @@ class PowerSpectraSearch:
                 power_cutoff_per_harmonic,
                 injection_dicts,
                 cutoff_frequency,
+                self.skip_first_n_bins,
             ),
             zip(dm_indices, dm_split),
         )
@@ -473,6 +475,7 @@ class PowerSpectraSearch:
         power_cutoff_per_harmonic,
         injection_dicts,
         cutoff_frequency,
+        skip_n_bins,
         dm_indices,
         dms,
     ):
@@ -577,8 +580,9 @@ class PowerSpectraSearch:
                     detection_freq = freq_labels[idx] / harm
                     # skipping candidates with period less than 10 time samples
 
-                    if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (
-                        cutoff_frequency / 1000 / TSAMP
+                    if (
+                        detection_freq <= skip_n_bins * MIN_SEARCH_FREQ
+                        or detection_freq > cutoff_frequency
                     ):
                         continue
 

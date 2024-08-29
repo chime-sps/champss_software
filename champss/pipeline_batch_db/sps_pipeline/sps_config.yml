@@ -299,6 +299,7 @@ ps_cumul_stack:
     sigma_min: 6.0
     precompute_harms: True
     use_nsum_per_bin: True
+    skip_first_n_bins: 5
     cluster_config:
       dbscan_eps: 1
       dm_scale_factor: 0.02

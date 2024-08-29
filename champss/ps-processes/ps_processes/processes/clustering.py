@@ -2,26 +2,29 @@
 
 import itertools
 import logging
+import warnings
 from collections import OrderedDict
 from functools import partial
 from multiprocessing import Pool
 
 import colorcet as cc
-
-# import line_profiler
+import line_profiler
 import numpy as np
 import tqdm
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
 from matplotlib import pyplot as plt
+from scipy.sparse import SparseEfficiencyWarning
 from sklearn.cluster import DBSCAN, HDBSCAN
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import paired_distances
-from sklearn.neighbors import radius_neighbors_graph
+from sklearn.neighbors import radius_neighbors_graph, sort_graph_by_row_values
 from sps_common.interfaces import Cluster
 
-# profiler = line_profiler.LineProfiler()
+warnings.filterwarnings("ignore", category=SparseEfficiencyWarning)
+
+profiler = line_profiler.LineProfiler()
 
 log = logging.getLogger(__name__)
 
@@ -478,7 +481,6 @@ class Clusterer:
         )
         return out_metric
 
-    # @profiler
     def calculate_metric_power_overlap(self, rhplist, idx0, idx1, detections, **kwargs):
         """
         Calculate harmonic distance based on the power in overlapping bins.
@@ -507,7 +509,7 @@ class Clusterer:
         out_metric = 1 - power_overlap
         return out_metric
 
-    # @profiler
+    @profiler
     def calculate_metric_power_overlap_array(
         self, rhplist, idxs0, idxs1, detections, **kwargs
     ):
@@ -559,7 +561,7 @@ class Clusterer:
         out_metric = 1 - powers_overlap
         return out_metric
 
-    # @profiler
+    @profiler
     def cluster(
         self,
         detections_in,
@@ -662,6 +664,8 @@ class Clusterer:
             harm, idx_to_skip = group_duplicates_freq(
                 detections, ignorenharm1=self.ignore_nharm1
             )
+            # set lookup is faster
+            idx_to_skip = set(idx_to_skip)
             log.info(
                 f"Grouping duplicate frequencies removed {len(idx_to_skip)} detections"
                 " from the harmonic metric computation"
@@ -675,9 +679,14 @@ class Clusterer:
             if self.use_sparse:
                 metric_array = radius_neighbors_graph(
                     data, 1.1 * self.dbscan_eps, p=2, mode="distance"
-                ).tolil()
+                )
+                min_dist = 0.001
+                # lil_array and dok_array do not contain explicit zeroes which messes up dbscan
+                # But at this point no explicit zeroes should be contained
+                metric_array = metric_array.tolil()
             else:
                 metric_array = pairwise_distances(data, n_jobs=self.num_threads)
+                min_dist = 0
             # metric_array = np.nan_to_num(metric_array, posinf=10000)
             log.info("Finished freq-DM distance metric computation")
 
@@ -741,6 +750,7 @@ class Clusterer:
             log.info("Starting harmonic distance metric computation")
             if scheme not in ["combined", "dmfreq"]:
                 metric_array = np.ones((data.shape[0], data.shape[0]), dtype=np.float32)
+                min_dist = 0
 
             self.num_threads = 1
             # breakpoint()
@@ -764,6 +774,9 @@ class Clusterer:
                 split_pairs = np.split(
                     index_pairs, np.arange(chunk_size, index_pairs.shape[0], chunk_size)
                 )
+                all_indices_0 = []
+                all_indices_1 = []
+                all_metric_vals = []
                 for split in tqdm.tqdm(split_pairs):
                     metric_vals = (
                         calculate_harm_metric(
@@ -780,14 +793,14 @@ class Clusterer:
                         # kinda slow I suspect, a few to many conversion
                         indices_0 = []
                         indices_1 = []
-                        all_metric_vals = []
+                        group_metric_vals = []
                         for index, row in enumerate(split):
                             indices_0_part = np.tile(harm[row[0]], len(harm[row[1]]))
                             indices_1_part = np.repeat(harm[row[1]], len(harm[row[0]]))
                             indices_0.append(indices_0_part)
                             indices_1.append(indices_1_part)
 
-                            all_metric_vals.append(
+                            group_metric_vals.append(
                                 [
                                     metric_vals[index],
                                 ]
@@ -795,7 +808,7 @@ class Clusterer:
                             )
                         indices_0 = np.concatenate(indices_0)
                         indices_1 = np.concatenate(indices_1)
-                        metric_vals = np.concatenate(all_metric_vals)
+                        metric_vals = np.concatenate(group_metric_vals)
                     else:
                         indices_0 = split[:, 0]
                         indices_1 = split[:, 1]
@@ -803,7 +816,6 @@ class Clusterer:
                         self.add_dm_when_replace
                         and self.metric_combination == "replace"
                     ):
-                        # dm calculation on full array much faster than on individual chunks
                         dm_dists = paired_distances(
                             data[indices_0, :1], data[indices_1, :1]
                         )
@@ -815,13 +827,14 @@ class Clusterer:
                         if not len(metric_vals):
                             continue
 
+                    if self.use_sparse:
+                        metric_vals = np.clip(metric_vals, min_dist, None)
                     if self.metric_combination == "multiply":
                         metric_array[indices_0, indices_1] *= metric_vals
                         metric_array[indices_1, indices_0] = metric_array[
                             indices_0, indices_1
                         ]
                     elif self.metric_combination == "replace":
-                        # pass
                         metric_array[indices_0, indices_1] = metric_vals
                         metric_array[indices_1, indices_0] = metric_vals
             else:
@@ -915,6 +928,10 @@ class Clusterer:
                         )
                     else:
                         metric_vals = np.asarray(metric_vals)
+                    used_indices = metric_vals < threshold_for_new_vals
+                    indices_0 = indices_0[used_indices]
+                    indices_1 = indices_1[used_indices]
+                    metric_vals = metric_vals[used_indices]
                     if (
                         self.add_dm_when_replace
                         and self.metric_combination == "replace"
@@ -932,18 +949,32 @@ class Clusterer:
                         # metric_array[indices_0, indices_1] = metric_vals
                         # metric_array[indices_1, indices_0] = metric_vals
 
+            all_indices_0 = []
+            all_indices_1 = []
+            if self.use_sparse:
+                metric_array = metric_array.tocsr()
             for i in range(metric_array.shape[0]):
-                metric_array[i, i] = 0
+                # metric_array[i, i] = 0
+                # No min dist_for sparse array needed because diagonal is set in
+                # sklearn dbscan method
                 if i in idx_to_skip:
                     continue
                 if self.group_duplicate_freqs:
                     index_0, index_1 = np.meshgrid(harm[i], harm[i])
                     index_0 = index_0.flatten()
                     index_1 = index_1.flatten()
-                    metric_array[index_0, index_1] = 0
+                    # metric_array[index_0, index_1] = min_dist
+                    all_indices_0.append(index_0)
+                    all_indices_1.append(index_1)
+            log.info("Updating grouped frequencies.")
+            all_indices_0 = np.concatenate(all_indices_0)
+            all_indices_1 = np.concatenate(all_indices_1)
+            metric_array[all_indices_0, all_indices_1] = min_dist
 
             log.info("Finished harmonic distance metric computation")
 
+        if self.use_sparse:
+            metric_array = sort_graph_by_row_values(metric_array)
         if self.clustering_method == "DBSCAN":
             log.info("Starting DBSCAN")
             db = DBSCAN(
@@ -1031,7 +1062,7 @@ class Clusterer:
             scheme="combined",
             plot_fname=plot_fname,
         )
-        # profiler.print_stats()
+        profiler.print_stats()
         unique_labels = np.unique(cluster_labels)
         clusters = {}
         summary = {}
