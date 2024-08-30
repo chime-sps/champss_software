@@ -307,7 +307,7 @@ ps_cumul_stack:
       dbscan_min_samples: 5
       filter_nharm: False
       cluster_dm_cut: 2
-      max_ndetect: 90000
+      max_ndetect: 400000
       overlap_scale: 1.5
       metric_combination: replace
       metric_method: power_overlap_array # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap

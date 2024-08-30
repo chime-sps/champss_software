@@ -10,6 +10,7 @@ from multiprocessing import Pool
 import colorcet as cc
 import line_profiler
 import numpy as np
+import scipy as sp
 import tqdm
 from attr import ib as attribute
 from attr import s as attrs
@@ -409,6 +410,7 @@ class Clusterer:
     add_dm_when_replace: bool = attribute(default=False)
     num_threads = attribute(validator=instance_of(int), default=8)
     use_sparse: bool = attribute(default=True)
+    grouped_freq_dm_scale: float = attribute(default=1)
 
     @metric_method.validator
     def _validate_metric_method(self, attribute, value):
@@ -680,7 +682,8 @@ class Clusterer:
                 metric_array = radius_neighbors_graph(
                     data, 1.1 * self.dbscan_eps, p=2, mode="distance"
                 )
-                min_dist = 0.001
+                min_dist = 0.0001
+                sp.sparse.save_npz("ini_metric", metric_array, compressed=True)
                 # lil_array and dok_array do not contain explicit zeroes which messes up dbscan
                 # But at this point no explicit zeroes should be contained
                 metric_array = metric_array.tolil()
@@ -936,7 +939,8 @@ class Clusterer:
                         self.add_dm_when_replace
                         and self.metric_combination == "replace"
                     ):
-                        # dm calculation on full array much faster than on individual chunks
+                        # dm calculation on bigger array much faster than on individual chunks
+                        # but becomes slow with very large arrays
                         dm_dists = paired_distances(
                             data[indices_0, :1], data[indices_1, :1]
                         )
@@ -951,6 +955,8 @@ class Clusterer:
 
             all_indices_0 = []
             all_indices_1 = []
+            if self.grouped_freq_dm_scale != 0:
+                all_dm_dists = []
             if self.use_sparse:
                 metric_array = metric_array.tocsr()
             for i in range(metric_array.shape[0]):
@@ -966,10 +972,23 @@ class Clusterer:
                     # metric_array[index_0, index_1] = min_dist
                     all_indices_0.append(index_0)
                     all_indices_1.append(index_1)
+                    if self.grouped_freq_dm_scale != 0:
+                        dm_dists = paired_distances(
+                            data[index_0, :1], data[index_1, :1]
+                        )
+                        all_dm_dists.append(dm_dists)
             log.info("Updating grouped frequencies.")
             all_indices_0 = np.concatenate(all_indices_0)
             all_indices_1 = np.concatenate(all_indices_1)
-            metric_array[all_indices_0, all_indices_1] = min_dist
+            if self.grouped_freq_dm_scale != 0:
+                if len(all_dm_dists):
+                    all_dm_dists = np.concatenate(all_dm_dists)
+                    grouped_dists = all_dm_dists * self.grouped_freq_dm_scale + min_dist
+                else:
+                    grouped_dists = min_dist
+            else:
+                grouped_dists = min_dist
+            metric_array[all_indices_0, all_indices_1] = grouped_dists
 
             log.info("Finished harmonic distance metric computation")
 
