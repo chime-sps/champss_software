@@ -300,6 +300,7 @@ def rogue_harmpow_filter_alt(detections):
     return np.delete(detections, filter_out_idx)
 
 
+@profiler
 def intersect2d_ind_filter0(ar1, ar2):
     # Assumes unuqie values except for 0
     # returns list of arrays
@@ -410,6 +411,7 @@ class Clusterer:
     add_dm_when_replace: bool = attribute(default=False)
     num_threads = attribute(validator=instance_of(int), default=8)
     use_sparse: bool = attribute(default=True)
+    use_multiprocessing: bool = attribute(default=True)
     grouped_freq_dm_scale: float = attribute(default=1)
 
     @metric_method.validator
@@ -515,6 +517,18 @@ class Clusterer:
     def calculate_metric_power_overlap_array(
         self, rhplist, idxs0, idxs1, detections, **kwargs
     ):
+        """
+        Calculate overlap of power between two detections. Can be used on arrays.
+
+        Args:
+            rhplist (list): list of sets of PowerSpectra bins used in the sum (aka non-zero values of 'harm_idx' in detections). Not used here
+            idx0 (list(int)): indices of 1st detection (must correspond to the same index in rhplist)
+            idx1 (list(int)): indices of 2nd detection
+            detections (np.ndarray): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
+
+        Returns:
+            out_metric (np.ndarray): (1 - power_overlap). Will be 0 for complete overlap and 1
+        """
         intersect_bins, intersect_idx0, intersect_idx1 = intersect2d_ind_filter0(
             detections["harm_idx"][idxs0],
             detections["harm_idx"][idxs1],
@@ -755,7 +769,7 @@ class Clusterer:
                 metric_array = np.ones((data.shape[0], data.shape[0]), dtype=np.float32)
                 min_dist = 0
 
-            self.num_threads = 1
+            # self.num_threads = 1
             # breakpoint()
             if self.metric_combination == "multiply":
                 threshold_for_new_vals = 1
@@ -765,7 +779,10 @@ class Clusterer:
                 threshold_for_new_vals = np.inf
 
             # to save on memory should probably alter the DMfreq_dist_metric in-place instead
-            if self.metric_method == "power_overlap_array":
+            if (
+                self.metric_method == "power_overlap_array"
+                and not self.use_multiprocessing
+            ):
                 chunk_size = 2000
                 # group_duplicate_freqncies not properly implemented yet
                 index_pairs = [
@@ -841,7 +858,7 @@ class Clusterer:
                         metric_array[indices_0, indices_1] = metric_vals
                         metric_array[indices_1, indices_0] = metric_vals
             else:
-                if self.num_threads == 1:
+                if not self.use_multiprocessing:
                     all_indices_0 = []
                     all_indices_1 = []
                     for ii, id_group in tqdm.tqdm(enumerate(grouped_ids)):
@@ -854,6 +871,8 @@ class Clusterer:
                                 calculate_harm_metric(rhps, i[0], i[1], detections)
                                 * self.overlap_scale
                             )
+                            if metric >= threshold_for_new_vals:
+                                continue
                             if self.group_duplicate_freqs:
                                 index_0 = np.tile(harm[i[0]], len(harm[i[1]]))
                                 index_1 = np.repeat(harm[i[1]], len(harm[i[0]]))
@@ -868,13 +887,6 @@ class Clusterer:
                                         index_0, index_1
                                     ]
                                 elif self.metric_combination == "replace":
-                                    if self.add_dm_when_replace:
-                                        # dm calculation on full array much faster than on individual chunks
-                                        # but super slow for long arrays
-                                        dm_dists = paired_distances(
-                                            data[index_0, :1], data[index_1, :1]
-                                        )
-                                        metric += dm_dists
                                     metric_array[index_0, index_1] = metric
                                     metric_array[index_1, index_0] = metric
                                     if self.add_dm_when_replace:
@@ -883,7 +895,7 @@ class Clusterer:
                             else:
                                 metric_array[index_0, index_1] = metric
                                 metric_array[index_1, index_0] = metric
-                    if self.add_dm_when_replace and False:
+                    if self.add_dm_when_replace:
                         # dm calculation on full array much faster than on individual chunks
                         # but super slow for long arrays
                         log.info("Calculating DM distances")
@@ -940,7 +952,7 @@ class Clusterer:
                         and self.metric_combination == "replace"
                     ):
                         # dm calculation on bigger array much faster than on individual chunks
-                        # but becomes slow with very large arrays
+                        # but becomes slow with very large arrays due indexing
                         dm_dists = paired_distances(
                             data[indices_0, :1], data[indices_1, :1]
                         )
@@ -949,9 +961,8 @@ class Clusterer:
                         metric_array[indices_0, indices_1] *= metric_vals
                         metric_array[indices_1, indices_0] *= metric_vals
                     elif self.metric_combination == "replace":
-                        pass
-                        # metric_array[indices_0, indices_1] = metric_vals
-                        # metric_array[indices_1, indices_0] = metric_vals
+                        metric_array[indices_0, indices_1] = metric_vals
+                        metric_array[indices_1, indices_0] = metric_vals
 
             all_indices_0 = []
             all_indices_1 = []
