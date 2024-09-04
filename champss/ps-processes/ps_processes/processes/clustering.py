@@ -887,12 +887,15 @@ class Clusterer:
                     all_indices_0 = []
                     all_indices_1 = []
                     all_metric_vals = []
+                    if self.use_sparse:
+                        metric_array.sort_indices()
                     for ii, id_group in tqdm.tqdm(enumerate(grouped_ids)):
                         log.debug(
                             f"Working on metric caculcation for group {ii}, length"
                             f" {len(id_group)}"
                         )
                         for i in itertools.combinations(id_group, 2):
+                            # index_0, index_1, metric = self.calc_harmonic_distances_index_pairs(harm, detections, calculate_harm_metric, rhps, i, min_dist)
                             metric = (
                                 calculate_harm_metric(rhps, i[0], i[1], detections)
                                 * self.overlap_scale
@@ -946,28 +949,39 @@ class Clusterer:
                 else:
                     pool = Pool(self.num_threads)
                     # returns tuples of lists when self.group_duplicate_freqs
-                    if self.metric_method == "power_overlap_array":
-                        chunk_size = 2000
-                        index_pairs = [
-                            index_pair
-                            for id_group in grouped_ids
-                            for index_pair in list(itertools.combinations(id_group, 2))
-                        ]
-                        index_pairs = np.asarray(index_pairs)
-                        index_pairs = np.split(
-                            index_pairs,
-                            np.arange(chunk_size, index_pairs.shape[0], chunk_size),
-                        )
-                    else:
-                        index_pairs = [
-                            index_pair
-                            for id_group in grouped_ids
-                            for index_pair in list(itertools.combinations(id_group, 2))
-                        ]
+                    # if self.metric_method == "power_overlap_array":
+                    #     chunk_size = 2000
+                    #     index_pairs = [
+                    #         index_pair
+                    #         for id_group in grouped_ids
+                    #         for index_pair in list(itertools.combinations(id_group, 2))
+                    #     ]
+                    #     index_pairs = np.asarray(index_pairs)
+                    #     index_pairs = np.split(
+                    #         index_pairs,
+                    #         np.arange(chunk_size, index_pairs.shape[0], chunk_size),
+                    #     )
+                    # else:
+                    #     index_pairs = [
+                    #         index_pair
+                    #         for id_group in grouped_ids
+                    #         for index_pair in list(itertools.combinations(id_group, 2))
+                    #     ]
+                    chunk_size = 2000
+                    index_pairs = [
+                        index_pair
+                        for id_group in grouped_ids
+                        for index_pair in list(itertools.combinations(id_group, 2))
+                    ]
+                    index_pairs = np.asarray(index_pairs)
+                    index_pairs = np.split(
+                        index_pairs,
+                        np.arange(chunk_size, index_pairs.shape[0], chunk_size),
+                    )
                     indices_0, indices_1, metric_vals = zip(
                         *pool.map(
                             partial(
-                                self.calc_harmonic_distances_index_pairs,
+                                self.calc_harmonic_distances_index_pair_chunks,
                                 harm,
                                 detections,
                                 calculate_harm_metric,
@@ -1058,6 +1072,7 @@ class Clusterer:
 
         if self.use_sparse:
             metric_array = sort_graph_by_row_values(metric_array)
+        print(metric_array)
         if self.clustering_method == "DBSCAN":
             log.info("Starting DBSCAN")
             db = DBSCAN(
@@ -1085,23 +1100,55 @@ class Clusterer:
         return detections, db.labels_, sig_limit
 
     def calc_harmonic_distances_index_pairs(
-        self, harm, detections, calculate_harm_metric, rhps, i
+        self, harm, detections, calculate_harm_metric, rhps, i, min_dist
     ):
         metric = (
             calculate_harm_metric(rhps, i[0], i[1], detections) * self.overlap_scale
         )
         if self.group_duplicate_freqs:
-            index_0 = np.tile(harm[i[0]], len(harm[i[1]])).tolist()
-            index_1 = np.repeat(harm[i[1]], len(harm[i[0]])).tolist()
+            index_0 = np.tile(harm[i[0]], len(harm[i[1]]))
+            index_1 = np.repeat(harm[i[1]], len(harm[i[0]]))
             metric_vals = [
                 metric,
             ] * len(index_0)
         else:
             index_0 = i[0]
             index_1 = i[1]
-            value_count = 1
 
             metric_vals = metric
+        if self.use_sparse:
+            metric = np.clip(metric, min_dist, None)
+
+        return index_0, index_1, metric_vals
+
+    def calc_harmonic_distances_index_pair_chunks(
+        self, harm, detections, calculate_harm_metric, rhps, i
+    ):
+        if self.metric_method == "power_overlap_array":
+            metric = (
+                calculate_harm_metric(rhps, i[0], i[1], detections) * self.overlap_scale
+            )
+        else:
+            all_indices_0 = []
+            all_indices_1 = []
+            all_metrics = []
+            for row in i:
+                metric = (
+                    calculate_harm_metric(rhps, row[0], row[1], detections)
+                    * self.overlap_scale
+                )
+                if self.group_duplicate_freqs:
+                    index_0 = np.tile(harm[row[0]], len(harm[row[1]]))
+                    index_1 = np.repeat(harm[row[1]], len(harm[row[0]]))
+                    metric_vals = [
+                        metric,
+                    ] * len(index_0)
+                else:
+                    index_0 = i[0]
+                    index_1 = i[1]
+                    metric_vals = metric
+                all_indices_0.append(index_0)
+                all_indices_1.append(index_1)
 
         return index_0, index_1, metric_vals
 
