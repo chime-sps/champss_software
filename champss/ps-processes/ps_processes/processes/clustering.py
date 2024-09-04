@@ -6,10 +6,7 @@ import warnings
 from collections import OrderedDict
 
 import colorcet as cc
-import line_profiler
 import numpy as np
-import scipy as sp
-import tqdm
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
@@ -23,7 +20,6 @@ from sps_common.interfaces import Cluster
 
 warnings.filterwarnings("ignore", category=SparseEfficiencyWarning)
 
-profiler = line_profiler.LineProfiler()
 
 log = logging.getLogger(__name__)
 
@@ -594,7 +590,6 @@ class Clusterer:
         out_metric = 1 - powers_overlap
         return out_metric
 
-    @profiler
     def cluster(
         self,
         detections_in,
@@ -808,7 +803,7 @@ class Clusterer:
                     for id_group in grouped_ids
                     for index_pair in list(itertools.combinations(id_group, 2))
                 ]
-            for split in tqdm.tqdm(index_pairs):
+            for split in index_pairs:
                 if self.metric_method == "power_overlap_array":
                     rows_0 = split[:, 0]
                     rows_1 = split[:, 1]
@@ -988,7 +983,6 @@ class Clusterer:
             scheme="combined",
             plot_fname=plot_fname,
         )
-        profiler.print_stats()
         unique_labels = np.unique(cluster_labels)
         clusters = {}
         summary = {}
