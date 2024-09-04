@@ -302,8 +302,30 @@ def rogue_harmpow_filter_alt(detections):
 
 @profiler
 def intersect2d_ind_filter0(ar1, ar2):
-    # Assumes unuqie values except for 0
-    # returns list of arrays
+    """
+    Find row wise overlap between two arrays.
+
+    The arrays are assumed to have unique entries except for 0 which will be ignored.
+    This is my attempt to perform np.intersect1d on 2D arrays.
+    Parameters
+    ----------
+    ar1: np.ndarray
+        The first array. Should be 2D or 1D.
+
+    ar2: np.ndarray
+        The second array. Should be 2D or 1D.
+
+    Returns
+    -------
+    int2d_split: List(np.ndarray)
+        The overlap per row
+
+    ar1_indices_split: List(np.ndarray)
+        The indices of the overlap in the first array
+
+    ar2_indices_split: List(np.ndarray)
+        The indices of the overlap in the second array
+    """
     ar1 = np.asanyarray(ar1)
     ar2 = np.asanyarray(ar2)
     if len(ar1.shape) == 1:
@@ -696,11 +718,12 @@ class Clusterer:
                 metric_array = radius_neighbors_graph(
                     data, 1.1 * self.dbscan_eps, p=2, mode="distance"
                 )
-                min_dist = 0.0001
-                sp.sparse.save_npz("ini_metric", metric_array, compressed=True)
+                min_dist = 1e-15
+                # metric_array.sort_indices()
+                print(metric_array.has_canonical_format)
                 # lil_array and dok_array do not contain explicit zeroes which messes up dbscan
                 # But at this point no explicit zeroes should be contained
-                metric_array = metric_array.tolil()
+                # metric_array = metric_array.tolil()
             else:
                 metric_array = pairwise_distances(data, n_jobs=self.num_threads)
                 min_dist = 0
@@ -783,6 +806,8 @@ class Clusterer:
                 self.metric_method == "power_overlap_array"
                 and not self.use_multiprocessing
             ):
+                if self.use_sparse:
+                    metric_array = metric_array.tolil()
                 chunk_size = 2000
                 # group_duplicate_freqncies not properly implemented yet
                 index_pairs = [
@@ -861,6 +886,7 @@ class Clusterer:
                 if not self.use_multiprocessing:
                     all_indices_0 = []
                     all_indices_1 = []
+                    all_metric_vals = []
                     for ii, id_group in tqdm.tqdm(enumerate(grouped_ids)):
                         log.debug(
                             f"Working on metric caculcation for group {ii}, length"
@@ -879,39 +905,65 @@ class Clusterer:
                             else:
                                 index_0 = i[0]
                                 index_1 = i[1]
-
+                            if self.use_sparse:
+                                metric = np.clip(metric, min_dist, None)
                             if scheme == "combined":
-                                if self.metric_combination == "multiply":
-                                    metric_array[index_0, index_1] *= metric
-                                    metric_array[index_1, index_0] = metric_array[
-                                        index_0, index_1
-                                    ]
-                                elif self.metric_combination == "replace":
-                                    metric_array[index_0, index_1] = metric
-                                    metric_array[index_1, index_0] = metric
-                                    if self.add_dm_when_replace:
-                                        all_indices_0.extend(index_0.tolist())
-                                        all_indices_1.extend(index_1.tolist())
+                                # do a single big update at the end with all values
+                                # should be faster especially for sparse arrays
+                                all_indices_0.append(index_0)
+                                all_indices_1.append(index_1)
+                                if (
+                                    self.add_dm_when_replace
+                                    and self.metric_combination == "replace"
+                                ):
+                                    dm_dists = paired_distances(
+                                        data[index_0, :1], data[index_1, :1]
+                                    )
+                                    metric = metric + dm_dists
+                                else:
+                                    metric = np.repeat(metric, len(index_0))
+                                all_metric_vals.append(metric)
+
                             else:
                                 metric_array[index_0, index_1] = metric
                                 metric_array[index_1, index_0] = metric
-                    if self.add_dm_when_replace:
-                        # dm calculation on full array much faster than on individual chunks
-                        # but super slow for long arrays
-                        log.info("Calculating DM distances")
-                        dm_dists = paired_distances(
-                            data[all_indices_0, :1], data[all_indices_1, :1]
-                        )
-                        metric_array[all_indices_0, all_indices_1] += dm_dists
-                        metric_array[all_indices_1, all_indices_0] += dm_dists
+                    all_indices_0 = np.concatenate(all_indices_0)
+                    all_indices_1 = np.concatenate(all_indices_1)
+                    all_metric_vals = np.concatenate(all_metric_vals)
+                    # breakpoint()
+                    # ind = np.lexsort((all_indices_0, all_indices_1))
+                    # all_indices_0 = all_indices_0[ind]
+                    # all_indices_1 = all_indices_1[ind]
+                    # all_metric_vals = all_metric_vals[ind]
+                    if self.metric_combination == "multiply":
+                        metric_array[all_indices_0, all_indices_1] *= all_metric_vals
+                        metric_array[all_indices_1, all_indices_0] = metric_array[
+                            index_0, index_1
+                        ]
+                    elif self.metric_combination == "replace":
+                        metric_array[all_indices_0, all_indices_1] = all_metric_vals
+                        metric_array[all_indices_1, all_indices_0] = all_metric_vals
                 else:
                     pool = Pool(self.num_threads)
                     # returns tuples of lists when self.group_duplicate_freqs
-                    index_pairs = [
-                        index_pair
-                        for id_group in grouped_ids
-                        for index_pair in list(itertools.combinations(id_group, 2))
-                    ]
+                    if self.metric_method == "power_overlap_array":
+                        chunk_size = 2000
+                        index_pairs = [
+                            index_pair
+                            for id_group in grouped_ids
+                            for index_pair in list(itertools.combinations(id_group, 2))
+                        ]
+                        index_pairs = np.asarray(index_pairs)
+                        index_pairs = np.split(
+                            index_pairs,
+                            np.arange(chunk_size, index_pairs.shape[0], chunk_size),
+                        )
+                    else:
+                        index_pairs = [
+                            index_pair
+                            for id_group in grouped_ids
+                            for index_pair in list(itertools.combinations(id_group, 2))
+                        ]
                     indices_0, indices_1, metric_vals = zip(
                         *pool.map(
                             partial(
@@ -926,6 +978,7 @@ class Clusterer:
                     )
                     pool.close()
                     pool.join()
+                    log.info("Finished harmonic metric calculation.")
                     if self.group_duplicate_freqs:
                         # unravel everything, might be better ways
                         indices_0 = [

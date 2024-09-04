@@ -308,10 +308,10 @@ ps_cumul_stack:
       filter_nharm: False
       cluster_dm_cut: 2
       max_ndetect: 400000
-      overlap_scale: 1
-      metric_combination: multiply
-      metric_method: rhp_norm_by_min_nharm # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap
-      add_dm_when_replace: False
-      use_sparse: False
+      overlap_scale: 1.5
+      metric_combination: replace
+      metric_method: power_overlap # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap
+      add_dm_when_replace: True
+      use_sparse: True
       group_duplicate_freqs: True
-      use_multiprocessing: False
+      use_multiprocessing: True

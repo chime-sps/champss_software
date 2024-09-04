@@ -415,7 +415,11 @@ class PowerSpectraSearch:
         #     min_freq=self.clustering_min_freq,
         #     ignore_nharm1=self.clustering_ignore_nharm1,
         # )
-        clusterer = Clusterer(**self.cluster_config, num_threads=self.num_threads)
+        clusterer = Clusterer(
+            **self.cluster_config,
+            sigma_detection_threshold=self.sigma_min,
+            num_threads=self.num_threads,
+        )
         cluster_dm_spacing = pspec.dms[1] - pspec.dms[0]
         cluster_df_spacing = pspec.freq_labels[1]
         (
