@@ -310,8 +310,9 @@ ps_cumul_stack:
       max_ndetect: 400000
       overlap_scale: 1.5
       metric_combination: replace
-      metric_method: rhp_norm_by_min_nharm # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap
+      metric_method: power_overlap_array # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap
       add_dm_when_replace: True
       use_sparse: True
       group_duplicate_freqs: True
       use_multiprocessing: False
+      grouped_freq_dm_scale: 1

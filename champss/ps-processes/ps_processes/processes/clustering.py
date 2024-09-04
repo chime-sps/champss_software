@@ -718,15 +718,12 @@ class Clusterer:
                 metric_array = radius_neighbors_graph(
                     data, 1.1 * self.dbscan_eps, p=2, mode="distance"
                 )
-                min_dist = 1e-15
-                # metric_array.sort_indices()
+                # min_dist = 1e-15
+                metric_array.sort_indices()
                 print(metric_array.has_canonical_format)
-                # lil_array and dok_array do not contain explicit zeroes which messes up dbscan
-                # But at this point no explicit zeroes should be contained
-                # metric_array = metric_array.tolil()
             else:
                 metric_array = pairwise_distances(data, n_jobs=self.num_threads)
-                min_dist = 0
+                # min_dist = 0
             # metric_array = np.nan_to_num(metric_array, posinf=10000)
             log.info("Finished freq-DM distance metric computation")
 
@@ -790,7 +787,7 @@ class Clusterer:
             log.info("Starting harmonic distance metric computation")
             if scheme not in ["combined", "dmfreq"]:
                 metric_array = np.ones((data.shape[0], data.shape[0]), dtype=np.float32)
-                min_dist = 0
+                # min_dist = 0
 
             # self.num_threads = 1
             # breakpoint()
@@ -802,12 +799,15 @@ class Clusterer:
                 threshold_for_new_vals = np.inf
 
             # to save on memory should probably alter the DMfreq_dist_metric in-place instead
+            all_indices_0 = []
+            all_indices_1 = []
+            all_metric_vals = []
             if (
                 self.metric_method == "power_overlap_array"
                 and not self.use_multiprocessing
             ):
-                if self.use_sparse:
-                    metric_array = metric_array.tolil()
+                # if self.use_sparse:
+                # metric_array = metric_array.tolil()
                 chunk_size = 2000
                 # group_duplicate_freqncies not properly implemented yet
                 index_pairs = [
@@ -819,9 +819,6 @@ class Clusterer:
                 split_pairs = np.split(
                     index_pairs, np.arange(chunk_size, index_pairs.shape[0], chunk_size)
                 )
-                all_indices_0 = []
-                all_indices_1 = []
-                all_metric_vals = []
                 for split in tqdm.tqdm(split_pairs):
                     metric_vals = (
                         calculate_harm_metric(
@@ -872,16 +869,20 @@ class Clusterer:
                         if not len(metric_vals):
                             continue
 
-                    if self.use_sparse:
-                        metric_vals = np.clip(metric_vals, min_dist, None)
-                    if self.metric_combination == "multiply":
-                        metric_array[indices_0, indices_1] *= metric_vals
-                        metric_array[indices_1, indices_0] = metric_array[
-                            indices_0, indices_1
-                        ]
-                    elif self.metric_combination == "replace":
-                        metric_array[indices_0, indices_1] = metric_vals
-                        metric_array[indices_1, indices_0] = metric_vals
+                    # if self.use_sparse:
+                    #     metric_vals = np.clip(metric_vals, min_dist, None)
+
+                    all_indices_0.append(indices_0)
+                    all_indices_1.append(indices_1)
+                    all_metric_vals.append(metric_vals)
+                    # if self.metric_combination == "multiply":
+                    #     metric_array[indices_0, indices_1] *= metric_vals
+                    #     metric_array[indices_1, indices_0] = metric_array[
+                    #         indices_0, indices_1
+                    #     ]
+                    # elif self.metric_combination == "replace":
+                    #     metric_array[indices_0, indices_1] = metric_vals
+                    #     metric_array[indices_1, indices_0] = metric_vals
             else:
                 if not self.use_multiprocessing:
                     all_indices_0 = []
@@ -930,22 +931,23 @@ class Clusterer:
                             else:
                                 metric_array[index_0, index_1] = metric
                                 metric_array[index_1, index_0] = metric
-                    all_indices_0 = np.concatenate(all_indices_0)
-                    all_indices_1 = np.concatenate(all_indices_1)
-                    all_metric_vals = np.concatenate(all_metric_vals)
+                    # all_indices_0 = np.concatenate(all_indices_0)
+                    # all_indices_1 = np.concatenate(all_indices_1)
+                    # all_metric_vals = np.concatenate(all_metric_vals)
                     # breakpoint()
                     # ind = np.lexsort((all_indices_0, all_indices_1))
                     # all_indices_0 = all_indices_0[ind]
                     # all_indices_1 = all_indices_1[ind]
                     # all_metric_vals = all_metric_vals[ind]
-                    if self.metric_combination == "multiply":
-                        metric_array[all_indices_0, all_indices_1] *= all_metric_vals
-                        metric_array[all_indices_1, all_indices_0] = metric_array[
-                            index_0, index_1
-                        ]
-                    elif self.metric_combination == "replace":
-                        metric_array[all_indices_0, all_indices_1] = all_metric_vals
-                        metric_array[all_indices_1, all_indices_0] = all_metric_vals
+
+                    # if self.metric_combination == "multiply":
+                    #     metric_array[all_indices_0, all_indices_1] *= all_metric_vals
+                    #     metric_array[all_indices_1, all_indices_0] = metric_array[
+                    #         index_0, index_1
+                    #     ]
+                    # elif self.metric_combination == "replace":
+                    #     metric_array[all_indices_0, all_indices_1] = all_metric_vals
+                    #     metric_array[all_indices_1, all_indices_0] = all_metric_vals
                 else:
                     pool = Pool(self.num_threads)
                     # returns tuples of lists when self.group_duplicate_freqs
@@ -1031,12 +1033,20 @@ class Clusterer:
                         metric_array[indices_0, indices_1] = metric_vals
                         metric_array[indices_1, indices_0] = metric_vals
 
-            all_indices_0 = []
-            all_indices_1 = []
+            all_indices_0 = np.concatenate(all_indices_0)
+            all_indices_1 = np.concatenate(all_indices_1)
+            all_metric_vals = np.concatenate(all_metric_vals)
+
+            if self.metric_combination == "multiply":
+                metric_array[indices_0, indices_1] *= metric_vals
+                metric_array[indices_1, indices_0] *= metric_vals
+            elif self.metric_combination == "replace":
+                metric_array[all_indices_0, all_indices_1] = all_metric_vals
+                metric_array[all_indices_1, all_indices_0] = all_metric_vals
+            group_indices_0 = []
+            group_indices_1 = []
             if self.grouped_freq_dm_scale != 0:
                 all_dm_dists = []
-            if self.use_sparse:
-                metric_array = metric_array.tocsr()
             for i in range(metric_array.shape[0]):
                 # metric_array[i, i] = 0
                 # No min dist_for sparse array needed because diagonal is set in
@@ -1048,25 +1058,23 @@ class Clusterer:
                     index_0 = index_0.flatten()
                     index_1 = index_1.flatten()
                     # metric_array[index_0, index_1] = min_dist
-                    all_indices_0.append(index_0)
-                    all_indices_1.append(index_1)
+                    group_indices_0.append(index_0)
+                    group_indices_1.append(index_1)
                     if self.grouped_freq_dm_scale != 0:
-                        dm_dists = paired_distances(
-                            data[index_0, :1], data[index_1, :1]
+                        dm_dists = (
+                            paired_distances(data[index_0, :1], data[index_1, :1])
+                            * self.grouped_freq_dm_scale
                         )
                         all_dm_dists.append(dm_dists)
             log.info("Updating grouped frequencies.")
-            all_indices_0 = np.concatenate(all_indices_0)
-            all_indices_1 = np.concatenate(all_indices_1)
+            group_indices_0 = np.concatenate(group_indices_0)
+            group_indices_1 = np.concatenate(group_indices_1)
             if self.grouped_freq_dm_scale != 0:
-                if len(all_dm_dists):
-                    all_dm_dists = np.concatenate(all_dm_dists)
-                    grouped_dists = all_dm_dists * self.grouped_freq_dm_scale + min_dist
-                else:
-                    grouped_dists = min_dist
+                metric_array[group_indices_0, group_indices_1] = np.concatenate(
+                    all_dm_dists
+                )
             else:
-                grouped_dists = min_dist
-            metric_array[all_indices_0, all_indices_1] = grouped_dists
+                metric_array[group_indices_0, group_indices_1] = 0
 
             log.info("Finished harmonic distance metric computation")
 
