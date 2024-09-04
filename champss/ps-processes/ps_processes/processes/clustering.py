@@ -873,8 +873,10 @@ class Clusterer:
 
             if scheme == "combined":
                 if self.metric_combination == "multiply":
-                    metric_array[indices_0, indices_1] *= metric_vals
-                    metric_array[indices_1, indices_0] *= metric_vals
+                    metric_array[all_indices_0, all_indices_1] *= metric_vals
+                    metric_array[indices_1, indices_0] *= metric_array[
+                        all_indices_0, all_indices_1
+                    ]
                 elif self.metric_combination == "replace":
                     metric_array[all_indices_0, all_indices_1] = all_metric_vals
                     metric_array[all_indices_1, all_indices_0] = all_metric_vals
