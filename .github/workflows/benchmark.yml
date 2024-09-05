@@ -13,6 +13,7 @@ jobs:
     secrets: inherit
     with:
       image_tag: ${{ inputs.branch_name || 'none' }}
+      runs_on: testbed
       build_locally: true
   run-tests:
     needs: update-image
@@ -33,5 +34,3 @@ jobs:
       - run: |
           docker image rmi chimefrb/champss_software:${{ inputs.branch_name }}
           docker builder prune -f
-
-

@@ -105,12 +105,12 @@ def main(
     workflow_buckets_name = (
         f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
     )
-    clear_workflow_buckets(
-        ["--workflow-buckets-name", workflow_buckets_name], standalone_mode=False
+    clear_workflow_buckets.main(
+        args=["--workflow-buckets-name", workflow_buckets_name], standalone_mode=False
     )
 
-    fold_multiday.main(
-        [
+    fold_multiday.main.main(
+        args=[
             "--fs_id",
             fs_id,
             "--foldpath",
@@ -148,8 +148,8 @@ def main(
     workflow_buckets_name = (
         f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
     )
-    clear_workflow_buckets(
-        ["--workflow-buckets-name", workflow_buckets_name], standalone_mode=False
+    clear_workflow_buckets.main(
+        args=["--workflow-buckets-name", workflow_buckets_name], standalone_mode=False
     )
 
     workflow_function = "multiday_search.confirm_cand.main"
