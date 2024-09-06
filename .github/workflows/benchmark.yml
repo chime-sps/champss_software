@@ -17,7 +17,7 @@ jobs:
       build_locally: true
   run-tests:
     needs: update-image
-    runs-on: testbed # Image is only saved here
+    runs-on: sps-compute2 # Image is only saved here
     steps:
       - run: |
           docker rm -f champss-${{ inputs.branch_name }} || true
