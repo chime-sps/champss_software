@@ -3301,7 +3301,7 @@ sps-databases = {path = "../sps-databases", develop = true}
 sps-dedispersion = {path = "../sps-dedispersion", develop = true}
 sps-multi-pointing = {path = "../multi-pointing", develop = true}
 spshuff = {path = "../spshuff", develop = true}
-workflow-core = {git = "ssh://git@github.com/CHIMEFRB/workflow", tag = "v1.9.4"}
+workflow-core = {git = "ssh://git@github.com/CHIMEFRB/workflow"}
 
 [package.source]
 type = "directory"
@@ -3564,7 +3564,7 @@ watchdog = ["watchdog (>=2.3)"]
 
 [[package]]
 name = "workflow-core"
-version = "1.9.4"
+version = "1.9.11"
 description = "Workflow Core"
 optional = false
 python-versions = ">=3.8.1,<4.0"
@@ -3588,8 +3588,8 @@ toml = "^0.10"
 [package.source]
 type = "git"
 url = "ssh://git@github.com/CHIMEFRB/workflow"
-reference = "v1.9.4"
-resolved_reference = "da3e02125765c79a9f9635a14081d09d7e81a155"
+reference = "HEAD"
+resolved_reference = "cd22f85b1a1411380f1ce63cfa43999e84e0fb36"
 
 [[package]]
 name = "wrapt"

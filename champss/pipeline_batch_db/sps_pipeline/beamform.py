@@ -62,10 +62,11 @@ def run(pointing, beamformer, fdmt, num_threads, basepath):
         skybeam.write(spectra_file)
 
 
-def initialise(configuration, rfi_beamform, basepath):
+def initialise(configuration, rfi_beamform, basepath, datpath):
+    """"""
     if rfi_beamform:
         extn = "dat"
-        basepath = "/data/chime/sps/raw/"
+        basepath = datpath
     else:
         extn = "hdf5"
         basepath = basepath

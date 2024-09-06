@@ -304,6 +304,16 @@ def plot_scatter_positions(fig, panel, grid_points, candidate):
     # ax_time_sigma.xaxis.set_tick_params(rotation=30, labelsize=8)
 
 
+def plot_detections_freq_dm(fig, panel, grid_points, candidate):
+    freqs = candidate.detections[:, 1]
+    dms = candidate.detections[:, 0]
+    ax_det_freq_dm = fig.add_subplot(grid_points)
+    ax_det_freq_dm.scatter(freqs, dms, c="black", alpha=0.4)
+    ax_det_freq_dm.set_xlabel("Frequency")
+    ax_det_freq_dm.set_ylabel("DM")
+    ax_det_freq_dm.grid()
+
+
 def plot_candidate(
     sp_candidate, config, folder, prefix="single_point_cand", mp_cand=None
 ):

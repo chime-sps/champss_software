@@ -13,25 +13,24 @@ jobs:
     secrets: inherit
     with:
       image_tag: ${{ inputs.branch_name || 'none' }}
+      runs_on: sps-compute2
       build_locally: true
   run-tests:
     needs: update-image
-    runs-on: testbed # Image is only saved here
+    runs-on: sps-compute2 # Image is only saved here
     steps:
       - run: |
           docker rm -f champss-${{ inputs.branch_name }} || true
       - uses: addnab/docker-run-action@v3
         with:
             image: chimefrb/champss_software:${{ inputs.branch_name }}
-            options: --rm --name champss-${{ inputs.branch_name }} -v /data/chime/sps/raw:/data/chime/sps/raw -v /data/chime/sps/benchmark/${{ inputs.branch_name }}:/data/chime/sps/benchmark -v /dev/shm:/dev/shm --shm-size=100gb
+            options: --rm --name champss-${{ inputs.branch_name }} -v /data/chime/sps/raw_backup:/data/chime/sps/raw_backup -v /data/chime/sps/benchmark/${{ inputs.branch_name }}:/benchmark/ -v /dev/shm:/dev/shm --shm-size=100gb
             # The following is only needed if running inside a Docker container
             run: |
-              export NODE_NAME='ss1'
+              export NODE_NAME='sps-compute2'
               export CONTAINER_NAME='champss-${{ inputs.branch_name }}'
               chmod +x /module/champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh
               ./champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh '--using-docker'
       - run: |
           docker image rmi chimefrb/champss_software:${{ inputs.branch_name }}
           docker builder prune -f
-
-
