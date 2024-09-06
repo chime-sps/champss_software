@@ -46,7 +46,7 @@ from sps_pipeline import (  # ps,
     utils,
 )
 
-datpath = "/data/chime/sps/raw"
+default_datpath = "/data/chime/sps/raw"
 
 
 def load_config(config_file="sps_config.yml"):
@@ -299,6 +299,12 @@ def dbexcepthook(type, value, tb):
     default=False,
     help="Scale injection so that input sigma should be detected sigma.",
 )
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
 def main(
     date,
     stack,
@@ -324,6 +330,7 @@ def main(
     only_injections,
     cutoff_frequency,
     scale_injections,
+    datpath,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -445,19 +452,6 @@ def main(
             active_pointings = strat.active_pointing_from_pointing(
                 closest_pointing, date
             )
-            for active_pointing in active_pointings:
-                data_list.extend(
-                    get_data_list(
-                        active_pointing.max_beams, basepath=datpath, extn="dat"
-                    )
-                )
-            if not data_list:
-                log.error(
-                    "No data found for the pointing {:.2f} {:.2f}".format(
-                        active_pointings[0].ra, active_pointings[0].dec
-                    )
-                )
-                sys.exit()
             for obs_id_file in obs_id_files:
                 with open(obs_id_file) as infile:
                     sub_pointing = int(obs_id_file.split("obs")[0].split("_")[-2])
@@ -474,20 +468,6 @@ def main(
             active_pointings = strat.active_pointing_from_pointing(
                 closest_pointing, date
             )
-            data_list = []
-            for active_pointing in active_pointings:
-                data_list.extend(
-                    get_data_list(
-                        active_pointing.max_beams, basepath=datpath, extn="dat"
-                    )
-                )
-            if not data_list:
-                log.error(
-                    "No data found for the pointing {:.2f} {:.2f}".format(
-                        active_pointings[0].ra, active_pointings[0].dec
-                    )
-                )
-                sys.exit()
             # Record the obs id
             for active_pointing in active_pointings:
                 obs_id_file = os.path.join(
@@ -573,7 +553,9 @@ def main(
                 )
                 fdmt = False
             if "beamform" in components:
-                beamformer = beamform.initialise(config, rfi_beamform, basepath)
+                beamformer = beamform.initialise(
+                    config, rfi_beamform, basepath, datpath
+                )
                 skybeam, spectra_shared = beamform.run(
                     active_pointing, beamformer, fdmt, num_threads, basepath
                 )
@@ -1090,7 +1072,15 @@ def stack_and_search(
     type=str,
     help="Name used for the mongodb database.",
 )
-def find_pointing_with_data(date, beam, full_transit, db_port, db_host, db_name):
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+def find_pointing_with_data(
+    date, beam, full_transit, db_port, db_host, db_name, datpath
+):
     """
     Script to determine the pointings with data to process in a given day.
 
