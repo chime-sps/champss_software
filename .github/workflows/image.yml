@@ -12,7 +12,7 @@ on:
         type: boolean
       runs_on:
         type: string
-        default: 'sps-archiver'
+        default: 'sps-compute2'
 
 jobs:
   build-image-and-push-to-remote:
