@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 from scipy.fft import fft, rfft
 from scipy.special import chdtri
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP
+from sps_common.interfaces.utilities import sigma_sum_powers
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ def sinc(x):
     return np.sin(x) / x
 
 
-def generate(noise=False):
+def generate_pulse(noise=False):
     """
     This function generates a random pulse profile to inject.
 
@@ -117,7 +118,7 @@ def x_to_chi2(x, df):
         # Calculate the cumulative distribution function (CDF) of chi-squared distribution
         chi2 = stats.chi2.ppf(p, df)
 
-        return chi2
+        return chi2 / 2
 
     else:
         # A&S 26.2.23. This is the inverse of the operation for logp in PRESTO
@@ -140,19 +141,31 @@ def x_to_chi2(x, df):
 class Injection:
     """This class allows pulse injection."""
 
-    def __init__(self, pspec_obj, phase_prof, sigma, true_f, true_dm):
+    def __init__(
+        self,
+        pspec_obj,
+        full_harm_bins,
+        DM,
+        frequency,
+        profile,
+        sigma,
+        scale_injections=False,
+    ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
         self.pspec_obj = pspec_obj
         self.birdies = pspec_obj.bad_freq_indices
-        self.f = true_f
+        self.f = frequency
         self.deltaDM = self.onewrap_deltaDM()
-        self.true_dm = true_dm
+        self.true_dm = DM
         self.trial_dms = self.pspec_obj.dms
         self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
-        self.phase_prof = phase_prof
+        self.phase_prof = profile
         self.sigma = sigma
         self.power_threshold = 1
+        self.full_harm_bins = full_harm_bins
+        self.rescale_to_expected_sigma = scale_injections
+        self.use_rfi_information = True
 
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in
@@ -224,6 +237,7 @@ class Injection:
         --------
                 dispersed_prof_fft (arr): a 2D array of size (len(DM_labels), len(prof)) containing the
                                           dispersed profile values
+                target_dm_idx (ndarray) : dm bins of the injection
         """
 
         # i is our index referring to the DM_labels in the target power spectrum
@@ -263,6 +277,7 @@ class Injection:
                 N (int)           : number of bins over which to sinc-interpolate the harmonic
         Returns:
         ________
+                bins (ndarray) : frequency bins of the injection
                 harmonics (ndarray) : Fourier-transformed harmonics of the profile convolved with
                                         [cycles] number of Delta functions
         """
@@ -289,6 +304,81 @@ class Injection:
 
         return bins, harmonics
 
+    def predict_sigma(self, harms, bins, dm_indices, used_nharm):
+        """
+        This function predicts the sigma of an injection and scales it to a specific
+        value if wanted.
+
+        Inputs:
+        _______
+        Returns:
+        ________
+                harms (ndarray) : (Potentially rescaled) Fourier-transformed harmonics
+                bins (ndarray) : frequency bins of the injection
+                dm_indices (ndarray) : dm bins of the injection
+                used_nharm (int) : Number of harmonics that will be injected
+        """
+        # estimate sigma
+        true_dm_injection_index = self.true_dm_trial - dm_indices[0]
+        bins_reshaped = bins.reshape(used_nharm, -1)
+        allowed_harmonics = np.array([1, 2, 4, 8, 16, 32])
+        used_search_harmonics = allowed_harmonics[
+            allowed_harmonics * self.f <= self.pspec_obj.freq_labels[-1]
+        ]
+        all_summed_powers = []
+        all_summed_powers_no_bg = []
+        all_nsums = []
+        all_nharms = []
+        for search_harmonic in used_search_harmonics:
+            used_injection_harmonic = min(search_harmonic, used_nharm)
+            last_bins = bins_reshaped[used_injection_harmonic - 1, :]
+            for bin in last_bins:
+                bins_in_sum = self.full_harm_bins[:, self.full_harm_bins[0, :] == bin][
+                    :used_injection_harmonic
+                ]
+                _, _, bin_indices = np.intersect1d(
+                    bins_in_sum, bins, return_indices=True
+                )
+                summed_power = harms[true_dm_injection_index, bin_indices].sum()
+                nsum = search_harmonic * self.ndays
+                # If search nharm is higher than injected nharm
+                # Or are there other reasons?
+                if search_harmonic > len(bin_indices):
+                    bin_difference = len(bins_in_sum) - len(bin_indices)
+                    summed_power += bin_difference * self.ndays
+                # Add background
+                all_summed_powers_no_bg.append(summed_power)
+                summed_power += nsum
+                all_summed_powers.append(summed_power)
+                all_nsums.append(nsum)
+                all_nharms.append(search_harmonic)
+        all_summed_powers = np.array(all_summed_powers)
+        all_summed_powers_no_bg = np.array(all_summed_powers_no_bg)
+        all_nsums = np.array(all_nsums)
+        all_nharms = np.array(all_nharms)
+        possible_sigmas = sigma_sum_powers(all_summed_powers, all_nsums)
+        best_sigma_trial = np.nanargmax(possible_sigmas)
+        best_nharm = all_nharms[best_sigma_trial]
+        best_sigma = possible_sigmas[best_sigma_trial]
+
+        log.info(
+            f"Expected detection at {best_sigma:.2f} sigma with {best_nharm} harmonics."
+        )
+        if self.rescale_to_expected_sigma:
+            expected_power = (
+                x_to_chi2(self.sigma, self.ndays * best_nharm * 2)
+                - self.ndays * best_nharm
+            )
+            rescale_factor = expected_power / all_summed_powers_no_bg[best_sigma_trial]
+            harms *= rescale_factor
+            log.info(
+                f"Rescaling injection so that it should be detected at {self.sigma}."
+            )
+            best_sigma = self.sigma
+        else:
+            rescale_factor = 1
+        return harms, best_nharm, best_sigma, rescale_factor
+
     def injection(self):
         """
         This function creates the fake power spectrum and then interpolates it onto the
@@ -298,6 +388,10 @@ class Injection:
         _______
                 harms (arr): 2D power grid of form (trial DM, frequency)
                 bins (arr) : 1D array of bin indices at which the pulse was injected
+                dm_indices (arr): 1D array of the injected dm indices
+                predicted_nharm (int): nharm at which the injection should be detected
+                predicted_sigma (int): sigma at which the injection should be detected,
+                                        excluding the influence of the power spectrum.
         """
 
         # pull frequency bins from target power spectrum
@@ -306,9 +400,10 @@ class Injection:
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
         scaled_prof_fft = self.sigma_to_power(n_harm)
+        used_nharm = len(scaled_prof_fft)
         log.info(f"Injecting {n_harm} harmonics.")
 
-        dispersed_prof_fft, dms = self.disperse(
+        dispersed_prof_fft, dm_indices = self.disperse(
             scaled_prof_fft, kernels, kernel_scaling
         )
 
@@ -320,27 +415,53 @@ class Injection:
 
         harms = np.asarray(harms)
 
-        return harms, bins, dms
+        # estimate sigma
+        harms, predicted_nharm, predicted_sigma, rescale_factor = self.predict_sigma(
+            harms, bins, dm_indices, used_nharm
+        )
+
+        if self.use_rfi_information:
+            # Maybe want to enable buffering this value for faster multiple injection
+            bin_fractions = self.pspec_obj.get_bin_weights_fraction()
+            # Is linear scaling the way to go?
+            harms *= bin_fractions[bins]
+
+        return (
+            harms,
+            bins,
+            dm_indices,
+            predicted_nharm,
+            predicted_sigma,
+        )
 
 
-def main(pspec, injection_profile="random", num_injections=1):
+def main(
+    pspec,
+    full_harm_bins,
+    injection_profile="random",
+    num_injections=1,
+    remove_spectra=False,
+    scale_injections=False,
+):
     """
     This function runs the injection.
 
     Inputs:
     ______
-            injection_profile (str or tuple): either a string specifying the key that references the
-                                              profile in the dictionary defaults, or a tuple with
-                                              custom injection profile parameters of the format
-                                              (pulse profile, sigma, frequency,
-                                              DM)
-            num_injections (int)            : provided if injection_profile == 'random.' How many profiles
-                                              to randomly generate.
+            injection_profile (str or dict): either a string specifying the key that references the
+                                              profile in the dictionary defaults, or a dict with
+                                              custom injection profile keys
+                                              (profile, sigma, frequency, DM)
+            num_injections (int)            : provided if injection_profile == 'random.' How
+                                              many profiles to randomly generate.
+            remove_spectra (bool)           : Whether to remove the spectra. Replaced by static value
+            scale_injections (bool)         : Whether to scale the injection so that the
+                                            detected sigma should be
+                                            the same as the input sigma. Default: False
 
     Returns:
     --------
-            bins (list)                     : 2D list of bins with injected power
-            dms (list)                      : 1D list of DMs with injected power
+            injection_profiles (list(dict)) : List containing dict describing the injection.
     """
     default_freq = rand.choice(
         np.linspace(0.1, 100, 10000), num_injections, replace=False
@@ -349,23 +470,48 @@ def main(pspec, injection_profile="random", num_injections=1):
     default_sigma = rand.choice(np.linspace(5, 20, 1000), num_injections, replace=False)
 
     defaults = {
-        "gaussian": (gaussian(0.5, 0.025), 20, default_freq[0], 121.4375),
-        "subpulse": (
-            gaussian(0.5, 0.025) + 0.5 * gaussian(0.6, 0.015),
-            20,
-            default_freq[0],
-            121.4375,
-        ),
-        "interpulse": (
-            gaussian(0.5, 0.025) + 0.8 * gaussian(0.1, 0.02),
-            20,
-            default_freq[0],
-            121.4375,
-        ),
-        "faint": (gaussian(0.5, 0.025), 10, default_freq[0], 121.4375),
-        "high-DM": (gaussian(0.5, 0.025), 20, default_freq[0], 212.3),
-        "slow": (gaussian(0.5, 0.025), 20, 3.27, 121.4375),
-        "fast": (gaussian(0.5, 0.025), 20, 70.26, 121.4375),
+        "gaussian": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 20,
+            "frequency": default_freq[0],
+            "DM": 121.4375,
+        },
+        "subpulse": {
+            "profile": gaussian(0.5, 0.025) + 0.5 * gaussian(0.6, 0.015),
+            "sigma": 20,
+            "frequency": default_freq[0],
+            "DM": 121.4375,
+        },
+        "interpulse": {
+            "profile": gaussian(0.5, 0.025) + 0.8 * gaussian(0.1, 0.02),
+            "sigma": 20,
+            "frequency": default_freq[0],
+            "DM": 121.4375,
+        },
+        "faint": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 10,
+            "frequency": default_freq[0],
+            "DM": 121.4375,
+        },
+        "high-DM": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 20,
+            "frequency": default_freq[0],
+            "DM": 212.3,
+        },
+        "slow": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 20,
+            "frequency": 3.27,
+            "DM": 121.4375,
+        },
+        "fast": {
+            "profile": gaussian(0.5, 0.025),
+            "sigma": 20,
+            "frequency": 70.26,
+            "DM": 121.4375,
+        },
     }
 
     injection_profiles = []
@@ -378,33 +524,54 @@ def main(pspec, injection_profile="random", num_injections=1):
 
     elif injection_profile == "random":
         for i in range(num_injections):
-            pulse = generate()
+            pulse = generate_pulse()
             injection_profiles.append(
-                [pulse, default_sigma[i], default_freq[i], default_dm[i]]
+                {
+                    "profile": pulse,
+                    "sigma": default_sigma[i],
+                    "frequency": default_freq[i],
+                    "DM": default_dm[i],
+                }
             )
 
     else:
         injection_profiles.append(injection_profile)
 
-    i = 0
-    dms = []
-    bins = []
+    if remove_spectra:
+        log.info("Replacing spectra with expected mean value.")
+        pspec.power_spectra[:] = pspec.num_days
+        pspec.bad_freq_indices = [[]]
+
     # If the power is 0 nothing should be injected
     # Here I just check the zero bins in DM0 at the start and set them all to 0 at the end
     # There are probably easier ways to do this
     zero_bins = pspec.power_spectra[0, :] == 0
-    for injection_profile in injection_profiles:
-        injection, bins_temp, dms_temp = Injection(
-            pspec, *injection_profile
+
+    i = 0
+    for injection_dict in injection_profiles:
+        (
+            injection,
+            bins_temp,
+            dms_temp,
+            predicted_nharm,
+            predicted_sigma,
+        ) = Injection(
+            pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
         ).injection()
         if len(injection) == 0:
             log.info("Pulsar too weak.")
             continue
-        parameters = np.array(
-            [injection_profile[1], injection_profile[2], injection_profile[3]]
-        )
-        dms.append(dms_temp)
-        bins.append(bins_temp)
+        # parameters = np.array(
+        #    [injection_profile[1], injection_profile[2], injection_profile[3]]
+        # )
+        # dms.append(dms_temp)
+        # bins.append(bins_temp)
+        injection_dict["dms"] = dms_temp
+        injection_dict["bins"] = bins_temp
+        injection_dict["predicted_nharm"] = predicted_nharm
+        injection_dict["predicted_sigma"] = predicted_sigma
+        if isinstance(injection_dict["profile"], (np.ndarray, list)):
+            injection_dict["profile"] = "custom_profile"
 
         # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
         # not change the object
@@ -417,4 +584,4 @@ def main(pspec, injection_profile="random", num_injections=1):
         i += 1
     pspec.power_spectra[:, zero_bins] = 0
 
-    return bins, dms
+    return injection_profiles
