@@ -8,19 +8,20 @@ figure:
     - 1
     - 1
     - 2
-    ncols: 2
+    ncols: 3
     nrows: 4
     width_ratios:
     - 2
     - 1
+    - 1
 panels:
 - cand_type: single
   col_range:
-  - 1
   - 2
+  - 3
   row_range:
   - 0
-  - 1
+  - 2
   type: plot_text
   values:
   - ra
@@ -33,15 +34,18 @@ panels:
   - period
   - dm
   - num_days
+  - ndetections
   - masked_fraction_at_best_sigma
   - masked_harmonics
   - best_harmonic_sum
   - strongest_harmonic_frequency
   - strongest_harmonic_period
-  - ndetections
+  - 
+  - injection
+  - injection_dict
 - col_range:
   - 0
-  - 1
+  - 2
   row_range:
   - 0
   - 1
@@ -49,14 +53,14 @@ panels:
   plot_fit: False
 - col_range:
   - 0
-  - 1
+  - 2
   row_range:
   - 2
   - 3
   type: plot_raw_harm_1d
 - col_range:
-  - 1
   - 2
+  - 3
   row_range:
   - 1
   - 3
@@ -68,18 +72,25 @@ panels:
   - 1
   - 2
   type: plot_dm_sigma_1d
+- col_range:
+  - 1
+  - 2
+  row_range:
+  - 1
+  - 2
+  type: plot_detections_freq_dm
 - cand_type: multi
   col_range:
   - 0
-  - 1
+  - 2
   row_range:
   - 3
   - 4
   type: plot_scatter_positions
 - cand_type: multi
   col_range:
-  - 1
   - 2
+  - 3
   row_range:
   - 3
   - 4

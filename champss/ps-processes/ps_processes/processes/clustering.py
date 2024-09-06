@@ -2,16 +2,24 @@
 
 import itertools
 import logging
+import warnings
 from collections import OrderedDict
 
 import colorcet as cc
 import numpy as np
 from attr import ib as attribute
 from attr import s as attrs
+from attr.validators import instance_of
 from matplotlib import pyplot as plt
+from scipy.sparse import SparseEfficiencyWarning
 from sklearn.cluster import DBSCAN, HDBSCAN
 from sklearn.metrics import pairwise_distances
+from sklearn.metrics.pairwise import paired_distances
+from sklearn.neighbors import radius_neighbors_graph, sort_graph_by_row_values
 from sps_common.interfaces import Cluster
+
+warnings.filterwarnings("ignore", category=SparseEfficiencyWarning)
+
 
 log = logging.getLogger(__name__)
 
@@ -286,6 +294,51 @@ def rogue_harmpow_filter_alt(detections):
     return np.delete(detections, filter_out_idx)
 
 
+def intersect2d_ind_filter0(ar1, ar2):
+    """
+    Find row wise overlap between two arrays.
+
+    The arrays are assumed to have unique entries except for 0 which will be ignored.
+    This is my attempt to perform np.intersect1d on 2D arrays.
+    Parameters
+    ----------
+    ar1: np.ndarray
+        The first array. Should be 2D or 1D.
+
+    ar2: np.ndarray
+        The second array. Should be 2D or 1D.
+
+    Returns
+    -------
+    int2d_split: List(np.ndarray)
+        The overlap per row
+
+    ar1_indices_split: List(np.ndarray)
+        The indices of the overlap in the first array
+
+    ar2_indices_split: List(np.ndarray)
+        The indices of the overlap in the second array
+    """
+    ar1 = np.asanyarray(ar1)
+    ar2 = np.asanyarray(ar2)
+    if len(ar1.shape) == 1:
+        ar1 = ar1[None, :]
+        ar2 = ar2[None, :]
+    aux = np.concatenate((ar1, ar2), -1)
+    aux_sort_indices = np.argsort(aux, axis=1, kind="mergesort")
+    aux = np.take_along_axis(aux, aux_sort_indices, axis=1)
+    mask = (aux[:, :-1] == aux[:, 1:]) & (aux[:, :-1] != 0)
+    # based on https://stackoverflow.com/posts/53918643/revisions
+    take = mask.sum(axis=1)
+    int2d_flat = aux[:, :-1][mask]
+    int2d_split = np.split(int2d_flat, np.cumsum(take)[:-1])
+    ar1_indices = aux_sort_indices[:, :-1][mask]
+    ar2_indices = aux_sort_indices[:, 1:][mask] - ar1.shape[1]
+    ar1_indices_split = np.split(ar1_indices, np.cumsum(take)[:-1])
+    ar2_indices_split = np.split(ar2_indices, np.cumsum(take)[:-1])
+    return int2d_split, ar1_indices_split, ar2_indices_split
+
+
 @attrs(slots=True)
 class Clusterer:
     """
@@ -350,11 +403,13 @@ class Clusterer:
             "alt" = alternate scheme, must have 4+ harmonics, the max is not the fundamental, and the max is >= 2* sum of the others
     """
 
-    cluster_scale_factor: float = attribute(default=10)
-    dbscan_eps: float = attribute(default=0.125)
+    # cluster_scale_factor: float = attribute(default=10)
+    freq_scale_factor: float = attribute(default=1)
+    dm_scale_factor: float = attribute(default=0.1)
+    dbscan_eps: float = attribute(default=1)
     dbscan_min_samples: int = attribute(default=5)
     max_ndetect: int = attribute(
-        default=30000
+        default=50000
     )  # 32-bit max_ndetect x max_ndetect matrix is ~4GB
     sigma_detection_threshold: int = attribute(default=5)
     group_duplicate_freqs: bool = attribute(default=True)
@@ -364,12 +419,22 @@ class Clusterer:
     min_freq: float = attribute(default=0)
     ignore_nharm1: bool = attribute(default=False)
     rogue_harmpow_scheme: str = attribute(default="tweak")
+    filter_nharm: bool = attribute(default=False)
+    remove_harm_idx: bool = attribute(default=False)
+    cluster_dm_cut: float = attribute(default=-1)
+    overlap_scale: float = attribute(default=1)
+    add_dm_when_replace: bool = attribute(default=False)
+    num_threads = attribute(validator=instance_of(int), default=8)
+    use_sparse: bool = attribute(default=True)
+    grouped_freq_dm_scale: float = attribute(default=1)
 
     @metric_method.validator
     def _validate_metric_method(self, attribute, value):
         assert value in [
             "rhp_norm_by_min_nharm",
             "rhp_overlap",
+            "power_overlap",
+            "power_overlap_array",
         ], "metric_method must be either 'rhp_norm_by_min_nharm' or 'rhp_overlap'"
 
     @metric_combination.validator
@@ -394,7 +459,7 @@ class Clusterer:
             "alt",
         ], "harmpow_scheme must be 'presto', 'tweak' or 'alt'"
 
-    def calculate_metric_rhp_overlap(self, rhplist, idx0, idx1, *args, scale=1):
+    def calculate_metric_rhp_overlap(self, rhplist, idx0, idx1, *args):
         """Calculate harmonic distance between two detections
         1 - scale*len(set.intersection(rhp0, rhp1))
 
@@ -409,7 +474,7 @@ class Clusterer:
         """
         rhp0 = rhplist[idx0]
         rhp1 = rhplist[idx1]
-        out_metric = 1 - scale * len(set.intersection(rhp0, rhp1))
+        out_metric = 1 - len(set.intersection(rhp0, rhp1))
         return out_metric
 
     def calculate_metric_rhp_overlap_normbyminnharm(
@@ -432,6 +497,97 @@ class Clusterer:
         out_metric = 1 - len(set.intersection(rhp0, rhp1)) / min(
             detections["nharm"][idx0], detections["nharm"][idx1]
         )
+        return out_metric
+
+    def calculate_metric_power_overlap(self, rhplist, idx0, idx1, detections, **kwargs):
+        """
+        Calculate harmonic distance based on the power in overlapping bins.
+
+        Args:
+            rhplist (list): list of sets of PowerSpectra bins used in the sum (aka non-zero values of 'harm_idx' in detections)
+            idx0 (int): index of 1st detection (must correspond to the same index in rhplist)
+            idx1 (int): index of 2nd detection
+            detections (np.ndarray): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
+
+        Returns:
+            _type_: _description_
+        """
+        intersect_bins, intersect_idx0, intersect_idx1 = np.intersect1d(
+            detections[idx0]["harm_idx"],
+            detections[idx1]["harm_idx"],
+            return_indices=True,
+        )
+        total_power_1 = np.sum(detections[idx0]["harm_pow"])
+        total_power_2 = np.sum(detections[idx1]["harm_pow"])
+        intersec_power_1 = np.sum(detections[idx0]["harm_pow"][intersect_idx0])
+        intersec_power_2 = np.sum(detections[idx1]["harm_pow"][intersect_idx1])
+        power_overlap = max(
+            intersec_power_1 / total_power_1, intersec_power_2 / total_power_2
+        )
+        out_metric = 1 - power_overlap
+        return out_metric
+
+    def calculate_metric_power_overlap_array(
+        self, rhplist, idxs0, idxs1, detections, **kwargs
+    ):
+        """
+        Calculate overlap of power between two detections. Can be used on arrays.
+
+        Args:
+            rhplist (list): list of sets of PowerSpectra bins used in the sum (aka non-zero values of 'harm_idx' in detections). Not used here
+            idx0 (list(int)): indices of 1st detection (must correspond to the same index in rhplist)
+            idx1 (list(int)): indices of 2nd detection
+            detections (np.ndarray): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
+
+        Returns:
+            out_metric (np.ndarray): (1 - power_overlap). Will be 0 for complete overlap and 1
+        """
+        intersect_bins, intersect_idx0, intersect_idx1 = intersect2d_ind_filter0(
+            detections["harm_idx"][idxs0],
+            detections["harm_idx"][idxs1],
+        )
+        if np.isscalar(idxs0):
+            powers_0 = np.array(
+                [
+                    (row.sum(), row[indices].sum())
+                    for row, indices in zip(
+                        detections["harm_pow"][idxs0][None, :], intersect_idx0
+                    )
+                ]
+            )
+            powers_1 = np.array(
+                [
+                    (row.sum(), row[indices].sum())
+                    for row, indices in zip(
+                        detections["harm_pow"][idxs1][None, :], intersect_idx1
+                    )
+                ]
+            )
+        else:
+            powers_0 = np.array(
+                [
+                    (row.sum(), row[indices].sum())
+                    for row, indices in zip(
+                        detections["harm_pow"][idxs0], intersect_idx0
+                    )
+                ]
+            )
+            powers_1 = np.array(
+                [
+                    (row.sum(), row[indices].sum())
+                    for row, indices in zip(
+                        detections["harm_pow"][idxs1], intersect_idx1
+                    )
+                ]
+            )
+        powers_overlap = np.stack(
+            (
+                powers_0[:, 1] / powers_0[:, 0],
+                powers_1[:, 1] / powers_1[:, 0],
+            ),
+            axis=1,
+        ).max(1)
+        out_metric = 1 - powers_overlap
         return out_metric
 
     def cluster(
@@ -523,11 +679,8 @@ class Clusterer:
         # make data products necessary for clustering and making the harmonic metric
         data = np.vstack(
             (
-                detections["dm"].astype(np.float32),
-                detections["freq"].astype(np.float32)
-                * np.float32(
-                    cluster_dm_spacing * self.cluster_scale_factor / cluster_df_spacing
-                ),
+                detections["dm"] / cluster_dm_spacing * self.dm_scale_factor,
+                detections["freq"] / cluster_df_spacing * self.freq_scale_factor,
             ),
             dtype=np.float32,
         ).T
@@ -539,6 +692,8 @@ class Clusterer:
             harm, idx_to_skip = group_duplicates_freq(
                 detections, ignorenharm1=self.ignore_nharm1
             )
+            # set lookup is faster
+            idx_to_skip = set(idx_to_skip)
             log.info(
                 f"Grouping duplicate frequencies removed {len(idx_to_skip)} detections"
                 " from the harmonic metric computation"
@@ -549,8 +704,14 @@ class Clusterer:
 
         if scheme in ["combined", "dmfreq"]:
             log.info("Starting freq-DM distance metric computation")
-            metric_array = pairwise_distances(data)
-            # metric_array = np.nan_to_num(metric_array, posinf=10000)
+            if self.use_sparse:
+                metric_array = radius_neighbors_graph(
+                    data, 1.1 * self.dbscan_eps, p=2, mode="distance"
+                )
+                metric_array.sort_indices()
+            else:
+                metric_array = pairwise_distances(data, n_jobs=self.num_threads)
+
             log.info("Finished freq-DM distance metric computation")
 
         if scheme in ["combined", "harm"]:
@@ -561,11 +722,17 @@ class Clusterer:
                     "calculate_harm_metric set to"
                     " calculate_metric_rhp_overlap_normbyminnharm"
                 )
-                scale = 1
             elif self.metric_method == "rhp_overlap":
                 calculate_harm_metric = self.calculate_metric_rhp_overlap
                 log.debug("calculate_harm_metric set to calculate_metric_rhp_overlap")
-                scale = 1 / max(detections["nharm"])
+            elif self.metric_method == "power_overlap":
+                calculate_harm_metric = self.calculate_metric_power_overlap
+                log.debug("calculate_harm_metric set to calculate_metric_power_overlap")
+            elif self.metric_method == "power_overlap_array":
+                calculate_harm_metric = self.calculate_metric_power_overlap_array
+                log.debug(
+                    "calculate_harm_metric set to calculate_metric_power_overlap_array"
+                )
 
             # Organise raw harmonic power bins into supersets
             # This restricts the parameter space for which you need to calcualte the harmonic metric
@@ -608,49 +775,148 @@ class Clusterer:
             if scheme not in ["combined", "dmfreq"]:
                 metric_array = np.ones((data.shape[0], data.shape[0]), dtype=np.float32)
 
+            if self.metric_combination == "multiply":
+                threshold_for_new_vals = 1
+            elif self.metric_combination == "replace":
+                threshold_for_new_vals = self.dbscan_eps
+            else:
+                threshold_for_new_vals = np.inf
+
             # to save on memory should probably alter the DMfreq_dist_metric in-place instead
-            for ii, id_group in enumerate(grouped_ids):
-                log.debug(
-                    f"Working on metric caculcation for group {ii}, length"
-                    f" {len(id_group)}"
+            all_indices_0 = []
+            all_indices_1 = []
+            all_metric_vals = []
+            if self.metric_method == "power_overlap_array":
+                chunk_size = 2000
+                index_pairs = [
+                    index_pair
+                    for id_group in grouped_ids
+                    for index_pair in list(itertools.combinations(id_group, 2))
+                ]
+                index_pairs = np.asarray(index_pairs)
+                index_pairs = np.split(
+                    index_pairs, np.arange(chunk_size, index_pairs.shape[0], chunk_size)
                 )
-                for i in itertools.combinations(id_group, 2):
-                    metric = calculate_harm_metric(
-                        rhps, i[0], i[1], detections, scale=scale
-                    )
-                    if self.group_duplicate_freqs:
-                        index_0, index_1 = np.meshgrid(harm[i[0]], harm[i[1]])
-                        index_0 = index_0.flatten()
-                        index_1 = index_1.flatten()
-                    else:
-                        index_0 = i[0]
-                        index_1 = i[1]
+            else:
+                index_pairs = [
+                    index_pair
+                    for id_group in grouped_ids
+                    for index_pair in list(itertools.combinations(id_group, 2))
+                ]
+            for split in index_pairs:
+                if self.metric_method == "power_overlap_array":
+                    rows_0 = split[:, 0]
+                    rows_1 = split[:, 1]
+                else:
+                    rows_0 = split[0]
+                    rows_1 = split[1]
+                    split = np.array(split).reshape(1, 2)
+                metric_vals = (
+                    calculate_harm_metric(rhps, rows_0, rows_1, detections)
+                    * self.overlap_scale
+                )
+                if np.isscalar(metric_vals):
+                    metric_vals = np.array(metric_vals).reshape(1)
 
-                    if scheme == "combined":
-                        if self.metric_combination == "multiply":
-                            metric_array[index_0, index_1] *= metric
-                            metric_array[index_1, index_0] = metric_array[
-                                index_0, index_1
+                used_indices = metric_vals < threshold_for_new_vals
+                metric_vals = metric_vals[used_indices]
+                split = split[used_indices]
+                if not len(metric_vals):
+                    continue
+                if self.group_duplicate_freqs:
+                    indices_0 = []
+                    indices_1 = []
+                    group_metric_vals = []
+
+                    for index, row in enumerate(split):
+                        indices_0_part = np.tile(harm[row[0]], len(harm[row[1]]))
+                        indices_1_part = np.repeat(harm[row[1]], len(harm[row[0]]))
+                        indices_0.append(indices_0_part)
+                        indices_1.append(indices_1_part)
+
+                        group_metric_vals.append(
+                            [
+                                metric_vals[index],
                             ]
-                        elif self.metric_combination == "replace":
-                            metric_array[index_0, index_1] = metric
-                            metric_array[index_1, index_0] = metric
-                    else:
-                        metric_array[index_0, index_1] = metric
-                        metric_array[index_1, index_0] = metric
+                            * len(indices_0_part)
+                        )
+                    indices_0 = np.concatenate(indices_0)
+                    indices_1 = np.concatenate(indices_1)
+                    metric_vals = np.concatenate(group_metric_vals)
+                else:
+                    indices_0 = split[:, 0]
+                    indices_1 = split[:, 1]
+                if self.add_dm_when_replace and self.metric_combination == "replace":
+                    dm_dists = paired_distances(
+                        data[indices_0, :1], data[indices_1, :1]
+                    )
+                    metric_vals += dm_dists
+                    used_indices_dm = metric_vals < self.dbscan_eps
+                    metric_vals = metric_vals[used_indices_dm]
+                    indices_0 = indices_0[used_indices_dm]
+                    indices_1 = indices_1[used_indices_dm]
+                    if not len(metric_vals):
+                        continue
 
+                all_indices_0.append(indices_0)
+                all_indices_1.append(indices_1)
+                all_metric_vals.append(metric_vals)
+
+            all_indices_0 = np.concatenate(all_indices_0)
+            all_indices_1 = np.concatenate(all_indices_1)
+            all_metric_vals = np.concatenate(all_metric_vals)
+
+            if scheme == "combined":
+                if self.metric_combination == "multiply":
+                    metric_array[all_indices_0, all_indices_1] *= metric_vals
+                    metric_array[indices_1, indices_0] *= metric_array[
+                        all_indices_0, all_indices_1
+                    ]
+                elif self.metric_combination == "replace":
+                    metric_array[all_indices_0, all_indices_1] = all_metric_vals
+                    metric_array[all_indices_1, all_indices_0] = all_metric_vals
+            else:
+                metric_array[all_indices_0, all_indices_1] = all_metric_vals
+                metric_array[all_indices_1, all_indices_0] = all_metric_vals
+            group_indices_0 = []
+            group_indices_1 = []
+            if self.grouped_freq_dm_scale != 0:
+                all_dm_dists = []
             for i in range(metric_array.shape[0]):
-                metric_array[i, i] = 0
+                # metric_array[i, i] = 0
+                # No min dist_for sparse array needed because diagonal is set in
+                # sklearn dbscan method
                 if i in idx_to_skip:
                     continue
                 if self.group_duplicate_freqs:
                     index_0, index_1 = np.meshgrid(harm[i], harm[i])
                     index_0 = index_0.flatten()
                     index_1 = index_1.flatten()
-                    metric_array[index_0, index_1] = 0
+
+                    group_indices_0.append(index_0)
+                    group_indices_1.append(index_1)
+                    if self.grouped_freq_dm_scale != 0:
+                        dm_dists = (
+                            paired_distances(data[index_0, :1], data[index_1, :1])
+                            * self.grouped_freq_dm_scale
+                        )
+                        all_dm_dists.append(dm_dists)
+            log.info("Updating grouped frequencies.")
+            group_indices_0 = np.concatenate(group_indices_0)
+            group_indices_1 = np.concatenate(group_indices_1)
+            if self.grouped_freq_dm_scale != 0:
+                metric_array[group_indices_0, group_indices_1] = np.concatenate(
+                    all_dm_dists
+                )
+            else:
+                metric_array[group_indices_0, group_indices_1] = 0
 
             log.info("Finished harmonic distance metric computation")
 
+        if self.use_sparse:
+            metric_array = sort_graph_by_row_values(
+                metric_array, warn_when_not_sorted=False
+            )
         if self.clustering_method == "DBSCAN":
             log.info("Starting DBSCAN")
             db = DBSCAN(
@@ -683,9 +949,6 @@ class Clusterer:
         cluster_dm_spacing,
         cluster_df_spacing,
         plot_fname="",
-        filter_nharm=False,
-        remove_harm_idx=False,
-        cluster_dm_cut=-1,
         only_injections=False,
     ):
         """
@@ -732,12 +995,12 @@ class Clusterer:
                 if lbl == -1:
                     continue
                 cluster = Cluster.from_raw_detections(detections[cluster_labels == lbl])
-                if cluster_dm_cut >= cluster.dm:
+                if self.cluster_dm_cut >= cluster.dm:
                     zero_dm_count += 1
                     continue
-                if filter_nharm:
+                if self.filter_nharm:
                     cluster.filter_nharm()
-                if remove_harm_idx:
+                if self.remove_harm_idx:
                     cluster.remove_harm_idx()
                     cluster.remove_harm_pow()
                 if only_injections and cluster.injection_index == -1:
@@ -754,7 +1017,8 @@ class Clusterer:
                 current_label += 1
         if zero_dm_count:
             log.info(
-                f"Filtered {zero_dm_count} clusters below or equal {cluster_dm_cut} DM."
+                f"Filtered {zero_dm_count} clusters below or equal"
+                f" {self.cluster_dm_cut} DM."
             )
         used_detections_len = len(detections)
         return clusters, summary, sig_limit, used_detections_len
