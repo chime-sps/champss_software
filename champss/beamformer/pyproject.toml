@@ -22,6 +22,7 @@ numpy = "^1.24.3"
 prometheus-client = "^0.17.1"
 pytz = "^2023.3"
 scipy = "^1.10.1"
+astropy-iers-data = ">=0.2024.9.2.0.33.23"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
