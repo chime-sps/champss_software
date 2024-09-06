@@ -4,7 +4,7 @@ import logging
 import click
 import multiday_search.confirm_cand as confirm_cand
 import multiday_search.fold_multiday as fold_multiday
-from foldutils.database_utils import add_mdcand_from_candpath
+from foldutils.database_utils import add_mdcand_from_candpath, add_mdcand_from_psrname
 from sps_databases import db_api, db_utils, models
 from sps_pipeline.workflow import (
     clear_workflow_buckets,
@@ -25,6 +25,12 @@ log = logging.getLogger(__name__)
     type=str,
     default="",
     help="Path to candidate file",
+)
+@click.option(
+    "--psr",
+    type=str,
+    default="",
+    help="Pulsar Name",
 )
 @click.option(
     "--foldpath",
@@ -84,6 +90,7 @@ log = logging.getLogger(__name__)
 )
 def main(
     candpath,
+    psr,
     foldpath,
     db_port,
     db_host,
@@ -95,7 +102,12 @@ def main(
     docker_password,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
-    fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
+    if psr != "":
+        fs_id = str(add_mdcand_from_psrname(psr, dt.datetime.now()))
+    elif candpath != "":
+        fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
+    else:
+        raise ValueError("Must provide either a candidate path or pulsar name")
     print(fs_id, use_workflow)
 
     if use_workflow:
