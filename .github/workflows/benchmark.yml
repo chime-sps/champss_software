@@ -24,7 +24,7 @@ jobs:
       - uses: addnab/docker-run-action@v3
         with:
             image: chimefrb/champss_software:${{ inputs.branch_name }}
-            options: --rm --name champss-${{ inputs.branch_name }} -v /data/chime/sps/raw_backup:/data/chime/sps/raw/backup -v /data/chime/sps/benchmark/${{ inputs.branch_name }}:/benchmark/ -v /dev/shm:/dev/shm --shm-size=100gb
+            options: --rm --name champss-${{ inputs.branch_name }} -v /data/chime/sps/raw_backup:/data/chime/sps/raw_backup -v /data/chime/sps/benchmark/${{ inputs.branch_name }}:/benchmark/ -v /dev/shm:/dev/shm --shm-size=100gb
             # The following is only needed if running inside a Docker container
             run: |
               export NODE_NAME='sps-compute2'
