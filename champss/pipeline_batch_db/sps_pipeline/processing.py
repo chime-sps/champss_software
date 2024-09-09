@@ -15,7 +15,7 @@ import pytz
 from beamformer.strategist.strategist import PointingStrategist
 from folding.filter_mpcandidates import Filter
 from sps_databases import db_api, db_utils, models
-from sps_pipeline.pipeline import datpath, main
+from sps_pipeline.pipeline import default_datpath, main
 from sps_pipeline.utils import convert_date_to_datetime, get_pointings_from_list
 from sps_pipeline.workflow import (
     clear_workflow_buckets,
@@ -310,8 +310,14 @@ def run_all_folding_processes(
         " first day."
     ),
 )
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
 def find_all_pipeline_processes(
-    full_transit, db_port, db_host, db_name, complete, date, ndays
+    full_transit, db_port, db_host, db_name, complete, date, ndays, datpath
 ):
     """Find all available processes and add them to the database."""
     date = convert_date_to_datetime(date)
