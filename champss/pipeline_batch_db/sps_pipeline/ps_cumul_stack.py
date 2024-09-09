@@ -7,7 +7,16 @@ from ps_processes.ps_pipeline import StackSearchPipeline
 log = logging.getLogger(__package__)
 
 
-def run(pointing, ps_cumul_stack_processor, monthly_power_spectra=None):
+def run(
+    pointing,
+    ps_cumul_stack_processor,
+    monthly_power_spectra=None,
+    injection_path=None,
+    injection_idx=None,
+    only_injections=False,
+    cutoff_frequency=100.0,
+    scale_injections=False,
+):
     """
     Run the power spectra stacking and searching process.
 
@@ -15,12 +24,21 @@ def run(pointing, ps_cumul_stack_processor, monthly_power_spectra=None):
     =======
     ps_stack: PsStack
         PsStack object from sps-databases with information about the power spectra stack.
-
     ps_cumul_stack_processor: Wrapper
         A wrapper object containing the StackSearchPipeline configured to sps_config.yml
-
     monthly_power_spectra: PowerSpectra
         The monthly power spectra if they have been loaded already.
+    injection_path: str
+        Path to injection file or string describing default injection type
+    injection_idx: list
+        Indices of injection file entries that are injected
+    only_injections: bool
+        Whether non-injections are filtered out. Default: False
+    cutoff_frequency: float
+        Highest frequency allowed for a candidate/detection. Default: 100
+    scale_injection: bool
+        Whether to scale the injection so that the detected sigma should be
+        the same as the input sigma. Default: False
 
     Returns
     =======
@@ -45,7 +63,13 @@ def run(pointing, ps_cumul_stack_processor, monthly_power_spectra=None):
             ps_detections,
             power_spectra,
         ) = ps_cumul_stack_processor.pipeline.stack_and_search(
-            pointing._id, monthly_power_spectra
+            pointing._id,
+            monthly_power_spectra,
+            injection_path,
+            injection_idx,
+            only_injections,
+            cutoff_frequency,
+            scale_injections,
         )
     return ps_detections, power_spectra
 

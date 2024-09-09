@@ -40,14 +40,13 @@ from sps_pipeline import (  # ps,
     beamform,
     cands,
     cleanup,
-    dedisp,
     hhat,
     ps_cumul_stack,
     rfi,
     utils,
 )
 
-datpath = "/data/chime/sps/raw"
+default_datpath = "/data/chime/sps/raw"
 
 
 def load_config(config_file="sps_config.yml"):
@@ -270,6 +269,42 @@ def dbexcepthook(type, value, tb):
     type=str,
     help="Name of used config. Default: sps_config.yml",
 )
+@click.option(
+    "--injection-path",
+    default=None,
+    type=str,
+    help="Path to yml file containing injection",
+)
+@click.option(
+    "--injection-idx",
+    "--ii",
+    default=[],
+    type=int,
+    multiple=True,
+    help="Index of pulse to inject from yml file",
+)
+@click.option(
+    "--only-injections/--no-only-injections",
+    default=False,
+    help="Only process clusters containing injections.",
+)
+@click.option(
+    "--cutoff-frequency",
+    default=100.0,
+    type=float,
+    help="Frequency at which to stop processing candidates.",
+)
+@click.option(
+    "--scale-injections/--not-scale-injections",
+    default=False,
+    help="Scale injection so that input sigma should be detected sigma.",
+)
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
 def main(
     date,
     stack,
@@ -290,6 +325,12 @@ def main(
     using_docker,
     known_source_threshold,
     config_file,
+    injection_path,
+    injection_idx,
+    only_injections,
+    cutoff_frequency,
+    scale_injections,
+    datpath,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -322,13 +363,7 @@ def main(
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
 
-    if isinstance(date, str):
-        for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
-            try:
-                date = dt.datetime.strptime(date, date_format)
-                break
-            except ValueError:
-                continue
+    date = utils.convert_date_to_datetime(date)
 
     date_string = date.strftime("%Y/%m/%d")
 
@@ -417,19 +452,6 @@ def main(
             active_pointings = strat.active_pointing_from_pointing(
                 closest_pointing, date
             )
-            for active_pointing in active_pointings:
-                data_list.extend(
-                    get_data_list(
-                        active_pointing.max_beams, basepath=datpath, extn="dat"
-                    )
-                )
-            if not data_list:
-                log.error(
-                    "No data found for the pointing {:.2f} {:.2f}".format(
-                        active_pointings[0].ra, active_pointings[0].dec
-                    )
-                )
-                sys.exit()
             for obs_id_file in obs_id_files:
                 with open(obs_id_file) as infile:
                     sub_pointing = int(obs_id_file.split("obs")[0].split("_")[-2])
@@ -446,20 +468,6 @@ def main(
             active_pointings = strat.active_pointing_from_pointing(
                 closest_pointing, date
             )
-            data_list = []
-            for active_pointing in active_pointings:
-                data_list.extend(
-                    get_data_list(
-                        active_pointing.max_beams, basepath=datpath, extn="dat"
-                    )
-                )
-            if not data_list:
-                log.error(
-                    "No data found for the pointing {:.2f} {:.2f}".format(
-                        active_pointings[0].ra, active_pointings[0].dec
-                    )
-                )
-                sys.exit()
             # Record the obs id
             for active_pointing in active_pointings:
                 obs_id_file = os.path.join(
@@ -517,10 +525,12 @@ def main(
             dedisp_ts = None
             ps_detections = None
             prefix = (
-                f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}_{active_pointing.sub_pointing}"
+                f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}"
+                f"_{active_pointing.sub_pointing}"
             )
 
-            # Compute number of threads required. Currently based on the number of channels of the input data
+            # Compute number of threads required.
+            # Currently based on the number of channels of the input data
 
             ntime_factor = int(
                 2 ** np.ceil(np.log2(active_pointing.ntime / 2**20))
@@ -543,7 +553,9 @@ def main(
                 )
                 fdmt = False
             if "beamform" in components:
-                beamformer = beamform.initialise(config, rfi_beamform, basepath)
+                beamformer = beamform.initialise(
+                    config, rfi_beamform, basepath, datpath
+                )
                 skybeam, spectra_shared = beamform.run(
                     active_pointing, beamformer, fdmt, num_threads, basepath
                 )
@@ -567,6 +579,8 @@ def main(
                     processing_failed = True
             if "dedisp" in components:
                 if fdmt:
+                    from sps_pipeline import dedisp
+
                     dedisp_ts = dedisp.run_fdmt(
                         active_pointing, skybeam, config, num_threads
                     )
@@ -598,6 +612,7 @@ def main(
                     **OmegaConf.to_container(config.ps),
                     run_ps_stack=stack,
                     num_threads=num_threads,
+                    known_source_threshold=known_source_threshold,
                 )
                 # Use global to allow unlinking memory in exception hook
                 global power_spectra
@@ -612,7 +627,14 @@ def main(
                 gc.collect()
                 if "search" in components:
                     ps_detections = ps_pipeline.power_spectra_search(
-                        power_spectra, obs_folder, prefix
+                        power_spectra,
+                        injection_path,
+                        injection_idx,
+                        only_injections,
+                        cutoff_frequency,
+                        scale_injections,
+                        obs_folder,
+                        prefix,
                     )
                     if ps_detections is None:
                         power_spectra.unlink_shared_memory()
@@ -632,6 +654,9 @@ def main(
                             config.cands.get(
                                 "write_harmonically_related_clusters", False
                             ),
+                            injection_path,
+                            injection_idx,
+                            only_injections,
                         )
                     gc.collect()
                 if stack:
@@ -813,6 +838,34 @@ def main(
         " strongest detection of that source in that pointing."
     ),
 )
+@click.option(
+    "--injection-path",
+    default=None,
+    help="Path to yml file containing injection",
+)
+@click.option(
+    "--injection-idx",
+    "--ii",
+    default=[],
+    type=int,
+    multiple=True,
+    help="Index of pulse to inject from yml file",
+)
+@click.option(
+    "--only-injections/--no-only-injections",
+    default=False,
+    help="Only process clusters containing injections.",
+)
+@click.option(
+    "--cutoff-frequency",
+    default=100,
+    help="Frequency at which to stop processing candidates.",
+)
+@click.option(
+    "--scale-injections/--not-scale-injections",
+    default=False,
+    help="Scale injection so that input sigma should be detected sigma.",
+)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -825,6 +878,11 @@ def stack_and_search(
     path_cumul_stack,
     cand_path,
     known_source_threshold,
+    injection_path,
+    injection_idx,
+    only_injections,
+    cutoff_frequency,
+    scale_injections,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -835,6 +893,7 @@ def stack_and_search(
     - search: run the searching of the cumulative stack
     - search-monthly: run the searching of the monthly stack
     """
+
     multiprocessing.set_start_method("forkserver")
     sys.excepthook = dbexcepthook
     global pipeline_start_time
@@ -889,7 +948,12 @@ def stack_and_search(
             ps_detections_monthly,
             power_spectra_monthly,
         ) = ps_cumul_stack_processor.pipeline.load_and_search_monthly(
-            closest_pointing._id
+            closest_pointing._id,
+            injection_path,
+            injection_idx,
+            only_injections,
+            cutoff_frequency,
+            scale_injections,
         )
         ps_stack = db_api.get_ps_stack(closest_pointing._id)
         if ps_detections_monthly:
@@ -903,13 +967,24 @@ def stack_and_search(
                 plot,
                 plot_threshold,
                 config.cands.get("write_harmonically_related_clusters", False),
+                False,
+                injection_path,
+                injection_idx,
+                only_injections,
             )
     else:
         power_spectra_monthly = None
 
     if to_stack or to_search:
         ps_detections, power_spectra = ps_cumul_stack.run(
-            closest_pointing, ps_cumul_stack_processor, power_spectra_monthly
+            closest_pointing,
+            ps_cumul_stack_processor,
+            power_spectra_monthly,
+            injection_path,
+            injection_idx,
+            only_injections,
+            cutoff_frequency,
+            scale_injections,
         )
         if to_search:
             if not ps_detections:
@@ -931,6 +1006,10 @@ def stack_and_search(
                         plot,
                         plot_threshold,
                         config.cands.get("write_harmonically_related_clusters", False),
+                        False,
+                        injection_path,
+                        injection_idx,
+                        only_injections,
                     )
     try:
         power_spectra_monthly.unlink_shared_memory()
@@ -993,7 +1072,15 @@ def stack_and_search(
     type=str,
     help="Name used for the mongodb database.",
 )
-def find_pointing_with_data(date, beam, full_transit, db_port, db_host, db_name):
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+def find_pointing_with_data(
+    date, beam, full_transit, db_port, db_host, db_name, datpath
+):
     """
     Script to determine the pointings with data to process in a given day.
 

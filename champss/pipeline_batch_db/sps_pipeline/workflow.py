@@ -1,13 +1,11 @@
 import datetime as dt
 import logging
-import os
 import time
 
 import click
 import docker
-from chime_frb_api.modules.buckets import Buckets
-from chime_frb_api.modules.results import Results
-from chime_frb_api.workflow import Work
+from workflow.definitions.work import Work
+from workflow.http.context import HTTPContext
 from slack_sdk import WebClient
 
 log = logging.getLogger()
@@ -55,6 +53,25 @@ def message_slack(
         log.info(error)
 
 
+def save_container_logs(service):
+    try:
+        log_text = ""
+        log_generator = service.logs(
+            details=True,
+            stdout=True,
+            stderr=True,
+            follow=False,
+        )
+        for log_chunk in log_generator:
+            log_text += log_chunk.decode("utf-8").strip() + "\n"
+
+        path = f"/data/chime/sps/logs/services/{service.name}.log"
+        with open(path, "w") as file:
+            file.write(log_text)
+    except Exception as error:
+        log.info(f"Error dumping logs at {path}: {error} (will skip gracefully).")
+
+
 def get_service_created_at_datetime(service):
     try:
         datetime = dt.datetime.strptime(
@@ -63,12 +80,13 @@ def get_service_created_at_datetime(service):
         return datetime
     except Exception as error:
         log.info(
-            f"Error parsing CreatedAt for service {service}: {error} (will skip gracefully)."
+            f"Error parsing CreatedAt for service {service}: {error} (will skip"
+            " gracefully)."
         )
         return None
 
 
-def wait_for_no_tasks_in_states(states_to_wait_for_none):
+def wait_for_no_tasks_in_states(states_to_wait_for_none, docker_service_name_prefix=""):
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
@@ -92,6 +110,7 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                     service
                     for service in docker_client.services.list()
                     if "processing" in service.name
+                    and docker_service_name_prefix in service.name
                     and service.name not in perpetual_processing_services
                 ],
                 # Sort from oldest to newest to find finished services to remove
@@ -123,41 +142,9 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             f"Removing finished service {service.name} in state"
                             f" {task_state}."
                         )
-                        # Dump logs of multiprocessing container before removing it
-                        if "processing-mp" in service.name:
-                            try:
-                                date = service.name.split("-")[-1]
-
-                                log_text = ""
-                                log_generator = service.logs(
-                                    details=True,
-                                    stdout=True,
-                                    stderr=True,
-                                    follow=False,
-                                )
-                                for log_chunk in log_generator:
-                                    log_text += log_chunk.decode("utf-8")
-
-                                path = f"/data/chime/sps/sps_processing/mp_runs/daily_{date}/container.log"
-                                directory = os.path.dirname(path)
-
-                                if not os.path.exists(directory):
-                                    os.makedirs(directory)
-                                    log.info(f"Created directory: {directory}")
-
-                                with open(
-                                    path,
-                                    "w",
-                                ) as file:
-                                    file.write(log_text)
-                            except Exception as error:
-                                log.info(
-                                    "Error dumping logs for service"
-                                    f" {service.name}: {error} (will skip"
-                                    " gracefully)."
-                                )
 
                         try:
+                            save_container_logs(service)
                             service.remove()
                         except Exception as error:
                             log.info(
@@ -171,16 +158,17 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             log.info(
                                 f"Service {service.name} has been ruuning for more than"
                                 f" {(task_timeout_seconds  * 2) / 60} minutes in state"
-                                f" {task_state}, implying frozen task on 1st or 2nd final"
-                                f" Workflow runner attempt. Will remove service."
+                                f" {task_state}, implying frozen task on 1st or 2nd"
+                                " final Workflow runner attempt. Will remove service."
                             )
 
                             try:
+                                save_container_logs(service)
                                 service.remove()
                             except Exception as error:
                                 log.info(
-                                    f"Error removing service {service.name}: {error} (will"
-                                    " skip gracefully)."
+                                    f"Error removing service {service.name}:"
+                                    f" {error} (will skip gracefully)."
                                 )
                         # Task in state running, and we want to wait for no running states
                         # Loop will continue
@@ -194,11 +182,12 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none):
                             log.info(
                                 f"Service {service.name} has been pending for more than"
                                 f" {(task_timeout_seconds  * 2) / 60} minutes in state"
-                                f" {task_state}, implying failed Docker task scheduling. Will"
-                                " remove service."
+                                f" {task_state}, implying failed Docker task"
+                                " scheduling. Will remove service."
                             )
 
                             try:
+                                save_container_logs(service)
                                 service.remove()
                             except Exception as error:
                                 log.info(
@@ -226,7 +215,7 @@ def schedule_workflow_job(
     docker_name,
     docker_memory_reservation,
     docker_password,
-    workflow_name,
+    workflow_buckets_name,
     workflow_function,
     workflow_params,
     workflow_tags,
@@ -236,26 +225,34 @@ def schedule_workflow_job(
 
     docker_client = docker.from_env()
 
+    # This is needed to spawn a Docker Sevice if the Docker Image is on
+    # a private registry (e.g. ou chimefrb DockerHub account)
     try:
+        docker_password_secret_name = "DOCKER_PASSWORD"
+        docker_password_secret_id = docker_client.secrets.list(
+            filters={"name": docker_password_secret_name}
+        )[0].id
         docker_client.login(username="chimefrb", password=docker_password)
     except Exception as error:
         log.info(
-            f"Failed to login to DockerHub to schedule {docker_name}: {error}."
-            " Will not schedule this task."
+            f"Failed to login to DockerHub: {error}. "
+            f"Will try to schedule this task anyway."
         )
-        return ""
 
     workflow_site = "chime"
     workflow_user = "CHAMPSS"
 
     try:
-        work = Work(pipeline=workflow_name, site=workflow_site, user=workflow_user)
+        work = Work(
+            pipeline=workflow_buckets_name, site=workflow_site, user=workflow_user
+        )
+
         work.function = workflow_function
         work.parameters = workflow_params
         work.tags = workflow_tags
         work.config.archive.results = True
-        work.config.archive.plots = "pass"
-        work.config.archive.products = "pass"
+        work.config.archive.plots = "bypass"
+        work.config.archive.products = "bypass"
         work.retries = 1
         work.timeout = task_timeout_seconds
 
@@ -265,6 +262,12 @@ def schedule_workflow_job(
 
         docker_volumes = [
             docker.types.Mount(
+                # Bind mount the Docker socket to allow Docker-in-Docker (Workflow-in-Workflow) usage
+                target="/var/run/docker.sock",
+                source="/var/run/docker.sock",
+                type="bind",
+            ),
+            docker.types.Mount(
                 # Only way I know of to add custom shared memory size allocations with Docker Swarm
                 target="/dev/shm",
                 source="",  # Source value must be empty for tmpfs mounts
@@ -272,7 +275,7 @@ def schedule_workflow_job(
                 tmpfs_size=int(
                     100 * 1e9
                 ),  # Just give it 100GB of a shared memory upper-limit
-            )
+            ),
         ]
 
         for mount_path in docker_mounts:
@@ -288,13 +291,14 @@ def schedule_workflow_job(
         docker_service = {
             "image": docker_image,
             # Can't have dots or slashes in Docker Service names
+            # All Docker Services made with this function will be prefixed with "processing-"
             "name": f"processing-{docker_name.replace('.', '_').replace('/', '')}",
             # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
                 "workflow run"
-                f" {workflow_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
-                f" {workflow_site} --lifetime 1 --sleep-time 0"
+                f" {workflow_buckets_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
+                f" {workflow_site} --lives 1 --sleep 1"
             ),
             # Using template Docker variables as in-container environment variables
             # that allow us this access out-of-container information
@@ -321,6 +325,13 @@ def schedule_workflow_job(
             # to communicate with other containers (MongoDB, Prometheus, etc) that are
             # also manually added to this network
             "networks": ["pipeline-network"],
+            # Secrets are put into /run/secrets/<secret_name> inside the container
+            # (in the case that a Workflow runner will also spawn Workflow runners)
+            "secrets": [
+                docker.types.SecretReference(
+                    docker_password_secret_id, docker_password_secret_name
+                )
+            ],
         }
 
         log.info(f"Creating Docker Service: \n{docker_service}")
@@ -331,15 +342,20 @@ def schedule_workflow_job(
 
         docker_client.services.create(**docker_service)
 
-        # Wait a few seconds before querying Docker Swarm again
-        time.sleep(2)
+        wait_for_no_tasks_in_states(docker_swarm_pending_states)
 
         return work_id[0]
     except Exception as error:
         log.info(
-            f"Failed to deposit Work and create Docker Service for {docker_name}: {error}."
-            " Will not schedule this task."
+            f"Failed to deposit Work or create Docker Service: {error}. "
+            f"Will not schedule this task."
         )
+
+        try:
+            work.delete()
+        except Exception as error:
+            log.info(f"Failed to delete dangling Work: {error}.")
+
         return ""
 
 
@@ -353,13 +369,15 @@ def schedule_workflow_job(
 def clear_workflow_buckets(workflow_buckets_name):
     """Function to empty given SPS Buckets collection on-site."""
     try:
-        buckets_api = Buckets()
+        http_context = HTTPContext()
+        buckets_api = http_context.buckets
         # Bucket API only allows 100 deletes per request
         buckets_list = buckets_api.view(
             query={"pipeline": workflow_buckets_name},
             limit=100,
             projection={"id": True},
         )
+        log.info(f"Initial buckets entries: {buckets_list}")
         while len(buckets_list) != 0:
             buckets_list = buckets_api.view(
                 query={"pipeline": workflow_buckets_name},
@@ -374,8 +392,9 @@ def clear_workflow_buckets(workflow_buckets_name):
                 limit=100,
                 projection={"id": True},
             )
+        log.info(f"Final buckets entries: {buckets_list}")
     except Exception as error:
-        pass
+        print(error)
 
 
 @click.command()
@@ -390,11 +409,13 @@ def clear_workflow_results(workflow_results_name):
     log.setLevel(logging.INFO)
 
     try:
-        results_api = Results()
+        http_context = HTTPContext()
+        results_api = http_context.results
         # Results API only allows 10 deletes per request
         results_list = results_api.view(
             query={}, pipeline=workflow_results_name, limit=10, projection={"id": 1}
         )
+        log.info(f"Initial results entries: {results_list}")
         while len(results_list) != 0:
             result_ids_to_delete = [result["id"] for result in results_list]
             log.info(f"Will delete results entries with ids: {result_ids_to_delete}")
@@ -404,6 +425,7 @@ def clear_workflow_results(workflow_results_name):
             results_list = results_api.view(
                 query={}, pipeline=workflow_results_name, limit=10, projection={"id": 1}
             )
+        log.info(f"Final results entries: {results_list}")
     except Exception as error:
         pass
 
@@ -411,7 +433,8 @@ def clear_workflow_results(workflow_results_name):
 def get_work_from_buckets(workflow_buckets_name, work_id, failover_to_results):
     log.setLevel(logging.INFO)
 
-    workflow_buckets_api = Buckets()
+    http_context = HTTPContext()
+    workflow_buckets_api = http_context.buckets
     workflow_buckets_list = workflow_buckets_api.view(
         query={"pipeline": workflow_buckets_name, "id": work_id},
         limit=1,
@@ -450,7 +473,8 @@ def get_work_from_buckets(workflow_buckets_name, work_id, failover_to_results):
 def get_work_from_results(workflow_results_name, work_id, failover_to_buckets):
     log.setLevel(logging.INFO)
 
-    workflow_results_api = Results()
+    http_context = HTTPContext()
+    workflow_results_api = http_context.results
     workflow_results_list = workflow_results_api.view(
         query={"id": work_id},
         pipeline=workflow_results_name,

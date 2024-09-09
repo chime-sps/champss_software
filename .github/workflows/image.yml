@@ -3,18 +3,23 @@ name: Image
 on:
  workflow_call:
     inputs:
+      image_name:
+        type: string
+        default: 'champss_software'
       image_tag:
         type: string
       build_locally:
         type: boolean
+      runs_on:
+        type: string
+        default: 'sps-compute2'
 
 jobs:
   build-image-and-push-to-remote:
     # NEEDS to run on self-hosted GitHub runners because spshuff requires AVX2
-    # supported CPUs for the image to build. Use testbed, as steps will be too slow
-    # when processing is running on site + testbed upload speed is much faster
+    # supported CPUs for the image to build
     if: ${{ inputs.build_locally == false }}
-    runs-on: testbed
+    runs-on: ${{ inputs.runs_on }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -36,12 +41,12 @@ jobs:
           file: Dockerfile
           target: runtime
           tags: |
-            chimefrb/champss_software:${{ inputs.image_tag }}
+            chimefrb/${{ inputs.image_name }}:${{ inputs.image_tag }}
           ssh: "github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}}"
           push: true
   build-image-and-save-to-local:
     if: ${{ inputs.build_locally == true }}
-    runs-on: testbed
+    runs-on: ${{ inputs.runs_on }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -54,4 +59,4 @@ jobs:
         with:
           install: true
       - run: |
-          DOCKER_BUILDKIT=1 docker build -f Dockerfile -t chimefrb/champss_software:${{ inputs.image_tag }} --ssh github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}} --load .
+          DOCKER_BUILDKIT=1 docker build -f Dockerfile -t chimefrb/${{ inputs.image_name }}:${{ inputs.image_tag }} --ssh github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}} --load .

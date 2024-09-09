@@ -14,6 +14,7 @@ from astropy.coordinates import (
 from astropy.time import Time
 from beamformer.utilities.common import find_closest_pointing
 from folding.archive_utils import get_SN
+from multiday_search.load_profiles import load_unwrapped_archives, unwrap_profiles
 from numba import njit, prange, set_num_threads
 from numpy import unravel_index
 from scipy.ndimage import uniform_filter
@@ -52,16 +53,6 @@ def phase_loop(profiles, dts, f0s, f1s):
     return chi2_grid
 
 
-def unwrap_profiles(profiles, dts, f0, f1):
-    npbin = profiles.shape[1]
-    dphis = f0 * dts + 0.5 * f1 * dts**2
-    i_phis = (dphis * npbin).astype("int")
-    profs_shifted = np.zeros_like(profiles)
-    for k, prof in enumerate(profiles):
-        profs_shifted[k] = np.roll(prof, -i_phis[k])
-    return profs_shifted
-
-
 class ExploreGrid:
     def __init__(self, data, f0_lims, f1_lims, f0_points, f1_points):
         self.f0_lims = f0_lims
@@ -75,6 +66,7 @@ class ExploreGrid:
         self.RA = data["RA"]
         self.DEC = data["DEC"]
         self.directory = data["directory"]
+        self.archives = data["archives"]
 
         self.f0_points = f0_points
         self.f1_points = f1_points
@@ -85,10 +77,9 @@ class ExploreGrid:
         self.chi2_grid = phase_loop(self.profiles, self.dts, f0_ax, f1_ax)
 
         index_of_maximum = unravel_index(self.chi2_grid.argmax(), self.chi2_grid.shape)
-        print(index_of_maximum, f0_ax[index_of_maximum[0]], f1_ax[index_of_maximum[1]])
 
         df0_best = f0_ax[index_of_maximum[0]]
-        f0_best = df0_best + self.f0_incoherent
+        f0_best = -df0_best + self.f0_incoherent
         f1_best = f1_ax[index_of_maximum[1]]
         self.max_indeces = index_of_maximum
 
@@ -104,9 +95,9 @@ class ExploreGrid:
         print("SNR: " + str(np.max(self.SNmax)))
         return self.f0s, self.f1s, self.chi2_grid, self.optimal_parameters
 
-    def plot(self, squeeze=True):
-        plt.rcParams.update({"font.size": 18})
-        if squeeze:
+    def plot(self, fullplot=True):
+        plt.rcParams.update({"font.size": 25})
+        if fullplot:
             fig, axs = plt.subplots(
                 2,
                 3,
@@ -115,21 +106,22 @@ class ExploreGrid:
             )
         else:
             fig, axs = plt.subplots(
-                2,
-                2,
-                figsize=(20, 15),
-                gridspec_kw={"width_ratios": [1, 2], "height_ratios": [1, 2]},
+                2, 2, figsize=(20, 20), gridspec_kw={"width_ratios": [1, 2]}
             )
+        profile = self.profiles_aligned.sum(0)
+        profile2D = self.profiles_aligned
+        profile = np.tile(profile, 2)
+        profile2D = np.tile(profile2D, (1, 2))
 
         # Search grid plot
         f0best_plot = (self.optimal_parameters[0] - self.f0_incoherent) * 1e6
         f1best_plot = self.optimal_parameters[1] * 1e15
         axs[0, 0].pcolormesh(1e6 * self.f0s, 1e15 * self.f1s, self.chi2_grid.T)
         axs[0, 0].scatter(
-            f0best_plot, f1best_plot, color="tab:orange", marker="x", s=20
+            -f0best_plot, f1best_plot, color="tab:orange", marker="x", s=20
         )
-        axs[0, 0].set_xlabel(r"$\Delta f_0 (\mu Hz)$", fontsize=18)
-        axs[0, 0].set_ylabel(r"$f_1$ (1e-15 s/s)", fontsize=18)
+        axs[0, 0].set_xlabel(r"$\Delta f_0 (\mu Hz)$")
+        axs[0, 0].set_ylabel(r"$f_1$ (1e-15 s/s)")
 
         # Aliasing plot
         axs[1, 0].plot(
@@ -139,36 +131,39 @@ class ExploreGrid:
         axs[1, 0].set_xlabel(r"$\chi^{2}$")
 
         plt.subplots_adjust(hspace=0.15)
-        plt.subplots_adjust(wspace=0.2)
+        plt.subplots_adjust(wspace=0.4)
+        axs[1, 0].set_xticks(
+            axs[1, 0].get_xticks(), axs[1, 0].get_xticklabels(), rotation=45, ha="right"
+        )
 
         # Total summed pulse profile plot
         axs[0, 1].plot(
-            np.linspace(0, 1, self.ngate),
-            np.sum(self.profiles_aligned, 0),
-            color="k",
-            label="Aligned sum",
+            np.linspace(0, 2, self.ngate * 2), profile, color="k", label="Aligned sum"
         )
         axs[0, 1].label_outer()
-        axs[0, 1].set_xlim(0, 1)
+        axs[0, 1].set_xlim(0, 2)
 
+        # Days vs Phase vs Intensity plot
         axs[1, 1].imshow(
-            self.profiles_aligned,
+            profile2D,
             aspect="auto",
             interpolation="Nearest",
-            extent=[0, 1, 0, len(self.profiles_aligned)],
+            extent=[0, 2, 0, len(self.profiles_aligned)],
         )
         axs[1, 1].set_xlabel("Phase")
         axs[1, 1].set_ylabel("Days")
+        axs[1, 1].xaxis.get_major_ticks()[0].label1.set_visible(False)
 
-        # Frequency vs phase plot
+        SNR = float(np.max(self.SNmax))
+        F0plot = round(self.optimal_parameters[0], 6)
+        F1plot = round(self.optimal_parameters[1] * 1e15, 2) / 1e15
+        param_txt1 = f"$f_0$: {F0plot}\n$f_1$: {F1plot}\nSNR: {round(SNR, 2)}"
 
-        param_txt1 = (
-            f"$f_0$: {self.optimal_parameters[0]}\n"
-            f"$f_1$: {self.optimal_parameters[1]}\n"
-            f"SNR: {np.max(self.SNmax)}"
+        param_txt2 = (
+            f"RA (deg): {round(self.RA, 2)}\n"
+            f"DEC (deg): {round(self.DEC, 2)}\n"
+            f"DM: {round(self.DM, 2)}"
         )
-
-        param_txt2 = f"RA (deg): {self.RA}\nDEC (deg): {self.DEC}\nDM: {self.DM}"
 
         gal_coord = SkyCoord(
             ra=self.RA * u.degree, dec=self.DEC * u.degree, frame="icrs"
@@ -178,46 +173,85 @@ class ExploreGrid:
         pointing = find_closest_pointing(self.RA, self.DEC)
         max_dm = pointing.maxdm
 
-        param_txt3 = f"$\\ell$ (deg): {l}\n$\\it{{b}}$ (deg): {b}\nMax DM: {max_dm}"
+        param_txt3 = (
+            f"$\\ell$ (deg): {round(l, 2)}\n"
+            f"$\\it{{b}}$ (deg): {round(b, 2)}\n"
+            f"Max DM: {round(max_dm,2)}"
+        )
 
         axs[0, 1].text(
             0,
             1.3,
             param_txt1,
             transform=axs[0, 0].transAxes,
-            fontsize=18,
+            fontsize=25,
             va="top",
             ha="left",
             backgroundcolor="white",
         )
         axs[0, 1].text(
-            1.5,
+            1.7,
             1.3,
             param_txt2,
             transform=axs[0, 0].transAxes,
-            fontsize=18,
+            fontsize=25,
             va="top",
             ha="left",
             backgroundcolor="white",
         )
         axs[0, 1].text(
-            3,
+            4.2,
             1.3,
             param_txt3,
             transform=axs[0, 0].transAxes,
-            fontsize=18,
+            fontsize=25,
             va="top",
             ha="left",
             backgroundcolor="white",
         )
-        directory = (
-            "/data/chime/sps/archives/candidates/"
-            + f"{round(self.RA,2)}"
-            + "_"
-            + f"{round(self.DEC,2)}"
-        )
-        print("Saving diagnostic plot...")
-        plt.savefig(
-            directory
-            + f"/phase_search_{round(self.DM,2)}_{round(self.f0_incoherent,2)}.png"
-        )
+
+        if fullplot:
+            data_T, data_F = load_unwrapped_archives(
+                self.archives, self.optimal_parameters
+            )
+
+            vfmin = np.nanmean(data_F) - 2 * np.nanstd(data_F)
+            vfmax = np.nanmean(data_F) + 5 * np.nanstd(data_F)
+            vtmin = np.nanmean(data_T) - 2 * np.nanstd(data_T)
+            vtmax = np.nanmean(data_T) + 5 * np.nanstd(data_T)
+
+            data_T = np.tile(data_T, (1, 2))
+            data_F = np.tile(data_F, (1, 2))
+            axs[1, 2].imshow(
+                data_F,
+                aspect="auto",
+                interpolation="nearest",
+                vmin=vfmin,
+                vmax=vfmax,
+                extent=[0, 2, 400, 800],
+            )
+            axs[1, 2].set_ylabel("Frequency (MHz)")
+            axs[1, 2].set_xlabel("phase")
+            axs[1, 2].yaxis.tick_left()
+            axs[1, 2].yaxis.set_label_position("left")
+            axs[1, 2].xaxis.get_major_ticks()[0].label1.set_visible(False)
+
+            # Time vs phase plot, stacked observations
+
+            axs[0, 2].imshow(
+                data_T,
+                aspect="auto",
+                interpolation="nearest",
+                extent=[0, 2, 0, data_T.shape[0]],
+            )
+            axs[0, 2].set_ylabel("T (subints)")
+            axs[0, 2].set_xlabel("phase")
+            axs[0, 2].yaxis.tick_left()
+            axs[0, 2].yaxis.set_label_position("left")
+            axs[0, 2].xaxis.get_major_ticks()[0].label1.set_visible(False)
+
+        plot_name = f"{self.directory}/phase_search_{round(self.DM,2)}_{round(self.f0_incoherent,2)}.png"
+        print(f"Saving diagnostic plot to {plot_name}")
+        plt.savefig(plot_name, bbox_inches="tight")
+        plt.close()
+        return plot_name

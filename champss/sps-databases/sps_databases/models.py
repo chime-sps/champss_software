@@ -647,6 +647,7 @@ class KnownSource:
         converter=converters.optional(str),
         on_setattr=convert,  # type: ignore
     )
+    survey = attrib(default=None, converter=str)
 
     @property
     def id(self):
@@ -680,10 +681,12 @@ class FollowUpSource:
     pepoch = attrib(default=0, converter=float, type=float)
     candidate_sigma = attrib(default=0, converter=float, type=float)
     folding_history = attrib(default=[], type=list)
+    coherentsearch_history = attrib(default=[], type=list)
     followup_duration = attrib(default=1, converter=int, type=int)
     path_to_ephemeris = attrib(
         default=None, converter=converters.optional(str), type=str
     )
+    path_to_timfile = attrib(default=None, converter=converters.optional(str), type=str)
     path_to_candidates = attrib(
         default=[],
         validator=validators.optional(

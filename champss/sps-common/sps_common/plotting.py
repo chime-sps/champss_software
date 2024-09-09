@@ -30,14 +30,31 @@ def plot_text(fig, panel, grid_points, candidate):
     text = ""
     if "values" in panel.keys():
         for value in panel["values"]:
-            val_string = truncate_number_string(getattr(candidate, value))
-            text += f"{value}: {val_string} \n"
+            if not value:
+                text += f"\n"
+                continue
+            if isinstance(getattr(candidate, value), dict):
+                val_dict = getattr(candidate, value)
+                for key in val_dict:
+                    val_string = truncate_number_string(val_dict[key])
+                    text += f"{key}: {val_string} \n"
+            else:
+                val_string = truncate_number_string(getattr(candidate, value))
+                text += f"{value}: {val_string} \n"
     if "best_candidate_values" in panel.keys():
         for value in panel["best_candidate_values"]:
-            val_string = truncate_number_string(
-                getattr(candidate.best_candidate, value)
-            )
-            text += f"{value}: {val_string} \n"
+            if not value:
+                continue
+            if isinstance(getattr(candidate.best_candidate, value), dict):
+                val_dict = getattr(candidate.best_candidate, value)
+                for key in val_dict:
+                    val_string = truncate_number_string(val_dict[key])
+                    text += f"{key}: {val_string} \n"
+            else:
+                val_string = truncate_number_string(
+                    getattr(candidate.best_candidate, value)
+                )
+                text += f"{value}: {val_string} \n"
     ax_text.text(0, 1, text, ha="left", va="top", fontsize=10)
 
 
@@ -285,6 +302,16 @@ def plot_scatter_positions(fig, panel, grid_points, candidate):
 
     ax_time_sigma.grid()
     # ax_time_sigma.xaxis.set_tick_params(rotation=30, labelsize=8)
+
+
+def plot_detections_freq_dm(fig, panel, grid_points, candidate):
+    freqs = candidate.detections[:, 1]
+    dms = candidate.detections[:, 0]
+    ax_det_freq_dm = fig.add_subplot(grid_points)
+    ax_det_freq_dm.scatter(freqs, dms, c="black", alpha=0.4)
+    ax_det_freq_dm.set_xlabel("Frequency")
+    ax_det_freq_dm.set_ylabel("DM")
+    ax_det_freq_dm.grid()
 
 
 def plot_candidate(

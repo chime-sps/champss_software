@@ -4,6 +4,7 @@ import datetime
 import enum
 import logging
 import os
+import warnings
 from itertools import repeat
 from multiprocessing import Pool
 
@@ -96,6 +97,8 @@ class SinglePointingCandidate:
 
     injection (bool): bool describing whether or not a given candidate is an injection.
 
+    injection_dict (dict): Dict describing the injection parameters.
+
     ndetections (int): Number of detections clusterered in this candidate.
 
     unique_freq (np.ndarray): Array containing the unique frequencies.
@@ -181,6 +184,8 @@ class SinglePointingCandidate:
     raw_harmonic_powers_array = attrib(type=dict, default=None)
     dm_sigma_1d = attrib(type=dict, default=None)
     sigmas_per_harmonic_sum = attrib(type=dict, default=None)
+    injection = attrib(type=bool, default=False)
+    injection_dict = attrib(type=dict, default={})
     datetimes = attrib(
         validator=deep_iterable(
             member_validator=instance_of(datetime.datetime),
@@ -265,12 +270,15 @@ class SinglePointingCandidate:
     @property
     def dm_max_curve(self):
         """Return the dm curve where the maximum is taken along the frequency axis."""
-        return self.dm_freq_sigma["sigmas"].max(1)
+        return np.nanmax(self.dm_freq_sigma["sigmas"], 1)
 
     @property
     def freq_max_curve(self):
         """Return the freq curve where the maximum is taken along the dm axis."""
-        return self.dm_freq_sigma["sigmas"].max(0)
+        # with np.errstate(all='ignore'):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return np.nanmax(self.dm_freq_sigma["sigmas"], 0)
 
     @property
     def delta_dm(self):
@@ -287,7 +295,7 @@ class SinglePointingCandidate:
         """Return the dm curve for the freq value with the freq value of the cluster."""
         # Another possibility would be using the row containing the maximum sigma,
         # but this may actually be something that was not found by the search
-        best_freq_index = np.argmin(np.abs(self.dm_freq_sigma["freqs"] - self.freq))
+        best_freq_index = np.nanargmin(np.abs(self.dm_freq_sigma["freqs"] - self.freq))
         return self.dm_freq_sigma["sigmas"][:, best_freq_index]
 
     @property
@@ -295,7 +303,7 @@ class SinglePointingCandidate:
         """Return the dm curve for the freq value with the freq value of the cluster."""
         # Another possibility would be using the row containing the maximum sigma,
         # but this may actually be something that was not found by the search
-        best_dm_index = np.argmin(np.abs(self.dm_freq_sigma["dms"] - self.dm))
+        best_dm_index = np.nanargmin(np.abs(self.dm_freq_sigma["dms"] - self.dm))
         return self.dm_freq_sigma["sigmas"][best_dm_index, :]
 
     @property
@@ -306,7 +314,7 @@ class SinglePointingCandidate:
     @property
     def best_raw_harmonic_powers(self):
         """Return the raw harmonic powers at the candidate DM."""
-        best_dm_index = np.argmin(
+        best_dm_index = np.nanargmin(
             np.abs(self.raw_harmonic_powers_array["dms"] - self.dm)
         )
         raw_power_curve = self.raw_harmonic_powers_array["powers"][best_dm_index, :, 0]
@@ -316,13 +324,13 @@ class SinglePointingCandidate:
     def harm_sigma_curve(self):
         """Return sigma as a function of summed harmonics."""
         raw_power_curve = self.best_raw_harmonic_powers
-        dm_sigma_curve = np.zeros(len(raw_power_curve))
-        for i in range(len(dm_sigma_curve)):
+        harm_sigma_curve = np.zeros(len(raw_power_curve))
+        for i in range(len(harm_sigma_curve)):
             # sigma_sum_powers aso accepts array inputs which might be faster
-            dm_sigma_curve[i] = sigma_sum_powers(
+            harm_sigma_curve[i] = sigma_sum_powers(
                 raw_power_curve[: i + 1].sum(), self.num_days * (i + 1)
             )
-        return dm_sigma_curve
+        return harm_sigma_curve
 
     @property
     def masked_harmonics(self):
@@ -336,14 +344,14 @@ class SinglePointingCandidate:
     @property
     def best_harmonic_sum(self):
         """Returns the number of summed harmonics which results in the highest sigma."""
-        best_harmonic_sum_index = np.argmax(self.harm_sigma_curve) + 1
+        best_harmonic_sum_index = np.nanargmax(self.harm_sigma_curve) + 1
         return best_harmonic_sum_index
 
     @property
     def strongest_harmonic_frequency(self):
         """Returns the frequency of the harmonic which has the strongest raw power."""
-        strongest_harm_index = np.argmax(self.best_raw_harmonic_powers)
-        dm_index = np.argmin(np.abs(self.raw_harmonic_powers_array["dms"] - self.dm))
+        strongest_harm_index = np.nanargmax(self.best_raw_harmonic_powers)
+        dm_index = np.nanargmin(np.abs(self.raw_harmonic_powers_array["dms"] - self.dm))
         freq_labels = self.raw_harmonic_powers_array["freqs"][dm_index, :, 0]
         strongest_freq = freq_labels[strongest_harm_index]
         return strongest_freq
@@ -373,7 +381,7 @@ class SinglePointingCandidate:
     @property
     def sigma_unweighted(self):
         """Returns the best sigma without correction nsum."""
-        return np.max(self.sigmas_per_harmonic_sum["sigmas_unweighted"])
+        return np.nanmax(self.sigmas_per_harmonic_sum["sigmas_unweighted"])
 
     @property
     def masked_fraction_at_best_sigma(self):
@@ -381,7 +389,7 @@ class SinglePointingCandidate:
         return (
             1
             - self.sigmas_per_harmonic_sum["weight_fraction"][
-                np.argmax(self.sigmas_per_harmonic_sum["sigmas_weighted"])
+                np.nanargmax(self.sigmas_per_harmonic_sum["sigmas_weighted"])
             ]
         )
 
@@ -408,6 +416,8 @@ class SinglePointingCandidate:
             dm_sigma_1d=self.dm_sigma_1d,
             sigmas_per_harmonic_sum=self.sigmas_per_harmonic_sum,
             pspec_freq_resolution=self.pspec_freq_resolution,
+            injection=self.injection,
+            injection_dict=self.injection_dict,
             datetimes=self.datetimes,
         )
         return ret_dict
@@ -441,6 +451,10 @@ class SinglePointingCandidateCollection:
     Attributes
     ----------
     candidates (List[SinglePointingCandidate]): the candidates
+    injections (List(dict)): List describing the injections that were performed
+                            beffore the search
+    injection_indices (List(int)): Indices of the candidates that were injected
+    real_indices (List(int)): Indices of the candidates that were  not injected
     """
 
     candidates = attrib(
@@ -449,6 +463,36 @@ class SinglePointingCandidateCollection:
             iterable_validator=instance_of(list),
         )
     )
+    real_indices = attrib(
+        init=False,
+        validator=deep_iterable(
+            member_validator=instance_of(int),
+            iterable_validator=instance_of(list),
+        ),
+    )
+    injection_indices = attrib(
+        init=False,
+        validator=deep_iterable(
+            member_validator=instance_of(int),
+            iterable_validator=instance_of(list),
+        ),
+    )
+    injections = attrib(
+        validator=deep_iterable(
+            member_validator=instance_of(dict),
+            iterable_validator=instance_of(list),
+        ),
+        default=[],
+    )
+
+    def __attrs_post_init__(self):
+        """Find indices of real detections and injections."""
+        all_indices = np.arange(len(self.candidates))
+        injection_flags = np.asarray(
+            [cand.injection for cand in self.candidates], dtype=bool
+        )
+        self.real_indices = all_indices[~injection_flags]
+        self.injection_indices = all_indices[injection_flags]
 
     @classmethod
     def read(cls, filename, verbose=True):
@@ -466,6 +510,7 @@ class SinglePointingCandidateCollection:
                 ("dm", float),
                 ("nharm", int),
                 ("sigma", float),
+                ("injection", bool),
             ]
             dummy_harm_info = np.array([], dtype=harm_dtype)
 
@@ -476,10 +521,12 @@ class SinglePointingCandidateCollection:
             cand_dict = filter_class_dict(SinglePointingCandidate, cand_dict)
             sp_cand = SinglePointingCandidate(**cand_dict)
             cand_list.append(sp_cand)
-
         if verbose:
             log.info(f"Read {len(cand_list)} candidates from {filename}")
-        return cls(candidates=cand_list)
+        return cls(
+            candidates=cand_list,
+            injections=data.get("injection_dicts", np.empty(0)).tolist(),
+        )
 
     def write(self, filename):
         """Write candidates to npz file."""
@@ -488,6 +535,7 @@ class SinglePointingCandidateCollection:
             cand_dicts.append(spc.as_dict())
         save_dict = dict(
             candidate_dicts=cand_dicts,
+            injection_dicts=self.injections,
         )
         np.savez(filename, **save_dict)
         log.info(f"saved candidates to {filename}")
@@ -529,6 +577,42 @@ class SinglePointingCandidateCollection:
         """Given scalar candidate attribute, return array with those attributes."""
         attribute_list = [getattr(cand, attribute, None) for cand in self.candidates]
         return np.asarray(attribute_list)
+
+    def get_real_candidates(self):
+        """Get candidates which have not been injected."""
+        # Converting to array for easier slicing, could also change the attribute itself to array
+        return np.asarray(self.candidates)[self.real_indices]
+
+    def get_injection_candidates(self):
+        """Get candidates which have been injected."""
+        return np.asarray(self.candidates)[self.injection_indices]
+
+    def test_injection_performance(self, verbose=True):
+        """Return dict containing details fo the injection performance."""
+        injected_candidates = self.get_injection_candidates()
+        injected_indices = np.asarray(
+            [cand.injection_dict["injection_index"] for cand in injected_candidates]
+        )
+        unique_indices, unique_counts = np.unique(injected_indices, return_counts=True)
+        all_injections_count = len(self.injections)
+        injection_candidates_count = len(injected_candidates)
+        recovered_injections = len(unique_indices)
+        if verbose:
+            log.info(f"Injected Pulsars:     {all_injections_count}")
+            log.info(f"Injection Candidates: {injection_candidates_count}")
+            log.info(f"Recovered Injections: {recovered_injections}")
+
+        not_recovered = np.setdiff1d(np.arange(all_injections_count), unique_indices)
+        return_dict = {
+            "all_injections": all_injections_count,
+            "all_injection_candidates": injection_candidates_count,
+            "recovered_injection": recovered_injections,
+            "recovered_injection_indices": unique_indices,
+            "recovered_injection_counts": unique_counts,
+            "not_recovered_indices": not_recovered,
+        }
+
+        return return_dict
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})

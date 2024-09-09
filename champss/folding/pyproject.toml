@@ -4,21 +4,26 @@ version = "0.1.1"
 description = "Folding SPS candidates and known pulsars"
 authors = ["Robert Main <robert.main@mcgill.ca>"]
 readme = "README.md"
+packages = [
+    { include = "folding" },
+    { include = "multiday_search" },
+    { include = "foldutils"},
+]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.8.1,<3.12"
 astropy = "~5.2"
 click = "^8.1.4"
 h5py = "~3.9"
 matplotlib = "^3.7.1"
 numpy = "^1.24.3"
 scipy = "^1.10.1"
-beamformer = {path = "../beamformer"}
-chime-frb-api = {git = "ssh://git@github.com/CHIMEFRB/frb-api"}
-sps-common = {path = "../sps-common"}
-sps-databases = {path = "../sps-databases"}
+beamformer = {path = "../beamformer", develop=true}
+sps-common = {path = "../sps-common", develop=true}
+sps-databases = {path = "../sps-databases", develop=true}
 docker = "^6.1.3"
 slack-sdk = "^3.26.1"
+numba = "^0.58"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
@@ -28,6 +33,8 @@ pytest = "^7.3.2"
 
 [tool.poetry.scripts]
 fold_candidate = "folding.fold_candidate:main"
+confirm_cand = "multiday_search.confirm_cand:main"
+multidayfold_pipeline = "multiday_search.multidayfold_pipeline:main"
 
 [build-system]
 requires = ["poetry-core"]

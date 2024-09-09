@@ -33,6 +33,7 @@ dedisp:
     dm_step: 2
     num_dms_fac: 1
     chunk_size: 40960
+    cpp: True
 ps_creation:
   normalise: False
   barycentring_mode: Fourier   # "Topocentric", "Time" and "Fourier" possible
@@ -138,12 +139,22 @@ ps:
     sigma_min: 5.0
     precompute_harms: True
     use_nsum_per_bin: True
-    dbscan_eps: 1
-    cluster_scale_factor: 10
-    dbscan_min_samples: 5
-    filter_by_nharm: False
-    cluster_dm_cut: 2
-    clustering_max_ndetect: 50000
+    skip_first_n_bins: 5
+    cluster_config:
+      dbscan_eps: 1
+      dm_scale_factor: 0.02
+      freq_scale_factor: 0.9
+      dbscan_min_samples: 5
+      filter_nharm: False
+      cluster_dm_cut: 2
+      max_ndetect: 200000
+      overlap_scale: 1.5
+      metric_combination: replace
+      metric_method: power_overlap_array # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap
+      add_dm_when_replace: True
+      use_sparse: True
+      group_duplicate_freqs: True
+      grouped_freq_dm_scale: 1
 
 cands:
   harmonics: {}
@@ -292,9 +303,19 @@ ps_cumul_stack:
     sigma_min: 6.0
     precompute_harms: True
     use_nsum_per_bin: True
-    dbscan_eps: 1
-    cluster_scale_factor: 10
-    dbscan_min_samples: 5
-    filter_by_nharm: False
-    cluster_dm_cut: 2
-    clustering_max_ndetect: 100000
+    skip_first_n_bins: 5
+    cluster_config:
+      dbscan_eps: 1
+      dm_scale_factor: 0.02
+      freq_scale_factor: 0.9
+      dbscan_min_samples: 5
+      filter_nharm: False
+      cluster_dm_cut: 2
+      max_ndetect: 400000
+      overlap_scale: 1.5
+      metric_combination: replace
+      metric_method: power_overlap_array # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap
+      add_dm_when_replace: True
+      use_sparse: True
+      group_duplicate_freqs: True
+      grouped_freq_dm_scale: 1

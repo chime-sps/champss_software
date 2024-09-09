@@ -29,6 +29,12 @@ New and known sources can be added to the FollowUpSources database using the too
 
 The power spectrum stack candidates do not recover the spin parameters precisely enough to phase-connect between days.  A phase-coherent search to confirm stack candidates is done with confirm_cand.py, which searches a grid of f0, f1 values surrounding the candidate, and computes the chi-squared statistic.
 
+This is now queued through workflow, and uses the FollowUpSources database collection.  The multiday pipeline takes a stack candidate, adds it to the database, folds up to N days, then run the coherent search, and just needs the candidate path as an input:
+
+```
+multidayfold_pipeline --candpath '/data/lkuenkel/mp_sanity_check/new_stack_tests/mp_runs/new_0625_euclidean_no_pos/candidates/Multi_Pointing_Groups_f_2.684_DM_32.788_class_Astro.npz' --db-name "sps-processing"
+```
+
 # Timing
 
 Automatic timing tools are a work in progress..
