@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/chime-sps/champss_software/compare/v0.6.0...v0.6.1) (2024-09-09)
+
+
+### Bug Fixes
+
+* candidate writing during benchmark and datpath import ([5befc95](https://github.com/chime-sps/champss_software/commit/5befc95bfd4e6e74738d838b0e31e5084fc89b36))
+
 ## [0.6.0](https://github.com/chime-sps/champss_software/compare/v0.5.0...v0.6.0) (2024-09-06)
 
 
