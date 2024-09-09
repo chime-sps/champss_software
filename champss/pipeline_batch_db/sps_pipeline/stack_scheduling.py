@@ -86,9 +86,11 @@ def find_monthly_search_commands(
     help="Which Docker Image name to use.",
 )
 @click.option(
-    "--docker-password",
+    "--docker-password-filepath",
+    default="/run/secrets/DOCKER_PASSWORD",
+    required=True,
     type=str,
-    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
+    help="The path to the file containing the DockerHub password.",
 )
 @click.option(
     "--command-file",
@@ -97,18 +99,20 @@ def find_monthly_search_commands(
 )
 def execute_monthly_search_commands(
     docker_image_name,
-    docker_password,
+    docker_password_filepath,
     command_file,
 ):
     with open(command_file) as file:
         all_commands = json.load(file)
+    with open(docker_password_filepath) as docker_password_file:
+        docker_password = docker_password_file.read()
 
     docker_mounts = [
         "/data/chime/sps/raw:/data/chime/sps/raw",
         "/data/chime/sps/sps_processing:/data/chime/sps/sps_processing",
     ]
     workflow_function = "sps_pipeline.pipeline.stack_and_search"
-    workflow_name = "champss-stack-search"
+    workflow_buckets_name = "champss-stack-search"
     clear_workflow_buckets(
         ["--workflow-buckets-name", workflow_name], standalone_mode=False
     )
@@ -132,7 +136,7 @@ def execute_monthly_search_commands(
                 docker_name,
                 docker_memory_reservation,
                 docker_password,
-                workflow_name,
+                workflow_buckets_name,
                 workflow_function,
                 workflow_params,
                 workflow_tags,
