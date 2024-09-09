@@ -182,12 +182,6 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
     type=str,
     help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
-@click.option(
-    "--datpath",
-    default=default_datpath,
-    type=str,
-    help="Path to the raw data folder.",
-)
 def run_all_folding_processes(
     date,
     db_host,
@@ -200,7 +194,6 @@ def run_all_folding_processes(
     docker_image_name,
     docker_service_name_prefix,
     docker_password,
-    datpath,
 ):
     date = convert_date_to_datetime(date)
 
@@ -317,8 +310,14 @@ def run_all_folding_processes(
         " first day."
     ),
 )
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
 def find_all_pipeline_processes(
-    full_transit, db_port, db_host, db_name, complete, date, ndays
+    full_transit, db_port, db_host, db_name, complete, date, ndays, datpath
 ):
     """Find all available processes and add them to the database."""
     date = convert_date_to_datetime(date)
