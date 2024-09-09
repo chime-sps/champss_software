@@ -15,7 +15,7 @@ import pytz
 from beamformer.strategist.strategist import PointingStrategist
 from folding.filter_mpcandidates import Filter
 from sps_databases import db_api, db_utils, models
-from sps_pipeline.pipeline import datpath, main
+from sps_pipeline.pipeline import default_datpath, main
 from sps_pipeline.utils import convert_date_to_datetime, get_pointings_from_list
 from sps_pipeline.workflow import (
     clear_workflow_buckets,
@@ -182,6 +182,12 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
     type=str,
     help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
 def run_all_folding_processes(
     date,
     db_host,
@@ -194,6 +200,7 @@ def run_all_folding_processes(
     docker_image_name,
     docker_service_name_prefix,
     docker_password,
+    datpath,
 ):
     date = convert_date_to_datetime(date)
 
