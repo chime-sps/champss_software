@@ -143,6 +143,7 @@ def main(
             "path_to_plot": plot_name,
         }
     ]
+    coherentsearh_summary["date"] = coherentsearch_summary["date"].strftime("%Y%m%d")
     if write_to_db:
         log.info("Updating FollowUpSource with coherent search results")
         db_api.update_followup_source(
@@ -177,6 +178,7 @@ def main(
                     output.write(line)
 
     explore_grid.plot(fullplot=True)
+    print(coherentsearch_summary)
     return coherentsearch_summary, [], []
 
 
