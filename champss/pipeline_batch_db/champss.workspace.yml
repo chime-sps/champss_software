@@ -51,4 +51,3 @@ deployers:
               o: addr=10.9.50.22,nfsvers=4.0,rw,noatime,nodiratime,soft
               device: ":/data"
       constraints: ["node.labels.compute == true"]
-
