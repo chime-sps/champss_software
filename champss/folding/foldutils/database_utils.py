@@ -175,7 +175,7 @@ def add_mdcand_from_candpath(candpath, date):
 
 
 def add_mdcand_from_psrname(psrname, date):
-    source = db_api.get_known_source_by_names(psrname)
+    source = db_api.get_known_source_by_names(psrname)[0]
 
     f0 = 1 / source.spin_period_s
     ra = source.pos_ra_deg
