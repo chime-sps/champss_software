@@ -151,7 +151,7 @@ def main(
                 db_host,
                 "--nday",
                 nday,
-                "--use_workflow",
+                "--use-workflow",
                 "--docker-image-name",
                 docker_image_name,
                 "--docker-service-name-prefix",
