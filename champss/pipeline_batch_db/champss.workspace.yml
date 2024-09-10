@@ -1,0 +1,53 @@
+workspace: champss
+
+sites:
+  - chime
+
+archive:
+  mounts:
+    chime: "/data/chime/sps/sps_processing/workflow_products/"
+
+http:
+  baseurls:
+    configs:
+      - http://sps-archiver.chime:37015/v2
+      - https://sps.chimenet.ca/workflow/pipelines/v2
+    pipelines:
+      - http://sps-archiver.chime:37015/v2
+      - https://sps.chimenet.ca/workflow/pipelines/v2
+    schedules:
+      - http://sps-archiver.chime:37015/v2
+      - https://sps.chimenet.ca/workflow/pipelines/v2
+    buckets:
+      - http://sps-archiver.chime:8004
+      - https://sps.chimenet.ca/workflow/buckets/
+    results:
+      - http://sps-archiver.chime:8005
+      - https://sps.chimenet.ca/workflow/results/
+
+config:
+  archive:
+    results: true
+    plots:
+      methods: ["bypass"]
+      storage: "posix"
+    products:
+      methods: ["bypass"]
+      storage: "posix"
+  slack:
+
+deployers:
+  chime:
+    docker:
+      client_url: tcp://sps-archiver.chime:2375
+      volumes:
+        sps-data:
+          type: "volume"
+          target: "/data/"
+          driver_config:
+            driver: local
+            driver_opts:
+              type: nfs
+              o: addr=10.9.50.22,nfsvers=4.0,rw,noatime,nodiratime,soft
+              device: ":/data"
+      constraints: ["node.labels.compute == true"]

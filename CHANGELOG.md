@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.6.1](https://github.com/chime-sps/champss_software/compare/v0.6.0...v0.6.1) (2024-09-09)
+
+
+### Bug Fixes
+
+* candidate writing during benchmark and datpath import ([5befc95](https://github.com/chime-sps/champss_software/commit/5befc95bfd4e6e74738d838b0e31e5084fc89b36))
+
+## [0.6.0](https://github.com/chime-sps/champss_software/compare/v0.5.0...v0.6.0) (2024-09-06)
+
+
+### Features
+
+* allow custom basepath, remove redundant search for files, move benchmark to site ([#67](https://github.com/chime-sps/champss_software/issues/67)) ([2b9db5f](https://github.com/chime-sps/champss_software/commit/2b9db5f508c57d006251f428dc26f1c2ccbb5fcd))
+* Refine clustering ([#60](https://github.com/chime-sps/champss_software/issues/60)) ([6c9ff4c](https://github.com/chime-sps/champss_software/commit/6c9ff4cc89fe2374ce2ff93d47863fb81159ac5b))
+
+
+### Bug Fixes
+
+* Fixed benchmark ([#64](https://github.com/chime-sps/champss_software/issues/64)) ([e951714](https://github.com/chime-sps/champss_software/commit/e9517140884fe531dedf84c6545d981f93c20154))
+* **pyproject.toml:** replace chime-frb-api with workflow-core package ([5500ba7](https://github.com/chime-sps/champss_software/commit/5500ba7fb9d4388659dbbe665db2cd65f773184e))
+
+## [0.5.0](https://github.com/chime-sps/champss_software/compare/v0.4.0...v0.5.0) (2024-08-23)
+
+
+### Features
+
+* Predict sigma of injection ([#58](https://github.com/chime-sps/champss_software/issues/58)) ([281e982](https://github.com/chime-sps/champss_software/commit/281e9827aa14edfb948e114f585cd6ee998917da))
+
+
+### Bug Fixes
+
+* injection PR and precommit files ([091e317](https://github.com/chime-sps/champss_software/commit/091e317d5b2b07ed6525dd320dd5af5a415dcbb1))
+* ks filter for single day pipeline ([#59](https://github.com/chime-sps/champss_software/issues/59)) ([33a4430](https://github.com/chime-sps/champss_software/commit/33a443091d583f263c8316466bac58c387e77dda))
+
 ## [0.4.0](https://github.com/chime-sps/champss_software/compare/v0.3.1...v0.4.0) (2024-07-22)
 
 

@@ -15,7 +15,7 @@ from sps_pipeline.workflow import schedule_workflow_job
 log = logging.getLogger()
 
 
-def find_all_dates_with_data(ra, dec, basepath, Nday=10):
+def find_all_dates_with_data(ra, dec, basepath, nday=10):
     log.setLevel(logging.INFO)
 
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
@@ -43,7 +43,7 @@ def find_all_dates_with_data(ra, dec, basepath, Nday=10):
                 print(filepath, len(files))
                 dates_with_data.append(date.strftime("%Y%m%d"))
 
-            if len(dates_with_data) >= Nday:
+            if len(dates_with_data) >= nday:
                 return dates_with_data
 
     return dates_with_data
@@ -81,6 +81,17 @@ def find_all_dates_with_data(ra, dec, basepath, Nday=10):
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--nday",
+    default=10,
+    type=int,
+    help="Number of days to fold.",
+)
+@click.option(
+    "--use-workflow",
+    is_flag=True,
+    help="Queue folding jobs in parallel into Workflow, otherwise run locally.",
+)
+@click.option(
     "--workflow-buckets-name",
     default="champss-processing",
     type=str,
@@ -113,6 +124,8 @@ def main(
     db_host,
     db_name,
     foldpath,
+    nday,
+    use_workflow,
     workflow_buckets_name,
     docker_image_name,
     docker_service_name_prefix,
@@ -125,44 +138,64 @@ def main(
     dm = source.dm
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    dates_with_data = find_all_dates_with_data(ra, dec, "/data/chime/sps/raw/", Nday=10)
+    dates_with_data = find_all_dates_with_data(
+        ra, dec, "/data/chime/sps/raw/", nday=nday
+    )
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
-        docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
-        docker_memory_reservation = (nchan / 1024) * 8
-        docker_mounts = [
-            "/data/chime/sps/raw:/data/chime/sps/raw",
-            f"{foldpath}:{foldpath}",
-        ]
+        if use_workflow:
+            docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
+            docker_memory_reservation = (nchan / 1024) * 8
+            docker_mounts = [
+                "/data/chime/sps/raw:/data/chime/sps/raw",
+                f"{foldpath}:{foldpath}",
+            ]
 
-        workflow_function = "folding.fold_candidate.main"
-        workflow_params = {
-            "date": date,
-            "fs_id": fs_id,
-            "db_host": db_host,
-            "db_port": db_port,
-            "db_name": db_name,
-            "write_to_db": True,
-            "using_workflow": True,
-        }
-        workflow_tags = [
-            "fold",
-            "multiday",
-            date,
-            fs_id,
-        ]
+            workflow_function = "folding.fold_candidate.main"
+            workflow_params = {
+                "date": date,
+                "fs_id": fs_id,
+                "db_host": db_host,
+                "db_port": db_port,
+                "db_name": db_name,
+                "write_to_db": True,
+                "using_workflow": True,
+            }
+            workflow_tags = [
+                "fold",
+                "multiday",
+                date,
+                fs_id,
+            ]
 
-        schedule_workflow_job(
-            docker_image_name,
-            docker_mounts,
-            docker_name,
-            docker_memory_reservation,
-            docker_password,
-            workflow_buckets_name,
-            workflow_function,
-            workflow_params,
-            workflow_tags,
-        )
+            schedule_workflow_job(
+                docker_image_name,
+                docker_mounts,
+                docker_name,
+                docker_memory_reservation,
+                docker_password,
+                workflow_buckets_name,
+                workflow_function,
+                workflow_params,
+                workflow_tags,
+            )
+        else:
+            fold_candidate.main(
+                args=[
+                    "--date",
+                    str(date),
+                    "--fs_id",
+                    str(fs_id),
+                    "--db-host",
+                    str(db_host),
+                    "--db-port",
+                    str(db_port),
+                    "--db-name",
+                    str(db_name),
+                    "--write-to-db",
+                ],
+                standalone_mode=False,
+            )
 
 
 if __name__ == "__main__":

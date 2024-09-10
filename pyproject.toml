@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "champss"
-version = "0.4.0"
+version = "0.6.1"
 description = "CHAMPSS Codebase"
 authors = ["CHAMPSS <chime_spawg@physics.mcgill.>"]
 license = "GPLv3"
@@ -10,7 +10,7 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.8.1,<3.12"
 beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 beamformer = {path = "./champss/beamformer", develop=true}
 candidate-processor = {path = "./champss/candidate-processor", develop=true}

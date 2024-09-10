@@ -115,25 +115,27 @@ class PowerSpectraSearch:
         Filter all known sources that were ever above this threshold in an observation of this pointing
     """
 
+    cluster_config = attribute(validator=instance_of(dict))
     num_harm = attribute(validator=instance_of(int), default=32)
     sigma_min = attribute(validator=instance_of(float), default=5.0)
     padded_length = attribute(validator=instance_of(int), default=1048576)
     precompute_harms = attribute(validator=instance_of(bool), default=True)
     num_threads = attribute(validator=instance_of(int), default=8)
     cluster_scale_factor: float = attribute(default=10)
-    dbscan_eps: float = attribute(default=0.125)
-    dbscan_min_samples: int = attribute(default=5)
-    clustering_max_ndetect: int = attribute(default=30000)
-    group_duplicate_freqs: bool = attribute(default=True)
-    clustering_metric_method: str = attribute(default="rhp_norm_by_min_nharm")
-    clustering_metric_combination: str = attribute(default="multiply")
-    clustering_method: str = attribute(default="DBSCAN")
-    clustering_min_freq: float = attribute(default=0)
-    clustering_ignore_nharm1: bool = attribute(default=False)
-    filter_by_nharm: bool = attribute(default=False)
+    # dbscan_eps: float = attribute(default=0.125)
+    # dbscan_min_samples: int = attribute(default=5)
+    # clustering_max_ndetect: int = attribute(default=30000)
+    # group_duplicate_freqs: bool = attribute(default=True)
+    # clustering_metric_method: str = attribute(default="rhp_norm_by_min_nharm")
+    # clustering_metric_combination: str = attribute(default="multiply")
+    # clustering_method: str = attribute(default="DBSCAN")
+    # clustering_min_freq: float = attribute(default=0)
+    # clustering_ignore_nharm1: bool = attribute(default=False)
+    # filter_by_nharm: bool = attribute(default=False)
     use_nsum_per_bin: bool = attribute(default=False)
     mp_chunk_size: bool = attribute(default=10)
-    cluster_dm_cut: bool = attribute(default=-1)
+    skip_first_n_bins: int = attribute(default=2)
+    # cluster_dm_cut: bool = attribute(default=-1)
     known_source_threshold: float = attribute(default=np.inf)
     full_harm_bins = attribute(init=False)
     update_db = attribute(default=True, validator=instance_of(bool))
@@ -159,27 +161,6 @@ class PowerSpectraSearch:
             32,
         ], "The number of harmonics must be a power of 2 up to 32"
 
-    @clustering_metric_method.validator
-    def _validate_metric_method(self, attribute, value):
-        assert value in [
-            "rhp_norm_by_min_nharm",
-            "rhp_overlap",
-        ], "metric_method must be either 'rhp_norm_by_min_nharm' or 'rhp_overlap'"
-
-    @clustering_metric_combination.validator
-    def _validate_metric_combination(self, attribute, value):
-        assert value in [
-            "multiply",
-            "replace",
-        ], "metric_combination must be either 'multiply' or 'replace'"
-
-    @clustering_method.validator
-    def _validate_clustering_method(self, attribute, value):
-        assert value in [
-            "DBSCAN",
-            "HDBSCAN",
-        ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
-
     def search(
         self,
         pspec,
@@ -187,6 +168,7 @@ class PowerSpectraSearch:
         injection_indices,
         only_injections,
         cutoff_frequency,
+        scale_injections=False,
     ):
         """
         Run the search.
@@ -202,12 +184,38 @@ class PowerSpectraSearch:
         inject: bool
             whether or not to inject an artificial pulse into the power spectrum
 
+        injection_path: str
+            Path to injection file or string describing default injection type
+
+        injection_indices: list
+            Indices of injection file entries that are injected
+
+        only_injections: bool
+            Whether non-injections are filtered out. Default: False
+
+        cutoff_frequency: float
+            Highest frequency allowed for a candidate/detection. Default: 100
+
+        scale_injection: bool
+            Whether to scale the injection so that the detected sigma should be
+            the same as the input sigma. Default: False
+
         Returns
         =======
         ps_detections: PowerSpectraDetectionClusters
             PowerSpectraDetectionClusters object with the properties of all the
             detections clusters from the pointing.
         """
+        ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
+        # compute harmonic bins based on power spectra properties
+        if not self.precompute_harms:
+            self.full_harm_bins = np.vstack(
+                (
+                    np.arange(0, ps_length),
+                    harmonic_sum(self.num_harm, np.zeros(ps_length))[1],
+                )
+            ).astype(np.int32)
+
         if injection_path is not None:
             presets = [
                 "gaussian",
@@ -220,47 +228,44 @@ class PowerSpectraSearch:
             ]
             if injection_path in presets:
                 profile = injection_path
-                injection_bins_original, injection_DMs = ps_inject.main(pspec, profile)
+                injection_dict = ps_inject.main(
+                    pspec,
+                    self.full_harm_bins,
+                    profile,
+                    scale_injections=scale_injections,
+                )
+                injection_dicts = injection_dict
             else:
-                injection_bins_original = []
-                injection_DMs = []
+                injection_dicts = []
                 with open(injection_path) as file:
-                    data = yaml.load(file, Loader=yaml.Loader)
+                    injection_list = yaml.load(file, Loader=yaml.Loader)
+                    # injection_list are the initial injection parameters
+                    # injection_dicts are final injection parameters
+                    # Some entries from injection_list may create multiple injection or none
                     if len(injection_indices) == 0:
-                        injection_indices = np.arange(len(data))
+                        injection_indices = np.arange(len(injection_list))
                     for injection_index in injection_indices:
-                        log.info(f"DM: {data[injection_index]['DM']}")
-                        log.info(f"sigma: {data[injection_index]['sigma']}")
-                        log.info(f"frequency: {data[injection_index]['frequency']}")
-                        pulse = np.array(data[injection_index]["profile"])
-                        frequency = data[injection_index]["frequency"]
-                        DM = data[injection_index]["DM"]
-                        sigma = data[injection_index]["sigma"]
-
-                        profile = [pulse, sigma, frequency, DM]
-
-                        current_injection_bins, current_injection_DMs = ps_inject.main(
-                            pspec, profile
+                        log.info(f"DM: {injection_list[injection_index]['DM']}")
+                        log.info(f"sigma: {injection_list[injection_index]['sigma']}")
+                        log.info(
+                            f"frequency: {injection_list[injection_index]['frequency']}"
                         )
 
-                        # injection_DMs are indices of the altered injection trials
-                        # injection_bins_original and injection_DMs are lists of lists
-                        injection_bins_original.extend(current_injection_bins)
-                        injection_DMs.extend(current_injection_DMs)
+                        injection_dict = injection_list[injection_index]
+
+                        injection_dict = ps_inject.main(
+                            pspec,
+                            self.full_harm_bins,
+                            injection_dict,
+                            scale_injections=scale_injections,
+                        )
+                        injection_dicts.extend(injection_dict)
+            for injection_index, injection_dict in enumerate(injection_dicts):
+                injection_dict["injection_index"] = injection_index
         else:
-            injection_DMs = []
-            injection_bins_original = []
+            injection_dicts = []
             log.info("No artificial pulse injected.")
         search_start = time.time()
-        ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
-        # compute harmonic bins based on power spectra properties
-        if not self.precompute_harms:
-            self.full_harm_bins = np.vstack(
-                (
-                    np.arange(0, len(ps_length)),
-                    harmonic_sum(self.num_harm, np.zeros(len(ps_length)))[1],
-                )
-            ).astype(np.int32)
 
         filtered_sources = []
         if self.known_source_threshold is not np.inf:
@@ -288,7 +293,7 @@ class PowerSpectraSearch:
                 self.full_harm_bins[dummy_harmonics != 0] = 0
 
         # Calculate the used number of each days in each pixel for each harmonic sum
-        # Fromt that calculate the power_cutoff.
+        # From that calculate the power_cutoff.
         # Calculating for each DM trial would be slower.
         # The harmonics are also currently hard-coded in the search routine currently
         all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
@@ -336,7 +341,7 @@ class PowerSpectraSearch:
                 ),
             ),
             ("sigma", float),
-            ("injection", bool),
+            ("injection", int),
         ]
         # multiprocessing pool to run the search as a parallel process.
         log.info(
@@ -376,9 +381,9 @@ class PowerSpectraSearch:
                 pspec.freq_labels,
                 nsum_per_harmonic,
                 power_cutoff_per_harmonic,
-                injection_bins_original,
-                injection_DMs,
+                injection_dicts,
                 cutoff_frequency,
+                self.skip_first_n_bins,
             ),
             zip(dm_indices, dm_split),
         )
@@ -397,20 +402,24 @@ class PowerSpectraSearch:
             log.warning("No detections made. Further processing will not be completed.")
             return None
         log.info("Clustering the detections")
-        clusterer_dict = dict(
-            cluster_scale_factor=self.cluster_scale_factor,
-            dbscan_eps=self.dbscan_eps,
-            dbscan_min_samples=self.dbscan_min_samples,
-            max_ndetect=self.clustering_max_ndetect,
+        # clusterer_dict = dict(
+        #     cluster_scale_factor=self.cluster_scale_factor,
+        #     dbscan_eps=self.dbscan_eps,
+        #     dbscan_min_samples=self.dbscan_min_samples,
+        #     max_ndetect=self.clustering_max_ndetect,
+        #     sigma_detection_threshold=self.sigma_min,
+        #     group_duplicate_freqs=self.group_duplicate_freqs,
+        #     metric_method=self.clustering_metric_method,
+        #     metric_combination=self.clustering_metric_combination,
+        #     clustering_method=self.clustering_method,
+        #     min_freq=self.clustering_min_freq,
+        #     ignore_nharm1=self.clustering_ignore_nharm1,
+        # )
+        clusterer = Clusterer(
+            **self.cluster_config,
             sigma_detection_threshold=self.sigma_min,
-            group_duplicate_freqs=self.group_duplicate_freqs,
-            metric_method=self.clustering_metric_method,
-            metric_combination=self.clustering_metric_combination,
-            clustering_method=self.clustering_method,
-            min_freq=self.clustering_min_freq,
-            ignore_nharm1=self.clustering_ignore_nharm1,
+            num_threads=self.num_threads,
         )
-        clusterer = Clusterer(**clusterer_dict)
         cluster_dm_spacing = pspec.dms[1] - pspec.dms[0]
         cluster_df_spacing = pspec.freq_labels[1]
         (
@@ -423,9 +432,6 @@ class PowerSpectraSearch:
             cluster_dm_spacing,
             cluster_df_spacing,
             plot_fname="",
-            filter_nharm=self.filter_by_nharm,
-            remove_harm_idx=False,
-            cluster_dm_cut=self.cluster_dm_cut,
             only_injections=only_injections,
         )
 
@@ -441,7 +447,10 @@ class PowerSpectraSearch:
                 }
 
                 db_api.update_observation(pspec.obs_id[0], payload)
-
+        for injection_index, injection_dict in enumerate(injection_dicts):
+            # remove unneeded dict entries
+            injection_dict.pop("bins")
+            injection_dict.pop("dms")
         return (
             PowerSpectraDetectionClusters(
                 clusters=clusters,
@@ -453,6 +462,7 @@ class PowerSpectraSearch:
                 freq_spacing=cluster_df_spacing,
                 obs_id=pspec.obs_id,
                 datetimes=pspec.datetimes,
+                injection_dicts=injection_dicts,
             ),
             detections,
         )
@@ -467,9 +477,9 @@ class PowerSpectraSearch:
         freq_labels,
         nsum_per_harmonic,
         power_cutoff_per_harmonic,
-        injection_bins_original,
-        injection_DMs,
+        injection_dicts,
         cutoff_frequency,
+        skip_n_bins,
         dm_indices,
         dms,
     ):
@@ -514,8 +524,9 @@ class PowerSpectraSearch:
             Is 2D if self.use_nsum_per_bin otherwise 1D.
             In the 2D case the power cutoff is given for all frequency bins.
 
-        injection_bins_original: list
-            Bins at which a pulse was injected. [] if none
+        injection_dicts: list
+            Dictionaries containing the injection specifics, Fields "bins" and "dms" are
+            important here.
 
         dm_tuple: (int, float)
             The DM of the power spectrum to search and the index of the dm trial.
@@ -573,8 +584,9 @@ class PowerSpectraSearch:
                     detection_freq = freq_labels[idx] / harm
                     # skipping candidates with period less than 10 time samples
 
-                    if detection_freq <= 2 * MIN_SEARCH_FREQ or detection_freq > (
-                        cutoff_frequency / 1000 / TSAMP
+                    if (
+                        detection_freq <= skip_n_bins * MIN_SEARCH_FREQ
+                        or detection_freq > cutoff_frequency
                     ):
                         continue
 
@@ -609,17 +621,17 @@ class PowerSpectraSearch:
                             replace_last = True
 
                     sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
-                    is_injection = False
+                    injected_index = -1
 
-                    for injected_bins, injected_dms in zip(
-                        injection_bins_original, injection_DMs
-                    ):
+                    for list_index, injection_dict in enumerate(injection_dicts):
+                        injected_bins = injection_dict["bins"]
+                        injected_dms = injection_dict["dms"]
                         if dm_index in injected_dms:
                             injection_overlap = np.intersect1d(
                                 sorted_harm_bins, injected_bins
                             )
                             if injection_overlap.size != 0:
-                                is_injection = True
+                                injected_index = list_index
 
                     if replace_last:
                         detection_list[-1] = (
@@ -638,7 +650,7 @@ class PowerSpectraSearch:
                                 )
                             ),
                             sigma,
-                            is_injection,
+                            injected_index,
                         )
                     else:
                         detection_list.append(
@@ -659,7 +671,7 @@ class PowerSpectraSearch:
                                     )
                                 ),
                                 sigma,
-                                is_injection,
+                                injected_index,
                             )
                         )
                     last_detection_freq = detection_freq

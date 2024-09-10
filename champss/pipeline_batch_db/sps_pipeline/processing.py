@@ -15,7 +15,7 @@ import pytz
 from beamformer.strategist.strategist import PointingStrategist
 from folding.filter_mpcandidates import Filter
 from sps_databases import db_api, db_utils, models
-from sps_pipeline.pipeline import datpath, main
+from sps_pipeline.pipeline import default_datpath, main
 from sps_pipeline.utils import convert_date_to_datetime, get_pointings_from_list
 from sps_pipeline.workflow import (
     clear_workflow_buckets,
@@ -310,8 +310,14 @@ def run_all_folding_processes(
         " first day."
     ),
 )
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
 def find_all_pipeline_processes(
-    full_transit, db_port, db_host, db_name, complete, date, ndays
+    full_transit, db_port, db_host, db_name, complete, date, ndays, datpath
 ):
     """Find all available processes and add them to the database."""
     date = convert_date_to_datetime(date)
@@ -818,8 +824,8 @@ def start_processing_manager(
 
             # Start of pipeline phase
             if run_pipeline:
-                find_all_pipeline_processes(
-                    [
+                processes, [], [] = find_all_pipeline_processes.main(
+                    args=[
                         "--db-host",
                         db_host,
                         "--db-port",
@@ -874,13 +880,13 @@ def start_processing_manager(
                 workflow_buckets_name = (
                     f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
                 )
-                clear_workflow_buckets(
-                    ["--workflow-buckets-name", workflow_buckets_name],
+                clear_workflow_buckets.main(
+                    args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
 
-                run_all_pipeline_processes(
-                    [
+                run_all_pipeline_processes.main(
+                    args=[
                         "--db-host",
                         db_host,
                         "--db-port",
@@ -1031,8 +1037,8 @@ def start_processing_manager(
                 workflow_buckets_name = (
                     f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
                 )
-                clear_workflow_buckets(
-                    ["--workflow-buckets-name", workflow_buckets_name],
+                clear_workflow_buckets.main(
+                    args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
 
@@ -1101,8 +1107,8 @@ def start_processing_manager(
 
             # Start of folding phase
             if run_folding:
-                processes, [], [] = find_all_folding_processes(
-                    [
+                processes, [], [] = find_all_folding_processes.main(
+                    args=[
                         "--date",
                         date_to_process,
                         "--db-host",
@@ -1124,13 +1130,13 @@ def start_processing_manager(
                 workflow_buckets_name = (
                     f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
                 )
-                clear_workflow_buckets(
-                    ["--workflow-buckets-name", workflow_buckets_name],
+                clear_workflow_buckets.main(
+                    args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
 
-                run_all_folding_processes(
-                    [
+                run_all_folding_processes.main(
+                    args=[
                         "--date",
                         date_to_process,
                         "--db-host",

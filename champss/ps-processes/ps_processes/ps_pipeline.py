@@ -193,6 +193,7 @@ class PowerSpectraPipeline:
         injection_idx,
         only_injections,
         cutoff_frequency,
+        scale_injections=False,
         filepath="./",
         prefix="",
     ):
@@ -205,6 +206,7 @@ class PowerSpectraPipeline:
             injection_idx,
             only_injections,
             cutoff_frequency,
+            scale_injections,
         )
         if self.write_ps_detections and power_spectra_detection_clusters is not None:
             filename = f"{prefix}_power_spectra_detection_clusters.hdf5"
@@ -319,6 +321,7 @@ class StackSearchPipeline:
         injection_idx=None,
         only_store_injections=False,
         cutoff_frequency=100.0,
+        scale_injections=False,
     ):
         """
         Process the monthly stack.
@@ -388,6 +391,7 @@ class StackSearchPipeline:
                         injection_idx,
                         only_store_injections,
                         cutoff_frequency,
+                        scale_injections,
                     )
                 else:
                     monthly_power_spectra_detection_clusters = None
@@ -412,6 +416,7 @@ class StackSearchPipeline:
         injection_idx=None,
         only_store_injections=False,
         cutoff_frequency=100.0,
+        scale_injections=False,
     ):
         """
         Process the cumulative stack.
@@ -454,6 +459,7 @@ class StackSearchPipeline:
                         injection_idx,
                         only_store_injections,
                         cutoff_frequency,
+                        scale_injections,
                     )
                 stacked_power_spectra = self._ps_stack.stack(monthly_power_spectra)
                 (
@@ -507,6 +513,7 @@ class StackSearchPipeline:
                 injection_idx,
                 only_store_injections,
                 cutoff_frequency,
+                scale_injections,
             )
             if self.write_ps_detections:
                 stack_detection_file = (

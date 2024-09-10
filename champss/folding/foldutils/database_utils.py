@@ -172,3 +172,21 @@ def add_mdcand_from_candpath(candpath, date):
     )
     fs_id = followup_source["_id"]
     return fs_id
+
+
+def add_mdcand_from_psrname(psrname, date):
+    source = db_api.get_known_source_by_names(psrname)[0]
+
+    f0 = 1 / source.spin_period_s
+    ra = source.pos_ra_deg
+    dec = source.pos_dec_deg
+    dm = source.dm
+    sigma = 0.0
+
+    date_str = date.strftime("%Y%m%d")
+
+    followup_source = add_candidate_to_fsdb(
+        date_str, ra, dec, f0, dm, sigma, source_type="md_candidate"
+    )
+    fs_id = followup_source["_id"]
+    return fs_id
