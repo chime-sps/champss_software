@@ -304,7 +304,7 @@ class Injection:
 
         return bins, harmonics
 
-    def predict_sigma(self, harms, bins, dm_indices, used_nharm):
+    def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
         value if wanted.
@@ -348,7 +348,8 @@ class Injection:
                     summed_power += bin_difference * self.ndays
                 # Add background
                 all_summed_powers_no_bg.append(summed_power)
-                summed_power += nsum
+                if add_expected_mean:
+                    summed_power += nsum
                 all_summed_powers.append(summed_power)
                 all_nsums.append(nsum)
                 all_nharms.append(search_harmonic)
@@ -360,10 +361,6 @@ class Injection:
         best_sigma_trial = np.nanargmax(possible_sigmas)
         best_nharm = all_nharms[best_sigma_trial]
         best_sigma = possible_sigmas[best_sigma_trial]
-
-        log.info(
-            f"Expected detection at {best_sigma:.2f} sigma with {best_nharm} harmonics."
-        )
         if self.rescale_to_expected_sigma:
             expected_power = (
                 x_to_chi2(self.sigma, self.ndays * best_nharm * 2)
@@ -371,9 +368,6 @@ class Injection:
             )
             rescale_factor = expected_power / all_summed_powers_no_bg[best_sigma_trial]
             harms *= rescale_factor
-            log.info(
-                f"Rescaling injection so that it should be detected at {self.sigma}."
-            )
             best_sigma = self.sigma
         else:
             rescale_factor = 1
@@ -417,8 +411,24 @@ class Injection:
 
         # estimate sigma
         harms, predicted_nharm, predicted_sigma, rescale_factor = self.predict_sigma(
-            harms, bins, dm_indices, used_nharm
+            harms, bins, dm_indices, used_nharm, True
         )
+        injected_indices = np.ix_(dm_indices, bins)
+        _, detection_nharm, detection_sigma, rescale_factor = self.predict_sigma(
+            harms + self.pspec[injected_indices], bins, dm_indices, used_nharm, False
+        )
+        log.info(
+            f"Expected detection at {detection_sigma:.2f} sigma with"
+            f" {detection_nharm} harmonics."
+        )
+        log.info(
+            f"Without spectra effects detection would be at {predicted_sigma:.2f} sigma"
+            f" with {predicted_nharm} harmonics."
+        )
+        if self.rescale_to_expected_sigma:
+            log.info(
+                f"Rescaling injection so that it should be detected at {self.sigma}."
+            )
 
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
@@ -432,6 +442,8 @@ class Injection:
             dm_indices,
             predicted_nharm,
             predicted_sigma,
+            detection_nharm,
+            detection_sigma,
         )
 
 
@@ -555,6 +567,8 @@ def main(
             dms_temp,
             predicted_nharm,
             predicted_sigma,
+            detection_nharm,
+            detection_sigma,
         ) = Injection(
             pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
         ).injection()
@@ -570,6 +584,8 @@ def main(
         injection_dict["bins"] = bins_temp
         injection_dict["predicted_nharm"] = predicted_nharm
         injection_dict["predicted_sigma"] = predicted_sigma
+        injection_dict["detection_nharm"] = detection_nharm
+        injection_dict["detection_sigma"] = detection_sigma
         if isinstance(injection_dict["profile"], (np.ndarray, list)):
             injection_dict["profile"] = "custom_profile"
 
