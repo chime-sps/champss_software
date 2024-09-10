@@ -166,6 +166,7 @@ class Injection:
         self.full_harm_bins = full_harm_bins
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
+        self.calc_real_sigma = True
 
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in
@@ -409,26 +410,40 @@ class Injection:
 
         harms = np.asarray(harms)
 
-        # estimate sigma
-        harms, predicted_nharm, predicted_sigma, rescale_factor = self.predict_sigma(
-            harms, bins, dm_indices, used_nharm, True
-        )
-        injected_indices = np.ix_(dm_indices, bins)
-        _, detection_nharm, detection_sigma, rescale_factor = self.predict_sigma(
-            harms + self.pspec[injected_indices], bins, dm_indices, used_nharm, False
-        )
-        log.info(
-            f"Expected detection at {detection_sigma:.2f} sigma with"
-            f" {detection_nharm} harmonics."
-        )
-        log.info(
-            f"Without spectra effects detection would be at {predicted_sigma:.2f} sigma"
-            f" with {predicted_nharm} harmonics."
-        )
-        if self.rescale_to_expected_sigma:
-            log.info(
-                f"Rescaling injection so that it should be detected at {self.sigma}."
+        if self.calc_real_sigma:
+            # estimate sigma
+            (
+                harms,
+                predicted_nharm,
+                predicted_sigma,
+                rescale_factor,
+            ) = self.predict_sigma(harms, bins, dm_indices, used_nharm, True)
+            injected_indices = np.ix_(dm_indices, bins)
+            _, detection_nharm, detection_sigma, rescale_factor = self.predict_sigma(
+                harms + self.pspec[injected_indices],
+                bins,
+                dm_indices,
+                used_nharm,
+                False,
             )
+            log.info(
+                f"Expected detection at {detection_sigma:.2f} sigma with"
+                f" {detection_nharm} harmonics."
+            )
+            log.info(
+                "Without spectra effects detection would be at"
+                f" {predicted_sigma:.2f} sigma with {predicted_nharm} harmonics."
+            )
+            if self.rescale_to_expected_sigma:
+                log.info(
+                    "Rescaling injection so that it should be detected at"
+                    f" {self.sigma}."
+                )
+        else:
+            predicted_nharm = None
+            predicted_sigma = None
+            detection_nharm = None
+            detection_sigma = None
 
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
