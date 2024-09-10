@@ -176,6 +176,7 @@ def main(
                     output.write(line)
 
     explore_grid.plot(fullplot=True)
+    print(f"cohsearch_summary: {coherentsearch_summary}")
     return coherentsearch_summary, [], []
 
 
