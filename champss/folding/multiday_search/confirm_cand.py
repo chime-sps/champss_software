@@ -132,25 +132,21 @@ def main(
     )
     plot_name = explore_grid.plot(fullplot=False)
 
-    coherentsearch_summary = [
-        {
-            "date": datetime.datetime.now(),
-            "SN": float(np.max(explore_grid.SNmax)),
-            "f0": float(optimal_parameters[0]),
-            "f1": float(optimal_parameters[1]),
-            # "profile": explore_grid.profiles_aligned.sum(0).tolist(),
-            "gridsearch_file": data["directory"] + "/explore_grid.npz",
-            "path_to_plot": plot_name,
-        }
-    ]
+    coherentsearch_summary = {
+        "date": datetime.datetime.now(),
+        "SN": float(np.max(explore_grid.SNmax)),
+        "f0": float(optimal_parameters[0]),
+        "f1": float(optimal_parameters[1]),
+        # "profile": explore_grid.profiles_aligned.sum(0).tolist(),
+        "gridsearch_file": data["directory"] + "/explore_grid.npz",
+        "path_to_plot": plot_name,
+    }
     if write_to_db:
         log.info("Updating FollowUpSource with coherent search results")
         db_api.update_followup_source(
-            fs_id, {"coherentsearch_history": coherentsearch_summary}
+            fs_id, {"coherentsearch_history": [coherentsearch_summary]}
         )
-    coherentsearch_summary[0]["date"] = coherentsearch_summary[0]["date"].strftime(
-        "%Y%m%d"
-    )
+    coherentsearch_summary["date"] = coherentsearch_summary["date"].strftime("%Y%m%d")
 
     # Rewrite new ephemeris using new F0 and F1
 
