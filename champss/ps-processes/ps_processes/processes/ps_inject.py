@@ -166,7 +166,6 @@ class Injection:
         self.full_harm_bins = full_harm_bins
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
-        self.calc_real_sigma = True
 
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in
@@ -190,6 +189,7 @@ class Injection:
         -------
             scaled_fft (arr): the first Nsignif harmonics of the FFT of the pulse profile, scaled so that the sum
             of the powers will equal the input sigma, and not including the zeroth harmonic
+            n_harm (int): The actually inected number of harmonics.
         """
         # Compute the normalized powers of the injected profile (Sum of pows == 1)
         prof_fft = rfft(self.phase_prof)[1:]
@@ -220,7 +220,7 @@ class Injection:
 
         scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
 
-        return scaled_fft
+        return scaled_fft, n_harm
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
         """
@@ -334,9 +334,7 @@ class Injection:
             used_injection_harmonic = min(search_harmonic, used_nharm)
             last_bins = bins_reshaped[used_injection_harmonic - 1, :]
             for bin in last_bins:
-                bins_in_sum = self.full_harm_bins[:, self.full_harm_bins[0, :] == bin][
-                    :used_injection_harmonic
-                ]
+                bins_in_sum = self.full_harm_bins[:used_injection_harmonic, bin]
                 _, _, bin_indices = np.intersect1d(
                     bins_in_sum, bins, return_indices=True
                 )
@@ -362,13 +360,14 @@ class Injection:
         best_sigma_trial = np.nanargmax(possible_sigmas)
         best_nharm = all_nharms[best_sigma_trial]
         best_sigma = possible_sigmas[best_sigma_trial]
-        if self.rescale_to_expected_sigma:
+        if self.rescale_to_expected_sigma and add_expected_mean:
             expected_power = (
                 x_to_chi2(self.sigma, self.ndays * best_nharm * 2)
                 - self.ndays * best_nharm
             )
             rescale_factor = expected_power / all_summed_powers_no_bg[best_sigma_trial]
-            harms *= rescale_factor
+            if np.isfinite(rescale_factor):
+                harms *= rescale_factor
             best_sigma = self.sigma
         else:
             rescale_factor = 1
@@ -394,7 +393,7 @@ class Injection:
         df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
-        scaled_prof_fft = self.sigma_to_power(n_harm)
+        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm)
         used_nharm = len(scaled_prof_fft)
         log.info(f"Injecting {n_harm} harmonics.")
 
@@ -410,46 +409,40 @@ class Injection:
 
         harms = np.asarray(harms)
 
-        if self.calc_real_sigma:
-            # estimate sigma
-            (
-                harms,
-                predicted_nharm,
-                predicted_sigma,
-                rescale_factor,
-            ) = self.predict_sigma(harms, bins, dm_indices, used_nharm, True)
-            injected_indices = np.ix_(dm_indices, bins)
-            _, detection_nharm, detection_sigma, rescale_factor = self.predict_sigma(
-                harms + self.pspec[injected_indices],
-                bins,
-                dm_indices,
-                used_nharm,
-                False,
-            )
-            log.info(
-                f"Expected detection at {detection_sigma:.2f} sigma with"
-                f" {detection_nharm} harmonics."
-            )
-            log.info(
-                "Without spectra effects detection would be at"
-                f" {predicted_sigma:.2f} sigma with {predicted_nharm} harmonics."
-            )
-            if self.rescale_to_expected_sigma:
-                log.info(
-                    "Rescaling injection so that it should be detected at"
-                    f" {self.sigma}."
-                )
-        else:
-            predicted_nharm = None
-            predicted_sigma = None
-            detection_nharm = None
-            detection_sigma = None
+        # estimate sigma
+        (
+            harms,
+            predicted_nharm,
+            predicted_sigma,
+            rescale_factor,
+        ) = self.predict_sigma(harms, bins, dm_indices, used_nharm, True)
 
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
             bin_fractions = self.pspec_obj.get_bin_weights_fraction()
             # Is linear scaling the way to go?
             harms *= bin_fractions[bins]
+        injected_indices = np.ix_(dm_indices, bins)
+        _, detection_nharm, detection_sigma, _ = self.predict_sigma(
+            harms + self.pspec[injected_indices],
+            bins,
+            dm_indices,
+            used_nharm,
+            False,
+        )
+
+        log.info(
+            f"Expected detection at {detection_sigma:.2f} sigma with"
+            f" {detection_nharm} harmonics."
+        )
+        log.info(
+            "Without spectra effects detection would be at"
+            f" {predicted_sigma:.2f} sigma with {predicted_nharm} harmonics."
+        )
+        if self.rescale_to_expected_sigma:
+            log.info(
+                f"Rescaling injection so that it should be detected at {self.sigma}."
+            )
 
         return (
             harms,
@@ -459,6 +452,7 @@ class Injection:
             predicted_sigma,
             detection_nharm,
             detection_sigma,
+            n_harm,
         )
 
 
@@ -584,6 +578,7 @@ def main(
             predicted_sigma,
             detection_nharm,
             detection_sigma,
+            injected_nharm,
         ) = Injection(
             pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
         ).injection()
@@ -601,6 +596,7 @@ def main(
         injection_dict["predicted_sigma"] = predicted_sigma
         injection_dict["detection_nharm"] = detection_nharm
         injection_dict["detection_sigma"] = detection_sigma
+        injection_dict["injected_nharm"] = injected_nharm
         if isinstance(injection_dict["profile"], (np.ndarray, list)):
             injection_dict["profile"] = "custom_profile"
 
