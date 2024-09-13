@@ -384,6 +384,7 @@ def main(
         else nullcontext()
     ):
         sys.excepthook = dbexcepthook
+
         db_utils.connect(host=db_host, port=db_port, name=db_name)
 
         global pipeline_start_time
