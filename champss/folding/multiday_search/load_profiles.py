@@ -94,6 +94,7 @@ def load_profiles(archives, max_npbin=256):
         raise ValueError("Not all profiles reference the same PEPOCHs")
 
     T0 = Time(PEPOCH, format="mjd")
+    print(f"Reference epoch: {T0}, {T0.isot}")
 
     npbin = len(profs[0])
     profs = np.array(profs)
