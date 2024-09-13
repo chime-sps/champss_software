@@ -9,6 +9,7 @@ from astropy.coordinates import SkyCoord
 from astropy.time import Time, TimeDelta
 from sps_common.constants import TSAMP
 from sps_common.filterbank import write_to_filterbank
+from sps_common.files import open_file
 from spshuff import l1_io
 
 # import line_profiler
@@ -266,7 +267,7 @@ def read_huff_msgpack(filename, channel_downsampling_factor=1):
 
     """
     subfiles = []
-    with open(filename, "rb") as f:
+    with open_file(filename, "rb") as f:
         int_file = l1_io.IntensityFile.from_file(
             f, shape=(16384 // channel_downsampling_factor, None)
         )
