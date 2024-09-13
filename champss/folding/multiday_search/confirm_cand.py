@@ -10,6 +10,7 @@ logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
 from folding.archive_utils import read_par
+from folding.fold_candidate import candidate_name
 from multiday_search.load_profiles import load_profiles, load_unwrapped_archives
 from multiday_search.phase_aligned_search import ExploreGrid
 from sps_databases import db_api, db_utils
@@ -70,9 +71,16 @@ def main(
         print("Possible candidates:")
         candidates = db.followup_sources.find({"source_type": "md_candidate"})
         for cand in candidates:
+            ra = cand["ra"]
+            dec = cand["dec"]
+            f0 = cand["f0"]
+            dm = cand["dm"]
+            psrname = candidate_name(ra, dec)
             print(
                 cand["_id"],
-                cand["path_to_ephemeris"],
+                psrname,
+                f0,
+                dm,
                 len(cand["folding_history"]),
                 "archives",
             )
