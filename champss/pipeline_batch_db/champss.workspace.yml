@@ -29,7 +29,7 @@ config:
   archive:
     results: true
     plots:
-      methods: ["bypass"]
+      methods: ["copy"]
       storage: "posix"
     products:
       methods: ["bypass"]
