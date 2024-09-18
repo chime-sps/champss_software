@@ -35,6 +35,16 @@ This is now queued through workflow, and uses the FollowUpSources database colle
 multidayfold_pipeline --candpath '/data/lkuenkel/mp_sanity_check/new_stack_tests/mp_runs/new_0625_euclidean_no_pos/candidates/Multi_Pointing_Groups_f_2.684_DM_32.788_class_Astro.npz' --db-name "sps-processing"
 ```
 
+To use a specific branch (e.g. for development), you would need to create a docker image for that branch, pull it to to sps-archiver, then specify the image in the commend (e.g. as --docker-image-name chimefrb/champss_software:known_source_db_fix")
+
+TO create the updated docker image, you would push a commit with "[test]" within the commit message.  Then check the github actions for champss_software.
+
+To pull the image, you would do e.g.:
+
+```
+docker pull chimefrb/champss_software:known_source_db_fix
+```
+
 # Timing
 
 Automatic timing tools are a work in progress..
