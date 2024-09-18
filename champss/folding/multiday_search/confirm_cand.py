@@ -182,7 +182,7 @@ def main(
                     output.write(line)
 
     explore_grid.plot(fullplot=True)
-    return coherentsearch_summary, [], []
+    return coherentsearch_summary, [], [plot_name]
 
 
 if __name__ == "__main__":
