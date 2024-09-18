@@ -137,7 +137,6 @@ def main(
         nobs=len(data["profiles"]),
     )
 
-
     plot_name = explore_grid.plot(fullplot=False)
     coherentsearch_summary = {
         "date": datetime.datetime.now(),
