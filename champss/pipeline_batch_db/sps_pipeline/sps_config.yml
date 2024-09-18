@@ -300,10 +300,11 @@ ps_cumul_stack:
     delete_monthly_stack: True
   ps_search_config:
     num_harm: 32
-    sigma_min: 6.0
+    sigma_min: 7.0
     precompute_harms: True
     use_nsum_per_bin: True
     skip_first_n_bins: 5
+    use_stack_threshold: True
     cluster_config:
       dbscan_eps: 1
       dm_scale_factor: 0.02

@@ -7,7 +7,7 @@ from enum import Enum
 import attr
 import numpy as np
 import numpy.lib.recfunctions as rfn
-from attr import attrib, attrs
+from attr import attrib, attrs, converters
 from attr.validators import deep_iterable, instance_of
 from sps_common.constants import (
     MAX_SEARCH_DM,
@@ -230,8 +230,8 @@ class MultiPointingCandidate:
     summed_raw_harmonic_powers = attrib(type=np.ndarray)
     all_summaries = attrib(type=list)
     best_candidate_object = attrib(type=SinglePointingCandidate, default=None)
-    best_nharm = attrib(converter=int, default=None)
-    best_harmonic_sum = attrib(converter=int, default=None)
+    best_nharm = attrib(converter=converters.optional(int), default=None)
+    best_harmonic_sum = attrib(converter=converters.optional(int), default=None)
     classification: CandidateClassification = attrib(default=None)
     known_source: KnownSourceClassification = attrib(default=None)
     datetimes = attrib(

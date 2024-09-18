@@ -113,6 +113,10 @@ class PowerSpectraSearch:
 
     known_source_threshold: float
         Filter all known sources that were ever above this threshold in an observation of this pointing
+
+    use_stack_threshold: str
+        Whether to use the stack sigma for the known source threshold. Otherwise uses sigma
+        from single observations.
     """
 
     cluster_config = attribute(validator=instance_of(dict))
@@ -137,6 +141,7 @@ class PowerSpectraSearch:
     skip_first_n_bins: int = attribute(default=2)
     # cluster_dm_cut: bool = attribute(default=-1)
     known_source_threshold: float = attribute(default=np.inf)
+    use_stack_threshold = attribute(validator=instance_of(bool), default=False)
     full_harm_bins = attribute(init=False)
     update_db = attribute(default=True, validator=instance_of(bool))
 
@@ -271,7 +276,10 @@ class PowerSpectraSearch:
         if self.known_source_threshold is not np.inf:
             pointing_id = db_api.get_observation(pspec.obs_id[0]).pointing_id
             current_pointing = db_api.get_pointing(pointing_id)
-            previous_detections = current_pointing.strongest_pulsar_detections
+            if self.use_stack_threshold:
+                previous_detections = current_pointing.strongest_pulsar_detections_stack
+            else:
+                previous_detections = current_pointing.strongest_pulsar_detections
             filtered_psr_names = [
                 pulsar
                 for pulsar in previous_detections
