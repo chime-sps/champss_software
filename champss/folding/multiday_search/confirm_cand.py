@@ -182,6 +182,7 @@ def main(
                     output.write(line)
 
     explore_grid.plot(fullplot=True)
+
     return coherentsearch_summary, [plot_name], [plot_name]
 
 
