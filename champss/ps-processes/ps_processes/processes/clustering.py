@@ -685,6 +685,7 @@ class Clusterer:
                 if det_max_sigma_dm > self.cluster_dm_cut:
                     selected_indices.extend(current_indices)
             detections_filtered = detections_filtered[selected_indices]
+
             log.info(f"Dbscan filter reduced detections to {len(selected_indices)}")
             del data_filter
             del metric_array
