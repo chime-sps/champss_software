@@ -427,6 +427,7 @@ class Clusterer:
     num_threads = attribute(validator=instance_of(int), default=8)
     use_sparse: bool = attribute(default=True)
     grouped_freq_dm_scale: float = attribute(default=1)
+    use_dbscan_filter: bool = attribute(default=True)
 
     @metric_method.validator
     def _validate_metric_method(self, attribute, value):
@@ -649,6 +650,46 @@ class Clusterer:
             f"Duplicate freq,dm filter reduced detections to {len(detections_filtered)}"
         )
 
+        if self.use_dbscan_filter:
+            log.info("Running dbscan filter")
+            data_filter = np.vstack(
+                (
+                    detections_filtered["dm"]
+                    / cluster_dm_spacing
+                    * self.dm_scale_factor,
+                    detections_filtered["freq"]
+                    / cluster_df_spacing
+                    * self.freq_scale_factor,
+                ),
+                dtype=np.float32,
+            ).T
+            metric_array = radius_neighbors_graph(
+                data_filter, 1.1 * self.dbscan_eps, p=2, mode="distance"
+            )
+            metric_array = sort_graph_by_row_values(
+                metric_array, warn_when_not_sorted=False
+            )
+            db_filter = DBSCAN(
+                eps=self.dbscan_eps,
+                min_samples=self.dbscan_min_samples,
+                metric="precomputed",
+            ).fit(metric_array)
+            selected_indices = []
+            for i in range(max(db_filter.labels_) + 1):
+                current_indices = np.arange(detections_filtered.shape[0])[
+                    db_filter.labels_ == i
+                ]
+                det_sample = detections_filtered[current_indices]
+                det_max_sigma_pos = np.argmax(det_sample["sigma"])
+                det_max_sigma_dm = det_sample["dm"][det_max_sigma_pos]
+                if det_max_sigma_dm > self.cluster_dm_cut:
+                    selected_indices.extend(current_indices)
+            detections_filtered = detections_filtered[selected_indices]
+            log.info(f"Dbscan filter reduced detections to {len(selected_indices)}")
+            del data_filter
+            del metric_array
+            del db_filter
+
         detections = detections_filtered[
             detections_filtered["sigma"] > self.sigma_detection_threshold
         ]
@@ -684,6 +725,7 @@ class Clusterer:
             ),
             dtype=np.float32,
         ).T
+
         rhps = [set(det["harm_idx"][: det["nharm"]]) for det in detections]
 
         # Find duplicate frequencies and only keep the highest-sigma detection for the harmonic metric caluclation
