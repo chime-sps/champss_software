@@ -7,6 +7,10 @@ Before running any scripts that call `schedule_workflow_job` outside of a contai
 workflow workspace set champss/pipeline_batch_db/champss.workspace.yml
 ```
 
+## Testing Branch with Docker
+
+If you want to test your branch's code with Docker or Workflow, you can use our GitHub Action to automatically build and push a Docker Image of your branch to DockerHub by including the keyword "[test]" in a commit message pushed to your branch. Then, check the Actions tab of this repository to see when it finishes (takes ~5-10 minutes). Now, your image will be available as chimefrb/champss_software:yourbranchname.
+
 ## Seting Up Environment
 
 Please first run:
