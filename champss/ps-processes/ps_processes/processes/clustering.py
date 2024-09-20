@@ -428,6 +428,7 @@ class Clusterer:
     use_sparse: bool = attribute(default=True)
     grouped_freq_dm_scale: float = attribute(default=1)
     use_dbscan_filter: bool = attribute(default=True)
+    dbscan_filter_filter_whole_freqs: bool = attribute(default=True)
 
     @metric_method.validator
     def _validate_metric_method(self, attribute, value):
@@ -674,7 +675,9 @@ class Clusterer:
                 min_samples=self.dbscan_min_samples,
                 metric="precomputed",
             ).fit(metric_array)
-            selected_indices = []
+            filtered_indices = []
+            bad_freqs = []
+            filtered_labels = []
             for i in range(max(db_filter.labels_) + 1):
                 current_indices = np.arange(detections_filtered.shape[0])[
                     db_filter.labels_ == i
@@ -682,11 +685,44 @@ class Clusterer:
                 det_sample = detections_filtered[current_indices]
                 det_max_sigma_pos = np.argmax(det_sample["sigma"])
                 det_max_sigma_dm = det_sample["dm"][det_max_sigma_pos]
-                if det_max_sigma_dm > self.cluster_dm_cut:
-                    selected_indices.extend(current_indices)
-            detections_filtered = detections_filtered[selected_indices]
+                if det_max_sigma_dm <= self.cluster_dm_cut:
+                    filtered_indices.extend(current_indices)
+                    bad_freqs.append(
+                        (
+                            det_sample["freq"].mean(),
+                            det_sample["freq"].min(),
+                            det_sample["freq"].max(),
+                        )
+                    )
+                    filtered_labels.append(i)
+            bad_freqs = np.asarray(bad_freqs)
+            bad_low_dm_freqs = len(filtered_indices)
+            log.info(
+                f"Dbscan filter removed {bad_low_dm_freqs} detections in low DM"
+                " clusters."
+            )
+            if self.dbscan_filter_filter_whole_freqs:
+                for i in range(max(db_filter.labels_) + 1):
+                    if i not in filtered_labels:
+                        current_indices = np.arange(detections_filtered.shape[0])[
+                            db_filter.labels_ == i
+                        ]
+                        det_sample = detections_filtered[current_indices]
+                        mean_freq = det_sample["freq"].mean()
+                        for row in bad_freqs:
+                            if mean_freq > row[1] and mean_freq < row[2]:
+                                filtered_indices.extend(current_indices)
+                                break
+                bad_all_freqs = len(filtered_indices)
+                log.info(
+                    "Dbscan filter removed additonal"
+                    f" {bad_all_freqs - bad_low_dm_freqs} detection with same"
+                    " frequencies as low DM clusters."
+                )
+            mask = np.full(detections_filtered.shape[0], True)
+            mask[filtered_indices] = False
+            detections_filtered = detections_filtered[mask]
 
-            log.info(f"Dbscan filter reduced detections to {len(selected_indices)}")
             del data_filter
             del metric_array
             del db_filter
