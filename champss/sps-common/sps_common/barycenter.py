@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+from urllib.error import URLError
 
 import astropy.units as u
 import numpy as np
@@ -15,7 +16,16 @@ CHIME_LOCATION = EarthLocation(
 )
 
 # use the JPL planetary ephemeris
-solar_system_ephemeris.set("jpl")
+try:
+    solar_system_ephemeris.set("jpl")
+except URLError:
+    import astropy.config
+    from astropy.utils.data import conf
+
+    print(f"Outdated config at {astropy.config.paths.get_cache_dir()}")
+    conf.allow_internet = False
+    with astropy.config.set_temp_cache(path="/root/", delete=False):
+        solar_system_ephemeris.set("jpl")
 
 LOGGING_CONFIG = {}
 logging_format = "[%(asctime)s] %(levelname)s::%(module)s: %(message)s"

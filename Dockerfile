@@ -47,15 +47,22 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100
+    PIP_DEFAULT_TIMEOUT=100 \
+    XDG_CACHE_HOME="/root/"
 
 COPY . .
 
 RUN --mount=type=ssh,id=github_ssh_id set -ex \
     && python3 -m pip install . \
     && get-data \
-    && workflow workspace set champss/pipeline_batch_db/champss.workspace.yml
+    && workflow workspace set champss/pipeline_batch_db/champss.workspace.yml \
+    && python3 download_files.py \
+#    && python -c 'from astropy.coordinates import solar_system_ephemeris; solar_system_ephemeris.set("jpl")' \
+#    && python -c 'from astropy.time import update_leap_seconds; update_leap_seconds()' 
 # Above "get-data" call is needed for CHIMEFRB/beam-model
+# The astropy calls allow downloading of data that might be available when running the container
+
+RUN mv /root/.astropy /root/astropy
 
 # Stage 4: Cleanup to prepare for runtime
 FROM pip as runtime
