@@ -10,13 +10,13 @@ archive:
 http:
   baseurls:
     configs:
-      - http://sps-archiver1.chime:37015/v2
+      - http://sps-archiver1.chime:8007/v2
       - https://sps.chimenet.ca/workflow/pipelines/v2
     pipelines:
-      - http://sps-archiver1.chime:37015/v2
+      - http://sps-archiver1.chime:8007/v2
       - https://sps.chimenet.ca/workflow/pipelines/v2
     schedules:
-      - http://sps-archiver1.chime:37015/v2
+      - http://sps-archiver1.chime:8007/v2
       - https://sps.chimenet.ca/workflow/pipelines/v2
     buckets:
       - http://sps-archiver1.chime:8004
