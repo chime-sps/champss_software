@@ -370,7 +370,7 @@ def main(
     if using_pyroscope:
         pyroscope.configure(
             application_name="pipeline",
-            server_address="http://sps-archiver.chime:4040",
+            server_address="http://sps-archiver1.chime:4040",
             detect_subprocesses=True,  # Include multiprocessing pools
             sample_rate=100,  # In milliseconds
             oncpu=False,  # Include idle CPU time
@@ -721,7 +721,7 @@ def main(
                     # Use higher step size on testbed for benchmarking,
                     # but not for CHIME, to avoid Prometheus overload
                     # during processing at the telescope
-                    step_size = 10 if db_host == "ss1" else 30
+                    step_size = 10
                     memory_query = (
                         f"container_memory_usage_bytes{{name='{container_name}'}}"
                     )

@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 )
 @click.option(
     "--db-host",
-    default="sps-archiver",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )

@@ -60,7 +60,7 @@ def delete_raw_data_folder(date, raw_data_path, dry_run):
 @click.command()
 @click.option(
     "--db-host",
-    default="sps-archiver",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
