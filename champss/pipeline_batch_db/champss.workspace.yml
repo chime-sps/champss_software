@@ -10,19 +10,19 @@ archive:
 http:
   baseurls:
     configs:
-      - http://sps-archiver.chime:37015/v2
+      - http://sps-archiver1.chime:37015/v2
       - https://sps.chimenet.ca/workflow/pipelines/v2
     pipelines:
-      - http://sps-archiver.chime:37015/v2
+      - http://sps-archiver1.chime:37015/v2
       - https://sps.chimenet.ca/workflow/pipelines/v2
     schedules:
-      - http://sps-archiver.chime:37015/v2
+      - http://sps-archiver1.chime:37015/v2
       - https://sps.chimenet.ca/workflow/pipelines/v2
     buckets:
-      - http://sps-archiver.chime:8004
+      - http://sps-archiver1.chime:8004
       - https://sps.chimenet.ca/workflow/buckets/
     results:
-      - http://sps-archiver.chime:8005
+      - http://sps-archiver1.chime:8005
       - https://sps.chimenet.ca/workflow/results/
 
 config:
@@ -39,7 +39,7 @@ config:
 deployers:
   chime:
     docker:
-      client_url: tcp://sps-archiver.chime:2375
+      client_url: tcp://sps-archiver1.chime:2375
       volumes:
         sps-data:
           type: "volume"
