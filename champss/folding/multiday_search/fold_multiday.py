@@ -64,7 +64,7 @@ def find_all_dates_with_data(ra, dec, basepath, nday=10):
 )
 @click.option(
     "--db-host",
-    default="sps-archiver",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )

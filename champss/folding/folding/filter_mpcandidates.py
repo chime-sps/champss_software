@@ -46,7 +46,7 @@ def Filter(
     min_f0=1e-2,
     save_candidates=True,
     db_port=27017,
-    db_host="sps-archiver",
+    db_host="sps-archiver1",
     db_name="sps",
     write_to_db=False,
     basepath="/data/chime/sps/sps_processing",
@@ -299,7 +299,7 @@ import click
 )
 @click.option(
     "--db-host",
-    default="sps-archiver",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
