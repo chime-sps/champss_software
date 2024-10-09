@@ -44,7 +44,14 @@ known_bad_frequencies:
 
   b6:
     frequency: 60
-    width: 0.01
+    width: 0.02
     int_nharm: 8
     frac_nharm: 0
     note: "Candidates in stacked spectra."
+
+  b7:
+    frequency: 1
+    width: 0.01
+    int_nharm: 4
+    frac_nharm: 0
+    note: "Candidates in some observations."
