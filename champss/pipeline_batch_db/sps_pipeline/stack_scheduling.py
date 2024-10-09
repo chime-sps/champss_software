@@ -86,11 +86,13 @@ def find_monthly_search_commands(
     help="Which Docker Image name to use.",
 )
 @click.option(
-    "--docker-password-filepath",
-    default="/run/secrets/DOCKER_PASSWORD",
+    "--docker-password",
+    prompt=True,
+    confirmation_prompt=False,
+    hide_input=True,
     required=True,
     type=str,
-    help="The path to the file containing the DockerHub password.",
+    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
 @click.option(
     "--command-file",
@@ -99,13 +101,11 @@ def find_monthly_search_commands(
 )
 def execute_monthly_search_commands(
     docker_image_name,
-    docker_password_filepath,
+    docker_password,
     command_file,
 ):
     with open(command_file) as file:
         all_commands = json.load(file)
-    with open(docker_password_filepath) as docker_password_file:
-        docker_password = docker_password_file.read()
 
     docker_mounts = [
         "/data/chime/sps/raw:/data/chime/sps/raw",
@@ -114,7 +114,7 @@ def execute_monthly_search_commands(
     workflow_function = "sps_pipeline.pipeline.stack_and_search"
     workflow_buckets_name = "champss-stack-search"
     clear_workflow_buckets(
-        ["--workflow-buckets-name", workflow_name], standalone_mode=False
+        ["--workflow-buckets-name", workflow_buckets_name], standalone_mode=False
     )
 
     for command_dict in all_commands:
@@ -122,7 +122,7 @@ def execute_monthly_search_commands(
             formatted_ra = f'{command_dict["arguments"]["ra"]:.02f}'.replace(".", "_")
             formatted_dec = f'{command_dict["arguments"]["dec"]:.02f}'.replace(".", "_")
             docker_name = f"stack_search_{formatted_ra}_{formatted_dec}"
-            docker_memory_reservation = 30 + ((command_dict["maxdm"] / 100) * 4)
+            docker_memory_reservation = 40 + ((command_dict["maxdm"] / 100) * 4)
             workflow_params = command_dict["arguments"]
             workflow_tags = [
                 "stack_search",
