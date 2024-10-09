@@ -57,7 +57,7 @@ known_bad_frequencies:
     note: "Candidates in some observations."
 
   b8:
-    frequency: 90.915
+    frequency: 90.92
     width: 0.01
     int_nharm: 4
     frac_nharm: 0
