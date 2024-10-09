@@ -380,12 +380,19 @@ class Injection:
 
         Returns:
         _______
-                harms (arr): 2D power grid of form (trial DM, frequency)
-                bins (arr) : 1D array of bin indices at which the pulse was injected
-                dm_indices (arr): 1D array of the injected dm indices
-                predicted_nharm (int): nharm at which the injection should be detected
-                predicted_sigma (int): sigma at which the injection should be detected,
-                                        excluding the influence of the power spectrum.
+                output_dict (dict): Dictionary containing the fields:
+                    injected_powers (arr): 2D power grid of form (trial DM, frequency)
+                    freq_indices (arr) : 1D array of bin indices at which the pulse was injected
+                    dm_indices (arr): 1D array of the injected dm indices
+                    predicted_nharm (int): nharm at which the injection should be detected,
+                                            excluding the influence of the power spectrum.
+                    predicted_sigma (float): sigma at which the injection should be detected,
+                                            excluding the influence of the power spectrum.
+                    predicted_nharm (int): nharm at which the injection should be detected,
+                                            including the influence of the power spectrum.
+                    predicted_sigma (float): sigma at which the injection should be detected,
+                                           including the influence of the power spectrum.
+                    injected_nharm (int): Nuber of harmonics which have been injected.
         """
 
         # pull frequency bins from target power spectrum
@@ -443,17 +450,20 @@ class Injection:
             log.info(
                 f"Rescaling injection so that it should be detected at {self.sigma}."
             )
-
-        return (
-            harms,
-            bins,
-            dm_indices,
-            predicted_nharm,
-            predicted_sigma,
-            detection_nharm,
-            detection_sigma,
-            n_harm,
-        )
+        # prediction_ denotes that this injection would appear at those values without any
+        #    effects from the power spectra values
+        # detection_ includes the power spectra value for a more accurate prediction
+        output_dict = {
+            "injected_powers": harms,
+            "freq_indices": bins,
+            "dm_indices": dm_indices,
+            "predicted_nharm": predicted_nharm,
+            "predicted_sigma": predicted_sigma,
+            "detection_nharm": detection_nharm,
+            "detection_sigma": detection_sigma,
+            "injected_nharm": n_harm,
+        }
+        return output_dict
 
 
 def main(
@@ -463,6 +473,7 @@ def main(
     num_injections=1,
     remove_spectra=False,
     scale_injections=False,
+    only_predict=False,
 ):
     """
     This function runs the injection.
@@ -479,6 +490,7 @@ def main(
             scale_injections (bool)         : Whether to scale the injection so that the
                                             detected sigma should be
                                             the same as the input sigma. Default: False
+            only_predict (bool)             : Only predict the inection without changing the spectrum.
 
     Returns:
     --------
@@ -570,43 +582,34 @@ def main(
 
     i = 0
     for injection_dict in injection_profiles:
-        (
-            injection,
-            bins_temp,
-            dms_temp,
-            predicted_nharm,
-            predicted_sigma,
-            detection_nharm,
-            detection_sigma,
-            injected_nharm,
-        ) = Injection(
+        injection_output_dict = Injection(
             pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
         ).injection()
-        if len(injection) == 0:
+        if len(injection_output_dict["injected_powers"]) == 0:
             log.info("Pulsar too weak.")
             continue
-        # parameters = np.array(
-        #    [injection_profile[1], injection_profile[2], injection_profile[3]]
-        # )
-        # dms.append(dms_temp)
-        # bins.append(bins_temp)
-        injection_dict["dms"] = dms_temp
-        injection_dict["bins"] = bins_temp
-        injection_dict["predicted_nharm"] = predicted_nharm
-        injection_dict["predicted_sigma"] = predicted_sigma
-        injection_dict["detection_nharm"] = detection_nharm
-        injection_dict["detection_sigma"] = detection_sigma
-        injection_dict["injected_nharm"] = injected_nharm
+
+        injection_dict["dms"] = injection_output_dict["dm_indices"]
+        injection_dict["bins"] = injection_output_dict["freq_indices"]
+        injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
+        injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
+        injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
+        injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
+        injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
         if isinstance(injection_dict["profile"], (np.ndarray, list)):
             injection_dict["profile"] = "custom_profile"
 
-        # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
-        # not change the object
-        injected_indices = np.ix_(dms_temp, bins_temp)
+        if not only_predict:
+            # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
+            # not change the object
+            injected_indices = np.ix_(
+                injection_output_dict["dm_indices"],
+                injection_output_dict["freq_indices"],
+            )
 
-        pspec.power_spectra[injected_indices] += injection.astype(
-            pspec.power_spectra.dtype
-        )
+            pspec.power_spectra[injected_indices] += injection_output_dict[
+                "injected_powers"
+            ].astype(pspec.power_spectra.dtype)
 
         i += 1
     pspec.power_spectra[:, zero_bins] = 0
