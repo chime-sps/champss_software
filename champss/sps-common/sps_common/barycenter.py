@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import pathlib
 from urllib.error import URLError
 
 import astropy.units as u
@@ -18,9 +19,14 @@ CHIME_LOCATION = EarthLocation(
 # use the JPL planetary ephemeris
 try:
     solar_system_ephemeris.set("jpl")
+    print(print(pathlib.Path("/root/.astropy").rglob("*")))
 except URLError:
+    import pathlib
+
     import astropy.config
     from astropy.utils.data import conf
+
+    print(pathlib.Path("/root/.astropy").rglob("*"))
 
     print(f"Outdated config at {astropy.config.paths.get_cache_dir()}")
     conf.allow_internet = False
