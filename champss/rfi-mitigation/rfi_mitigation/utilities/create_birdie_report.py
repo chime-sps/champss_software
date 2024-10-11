@@ -61,9 +61,9 @@ def create_report(
         axs[0].set_xlabel("Frequency (Hz)")
         axs[1].set_xlabel("Frequency (Hz)")
         axs[0].set_ylabel("Mask Fraction")
-        axs[0].set_ylabel("Mask Fraction")
+        axs[1].set_ylabel("Mask Fraction")
         axs[0].set_title("Without static birdies filter.")
-        axs[0].set_title("With static birdies filter.")
+        axs[1].set_title("With static birdies filter.")
         plt.tight_layout()
         pdf.savefig(fig)
 
