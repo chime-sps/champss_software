@@ -58,8 +58,6 @@ RUN --mount=type=ssh,id=github_ssh_id set -ex \
     && get-data \
     && workflow workspace set champss/pipeline_batch_db/champss.workspace.yml \
     && python3 download_files.py 
-#    && python -c 'from astropy.coordinates import solar_system_ephemeris; solar_system_ephemeris.set("jpl")' \
-#    && python -c 'from astropy.time import update_leap_seconds; update_leap_seconds()' 
 # Above "get-data" call is needed for CHIMEFRB/beam-model
 # The astropy calls allow downloading of data that might be available when running the container
 
