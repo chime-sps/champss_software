@@ -41,3 +41,9 @@ pip install -e . --no-deps
 ...
 ```
 Otherwise, if using the Poetry virtual environment, everything should be in editable mode by default.
+
+
+## Notes on apptainer images
+
+When running our software on Narval using apptainer your job will not have internet access which can mess with astropy if it can't access cached files properly.
+In order to successfully run our jobs you may need to add `--fakeroot --no-home` to your `apptainer exec` command.
