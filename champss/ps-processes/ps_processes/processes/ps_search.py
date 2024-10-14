@@ -297,7 +297,6 @@ class PowerSpectraSearch:
                     f"Filter {len(bad_freq_indices)} indices because of pulsars"
                     f" {filtered_psr_names}"
                 )
-
                 self.full_harm_bins[dummy_harmonics != 0] = 0
 
         # Calculate the used number of each days in each pixel for each harmonic sum
