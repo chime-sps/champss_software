@@ -322,6 +322,7 @@ class StackSearchPipeline:
         only_store_injections=False,
         cutoff_frequency=100.0,
         scale_injections=False,
+        file=None,
     ):
         """
         Process the monthly stack.
@@ -342,66 +343,73 @@ class StackSearchPipeline:
         monthly_power_spectra: sps_common.interfaces.PowerSpectra
             The monthly power spectra
         """
-
-        ps_stack_db = db_api.get_ps_stack(pointing_id)
+        if pointing_id:
+            ps_stack_db = db_api.get_ps_stack(pointing_id)
         if self.run_ps_stack or self.run_ps_search_monthly:
-            if (
-                sorted(ps_stack_db.datetimes_month)[-1]
-                - sorted(ps_stack_db.datetimes_month)[0]
-            ).days < self.min_num_days:
-                log.error(
-                    f"There are less than { self.min_num_days } days of data in the"
-                    " current monthly stack. Skipping the process"
-                )
-                return None, None
-            if ps_stack_db.datapath_month:
-                try:
-                    if not os.path.isfile(ps_stack_db.datapath_month):
-                        raise FileNotFoundError(
-                            "Cannot locate the monthly power spectra stack"
-                            f" '{ps_stack_db.datapath_month}'"
-                        )
-                    log.info(
-                        "loading the monthly power spectra stack"
-                        f" { ps_stack_db.datapath_month }"
-                    )
-                    monthly_power_spectra = PowerSpectra.read(
-                        ps_stack_db.datapath_month, nbit=self.spectra_nbit
-                    )
-                except (OSError, FileNotFoundError) as e:
+            if pointing_id:
+                if (
+                    sorted(ps_stack_db.datetimes_month)[-1]
+                    - sorted(ps_stack_db.datetimes_month)[0]
+                ).days < self.min_num_days:
                     log.error(
-                        f"{e}: Monthly stack file for pointing id"
+                        f"There are less than { self.min_num_days } days of data in the"
+                        " current monthly stack. Skipping the process"
+                    )
+                    return None, None
+                if ps_stack_db.datapath_month:
+                    try:
+                        if not os.path.isfile(ps_stack_db.datapath_month):
+                            raise FileNotFoundError(
+                                "Cannot locate the monthly power spectra stack"
+                                f" '{ps_stack_db.datapath_month}'"
+                            )
+                        log.info(
+                            "loading the monthly power spectra stack"
+                            f" { ps_stack_db.datapath_month }"
+                        )
+                        monthly_power_spectra = PowerSpectra.read(
+                            ps_stack_db.datapath_month, nbit=self.spectra_nbit
+                        )
+                    except (OSError, FileNotFoundError) as e:
+                        log.error(
+                            f"{e}: Monthly stack file for pointing id"
+                            f" { ps_stack_db.pointing_id } does not exist. Exiting"
+                        )
+                        if self.update_db:
+                            payload = {
+                                "datapath_month": "",
+                                "datetimes_month": [],
+                                "num_days_month": 0,
+                            }
+                            db_api.update_ps_stack(ps_stack_db.pointing_id, payload)
+                        return None, None
+                else:
+                    log.error(
+                        "Monthly stack file for pointing id"
                         f" { ps_stack_db.pointing_id } does not exist. Exiting"
                     )
-                    if self.update_db:
-                        payload = {
-                            "datapath_month": "",
-                            "datetimes_month": [],
-                            "num_days_month": 0,
-                        }
-                        db_api.update_ps_stack(ps_stack_db.pointing_id, payload)
-                    return None, None
-                if self.run_ps_search_monthly:
-                    (
-                        monthly_power_spectra_detection_clusters,
-                        monthly_power_spectra_detections,
-                    ) = self._ps_search.search(
-                        monthly_power_spectra,
-                        injection_path,
-                        injection_idx,
-                        only_store_injections,
-                        cutoff_frequency,
-                        scale_injections,
-                    )
-                else:
-                    monthly_power_spectra_detection_clusters = None
+                    return
+            elif file:
+                monthly_power_spectra = PowerSpectra.read(file, nbit=self.spectra_nbit)
             else:
                 log.error(
-                    "Monthly stack file for pointing id"
-                    f" { ps_stack_db.pointing_id } does not exist. Exiting"
+                    "Need either pointing id or file but got {pointing_id} and {file}"
                 )
-                return
-            # monthly_power_spectra.unlink_shared_memory()
+                return None, None
+            if self.run_ps_search_monthly:
+                (
+                    monthly_power_spectra_detection_clusters,
+                    monthly_power_spectra_detections,
+                ) = self._ps_search.search(
+                    monthly_power_spectra,
+                    injection_path,
+                    injection_idx,
+                    only_store_injections,
+                    cutoff_frequency,
+                    scale_injections,
+                )
+            else:
+                monthly_power_spectra_detection_clusters = None
         else:
             monthly_power_spectra = None
             monthly_power_spectra_detection_clusters = None
