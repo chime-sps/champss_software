@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/chime-sps/champss_software/compare/v0.6.1...v0.7.0) (2024-10-12)
+
+
+### Features
+
+* Allow proper prediction of injection sigma ([#74](https://github.com/chime-sps/champss_software/issues/74)) ([6f71fdf](https://github.com/chime-sps/champss_software/commit/6f71fdfac4d7aaf33a0c9138ebd00cf7cfcc6e82))
+* Run monthly search without access to database ([#78](https://github.com/chime-sps/champss_software/issues/78)) ([d2419fc](https://github.com/chime-sps/champss_software/commit/d2419fc2d5c20c89eeb46ac387eb72e99f4ae695))
+
+
+### Bug Fixes
+
+* **processing.py:** Update all refrences of sps-archiver to sps-archiver1 ([ee1d88f](https://github.com/chime-sps/champss_software/commit/ee1d88f5c46b123f343f6cdb2afa22f0dcfc5208))
+
 ## [0.6.1](https://github.com/chime-sps/champss_software/compare/v0.6.0...v0.6.1) (2024-09-09)
 
 
