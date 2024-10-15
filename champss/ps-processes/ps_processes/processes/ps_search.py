@@ -286,6 +286,7 @@ class PowerSpectraSearch:
                 if previous_detections[pulsar]["sigma"] > self.known_source_threshold
             ]
             filtered_sources = db_api.get_known_source_by_names(filtered_psr_names)
+
             if len(filtered_sources):
                 static_filter = StaticPeriodicFilter.from_ks_list(filtered_sources)
                 bad_freq_indices = static_filter.apply_static_mask(pspec.freq_labels, 0)
