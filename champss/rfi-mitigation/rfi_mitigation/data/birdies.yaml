@@ -50,15 +50,112 @@ known_bad_frequencies:
     note: "Candidates in stacked spectra."
 
   b7:
-    frequency: 1
-    width: 0.01
-    int_nharm: 4
-    frac_nharm: 0
-    note: "Candidates in some observations."
-
-  b8:
     frequency: 90.92
     width: 0.01
     int_nharm: 4
     frac_nharm: 0
     note: "Candidates in stacked spectra. Might be slightly off."
+
+  b8:
+    frac_nharm: 0
+    frequency: 117.25254201640686
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 87.4% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b9:
+    frac_nharm: 0
+    frequency: 167.25292274107537
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 93.5% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b9:
+    frac_nharm: 0
+    frequency: 217.252333338062
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 98.1% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b10:
+    frac_nharm: 0
+    frequency: 232.747212673227
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 95.7% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b11:
+    frac_nharm: 0
+    frequency: 267.2527140627305
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 99.9% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b12:
+    frac_nharm: 0
+    frequency: 282.7475933978955
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 96.1% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b13:
+    frac_nharm: 0
+    frequency: 292.25290442506474
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 89.1% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b14:
+    frac_nharm: 0
+    frequency: 342.25231502205133
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 92.6% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b15:
+    frac_nharm: 0
+    frequency: 384.5052560791374
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 97.7% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b16:
+    frac_nharm: 0
+    frequency: 392.2526957467199
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 94.7% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b17:
+    frac_nharm: 0
+    frequency: 467.25229670604074
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 92.2% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b18:
+    frac_nharm: 0
+    frequency: 473.5028293604652
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 90.1% of observations between 20231012
+      and 20241011.
+    width: 0.01
+
+  b19:
+    frac_nharm: 0
+    frequency: 492.252487068375
+    int_nharm: 1
+    note: Derived from dynamic birdies. Filtered in 96.7% of observations between 20231012
+      and 20241011.
+    width: 0.01
