@@ -352,8 +352,6 @@ class PowerSpectraSearch:
         # Alternatively the search_candidates function could be rewritten
         # to work with shared and non-shared memory
         pspec.move_to_shared_memory()
-        if self.mp_chunk_size == 1:
-            map_input = enumerate(pspec.dms)
         if not self.mp_chunk_size:
             self.mp_chunk_size = len(pspec.dms) // self.num_threads + 1
         log.info(
@@ -369,7 +367,6 @@ class PowerSpectraSearch:
             full_indices[i : i + self.mp_chunk_size]
             for i in range(0, len(pspec.dms), self.mp_chunk_size)
         ]
-
         detection_list = pool.starmap(
             partial(
                 self.search_candidates,
@@ -543,7 +540,7 @@ class PowerSpectraSearch:
             shared_spectra_shape, dtype=shared_spectra_type, buffer=shared_spectra.buf
         )
         detection_list = []
-        power_spectra = power_spectra[: len(full_harm_bins[0])]
+        power_spectra = power_spectra[:, : len(full_harm_bins[0])]
         freq_labels = freq_labels[: len(full_harm_bins[0])]
         allowed_harmonics = [1, 2, 4, 8, 16, 32]
         for dm_index, dm in zip(dm_indices, dms):
