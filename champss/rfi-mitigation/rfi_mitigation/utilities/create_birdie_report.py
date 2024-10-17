@@ -85,7 +85,10 @@ def add_to_overall_mask(mask, obs):
     # Could use multiprocessing for faster loading
     obs_obj = models.Observation.from_db(obs)
     if obs["birdies_position"] is not None:
-        mask[obs["birdies_position"]] += 1
+        try:
+            mask[obs["birdies_position"]] += 1
+        except:
+            pass
     return mask
 
 
@@ -153,7 +156,10 @@ def main(db_port, db_name, db_host, end_date, ndays, threshold):
         all_birdies = process_map(return_birdies, used_obs, max_workers=8, chunksize=1)
         for single_birdies in all_birdies:
             if single_birdies is not None:
-                mask[single_birdies] += 1
+                try:
+                    mask[single_birdies] += 1
+                except:
+                    pass
     else:
         for index, obs in tqdm.tqdm(enumerate(used_obs)):
             mask = add_to_overall_mask(mask, obs)
