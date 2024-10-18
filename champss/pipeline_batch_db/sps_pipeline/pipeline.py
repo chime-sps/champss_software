@@ -18,6 +18,7 @@ import pyroscope
 import pytz
 from omegaconf import OmegaConf
 from prometheus_api_client import PrometheusConnect
+from pymongo.errors import ServerSelectionTimeoutError
 
 # Careful disabling HDF5 file locking: can lead to stack corruption
 # if two processes write to the same file concurrently (as
@@ -789,6 +790,12 @@ def main(
     type=float,
     help="Sigma threshold above which the candidate plots are created",
 )
+@click.option(
+    "--file",
+    default=None,
+    type=str,
+    help="Host used for the mongodb database.",
+)
 @click.argument("ra", type=click.FloatRange(-180, 360))
 @click.argument("dec", type=click.FloatRange(-90, 90))
 @click.argument(
@@ -825,7 +832,7 @@ def main(
 )
 @click.option(
     "--cand-path",
-    default=None,
+    default="",
     type=str,
     help="Path where the candidates are created",
 )
@@ -870,6 +877,7 @@ def main(
 def stack_and_search(
     plot,
     plot_threshold,
+    file,
     ra,
     dec,
     components,
@@ -902,21 +910,38 @@ def stack_and_search(
     config = load_config()
     now = dt.datetime.now()
     log_path = str(cand_path) + f"./stack_logs/{now.strftime('%Y/%m/%d')}/"
-    log_name = (
-        f"run_stack_search_{ra :.02f}_"
-        f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
-    )
+    if not file:
+        log_name = (
+            f"run_stack_search_{ra :.02f}_"
+            f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
+        )
+    else:
+        log_name = (
+            f"run_stack_search_{os.path.basename(file)}_"
+            f"{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
+        )
     log_file = log_path + log_name
     apply_logging_config(config, log_file)
     if path_cumul_stack:
         config.ps_cumul_stack.ps_stack_config.basepath = path_cumul_stack
-    db_utils.connect(host=db_host, port=db_port, name=db_name)
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     # First just look up the pointing without having to create an Observation
     try:
-        closest_pointing = find_closest_pointing(ra, dec)
-    except NoSuchPointingError:
-        log.error("No observation within half a degree: %.2d, %.2d", ra, dec)
-        exit(1)
+        db.command("ping")
+        db_connection = True
+    except ServerSelectionTimeoutError:
+        log.info("Connection to database not possible.")
+        db_connection = False
+    if db_connection:
+        try:
+            closest_pointing = find_closest_pointing(ra, dec)
+            closest_pointing_id = closest_pointing._id
+        except NoSuchPointingError:
+            log.error("No observation within half a degree: %.2d, %.2d", ra, dec)
+            exit(1)
+    else:
+        closest_pointing_id = None
+        config.ps_cumul_stack.ps_search_config.update_db = False
     if not components or "all" in components:
         components = set(components) | {"search-monthly", "stack", "search"}
     to_search_monthly = False
@@ -941,27 +966,31 @@ def stack_and_search(
     if to_search_monthly:
         global power_spectra_monthly
         if ps_cumul_stack_processor.pipeline.run_ps_search_monthly:
-            log.info(
-                "Performing searching on monthly stack"
-                f" {closest_pointing.ra:.2f} {closest_pointing.dec:.2f}"
-            )
+            if not file:
+                log.info(f"Performing searching on monthly stack {ra:.2f} {dec:.2f}")
+            else:
+                log.info(f"Performing searching on {file}")
         (
             ps_detections_monthly,
             power_spectra_monthly,
         ) = ps_cumul_stack_processor.pipeline.load_and_search_monthly(
-            closest_pointing._id,
+            closest_pointing_id,
             injection_path,
             injection_idx,
             only_injections,
             cutoff_frequency,
             scale_injections,
+            file=file,
         )
-        ps_stack = db_api.get_ps_stack(closest_pointing._id)
+        if db_connection:
+            ps_stack = db_api.get_ps_stack(closest_pointing_id)
+            stack_path = ps_stack.datapath_month
+        else:
+            stack_path = file
         if ps_detections_monthly:
             cands.run_interface(
                 ps_detections_monthly,
-                closest_pointing,
-                ps_stack.datapath_month,
+                stack_path,
                 cand_path,
                 cands_processor,
                 power_spectra_monthly,
@@ -999,7 +1028,6 @@ def stack_and_search(
                     ps_stack = db_api.get_ps_stack(closest_pointing._id)
                     cands.run_interface(
                         ps_detections,
-                        closest_pointing,
                         ps_stack.datapath_cumul,
                         cand_path,
                         cands_processor,

@@ -137,7 +137,6 @@ def run(
 
 def run_interface(
     ps_detection_clusters,
-    pointing,
     stack_path,
     cand_path,
     cands_processor,
@@ -158,8 +157,6 @@ def run_interface(
     ----------
     ps_detection_clusters: sps_common.interfaces.PowerSpectraDetectionClusters
         The PowerSpectraDetectionClusters interface containing all clusters of detections from a cumulative stack.
-    pointing: sps_common.interfaces.beamformer.ActivePointing
-        Sky pointing to process.
     stack_path: str
         Path to the location of the cumulative power spectra stack.
     cands_processor: Wrapper
@@ -182,9 +179,16 @@ def run_interface(
     only_injections: bool
         Whether non-injections are filtered out. Default: False
     """
-    log.info(f"Candidate Processor of stack ({pointing.ra :.2f} {pointing.dec :.2f})")
-    stack_root_folder = stack_path.rsplit("/stack/")[0]
-    if cand_path is None:
+
+    log.info(
+        "Candidate Processor of stack"
+        f" ({ps_detection_clusters.ra :.2f} {ps_detection_clusters.dec :.2f})"
+    )
+    if "/stack/" in stack_path:
+        stack_root_folder = stack_path.rsplit("/stack/")[0]
+    else:
+        stack_root_folder = path.abspath(stack_path).rsplit("/", 1)[0]
+    if not cand_path:
         if only_injections:
             candidate_folder = f"{stack_root_folder}/injections/"
         else:
@@ -195,7 +199,7 @@ def run_interface(
         else:
             candidate_folder = f"{cand_path}/candidates"
     if not only_injections:
-        if "cumulative" in stack_path.rsplit("/stack/")[1]:
+        if "cumulative" in stack_path.rsplit("/", 1)[-1]:
             candidate_folder += "_cumul/"
         else:
             candidate_folder += "_monthly/"
@@ -216,38 +220,38 @@ def run_interface(
             f"_{len(power_spectra.datetimes)}_candidates.npz"
         )
 
-    with cand_ps_processing_time.labels(pointing._id, pointing.beam_row).time():
-        psdc = ps_detection_clusters
-        spcc = cands_processor.fg.make_single_pointing_candidate_collection(
-            psdc, power_spectra
+    psdc = ps_detection_clusters
+    spcc = cands_processor.fg.make_single_pointing_candidate_collection(
+        psdc, power_spectra
+    )
+    spcc.write(ps_candidates)
+    if injection_path:
+        injection_performance = spcc.test_injection_performance()
+    if update_db:
+        # For now don't write to db by default, I'll think later about how to turn this on and off
+        payload = {
+            "path_candidate_file": path.abspath(ps_candidates),
+            "num_total_candidates": len(spcc.candidates),
+        }
+        db_api.append_ps_stack(pointing._id, payload)
+    if plot:
+        if not cand_path:
+            plot_folder = f"{stack_root_folder}/plots"
+        else:
+            plot_folder = f"{cand_path}/plots"
+        if only_injections:
+            plot_folder += "_injections/"
+        else:
+            if "cumulative" in stack_path.rsplit("/stack/", 1)[-1]:
+                plot_folder += "_cumul/"
+            else:
+                plot_folder += "_monthly/"
+        log.info(f"Creating candidates plots in {plot_folder}.")
+        candidate_plots = spcc.plot_candidates(
+            sigma_threshold=plot_threshold, folder=plot_folder
         )
-        spcc.write(ps_candidates)
-        if injection_path:
-            injection_performance = spcc.test_injection_performance()
-        if update_db:
-            # For now don't write to db by default, I'll think later about how to turn this on and off
-            payload = {
-                "path_candidate_file": path.abspath(ps_candidates),
-                "num_total_candidates": len(spcc.candidates),
-            }
-            db_api.append_ps_stack(pointing._id, payload)
-        if plot:
-            if cand_path is None:
-                plot_folder = f"{stack_root_folder}/plots"
-            else:
-                plot_folder = f"{cand_path}/plots"
-            if only_injections:
-                plot_folder += "_injections/"
-            else:
-                if "cumulative" in stack_path.rsplit("/stack/")[1]:
-                    plot_folder += "_cumul/"
-                else:
-                    plot_folder += "_monthly/"
-            log.info(f"Creating candidates plots in {plot_folder}.")
-            candidate_plots = spcc.plot_candidates(
-                sigma_threshold=plot_threshold, folder=plot_folder
-            )
-            log.info(f"Plotted {len(candidate_plots)} candidate plots.")
+        log.info(f"Plotted {len(candidate_plots)} candidate plots.")
+
     log.info(f"{len(spcc.candidates)} candidates.")
     if len(spcc.candidates):
         # Currently candidates are not sorted

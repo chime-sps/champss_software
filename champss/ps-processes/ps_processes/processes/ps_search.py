@@ -113,6 +113,10 @@ class PowerSpectraSearch:
 
     known_source_threshold: float
         Filter all known sources that were ever above this threshold in an observation of this pointing
+
+    use_stack_threshold: str
+        Whether to use the stack sigma for the known source threshold. Otherwise uses sigma
+        from single observations.
     """
 
     cluster_config = attribute(validator=instance_of(dict))
@@ -139,6 +143,7 @@ class PowerSpectraSearch:
     known_source_threshold: float = attribute(default=np.inf)
     filter_birdies: bool = attribute(default=False)
     mean_bin_sigma_threshold: float = attribute(default=0)
+    use_stack_threshold = attribute(validator=instance_of(bool), default=False)
     full_harm_bins = attribute(init=False)
     update_db = attribute(default=True, validator=instance_of(bool))
 
@@ -273,13 +278,17 @@ class PowerSpectraSearch:
         if self.known_source_threshold is not np.inf:
             pointing_id = db_api.get_observation(pspec.obs_id[0]).pointing_id
             current_pointing = db_api.get_pointing(pointing_id)
-            previous_detections = current_pointing.strongest_pulsar_detections
+            if self.use_stack_threshold:
+                previous_detections = current_pointing.strongest_pulsar_detections_stack
+            else:
+                previous_detections = current_pointing.strongest_pulsar_detections
             filtered_psr_names = [
                 pulsar
                 for pulsar in previous_detections
                 if previous_detections[pulsar]["sigma"] > self.known_source_threshold
             ]
             filtered_sources = db_api.get_known_source_by_names(filtered_psr_names)
+
             if len(filtered_sources):
                 static_filter = StaticPeriodicFilter.from_ks_list(filtered_sources)
                 bad_freq_indices = static_filter.apply_static_mask(pspec.freq_labels, 0)
@@ -291,7 +300,6 @@ class PowerSpectraSearch:
                     f"Filter {len(bad_freq_indices)} indices because of pulsars"
                     f" {filtered_psr_names}"
                 )
-
                 self.full_harm_bins[dummy_harmonics != 0] = 0
 
         if self.filter_birdies:
@@ -383,8 +391,6 @@ class PowerSpectraSearch:
         # Alternatively the search_candidates function could be rewritten
         # to work with shared and non-shared memory
         pspec.move_to_shared_memory()
-        if self.mp_chunk_size == 1:
-            map_input = enumerate(pspec.dms)
         if not self.mp_chunk_size:
             self.mp_chunk_size = len(pspec.dms) // self.num_threads + 1
         log.info(
@@ -400,7 +406,6 @@ class PowerSpectraSearch:
             full_indices[i : i + self.mp_chunk_size]
             for i in range(0, len(pspec.dms), self.mp_chunk_size)
         ]
-
         detection_list = pool.starmap(
             partial(
                 self.search_candidates,
@@ -574,7 +579,7 @@ class PowerSpectraSearch:
             shared_spectra_shape, dtype=shared_spectra_type, buffer=shared_spectra.buf
         )
         detection_list = []
-        power_spectra = power_spectra[: len(full_harm_bins[0])]
+        power_spectra = power_spectra[:, : len(full_harm_bins[0])]
         freq_labels = freq_labels[: len(full_harm_bins[0])]
         allowed_harmonics = [1, 2, 4, 8, 16, 32]
         for dm_index, dm in zip(dm_indices, dms):

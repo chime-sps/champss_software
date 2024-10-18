@@ -347,7 +347,7 @@ def plot_candidate(
 
     file_name = (
         f"{folder}/{prefix}_{sp_candidate.ra:.2f}_"
-        f"{sp_candidate.dec:.2f}_{sp_candidate.sigma:.2f}_"
+        f"{sp_candidate.dec:.2f}_{sp_candidate.sigma:06.2f}_"
         f"{sp_candidate.freq:.5f}_{sp_candidate.dm:.3f}_"
         f"{sp_candidate.obs_id[-1]}.png"
     )

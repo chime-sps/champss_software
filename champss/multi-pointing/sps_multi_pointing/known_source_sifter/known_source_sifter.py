@@ -45,6 +45,10 @@ class KnownSourceSifter:
         Dictionary containing details of a quick RFI check before the knwon source sifter is run.
         Dicotinary keys should be the name of a candidate attribute and each field should be a dict
         containing a 'threshold' key which is the upper limit for that parameter.
+
+    use_unknown_freq: bool
+        Also use known sources without known frequency.
+        Default = False
     """
 
     ks_filters = attr.ib(
@@ -57,6 +61,7 @@ class KnownSourceSifter:
     )
     threshold = attr.ib(default=1.0, validator=instance_of(float))
     rfi_check = attr.ib(default={}, validator=instance_of(dict))
+    use_unknown_freq = attr.ib(default=False, validator=instance_of(bool))
     config_init = attr.ib(init=False)
     ks_database = attr.ib(init=False)
     ks_filter_names = attr.ib(init=False)
@@ -99,7 +104,7 @@ class KnownSourceSifter:
                 ks.dm,
                 ks.dm_error,
                 ks.spin_period_s,
-                known_source_filters.change_spin_period(ks.spin_period_s, Time.now()),
+                known_source_filters.change_spin_period(ks, Time.now()),
                 ks.spin_period_s_error,
             )
 
@@ -146,30 +151,38 @@ class KnownSourceSifter:
             )
             return candidate
         prob_freq = self.calculate_response(candidate, ks_db_freq, n_ks)
-        prob_no_freq = self.calculate_response(
-            candidate, ks_db_no_freq, n_ks, freq=False
-        )
         ks_db_freq = ks_db_freq[
             ["source_name", "pos_ra_deg", "pos_dec_deg", "spin_period_s", "dm"]
         ]
-        ks_db_no_freq = ks_db_no_freq[
-            ["source_name", "pos_ra_deg", "pos_dec_deg", "spin_period_s", "dm"]
-        ]
-        known_sources = np.concatenate(
-            (
-                ks_db_freq[np.where(prob_freq > self.threshold)],
-                ks_db_no_freq[np.where(prob_no_freq > self.threshold)],
+        if self.use_unknown_freq:
+            prob_no_freq = self.calculate_response(
+                candidate, ks_db_no_freq, n_ks, freq=False
             )
-        )
-        known_sources_prob = np.array(
-            np.concatenate(
+            ks_db_no_freq = ks_db_no_freq[
+                ["source_name", "pos_ra_deg", "pos_dec_deg", "spin_period_s", "dm"]
+            ]
+            known_sources = np.concatenate(
                 (
-                    prob_freq[np.where(prob_freq > self.threshold)],
-                    prob_no_freq[np.where(prob_no_freq > self.threshold)],
+                    ks_db_freq[np.where(prob_freq > self.threshold)],
+                    ks_db_no_freq[np.where(prob_no_freq > self.threshold)],
                 )
-            ),
-            dtype=[("likelihood", "<f4")],
-        )
+            )
+            known_sources_prob = np.array(
+                np.concatenate(
+                    (
+                        prob_freq[np.where(prob_freq > self.threshold)],
+                        prob_no_freq[np.where(prob_no_freq > self.threshold)],
+                    )
+                ),
+                dtype=[("likelihood", "<f4")],
+            )
+        else:
+            known_sources = ks_db_freq[np.where(prob_freq > self.threshold)]
+            known_sources_prob = np.array(
+                prob_freq[np.where(prob_freq > self.threshold)],
+                dtype=[("likelihood", "<f4")],
+            )
+
         known_source_list = rfn.merge_arrays(
             (known_sources, known_sources_prob), flatten=True
         )

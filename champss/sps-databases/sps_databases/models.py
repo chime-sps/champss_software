@@ -47,6 +47,10 @@ class Pointing:
         default={},
         converter=dict,
     )
+    strongest_pulsar_detections_stack = attrib(
+        default={},
+        converter=dict,
+    )
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )
