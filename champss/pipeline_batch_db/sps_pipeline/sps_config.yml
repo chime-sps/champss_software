@@ -304,6 +304,7 @@ ps_cumul_stack:
     precompute_harms: True
     use_nsum_per_bin: True
     skip_first_n_bins: 5
+    use_stack_threshold: True
     cluster_config:
       dbscan_eps: 1
       dm_scale_factor: 0.02
@@ -311,8 +312,8 @@ ps_cumul_stack:
       dbscan_min_samples: 5
       filter_nharm: False
       cluster_dm_cut: 2
-      max_ndetect: 400000
-      overlap_scale: 1.5
+      max_ndetect: 200000
+      overlap_scale: 2
       metric_combination: replace
       metric_method: power_overlap_array # possible: power_overlap, power_overlap_array, rhp_norm_by_min_nharm, rhp_overlap
       add_dm_when_replace: True
