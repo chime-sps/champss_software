@@ -29,7 +29,7 @@ config:
   archive:
     results: true
     plots:
-      methods: ["copy"]
+      methods: ["bypass"]
       storage: "posix"
     products:
       methods: ["bypass"]
@@ -48,6 +48,6 @@ deployers:
             driver: local
             driver_opts:
               type: nfs
-              o: addr=10.9.50.22,nfsvers=4.0,rw,noatime,nodiratime,soft
+              o: addr=10.17.4.21,nfsvers=4.0,rw,noatime,nodiratime,soft
               device: ":/data"
       constraints: ["node.labels.compute == true"]
