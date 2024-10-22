@@ -35,6 +35,7 @@ from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.ps_pipeline import PowerSpectraPipeline
+from scheduler.utils import convert_date_to_datetime
 from sps_common.interfaces import DedispersedTimeSeries
 from sps_databases import db_api, db_utils, models
 from sps_pipeline import (  # ps,
@@ -364,7 +365,7 @@ def main(
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
 
-    date = utils.convert_date_to_datetime(date)
+    date = convert_date_to_datetime(date)
 
     date_string = date.strftime("%Y/%m/%d")
 

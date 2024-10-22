@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "scheduler"
+version = "1.0.0"
+description = "CHAMPSS Scheduler"
+authors = ["CHIME SPS <chime_spawg@physics.mcgill.>"]
+license = "GPLv3"
+readme = "README.md"
+exclude = [
+    "tests"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+workflow-core = {git = "ssh://git@github.com/CHIMEFRB/workflow"}
+click = "^8.1.4"
+slack-sdk = "^3.26.1"
+
+[tool.poetry.group.dev.dependencies]
+commitizen = "^3.4.0"
+mypy = "^1.4.0"
+pre-commit = "^3.3.3"
+pytest = "^7.3.2"
+
+[tool.poetry.scripts]
+clear-workflow-buckets = "sps_pipeline.workflow:clear_workflow_buckets"
+clear-workflow-results = "sps_pipeline.workflow:clear_workflow_results"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

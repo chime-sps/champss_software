@@ -19,6 +19,7 @@ dmt = {git = "ssh://git@github.com/chime-sps/dmt"}
 folding = {path = "./champss/folding", develop=true}
 ps-processes = {path = "./champss/ps-processes", develop=true}
 rfi-mitigation = {path = "./champss/rfi-mitigation", develop=true}
+scheduler = {path = "./champss/scheduler", develop=true}
 spshuff = {path = "./champss/spshuff", develop=true}
 sps-common = {path = "./champss/sps-common", develop=true}
 sps-databases = {path = "./champss/sps-databases", develop=true}
