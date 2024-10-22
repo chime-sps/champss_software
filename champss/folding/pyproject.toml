@@ -22,8 +22,6 @@ beamformer = {path = "../beamformer", develop=true}
 scheduler = {path = "../scheduler", develop=true}
 sps-common = {path = "../sps-common", develop=true}
 sps-databases = {path = "../sps-databases", develop=true}
-docker = "^6.1.3"
-slack-sdk = "^3.26.1"
 numba = "^0.58"
 
 [tool.poetry.group.dev.dependencies]

@@ -41,6 +41,7 @@ def message_slack(
     slack_channel="#slow-pulsar-alerts",
     slack_token="xoxb-194910630096-6273790557189-FKbg9w1HwrJYqGmBRY8DF0te",
 ):
+
     log.setLevel(logging.INFO)
     log.info(f"Sending to Slack: \n{slack_message}")
     slack_client = WebClient(token=slack_token)
@@ -54,6 +55,20 @@ def message_slack(
 
 
 def save_container_logs(service):
+    """
+    Save the logs of a given container service to a file.
+
+    This function retrieves the logs from the specified container service and writes them to a log file.
+    The log file is saved in the directory "/data/chime/sps/logs/services/" with the name of the service.
+
+    Parameters:
+        service: The container service object from which to retrieve logs. The service object must have a `logs` method
+                 that returns a generator of log chunks.
+
+    Raises:
+        Exception: If there is an error while writing the logs to the file, it logs the error and skips gracefully.
+    """
+
     try:
         log_text = ""
         log_generator = service.logs(
@@ -73,6 +88,18 @@ def save_container_logs(service):
 
 
 def get_service_created_at_datetime(service):
+    """
+    Extracts and parses the 'CreatedAt' attribute from a service object to a datetime object.
+
+    Parameters:
+        service: An object that contains a dictionary attribute 'attrs' with a key 'CreatedAt'.
+                 The 'CreatedAt' value is expected to be a string in the format "%Y-%m-%dT%H:%M:%S".
+
+    Returns:
+        datetime: A datetime object representing the parsed 'CreatedAt' value.
+                  Returns None if there is an error during parsing.
+    """
+
     try:
         datetime = dt.datetime.strptime(
             service.attrs["CreatedAt"].split(".")[0], "%Y-%m-%dT%H:%M:%S"
@@ -87,6 +114,23 @@ def get_service_created_at_datetime(service):
 
 
 def wait_for_no_tasks_in_states(states_to_wait_for_none, docker_service_name_prefix=""):
+    """
+    Waits for no tasks to be in the specified states within Docker Swarm services.
+
+    This function monitors Docker Services and waits until there are no tasks
+    in the specified states (`states_to_wait_for_none`). It handles services with
+    names containing the `docker_service_name_prefix` and excludes perpetual processing
+    services. The function logs relevant information and errors, and removes services
+    that are finished or have been running/pending for too long.
+
+    Parameters:
+        states_to_wait_for_none (list): List of task states to wait for none to be in.
+        docker_service_name_prefix (str, optional): Prefix to filter Docker service names. Defaults to "".
+
+    Returns:
+        None
+    """
+
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
@@ -250,11 +294,6 @@ def schedule_workflow_job(
     # a private registry (e.g. ou chimefrb DockerHub account)
     try:
         docker_client.login(username="chimefrb", password=docker_password)
-
-        docker_password_secret_name = "DOCKER_PASSWORD"
-        docker_password_secret_id = docker_client.secrets.list(
-            filters={"name": docker_password_secret_name}
-        )[0].id
     except Exception as error:
         log.info(
             f"Failed to login to DockerHub: {error}. "
