@@ -354,20 +354,9 @@ def schedule_workflow_job(
             mount_paths = mount_path.split(":")
             mount_source = mount_paths[0]
             mount_target = mount_paths[1]
-            mount_driver = docker.types.DriverConfig(
-                name=None,
-                options={
-                    "type": "nfs",
-                    "o": "addr=10.17.4.21,nfsvers=4.0,rw,noatime,nodiratime,soft",
-                    "device": f":{mount_source}",
-                },
-            )
             docker_volumes.append(
                 docker.types.Mount(
-                    source=None,
-                    target=mount_target,
-                    type="volume",
-                    driver_config=mount_driver,
+                    target=mount_target, source=mount_source, type="bind"
                 )
             )
 
