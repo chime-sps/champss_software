@@ -350,7 +350,6 @@ def schedule_workflow_job(
         ]
 
         for mount_path in docker_mounts:
-            # This assumes all of your mount paths are from 10.17.4.21 (sps-archiver1.chime)!
             mount_paths = mount_path.split(":")
             mount_source = mount_paths[0]
             mount_target = mount_paths[1]
