@@ -49,7 +49,7 @@ def create_report(
     plt.tight_layout()
 
     pdf.savefig(fig)
-    ranges = [[0, 110], [90, 210], [190, 310], [290, 410], [390, 510]]
+    ranges = [[-10, 110], [90, 210], [190, 310], [290, 410], [390, 510]]
     for single_range in ranges:
         fig, axs = plt.subplots(2, 1, figsize=(15, 4))
         axs[0].plot(freqs, mask_normed)
