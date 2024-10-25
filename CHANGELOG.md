@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/chime-sps/champss_software/compare/v0.8.0...v0.9.0) (2024-10-25)
+
+
+### Features
+
+* **workflow.py:** Move workflow.py to its own module ([337473d](https://github.com/chime-sps/champss_software/commit/337473d214ab98f4c6d5330a78dbb375224fb4ba))
+
+
+### Bug Fixes
+
+* **workflow.py:** Constrain /data/ mounts to point directly to sps-archiver1.chime ([f0539cf](https://github.com/chime-sps/champss_software/commit/f0539cf8543584e06146e3b6fe7df7f7a1d797f8))
+
 ## [0.8.0](https://github.com/chime-sps/champss_software/compare/v0.7.0...v0.8.0) (2024-10-18)
 
 
