@@ -12,11 +12,11 @@ import click
 import numpy as np
 import pandas as pd
 from omegaconf import OmegaConf
+from scheduler.utils import convert_date_to_datetime
 from sps_common.interfaces.multi_pointing import KnownSourceLabel
 from sps_databases import db_api, db_utils
 from sps_multi_pointing import classifier, data_reader, grouper, utilities
 from sps_multi_pointing.known_source_sifter.known_source_sifter import KnownSourceSifter
-from sps_pipeline.utils import convert_date_to_datetime
 
 log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)

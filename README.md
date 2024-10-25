@@ -4,7 +4,7 @@
 
 Before running any scripts that call `schedule_workflow_job` outside of a container, you'll need to run:
 ```
-workflow workspace set champss/pipeline_batch_db/champss.workspace.yml
+workflow workspace set champss.workspace.yml
 ```
 
 ## Seting Up Environment

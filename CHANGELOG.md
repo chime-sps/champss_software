@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.9.0](https://github.com/chime-sps/champss_software/compare/v0.8.0...v0.9.0) (2024-10-25)
+
+
+### Features
+
+* **workflow.py:** Move workflow.py to its own module ([337473d](https://github.com/chime-sps/champss_software/commit/337473d214ab98f4c6d5330a78dbb375224fb4ba))
+
+
+### Bug Fixes
+
+* **workflow.py:** Constrain /data/ mounts to point directly to sps-archiver1.chime ([f0539cf](https://github.com/chime-sps/champss_software/commit/f0539cf8543584e06146e3b6fe7df7f7a1d797f8))
+
+## [0.8.0](https://github.com/chime-sps/champss_software/compare/v0.7.0...v0.8.0) (2024-10-18)
+
+
+### Features
+
+* Filter detections before clustering ([#80](https://github.com/chime-sps/champss_software/issues/80)) ([f671484](https://github.com/chime-sps/champss_software/commit/f67148416db6568928e250588ee55b82d2eee0c1))
+
+
+### Bug Fixes
+
+* file reading when full path if given ([#84](https://github.com/chime-sps/champss_software/issues/84)) ([5c426e1](https://github.com/chime-sps/champss_software/commit/5c426e166fc368ce63745bac4a41f95898c22d01))
+* Update astropy and minimum python version ([#87](https://github.com/chime-sps/champss_software/issues/87)) ([b91bd25](https://github.com/chime-sps/champss_software/commit/b91bd2503dd831bfdb80450fc6b44933d05666a3))
+
 ## [0.7.0](https://github.com/chime-sps/champss_software/compare/v0.6.1...v0.7.0) (2024-10-12)
 
 
