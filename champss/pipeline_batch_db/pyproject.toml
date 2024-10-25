@@ -18,6 +18,7 @@ workflow-core = {git = "ssh://git@github.com/CHIMEFRB/workflow"}
 folding = {path = "../folding", develop=true}
 ps-processes = {path = "../ps-processes", develop=true}
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}
+scheduler = {path = "../scheduler", develop=true}
 spshuff = {path = "../spshuff", develop=true}
 sps-common = {path = "../sps-common", develop=true}
 sps-databases = {path = "../sps-databases", develop=true}
@@ -33,7 +34,6 @@ pytz = "^2023.3"
 pyyaml = "^6.0"
 pyroscope-io = "^0.8.5"
 requests = "<2.32.0"
-slack-sdk = "^3.26.1"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
@@ -52,8 +52,6 @@ run-all-folding-processes = "sps_pipeline.processing:run_all_folding_processes"
 start-processing-services = "sps_pipeline.processing:start_processing_services"
 start-processing-manager = "sps_pipeline.processing:start_processing_manager"
 start-processing-cleanup = "sps_pipeline.processing:start_processing_cleanup"
-clear-workflow-buckets = "sps_pipeline.workflow:clear_workflow_buckets"
-clear-workflow-results = "sps_pipeline.workflow:clear_workflow_results"
 
 [build-system]
 requires = ["poetry-core"]

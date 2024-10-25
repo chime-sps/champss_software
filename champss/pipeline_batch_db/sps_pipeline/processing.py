@@ -14,10 +14,8 @@ import numpy as np
 import pytz
 from beamformer.strategist.strategist import PointingStrategist
 from folding.filter_mpcandidates import Filter
-from sps_databases import db_api, db_utils, models
-from sps_pipeline.pipeline import default_datpath, main
-from sps_pipeline.utils import convert_date_to_datetime, get_pointings_from_list
-from sps_pipeline.workflow import (
+from scheduler.utils import convert_date_to_datetime
+from scheduler.workflow import (
     clear_workflow_buckets,
     docker_swarm_pending_states,
     docker_swarm_running_states,
@@ -26,6 +24,9 @@ from sps_pipeline.workflow import (
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
 )
+from sps_databases import db_api, db_utils, models
+from sps_pipeline.pipeline import default_datpath, main
+from sps_pipeline.utils import get_pointings_from_list
 
 log = logging.getLogger()
 
