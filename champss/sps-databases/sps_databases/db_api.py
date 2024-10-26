@@ -1236,7 +1236,7 @@ def get_dates(obs_id_list):
     return sorted_dates
 
 
-def update_pulsars_in_pointing(pointing_id, pulsar_name, pulsar_dict):
+def update_pulsars_in_pointing(pointing_id, pulsar_name, pulsar_dict, stack=False):
     """
     Updates the strongest_pulsar_detections in a pointing.
 
@@ -1256,26 +1256,28 @@ def update_pulsars_in_pointing(pointing_id, pulsar_name, pulsar_dict):
     pointing: dict
         The dict of the updated pointing entry
     """
+    if stack:
+        attribute_to_update = "strongest_pulsar_detections_stack"
+    else:
+        attribute_to_update = "strongest_pulsar_detections"
     initial_pointing = get_pointing(pointing_id)
     new_pulsar_dict = {pulsar_name: pulsar_dict}
-    if initial_pointing.strongest_pulsar_detections == {}:
-        payload = {"strongest_pulsar_detections": new_pulsar_dict}
+    if getattr(initial_pointing, attribute_to_update, {}) == {}:
+        payload = {attribute_to_update: new_pulsar_dict}
         updated_pointing = update_pointing(pointing_id, payload)
     else:
         payload = {
-            "strongest_pulsar_detections": initial_pointing.strongest_pulsar_detections
+            attribute_to_update: getattr(initial_pointing, attribute_to_update, {})
         }
-        old_pulsar_info = payload["strongest_pulsar_detections"].get(pulsar_name, {})
+        old_pulsar_info = payload[attribute_to_update].get(pulsar_name, {})
         if old_pulsar_info == {}:
-            payload["strongest_pulsar_detections"][pulsar_name] = pulsar_dict
+            payload[attribute_to_update][pulsar_name] = pulsar_dict
             updated_pointing = update_pointing(pointing_id, payload)
         else:
-            old_max = payload["strongest_pulsar_detections"][pulsar_name].get(
-                "sigma", 0
-            )
+            old_max = payload[attribute_to_update][pulsar_name].get("sigma", 0)
             new_max = pulsar_dict.get("sigma", 0)
             if new_max > old_max:
-                payload["strongest_pulsar_detections"][pulsar_name] = pulsar_dict
+                payload[attribute_to_update][pulsar_name] = pulsar_dict
                 updated_pointing = update_pointing(pointing_id, payload)
             else:
                 updated_pointing = initial_pointing

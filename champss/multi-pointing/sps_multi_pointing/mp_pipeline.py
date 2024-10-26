@@ -12,11 +12,11 @@ import click
 import numpy as np
 import pandas as pd
 from omegaconf import OmegaConf
+from scheduler.utils import convert_date_to_datetime
 from sps_common.interfaces.multi_pointing import KnownSourceLabel
 from sps_databases import db_api, db_utils
 from sps_multi_pointing import classifier, data_reader, grouper, utilities
 from sps_multi_pointing.known_source_sifter.known_source_sifter import KnownSourceSifter
-from sps_pipeline.utils import convert_date_to_datetime
 
 log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
@@ -198,10 +198,9 @@ def cli(
     """Slow Pulsar Search multiple-pointing candidate processing."""
     date = convert_date_to_datetime(date)
 
-    run_name = run_name.replace("/", "")
-
     config = load_config()
     if run_name:
+        run_name = run_name.replace("/", "")
         run_label = run_name
     else:
         run_label = f"spsmp_{dt.datetime.now().isoformat()}"
@@ -302,7 +301,7 @@ def cli(
 
             cand.best_sigma, )
             """
-            if len(cand.obs_id) <= 1 and db is True:
+            if db is True:
                 obs = db_api.get_observation(cand.obs_id[0])
                 detection_dict = {
                     "ra": cand.ra,
@@ -316,40 +315,51 @@ def cli(
                 for c in cand.known_source.matches:
                     pulsar = c["source_name"]
                     ks = db_api.get_known_source_by_names(pulsar)[0]
-                    pre_exist = False
-                    new_index = 0
-                    for i, b in reversed(list(enumerate(ks.detection_history))):
-                        if b["obs_id"] == cand.obs_id:
-                            pre_exist = True
-                            if b["sigma"] < cand.best_sigma:
-                                ks.detection_history[i] = detection_dict
-                                payload = {
-                                    "detection_history": vars(ks)["detection_history"]
-                                }
-                                db_api.update_known_source(ks._id, payload)
-                            break
-                        if b["datetime"].date() < obs.datetime.date():
-                            new_index = i + 1
-                            break
-                    if pre_exist is False:
-                        ks.detection_history.insert(new_index, detection_dict)
-                        payload = {"detection_history": vars(ks)["detection_history"]}
-                        db_api.update_known_source(ks._id, payload)
+                    # For now only update detection history with single obs
+                    if len(cand.obs_id) <= 1:
+                        pre_exist = False
+                        new_index = 0
+                        for i, b in reversed(list(enumerate(ks.detection_history))):
+                            if b["obs_id"] == cand.obs_id:
+                                pre_exist = True
+                                if b["sigma"] < cand.best_sigma:
+                                    ks.detection_history[i] = detection_dict
+                                    payload = {
+                                        "detection_history": vars(ks)[
+                                            "detection_history"
+                                        ]
+                                    }
+                                    db_api.update_known_source(ks._id, payload)
+                                break
+                            if b["datetime"].date() < obs.datetime.date():
+                                new_index = i + 1
+                                break
+                        if pre_exist is False:
+                            ks.detection_history.insert(new_index, detection_dict)
+                            payload = {
+                                "detection_history": vars(ks)["detection_history"]
+                            }
+                            db_api.update_known_source(ks._id, payload)
                     # Updated strongest detection in pointings
                     for summary in cand.all_summaries:
                         obs_id = summary["obs_id"]
-                        if len(obs_id) == 1:
-                            # M May want to include the pointing id in the summaries?
-                            pointing_id = db_api.get_observation(obs_id[0]).pointing_id
-                            pointing_dict = {
-                                "obs_id": obs_id,
-                                "sigma": summary["sigma"],
-                                "freq": summary["freq"],
-                                "dm": summary["dm"],
-                            }
-                            updated_pointing = db_api.update_pulsars_in_pointing(
-                                pointing_id, pulsar, pointing_dict
-                            )
+                        # May want to include the pointing id in the summaries?
+                        pointing_id = db_api.get_observation(obs_id[0]).pointing_id
+                        pointing_dict = {
+                            "sigma": summary["sigma"],
+                            "freq": summary["freq"],
+                            "dm": summary["dm"],
+                        }
+                        if len(cand.obs_id) <= 1:
+                            pointing_dict["obs_id"] = obs_id
+                            update_stack = False
+                        else:
+                            # Saving all ob_ids might bloat the pointing db
+                            pointing_dict["num_days"] = len(obs_id)
+                            update_stack = True
+                        updated_pointing = db_api.update_pulsars_in_pointing(
+                            pointing_id, pulsar, pointing_dict, stack=update_stack
+                        )
         """
         I don't think  in the current state without filtering
         we want to write candidates to the database.

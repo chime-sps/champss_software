@@ -5,13 +5,13 @@ import click
 import multiday_search.confirm_cand as confirm_cand
 import multiday_search.fold_multiday as fold_multiday
 from foldutils.database_utils import add_mdcand_from_candpath, add_mdcand_from_psrname
-from sps_databases import db_api, db_utils, models
-from sps_pipeline.workflow import (
+from scheduler.workflow import (
     clear_workflow_buckets,
     docker_swarm_running_states,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
 )
+from sps_databases import db_api, db_utils, models
 
 log = logging.getLogger()
 log_stream = logging.StreamHandler()
@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 )
 @click.option(
     "--db-host",
-    default="sps-archiver",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )

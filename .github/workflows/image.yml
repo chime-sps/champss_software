@@ -12,7 +12,7 @@ on:
         type: boolean
       runs_on:
         type: string
-        default: 'sps-compute2'
+        default: 'self-hosted'
 
 jobs:
   build-image-and-push-to-remote:
@@ -43,7 +43,11 @@ jobs:
           tags: |
             chimefrb/${{ inputs.image_name }}:${{ inputs.image_tag }}
           ssh: "github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}}"
+          build-args: |
+            SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }}
           push: true
+      - run: |
+          docker builder prune -f
   build-image-and-save-to-local:
     if: ${{ inputs.build_locally == true }}
     runs-on: ${{ inputs.runs_on }}
@@ -60,3 +64,4 @@ jobs:
           install: true
       - run: |
           DOCKER_BUILDKIT=1 docker build -f Dockerfile -t chimefrb/${{ inputs.image_name }}:${{ inputs.image_tag }} --ssh github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}} --load .
+          docker builder prune -f

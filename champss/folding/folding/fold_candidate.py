@@ -16,8 +16,8 @@ from beamformer.skybeam import SkyBeamFormer
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from folding.plot_candidate import plot_candidate_archive
+from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
-from sps_pipeline.utils import convert_date_to_datetime
 
 
 def update_folding_history(id, payload):
@@ -147,7 +147,7 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
 )
 @click.option(
     "--db-host",
-    default="sps-archiver",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
