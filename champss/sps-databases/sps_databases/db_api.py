@@ -834,10 +834,8 @@ def get_known_source_by_name(name):
 
     # name is a string; caller is seeking single object
     db = db_utils.connect()
-    return [
-        KnownSource.from_db(ks)
-        for ks in db.known_sources.find_one({"source_name": name})
-    ]
+    ks = db.known_sources.find_one({"source_name": name})
+    return [KnownSource.from_db(ks)]
 
 
 def get_known_source_by_names(names):
