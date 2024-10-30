@@ -2,6 +2,7 @@ import os
 
 import astropy.units as u
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 import numpy as np
 from astropy.time import Time
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
@@ -47,14 +48,33 @@ def plot_candidate_archive(
     vtmin = np.nanmean(fs_bin) - 1 * np.nanstd(np.nanmean(fs_bin, 1))
     vtmax = np.nanmean(fs_bin) + 3 * np.nanstd(np.nanmean(fs_bin, 1))
 
-    fig = plt.figure(figsize=(12, 8))
-    ax0 = plt.subplot2grid((3, 4), (0, 0), colspan=2)
-    ax1 = plt.subplot2grid((3, 4), (1, 0), colspan=2, rowspan=2)
-    ax3 = plt.subplot2grid((3, 4), (1, 2), colspan=2, rowspan=2)
+    # Create a new figure
+    fig = plt.figure(figsize=(12, 8))  # Adjust size for better layout
+    
+    # Create a grid layout with specified height ratios
+    gs = GridSpec(3, 3, height_ratios=[1, 2, 2])  # Top plot 1x, bottom plots 2x each
+    
+    # Top plot (1x1)
+    ax0 = fig.add_subplot(gs[0, 0])  # First row, first column
+    ax1 = fig.add_subplot(gs[1:, 0])  # Second and third rows, first column
+    ax2 = fig.add_subplot(gs[1:, 1])  # Second and third rows, second column
 
-    plt.subplots_adjust(hspace=0.05, wspace=0.05, bottom=0.4)
+    ax3 = fig.add_subplot(gs[0, 1])  # First row, first column
+    ax3.axis('off')  # Hide axes
+
+    # fig = plt.figure(figsize=(10,8))#figsize=(8, 10))
+    # ax0 = plt.subplot2grid((4, 7), (0, 0), colspan=2)
+    # ax1 = plt.subplot2grid((4, 7), (1, 0), colspan=2, rowspan=3)
+    # ax2 = plt.subplot2grid((4, 7), (1, 2), colspan=2, rowspan=3)
+    # ax3 = plt.subplot2grid((4, 7), (0, 4), colspan=3, rowspan=4)
+    # ax3.set_xticks([])
+    # ax3.set_yticks([])
+    # ax3.set_frame_on(False)  # Optional: Remove the frame
+
+    plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
 
     ax0.set_title(f"{psr} {T0.isot[:10]}", fontsize=18)
+
 
     ax1.imshow(
         np.nanmean(fs_bin, 0),
@@ -64,7 +84,7 @@ def plot_candidate_archive(
         vmax=vfmax,
         extent=[0, 1, F[-1], F[1]],
     )
-    ax3.imshow(
+    ax2.imshow(
         np.nanmean(fs_bin, 1),
         aspect="auto",
         interpolation="nearest",
@@ -77,10 +97,10 @@ def plot_candidate_archive(
     ax1.set_ylabel("Frequency (MHz)", fontsize=18)
     ax1.set_xlabel("Phase", fontsize=18)
 
-    ax3.set_ylabel("Time (min)", fontsize=18)
-    ax3.set_xlabel("Phase", fontsize=18)
-    ax3.yaxis.tick_right()
-    ax3.yaxis.set_label_position("right")
+    ax2.set_ylabel("Time (min)", fontsize=18)
+    ax2.set_xlabel("Phase", fontsize=18)
+    ax2.yaxis.tick_right()
+    ax2.yaxis.set_label_position("right")
 
     phaseaxis = np.linspace(0, 1, ngate, endpoint=False)
     ax0.plot(phaseaxis, SNprof)
@@ -90,29 +110,30 @@ def plot_candidate_archive(
         print(f"Known pulsar {known} detected")
         parameters_text = (
             f"{known} \n"
-            f"Incoherent $\\sigma$: {sigma}\n"
-            f"Folded $\\sigma$: {SNR_val}\n"
-            f"RA (deg): {ra}\n"
-            f"DEC (deg): {dec}\n"
-            f"DM: {dm}\n"
-            f"f0: {f0}\n"
+            f"Incoherent $\\sigma$: {sigma:.2f}\n"
+            f"Folded $\\sigma$: {SNR_val:.2f}\n"
+            f"RA (deg): {ra:,.5g}\n"
+            f"DEC (deg): {dec:,.5g}\n"
+            f"DM: {dm:.2f}\n"
+            f"f0: {f0}"
         )
+        txt_height = 1.4
     else:
         parameters_text = (
-            f"Incoherent $\\sigma$: {sigma}\n"
-            f"Folded $\\sigma$: {SNR_val}\n"
-            f"RA (deg): {ra}\n"
-            f"DEC (deg): {dec}\n"
-            f"DM: {dm}\n"
-            f"f0: {f0}\n"
+            f"Incoherent $\\sigma$: {sigma:.2f}\n"
+            f"Folded $\\sigma$: {SNR_val:.2f}\n"
+            f"RA (deg): {ra:,.5g}\n"
+            f"DEC (deg): {dec:,.5g}\n"
+            f"DM: {dm:.2f}\n"
+            f"f0: {f0}"
         )
+        txt_height = 1.3
 
-    ax0.text(
-        1.05,
-        1.05,
+    ax3.text(
+        0.0,
+        txt_height,
         parameters_text,
-        transform=ax0.transAxes,
-        fontsize=18,
+        fontsize=10,
         va="top",
         ha="left",
         backgroundcolor="white",
@@ -146,28 +167,28 @@ def plot_candidate_archive(
         #         " Unpublished \n"
         #     )
 
-    def get_text_height(text, fontsize=10):
-        renderer = fig.canvas.get_renderer()
-        t = fig.text(0.5, 0.01, text, ha="center", fontsize=fontsize)
-        bbox = t.get_window_extent(renderer)
-        fig_height = fig.get_size_inches()[1] * fig.dpi
-        text_height = bbox.height / fig_height
-        t.remove()
-        return text_height
+    # def get_text_height(text, fontsize=8):
+    #     renderer = fig.canvas.get_renderer()
+    #     t = fig.text(0.5, 0.01, text, ha="center", fontsize=fontsize)
+    #     bbox = t.get_window_extent(renderer)
+    #     fig_height = fig.get_size_inches()[1] * fig.dpi
+    #     text_height = bbox.height / fig_height
+    #     t.remove()
+    #     return text_height
 
-    text_height = get_text_height(ks_text)
+    ax3.text(1.25, 1.2, ks_text, fontsize=8, ha='left', va='top')
 
-    bottom_margin = 0.1 + text_height
-    plt.subplots_adjust(bottom=bottom_margin, top=0.9, left=0.1, right=0.9)
+    # bottom_margin = 0.1 + text_height
+    # plt.subplots_adjust(bottom=bottom_margin, top=0.9, left=0.1, right=0.9)
 
-    fig.text(0.1, 0.01, ks_text, ha="left", fontsize=10)
+    # fig.text(0.7, 0.3, ks_text, ha="left", fontsize=8)
 
-    # ax1.text(
+    # ax3.text(
     #     0.0,
-    #     -0.3,
+    #     0.0,
     #     ks_text,
     #     transform=ax1.transAxes,
-    #     fontsize=10,
+    #     fontsize=8,
     #     va="top",
     #     ha="left",
     #     backgroundcolor="white",
