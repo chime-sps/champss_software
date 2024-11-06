@@ -108,8 +108,6 @@ def main(
         fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
     else:
         raise ValueError("Must provide either a candidate path or pulsar name")
-    print(fs_id, use_workflow)
-    print("worklow test")
     if use_workflow:
         if docker_password == "" or docker_password is None:
             # Possibly this function is running in a Workflow runner container

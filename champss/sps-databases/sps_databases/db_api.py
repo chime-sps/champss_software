@@ -725,7 +725,6 @@ def create_known_source(payload):
         the new instance, including the created MongoDB document id
     """
     db = db_utils.connect()
-    print(payload)
     known_source = KnownSource(**payload)
     doc = known_source.to_db()
     del doc["_id"]
