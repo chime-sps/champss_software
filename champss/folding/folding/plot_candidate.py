@@ -141,58 +141,24 @@ def plot_candidate_archive(
 
     radius = 5
     sources = get_nearby_known_sources(ra, dec, radius)
-
-    ks_text = f"Known sources within {radius} degrees\n"
-
+    
+    ks_text = [f"Known sources within {radius} degrees\n"]
+    source_texts = []
     for source in sources:
         ks_name = source.source_name
         ks_epoch = source.spin_period_epoch
-        # if ks_epoch == 39000.0:
-        #     published = False
-        # else:
-        #     published = True
         ks_ra = round(source.pos_ra_deg, 2)
         ks_dec = round(source.pos_dec_deg, 2)
         ks_f0 = round(1 / source.spin_period_s, 4)
         ks_dm = round(source.dm, 2)
         ks_survey = source.survey
-        # if published:
-        ks_text += (
-            f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0},"
-            f" survey={ks_survey} \n"
-        )
-        # else:
-        #     ks_text += (
-        #         f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0},"
-        #         " Unpublished \n"
-        #     )
-
-    # def get_text_height(text, fontsize=8):
-    #     renderer = fig.canvas.get_renderer()
-    #     t = fig.text(0.5, 0.01, text, ha="center", fontsize=fontsize)
-    #     bbox = t.get_window_extent(renderer)
-    #     fig_height = fig.get_size_inches()[1] * fig.dpi
-    #     text_height = bbox.height / fig_height
-    #     t.remove()
-    #     return text_height
+        pos_diff = np.sqrt((ra - ks_ra)**2 + (dec - ks_dec)**2) 
+        source_texts.append([pos_diff,f"{ks_name}: pos_diff={pos_diff:.4f}, ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0}, survey={ks_survey} \n"])
+    source_texts.sort(key=lambda x: x[0])
+    ks_text.extend([text[1] for text in source_texts])
+    ks_text = ' '.join(ks_text)
 
     ax3.text(1.25, 1.2, ks_text, fontsize=8, ha='left', va='top')
-
-    # bottom_margin = 0.1 + text_height
-    # plt.subplots_adjust(bottom=bottom_margin, top=0.9, left=0.1, right=0.9)
-
-    # fig.text(0.7, 0.3, ks_text, ha="left", fontsize=8)
-
-    # ax3.text(
-    #     0.0,
-    #     0.0,
-    #     ks_text,
-    #     transform=ax1.transAxes,
-    #     fontsize=8,
-    #     va="top",
-    #     ha="left",
-    #     backgroundcolor="white",
-    # )
 
     plt.savefig(coord_path + f"/{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png")
 
