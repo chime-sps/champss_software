@@ -4,7 +4,7 @@ import numpy as np
 import psrqpy
 from add_tzpar_sources import add_source_to_database
 from beamformer.utilities.dm import DMMap
-from sps_databases import db_api, db_utils
+from sps_databases import db_utils
 
 if __name__ == "__main__":
     """
@@ -49,11 +49,6 @@ if __name__ == "__main__":
         default=None,
         type=str,
         help="the path to the text file containing the psrcat entries",
-    )
-    parser.add_argument(
-        "--update",
-        help="Update the known source database instead of adding new sources",
-        action="store_true",
     )
     args = parser.parse_args()
     filename = args.filename
@@ -120,13 +115,12 @@ if __name__ == "__main__":
             condition="decjd > -20",
             checkupdate=True,
         )
-
         print(f"Using psrcat {query.catalogue.version}.")
         for index, pulsar in query.pandas.iterrows():
             payload = {
                 "source_type": 1,
                 "source_name": pulsar["NAME"],
-                "survey": pulsar["SURVEY"].lower().split(","),
+                "survey": pulsar["SURVEY"],
                 "pos_ra_deg": pulsar["RAJD"],
                 "pos_dec_deg": pulsar["DECJD"],
                 "pos_error_semimajor_deg": pulsar["RAJD_ERR"]
@@ -158,12 +152,4 @@ if __name__ == "__main__":
                 else 0.0,
                 "spin_period_epoch": float(pulsar["PEPOCH"]),
             }
-            if not args.update:
-                add_source_to_database(payload)
-            else:
-                print("Updating known source database using psrcat")
-                # ks = db_api.get_known_source_by_name(psrname)
-                ks = db.known_sources.find_one({"source_name": pulsar["NAME"]})
-                # KnownSource.from_db(ks)
-                ks_id = ks["_id"]
-                db_api.update_known_source(ks_id, payload)
+            add_source_to_database(payload)
