@@ -795,7 +795,10 @@ def main(
     "--file",
     default=None,
     type=str,
-    help="Host used for the mongodb database.",
+    help=(
+        "Path to stack file to be processed. Allows processing without database access."
+        "Only works with search-monthly. Overrules ra, dec option."
+    ),
 )
 @click.argument("ra", type=click.FloatRange(-180, 360))
 @click.argument("dec", type=click.FloatRange(-90, 90))

@@ -1,5 +1,6 @@
 import datetime as dt
 import logging
+import re
 import time
 
 import click
@@ -70,6 +71,8 @@ def save_container_logs(service):
     """
 
     try:
+        clean_pattern = re.compile(r'^\S+\s+')
+        
         log_text = ""
         log_generator = service.logs(
             details=True,
@@ -78,7 +81,9 @@ def save_container_logs(service):
             follow=False,
         )
         for log_chunk in log_generator:
-            log_text += log_chunk.decode("utf-8").strip() + "\n"
+            log_line = log_chunk.decode("utf-8").strip()
+            clean_line = clean_pattern.sub('', log_line)
+            log_text += clean_line + "\n"
 
         path = f"/data/chime/sps/logs/services/{service.name}.log"
         with open(path, "w") as file:
