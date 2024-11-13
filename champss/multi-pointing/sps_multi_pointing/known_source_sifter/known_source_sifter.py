@@ -99,7 +99,7 @@ class KnownSourceSifter:
                 ks.dm,
                 ks.dm_error,
                 ks.spin_period_s,
-                change_spin_period(ks.spin_period_s, Time.now()),
+                known_source_filters.change_spin_period(ks, Time.now()),
                 ks.spin_period_s_error,
             )
 
