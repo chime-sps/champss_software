@@ -23,7 +23,7 @@ jobs:
           docker rm -f champss-${{ inputs.branch_name }} || true
       - uses: addnab/docker-run-action@v3
         with:
-            image: chimefrb/champss_software:${{ inputs.branch_name }}
+            image: sps-archiver1.chime:5000/champss_software:${{ inputs.branch_name }}
             options: --rm --name champss-${{ inputs.branch_name }} -v /data/chime/sps/raw_backup:/data/chime/sps/raw_backup -v /data/chime/sps/benchmark/${{ inputs.branch_name }}:/module/benchmark/ -v /dev/shm:/dev/shm --shm-size=100gb
             # The following is only needed if running inside a Docker container
             run: |
@@ -32,5 +32,5 @@ jobs:
               chmod +x /module/champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh
               ./champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh '--using-docker'
       - run: |
-          docker image rmi chimefrb/champss_software:${{ inputs.branch_name }}
+          docker image rmi sps-archiver1.chime:5000/champss_software:${{ inputs.branch_name }}
           docker builder prune -f
