@@ -15,7 +15,7 @@ from sps_databases import db_api, db_utils
 )
 @click.option(
     "--db-host",
-    default="sps-archiver",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )

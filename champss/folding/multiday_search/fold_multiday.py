@@ -7,10 +7,9 @@ import click
 import folding.fold_candidate as fold_candidate
 import numpy as np
 from beamformer.strategist.strategist import PointingStrategist
-from beamformer.utilities.common import find_closest_pointing, get_data_list
+from beamformer.utilities.common import get_data_list
+from scheduler.workflow import schedule_workflow_job
 from sps_databases import db_api, db_utils, models
-from sps_pipeline.utils import convert_date_to_datetime
-from sps_pipeline.workflow import schedule_workflow_job
 
 log = logging.getLogger()
 
@@ -64,7 +63,7 @@ def find_all_dates_with_data(ra, dec, basepath, nday=10):
 )
 @click.option(
     "--db-host",
-    default="sps-archiver",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
