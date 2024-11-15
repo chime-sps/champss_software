@@ -73,7 +73,6 @@ if __name__ == "__main__":
         except:
             DM = nan
             DMerr = nan
-        print(P0, P0err, DM, DMerr)
 
         survey = data["survey"][i]
         if dec > -20:
@@ -96,13 +95,13 @@ if __name__ == "__main__":
                 "spin_period_epoch": 39000.0,  # placeholder, older than oldest ephemeris in psrcat so as to not overwrite
                 "survey": [survey.lower(), "psr_scraper"],
             }
-            print(psrname, ra, dec, P0, DM, survey)
             if not args.update:
                 add_source_to_database(payload)
             else:
                 print("Updating known source database using psrscraper")
-                # ks = db_api.get_known_source_by_name(psrname)
                 ks = db.known_sources.find_one({"source_name": psrname})
-                # KnownSource.from_db(ks)
-                ks_id = ks["_id"]
-                db_api.update_known_source(ks_id, payload)
+                if ks is None:
+                    add_source_to_database(payload)
+                else: 
+                    ks_id = ks["_id"]
+                    db_api.update_known_source(ks_id, payload)

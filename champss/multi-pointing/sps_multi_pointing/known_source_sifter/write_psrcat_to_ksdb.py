@@ -162,8 +162,9 @@ if __name__ == "__main__":
                 add_source_to_database(payload)
             else:
                 print("Updating known source database using psrcat")
-                # ks = db_api.get_known_source_by_name(psrname)
                 ks = db.known_sources.find_one({"source_name": pulsar["NAME"]})
-                # KnownSource.from_db(ks)
-                ks_id = ks["_id"]
-                db_api.update_known_source(ks_id, payload)
+                if ks is None:
+                    add_source_to_database(payload)
+                else: 
+                    ks_id = ks["_id"]
+                    db_api.update_known_source(ks_id, payload)
