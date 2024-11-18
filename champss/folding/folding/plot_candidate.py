@@ -126,21 +126,15 @@ def plot_candidate_archive(
     for source in sources:
         ks_name = source.source_name
         ks_epoch = source.spin_period_epoch
-        if ks_epoch == 45000.0:
-            published = False
-        else:
-            published = True
         ks_ra = round(source.pos_ra_deg, 2)
         ks_dec = round(source.pos_dec_deg, 2)
         ks_f0 = round(1 / source.spin_period_s, 4)
         ks_dm = round(source.dm, 2)
-        if published:
-            ks_text += f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0} \n"
-        else:
-            ks_text += (
-                f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0},"
-                " Unpublished \n"
-            )
+        ks_survey = source.survey
+        ks_text += (
+            f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0},"
+            f" survey={ks_survey} \n"
+        )
 
     def get_text_height(text, fontsize=10):
         renderer = fig.canvas.get_renderer()
@@ -157,17 +151,6 @@ def plot_candidate_archive(
     plt.subplots_adjust(bottom=bottom_margin, top=0.9, left=0.1, right=0.9)
 
     fig.text(0.1, 0.01, ks_text, ha="left", fontsize=10)
-
-    # ax1.text(
-    #     0.0,
-    #     -0.3,
-    #     ks_text,
-    #     transform=ax1.transAxes,
-    #     fontsize=10,
-    #     va="top",
-    #     ha="left",
-    #     backgroundcolor="white",
-    # )
 
     plt.savefig(coord_path + f"/{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png")
 

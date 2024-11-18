@@ -475,7 +475,7 @@ def main(
 
     fold_details["date"] = fold_details["date"].strftime("%Y%m%d")
     # Silence Workflow errors, requires results, products, plots
-    return fold_details, [], []
+    return fold_details, [plot_fname], [plot_fname]
 
 
 if __name__ == "__main__":
