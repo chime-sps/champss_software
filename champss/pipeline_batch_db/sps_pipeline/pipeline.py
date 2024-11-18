@@ -35,6 +35,7 @@ from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.ps_pipeline import PowerSpectraPipeline
+from scheduler.utils import convert_date_to_datetime
 from sps_common.interfaces import DedispersedTimeSeries
 from sps_databases import db_api, db_utils, models
 from sps_pipeline import (  # ps,
@@ -364,7 +365,7 @@ def main(
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
 
-    date = utils.convert_date_to_datetime(date)
+    date = convert_date_to_datetime(date)
 
     date_string = date.strftime("%Y/%m/%d")
 
@@ -794,7 +795,10 @@ def main(
     "--file",
     default=None,
     type=str,
-    help="Host used for the mongodb database.",
+    help=(
+        "Path to stack file to be processed. Allows processing without database access."
+        "Only works with search-monthly. Overrules ra, dec option."
+    ),
 )
 @click.argument("ra", type=click.FloatRange(-180, 360))
 @click.argument("dec", type=click.FloatRange(-90, 90))
@@ -909,15 +913,17 @@ def stack_and_search(
     pipeline_start_time = time.time()
     config = load_config()
     now = dt.datetime.now()
-    if file:
-        # Might want to make it work with general file name
-        ra = float(file.split("_")[0])
-        dec = float(file.split("_")[1])
     log_path = str(cand_path) + f"./stack_logs/{now.strftime('%Y/%m/%d')}/"
-    log_name = (
-        f"run_stack_search_{ra :.02f}_"
-        f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
-    )
+    if not file:
+        log_name = (
+            f"run_stack_search_{ra :.02f}_"
+            f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
+        )
+    else:
+        log_name = (
+            f"run_stack_search_{os.path.basename(file)}_"
+            f"{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
+        )
     log_file = log_path + log_name
     apply_logging_config(config, log_file)
     if path_cumul_stack:
@@ -934,15 +940,11 @@ def stack_and_search(
         try:
             closest_pointing = find_closest_pointing(ra, dec)
             closest_pointing_id = closest_pointing._id
-            actual_ra = closest_pointing.ra
-            actual_dec = closest_pointing.dec
         except NoSuchPointingError:
             log.error("No observation within half a degree: %.2d, %.2d", ra, dec)
             exit(1)
     else:
         closest_pointing_id = None
-        actual_ra = ra
-        actual_dec = dec
         config.ps_cumul_stack.ps_search_config.update_db = False
     if not components or "all" in components:
         components = set(components) | {"search-monthly", "stack", "search"}
@@ -968,10 +970,10 @@ def stack_and_search(
     if to_search_monthly:
         global power_spectra_monthly
         if ps_cumul_stack_processor.pipeline.run_ps_search_monthly:
-            log.info(
-                "Performing searching on monthly stack"
-                f" {actual_ra:.2f} {actual_dec:.2f}"
-            )
+            if not file:
+                log.info(f"Performing searching on monthly stack {ra:.2f} {dec:.2f}")
+            else:
+                log.info(f"Performing searching on {file}")
         (
             ps_detections_monthly,
             power_spectra_monthly,

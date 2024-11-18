@@ -5,13 +5,13 @@ import click
 import multiday_search.confirm_cand as confirm_cand
 import multiday_search.fold_multiday as fold_multiday
 from foldutils.database_utils import add_mdcand_from_candpath, add_mdcand_from_psrname
-from sps_databases import db_api, db_utils, models
-from sps_pipeline.workflow import (
+from scheduler.workflow import (
     clear_workflow_buckets,
     docker_swarm_running_states,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
 )
+from sps_databases import db_api, db_utils, models
 
 log = logging.getLogger()
 log_stream = logging.StreamHandler()
@@ -108,8 +108,6 @@ def main(
         fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
     else:
         raise ValueError("Must provide either a candidate path or pulsar name")
-    print(fs_id, use_workflow)
-
     if use_workflow:
         if docker_password == "" or docker_password is None:
             # Possibly this function is running in a Workflow runner container

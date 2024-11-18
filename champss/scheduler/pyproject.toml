@@ -1,9 +1,9 @@
 [tool.poetry]
-name = "sps-databases"
-version = "0.1.0"
-description = "CHIME SPS Database Layer"
+name = "scheduler"
+version = "1.0.0"
+description = "CHAMPSS Scheduler"
 authors = ["CHIME SPS <chime_spawg@physics.mcgill.>"]
-license = "Apache"
+license = "GPLv3"
 readme = "README.md"
 exclude = [
     "tests"
@@ -11,18 +11,19 @@ exclude = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
-spshuff = {path = "../spshuff", develop=true}
-sps-common = {path = "../sps-common", develop=true}
-attrs = "^22.2.0"
-pymongo = "^4.4.0"
-pytz = "^2023.3"
-
+workflow-core = {git = "ssh://git@github.com/CHIMEFRB/workflow"}
+click = "^8.1.4"
+slack-sdk = "^3.26.1"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
 mypy = "^1.4.0"
 pre-commit = "^3.3.3"
 pytest = "^7.3.2"
+
+[tool.poetry.scripts]
+clear-workflow-buckets = "sps_pipeline.workflow:clear_workflow_buckets"
+clear-workflow-results = "sps_pipeline.workflow:clear_workflow_results"
 
 [build-system]
 requires = ["poetry-core"]
