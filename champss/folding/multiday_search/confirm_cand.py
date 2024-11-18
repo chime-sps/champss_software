@@ -117,21 +117,26 @@ def main(
 
     T = data["T"]  # Time from first observation to last observation
     npbin = data["npbin"]  # Number of phase bins
-    M_f0 = int(npbin * phase_accuracy)
+    M_f0 = npbin * phase_accuracy
+    M_f0 = int(np.max((M_f0, 1)))  # To make sure M_f0 does not return 0
     # factor of 2, since we reference to central observation
     f0_points = 2 * int(delta_f0max * T * npbin / M_f0)
     f1_points = 2 * int(0.5 * delta_f1max * T**2 * npbin / M_f0)
 
     print(f"Running search with {f0_points} f0 bins, {f1_points} f1 bins")
-
     explore_grid = ExploreGrid(data, f0_lims, f1_lims, f0_points, f1_points)
     f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
 
     np.savez(
-        data["directory"] + "/explore_grid.npz", f0s=f0s, f1s=f1s, chi2_grid=chi2_grid
+        data["directory"] + "/explore_grid.npz",
+        f0s=f0s,
+        f1s=f1s,
+        chi2_grid=chi2_grid,
+        SN=np.max(explore_grid.SNmax),
+        nobs=len(data["profiles"]),
     )
-    plot_name = explore_grid.plot(fullplot=False)
 
+    plot_name = explore_grid.plot(fullplot=False)
     coherentsearch_summary = {
         "date": datetime.datetime.now(),
         "SN": float(np.max(explore_grid.SNmax)),
@@ -141,12 +146,12 @@ def main(
         "gridsearch_file": data["directory"] + "/explore_grid.npz",
         "path_to_plot": plot_name,
     }
+    coherentsearch_summary["date"] = coherentsearch_summary["date"].strftime("%Y%m%d")
     if write_to_db:
         log.info("Updating FollowUpSource with coherent search results")
         db_api.update_followup_source(
             fs_id, {"coherentsearch_history": [coherentsearch_summary]}
         )
-    coherentsearch_summary["date"] = coherentsearch_summary["date"].strftime("%Y%m%d")
 
     # Rewrite new ephemeris using new F0 and F1
 
@@ -176,8 +181,8 @@ def main(
                     output.write(line)
 
     explore_grid.plot(fullplot=True)
-    print(f"cohsearch_summary: {coherentsearch_summary}")
-    return coherentsearch_summary, [], []
+
+    return coherentsearch_summary, [plot_name], [plot_name]
 
 
 if __name__ == "__main__":

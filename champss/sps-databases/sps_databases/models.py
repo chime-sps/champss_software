@@ -642,6 +642,16 @@ class KnownSource:
     spin_period_derivative_error = attrib(default=0, converter=float, type=float)
     spin_period_epoch = attrib(default=0, converter=float, type=float)
     detection_history = attrib(default=[], type=list)
+    survey = attrib(
+        default=[],
+        validator=validators.optional(
+            validators.deep_iterable(
+                member_validator=validators.instance_of(str),
+                iterable_validator=validators.instance_of(list),
+            )
+        ),
+        on_setattr=validate,
+    )
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )
@@ -651,7 +661,6 @@ class KnownSource:
         converter=converters.optional(str),
         on_setattr=convert,  # type: ignore
     )
-    survey = attrib(default=None, converter=str)
 
     @property
     def id(self):
