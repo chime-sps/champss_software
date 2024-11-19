@@ -14,6 +14,8 @@ def example_workflow_function(my_input_value):
     node_name = os.environ.get("NODE_NAME", "")
     return {"my_input_value": my_input_value, "node_name": node_name}, [], []
 
+
+# See error logs in /data/chime/sps/logs/processing-<docker_name>.log
 def example_submit_job():
     workflow_buckets_name = "my-bucket"
 

@@ -55,7 +55,6 @@ jobs:
         with:
           python-version: 3.11
       - uses: webfactory/ssh-agent@v0.4.1
-        id: set-ssh
         with:
           ssh-private-key: ${{ secrets.SPS_SSH_ID }}
       - run: |
