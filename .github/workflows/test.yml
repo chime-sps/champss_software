@@ -1,0 +1,45 @@
+name: My Test Workflow
+
+on:
+  push:
+    branches:
+      - adapt-code-for-local-docker-image-registry
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_job_1:
+        type: boolean
+        default: false
+      run_job_2:
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      run_job_1:
+        type: boolean
+        default: false
+      run_job_2:
+        type: boolean
+        default: false
+
+jobs:
+  job1:
+    if: ${{ inputs.run_job_1 == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - run: |
+          ls -la
+  job2:
+    if: ${{ inputs.run_job_2 == true }}
+    uses: chime-sps/champss_software/.github/workflows/image.yml@adapt-code-for-local-docker-image-registry
+    secrets: inherit
+    with:
+      image_name: 'champss_software'
+      image_tag: ${{ github.ref_name }}
+      runs_on: 'self-hosted' # 'sps-compute3'
+      build_locally: false # true
