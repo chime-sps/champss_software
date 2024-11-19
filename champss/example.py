@@ -25,7 +25,7 @@ def example_submit_job():
     github_branch_name = "adapt-code-for-local-docker-image-registry"
 
     work_id = schedule_workflow_job(
-        docker_image_name=f"{docker_registry_name}/{github_repo_name}:{github_branch_name}",
+        docker_image=f"{docker_registry_name}/{github_repo_name}:{github_branch_name}",
         docker_mounts=["/home/candrade:/champss_module/my_home"],
         docker_name=f"{docker_service_prefix}-my-workflow",
         docker_memory_reservation=5,
@@ -33,6 +33,7 @@ def example_submit_job():
         workflow_function="champss.example.example_workflow_function",
         workflow_params={"my_input_value": 42},
         workflow_tags=["chris", "my-workflow"],
+        workflow_user="candrade"
     )
 
     wait_for_no_tasks_in_states(
