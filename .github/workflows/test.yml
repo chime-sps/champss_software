@@ -1,9 +1,9 @@
 name: My Test Workflow
 
 on:
-  push:
-    branches:
-      - adapt-code-for-local-docker-image-registry
+  # push:
+  #  branches:
+  #    - adapt-code-for-local-docker-image-registry
   pull_request:
     branches:
       - main
@@ -23,6 +23,10 @@ on:
       run_job_2:
         type: boolean
         default: false
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    types:
+      - completed
 
 jobs:
   job1:
@@ -34,12 +38,16 @@ jobs:
           fetch-depth: 1
       - run: |
           ls -la
-  job2:
+  job2_2:
     if: ${{ inputs.run_job_2 == true }}
-    uses: chime-sps/champss_software/.github/workflows/image.yml@adapt-code-for-local-docker-image-registry
-    secrets: inherit
-    with:
-      image_name: 'champss_software'
-      image_tag: ${{ github.ref_name }}
-      runs_on: 'self-hosted' # 'sps-compute3'
-      build_locally: false # true
+    runs-on: sps-compute1
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - run: |
+          python -m pip install .
+          python champss/example.py
