@@ -23,8 +23,9 @@ jobs:
       branch_name: ${{ github.head_ref || 'benchmark' }}
   test:
     if: ${{ github.actor != 'github-actions' && github.event_name == 'push' && github.ref_name != 'main' && contains(github.event.head_commit.message, '[test]') }}
-    uses: chime-sps/champss_software/.github/workflows/image.yml@main
+    uses: chime-sps/champss_software/.github/workflows/image.yml@adapt-code-for-local-docker-image-registry # Usually '@main' but testing this branch's image.yml
     secrets: inherit
     with:
+      runs_on: sps-compute1 # Temporary until builds work on ALL 'self-hosted' runners
       image_tag: ${{ github.ref_name || 'test' }}
       build_locally: false

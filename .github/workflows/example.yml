@@ -1,4 +1,4 @@
-name: My Test Workflow
+name: Example GitHub Actions Workflow
 
 on:
   # push:
@@ -24,7 +24,8 @@ on:
         type: boolean
         default: false
   workflow_run:
-    workflows: ["Continuous Integration"]
+    workflows:
+      - Continuous Integration
     types:
       - completed
 
@@ -38,7 +39,7 @@ jobs:
           fetch-depth: 1
       - run: |
           ls -la
-  job2_2:
+  job2:
     if: ${{ inputs.run_job_2 == true }}
     runs-on: sps-compute1
     steps:
