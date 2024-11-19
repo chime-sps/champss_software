@@ -30,7 +30,7 @@ def example_submit_job():
     work_id = schedule_workflow_job(
         docker_image=f"{docker_registry_name}/{github_repo_name}:{github_branch_name}",
         docker_mounts=["/home/candrade:/champss_module/my_home"],
-        docker_name=f"{docker_service_prefix}-my-workflow",
+        docker_name=f"{docker_service_prefix}-my-workflow", # Will be prepended with "processing-"
         docker_memory_reservation=5,
         workflow_buckets_name=workflow_buckets_name,
         workflow_function="champss.example.example_workflow_function",
