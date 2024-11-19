@@ -1,8 +1,7 @@
 import json
 
 import click
-from sps_databases import db_api, db_utils, models
-from sps_pipeline.workflow import (
+from scheduler.workflow import (
     clear_workflow_buckets,
     docker_swarm_pending_states,
     docker_swarm_running_states,
@@ -11,6 +10,7 @@ from sps_pipeline.workflow import (
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
 )
+from sps_databases import db_api, db_utils, models
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
