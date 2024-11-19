@@ -44,6 +44,7 @@ jobs:
           ls -la
   job2:
     if: ${{ inputs.run_job_2 == true }}
+    needs: job1
     runs-on: sps-compute1
     steps:
       - uses: actions/checkout@v2
