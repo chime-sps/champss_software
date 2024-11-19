@@ -4,9 +4,9 @@ on:
   # push:
   #  branches:
   #    - adapt-code-for-local-docker-image-registry
-  pull_request:
-    branches:
-      - main
+  # pull_request:
+  #   branches:
+  #     - main
   workflow_dispatch:
     inputs:
       run_job_1:
@@ -29,6 +29,9 @@ on:
     types:
       - completed
 
+# How to run a GitHub Actions Workflow Dispatch from your CLI with inputs:
+# gh workflow run .github/workflows/example.yml --ref adapt-code-for-local-docker-image-registry --field run_job_1=true --field run_job_2=true
+
 jobs:
   job1:
     if: ${{ inputs.run_job_1 == true }}
@@ -49,6 +52,10 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: 3.11
+      - uses: webfactory/ssh-agent@v0.4.1
+        id: set-ssh
+        with:
+          ssh-private-key: ${{ secrets.SPS_SSH_ID }}
       - run: |
           python -m pip install .
           python champss/example.py

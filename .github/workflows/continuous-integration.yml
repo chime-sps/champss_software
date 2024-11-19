@@ -1,12 +1,12 @@
 name: Continuous Integration
 
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - '**'
+  # pull_request:
+  #   branches:
+  #     - main
+  # push:
+  #   branches:
+  #     - '**'
   workflow_dispatch:
 
 jobs:
