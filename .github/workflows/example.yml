@@ -61,4 +61,5 @@ jobs:
           ssh-keyscan github.com >> /root/.ssh/known_hosts
       - run: |
           python -m pip install .
+          workflow workspace set champss.workspace.yml
           python champss/example.py
