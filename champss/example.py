@@ -1,3 +1,5 @@
+import os
+
 from scheduler.workflow import (
         schedule_workflow_job,
         wait_for_no_tasks_in_states,
@@ -9,7 +11,8 @@ from scheduler.workflow import (
 
 def example_workflow_function(my_input_value):
     print("Running my Workflow function.")
-    return {"some_value": my_input_value}, [], []
+    node_name = os.environ.get("NODE_NAME", "")
+    return {"my_input_value": my_input_value, "node_name": node_name}, [], []
 
 def example_submit_job():
     workflow_buckets_name = "my-bucket"

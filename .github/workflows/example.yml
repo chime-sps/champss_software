@@ -45,7 +45,8 @@ jobs:
   job2:
     if: ${{ inputs.run_job_2 == true }}
     needs: job1
-    runs-on: sps-compute1
+    # Currently, only can spawn jobs from Docker Swarm manager nodes, e.g. sps-archiver[1-2]
+    runs-on: sps-archiver1
     steps:
       - uses: actions/checkout@v2
         with:
