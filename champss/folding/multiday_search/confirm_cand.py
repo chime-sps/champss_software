@@ -101,6 +101,7 @@ def main(
     DEC = par_vals["DECJD"]
 
     data = load_profiles(archives)
+    print(len(data["profiles"]))
 
     dF0 = 1 / 86164.1  # 1 day alias (can reduce by 2x if necessary)
     f0_min = F0_incoherent - dF0

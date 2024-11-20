@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy.time import Time
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
+from matplotlib.gridspec import GridSpec
 from sps_databases.db_api import get_nearby_known_sources
+from sps_multi_pointing.known_source_sifter import known_source_filters
 
 
 def plot_candidate_archive(
@@ -48,11 +50,17 @@ def plot_candidate_archive(
     vtmax = np.nanmean(fs_bin) + 3 * np.nanstd(np.nanmean(fs_bin, 1))
 
     fig = plt.figure(figsize=(12, 8))
-    ax0 = plt.subplot2grid((3, 4), (0, 0), colspan=2)
-    ax1 = plt.subplot2grid((3, 4), (1, 0), colspan=2, rowspan=2)
-    ax3 = plt.subplot2grid((3, 4), (1, 2), colspan=2, rowspan=2)
 
-    plt.subplots_adjust(hspace=0.05, wspace=0.05, bottom=0.4)
+    gs = GridSpec(3, 3, height_ratios=[1, 2, 2])
+
+    ax0 = fig.add_subplot(gs[0, 0])  # First row, first column
+    ax1 = fig.add_subplot(gs[1:, 0])  # Second and third rows, first column
+    ax2 = fig.add_subplot(gs[1:, 1])  # Second and third rows, second column
+
+    ax3 = fig.add_subplot(gs[0, 1])  # First row, first column
+    ax3.axis("off")
+
+    plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
 
     ax0.set_title(f"{psr} {T0.isot[:10]}", fontsize=18)
 
@@ -64,7 +72,7 @@ def plot_candidate_archive(
         vmax=vfmax,
         extent=[0, 1, F[-1], F[1]],
     )
-    ax3.imshow(
+    ax2.imshow(
         np.nanmean(fs_bin, 1),
         aspect="auto",
         interpolation="nearest",
@@ -77,10 +85,10 @@ def plot_candidate_archive(
     ax1.set_ylabel("Frequency (MHz)", fontsize=18)
     ax1.set_xlabel("Phase", fontsize=18)
 
-    ax3.set_ylabel("Time (min)", fontsize=18)
-    ax3.set_xlabel("Phase", fontsize=18)
-    ax3.yaxis.tick_right()
-    ax3.yaxis.set_label_position("right")
+    ax2.set_ylabel("Time (min)", fontsize=18)
+    ax2.set_xlabel("Phase", fontsize=18)
+    ax2.yaxis.tick_right()
+    ax2.yaxis.set_label_position("right")
 
     phaseaxis = np.linspace(0, 1, ngate, endpoint=False)
     ax0.plot(phaseaxis, SNprof)
@@ -90,29 +98,30 @@ def plot_candidate_archive(
         print(f"Known pulsar {known} detected")
         parameters_text = (
             f"{known} \n"
-            f"Incoherent $\\sigma$: {sigma}\n"
-            f"Folded $\\sigma$: {SNR_val}\n"
-            f"RA (deg): {ra}\n"
-            f"DEC (deg): {dec}\n"
-            f"DM: {dm}\n"
-            f"f0: {f0}\n"
+            f"Incoherent $\\sigma$: {sigma:.2f}\n"
+            f"Folded $\\sigma$: {SNR_val:.2f}\n"
+            f"RA (deg): {ra:,.5g}\n"
+            f"DEC (deg): {dec:,.5g}\n"
+            f"DM: {dm:.2f}\n"
+            f"f0: {f0}"
         )
+        txt_height = 1.4
     else:
         parameters_text = (
-            f"Incoherent $\\sigma$: {sigma}\n"
-            f"Folded $\\sigma$: {SNR_val}\n"
-            f"RA (deg): {ra}\n"
-            f"DEC (deg): {dec}\n"
-            f"DM: {dm}\n"
-            f"f0: {f0}\n"
+            f"Incoherent $\\sigma$: {sigma:.2f}\n"
+            f"Folded $\\sigma$: {SNR_val:.2f}\n"
+            f"RA (deg): {ra:,.5g}\n"
+            f"DEC (deg): {dec:,.5g}\n"
+            f"DM: {dm:.2f}\n"
+            f"f0: {f0}"
         )
+        txt_height = 1.3
 
-    ax0.text(
-        1.05,
-        1.05,
+    ax3.text(
+        0.0,
+        txt_height,
         parameters_text,
-        transform=ax0.transAxes,
-        fontsize=18,
+        fontsize=10,
         va="top",
         ha="left",
         backgroundcolor="white",
@@ -121,8 +130,8 @@ def plot_candidate_archive(
     radius = 5
     sources = get_nearby_known_sources(ra, dec, radius)
 
-    ks_text = f"Known sources within {radius} degrees\n"
-
+    ks_text = [f"Known sources within {radius} degrees\n"]
+    source_texts = []
     for source in sources:
         ks_name = source.source_name
         ks_epoch = source.spin_period_epoch
@@ -131,26 +140,21 @@ def plot_candidate_archive(
         ks_f0 = round(1 / source.spin_period_s, 4)
         ks_dm = round(source.dm, 2)
         ks_survey = source.survey
-        ks_text += (
-            f"{ks_name}: ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0},"
-            f" survey={ks_survey} \n"
+        pos_diff = known_source_filters.angular_separation(ra, dec, ks_ra, ks_dec)[1]
+        source_texts.append(
+            [
+                pos_diff,
+                (
+                    f"{ks_name}: pos_diff={pos_diff:.4f}, ra={ks_ra}, dec={ks_dec},"
+                    f" dm={ks_dm}, f0={ks_f0}, survey={ks_survey} \n"
+                ),
+            ]
         )
+    source_texts.sort(key=lambda x: x[0])
+    ks_text.extend([text[1] for text in source_texts])
+    ks_text = " ".join(ks_text)
 
-    def get_text_height(text, fontsize=10):
-        renderer = fig.canvas.get_renderer()
-        t = fig.text(0.5, 0.01, text, ha="center", fontsize=fontsize)
-        bbox = t.get_window_extent(renderer)
-        fig_height = fig.get_size_inches()[1] * fig.dpi
-        text_height = bbox.height / fig_height
-        t.remove()
-        return text_height
-
-    text_height = get_text_height(ks_text)
-
-    bottom_margin = 0.1 + text_height
-    plt.subplots_adjust(bottom=bottom_margin, top=0.9, left=0.1, right=0.9)
-
-    fig.text(0.1, 0.01, ks_text, ha="left", fontsize=10)
+    ax3.text(1.25, 1.2, ks_text, fontsize=8, ha="left", va="top")
 
     plt.savefig(coord_path + f"/{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png")
 

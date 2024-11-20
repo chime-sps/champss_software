@@ -257,7 +257,7 @@ def main(
             name = candidate_name(ra, dec)
         ephem_path = source.path_to_ephemeris
     elif psr:
-        source = db_api.get_known_source_by_name(psr)[0]
+        source = db_api.get_known_source_by_names(psr)[0]
         ra = source.pos_ra_deg
         dec = source.pos_dec_deg
         dm = source.dm
