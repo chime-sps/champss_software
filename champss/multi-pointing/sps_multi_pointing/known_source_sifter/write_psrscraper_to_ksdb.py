@@ -5,7 +5,7 @@ import numpy as np
 import pulsarsurveyscraper
 from add_tzpar_sources import add_source_to_database
 from beamformer.utilities.dm import DMMap
-from sps_databases import db_utils
+from sps_databases import db_api, db_utils
 
 if __name__ == "__main__":
     """
@@ -39,6 +39,11 @@ if __name__ == "__main__":
         type=str,
         help="the path to directory with the surver scraper hdf5 file cache",
     )
+    parser.add_argument(
+        "--update",
+        help="Update the known source database instead of adding new sources",
+        action="store_true",
+    )
     args = parser.parse_args()
 
     # command from pulsarsurveyscraper, keeps pulsar cache up to date
@@ -68,7 +73,6 @@ if __name__ == "__main__":
         except:
             DM = nan
             DMerr = nan
-        print(P0, P0err, DM, DMerr)
 
         survey = data["survey"][i]
         if dec > -20:
@@ -88,8 +92,16 @@ if __name__ == "__main__":
                 "dm_galactic_ymw_2016_max": float(dmm.get_dm_ymw16(dec, ra)),
                 "spin_period_derivative": 0.0,
                 "spin_period_derivative_error": 0.0,
-                "spin_period_epoch": 45000.0,  # placeholder, older than psrcat so as not to overwrite
-                "survey": survey,
+                "spin_period_epoch": 39000.0,  # placeholder, older than oldest ephemeris in psrcat so as to not overwrite
+                "survey": [survey.lower(), "psr_scraper"],
             }
-            print(psrname, ra, dec, P0, DM, survey)
-            add_source_to_database(payload)
+            if not args.update:
+                add_source_to_database(payload)
+            else:
+                print("Updating known source database using psrscraper")
+                ks = db.known_sources.find_one({"source_name": psrname})
+                if ks is None:
+                    add_source_to_database(payload)
+                else: 
+                    ks_id = ks["_id"]
+                    db_api.update_known_source(ks_id, payload)
