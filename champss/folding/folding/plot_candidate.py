@@ -2,12 +2,13 @@ import os
 
 import astropy.units as u
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 import numpy as np
 from astropy.time import Time
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
+from matplotlib.gridspec import GridSpec
 from sps_databases.db_api import get_nearby_known_sources
 from sps_multi_pointing.known_source_sifter import known_source_filters
+
 
 def plot_candidate_archive(
     fn,
@@ -48,21 +49,20 @@ def plot_candidate_archive(
     vtmin = np.nanmean(fs_bin) - 1 * np.nanstd(np.nanmean(fs_bin, 1))
     vtmax = np.nanmean(fs_bin) + 3 * np.nanstd(np.nanmean(fs_bin, 1))
 
-    fig = plt.figure(figsize=(12, 8))  
-    
-    gs = GridSpec(3, 3, height_ratios=[1, 2, 2])  
+    fig = plt.figure(figsize=(12, 8))
+
+    gs = GridSpec(3, 3, height_ratios=[1, 2, 2])
 
     ax0 = fig.add_subplot(gs[0, 0])  # First row, first column
     ax1 = fig.add_subplot(gs[1:, 0])  # Second and third rows, first column
     ax2 = fig.add_subplot(gs[1:, 1])  # Second and third rows, second column
 
     ax3 = fig.add_subplot(gs[0, 1])  # First row, first column
-    ax3.axis('off')  
+    ax3.axis("off")
 
     plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
 
     ax0.set_title(f"{psr} {T0.isot[:10]}", fontsize=18)
-
 
     ax1.imshow(
         np.nanmean(fs_bin, 0),
@@ -129,7 +129,7 @@ def plot_candidate_archive(
 
     radius = 5
     sources = get_nearby_known_sources(ra, dec, radius)
-    
+
     ks_text = [f"Known sources within {radius} degrees\n"]
     source_texts = []
     for source in sources:
@@ -141,13 +141,20 @@ def plot_candidate_archive(
         ks_dm = round(source.dm, 2)
         ks_survey = source.survey
         pos_diff = known_source_filters.angular_separation(ra, dec, ks_ra, ks_dec)[1]
-        # pos_diff = np.sqrt((ra - ks_ra)**2 + (dec - ks_dec)**2) 
-        source_texts.append([pos_diff,f"{ks_name}: pos_diff={pos_diff:.4f}, ra={ks_ra}, dec={ks_dec}, dm={ks_dm}, f0={ks_f0}, survey={ks_survey} \n"])
+        source_texts.append(
+            [
+                pos_diff,
+                (
+                    f"{ks_name}: pos_diff={pos_diff:.4f}, ra={ks_ra}, dec={ks_dec},"
+                    f" dm={ks_dm}, f0={ks_f0}, survey={ks_survey} \n"
+                ),
+            ]
+        )
     source_texts.sort(key=lambda x: x[0])
     ks_text.extend([text[1] for text in source_texts])
-    ks_text = ' '.join(ks_text)
+    ks_text = " ".join(ks_text)
 
-    ax3.text(1.25, 1.2, ks_text, fontsize=8, ha='left', va='top')
+    ax3.text(1.25, 1.2, ks_text, fontsize=8, ha="left", va="top")
 
     plt.savefig(coord_path + f"/{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png")
 
