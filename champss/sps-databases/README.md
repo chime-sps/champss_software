@@ -22,7 +22,15 @@ If the Mongo container is not already running, you can start your own:
    ```
    docker run --name sps-db-mongo -p 27017:27017 mongo
    ```
+   One can force the container to save their contents to a specific folder `/your/folder` by adding `-v /your/folder/db:/data/db` to that command. This prevents the data from being deleted if the container is deleted.
 
+## Populate the database
+
+```
+$ cd sps_databases/utilities
+$ python populate_db.py #(Note: it will take a few minutes to load all the pointings into the database.)
+```
+This script allows the use of options `--host` and `--port` to specify the docker instance. The options `--name` allows the use of a different name for the database which prevents interfering with the database entries of other people.
 
 # Connecting to the database
 
@@ -46,10 +54,11 @@ If your database is running on a host other than "localhost" and the default por
 ```python
 from sps_databases import db_api, db_utils
 
-db_utils.connect("somehost", port=12345)
+db_utils.connect("somehost", port=12345, name="myname")
 db_api(get_pointing(pointing_id))
 # Pointing(_id=ObjectId('60147308fd86abb1e4b7e5b2'), ra=300.00720109575036, dec=4.540456929400711, beam_row=23, length=368640, ne2001dm=133.19571311122226, ymw16dm=104.6781383116166, maxdm=300.30837821026887, nchans=2048, search_algorithm=<SearchAlgorithm.power_spec: 1>)
 ```
+Note that when running db_utils.connect multiple times with different settings only the first connection will be established.
 
 ## Access with `pymongo`
 
@@ -121,10 +130,3 @@ Out[6]:
 ```
 
 For the different types of queries that you can do with MongoDB, see the [tutorial](https://docs.mongodb.com/manual/tutorial/query-documents/).
-
-## Populate the database
-
-```
-$ cd sps_databases/utilities
-$ python populate_db.py #(Note: it will take a few minutes to load all the pointings into the database.)
-```
