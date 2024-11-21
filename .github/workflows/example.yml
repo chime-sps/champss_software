@@ -1,12 +1,16 @@
-name: Example GitHub Actions Workflow
+name: Example
 
 on:
   # push:
   #  branches:
-  #    - adapt-code-for-local-docker-image-registry
+  #    - <your_branch_name>
+
   # pull_request:
   #   branches:
   #     - main
+
+  # This allows manual dispatch, through the "Actions" tab in your GitHub repository, or through the CLI:
+  # gh workflow run .github/workflows/example.yml --ref adapt-code-for-local-docker-image-registry --field run_job_1=true --field run_job_2=true
   workflow_dispatch:
     inputs:
       run_job_1:
@@ -15,6 +19,16 @@ on:
       run_job_2:
         type: boolean
         default: false
+
+  # This allows use to re-use this GitHub Actions Workflow in other workflows:
+  # name: EXAMPLE
+  # jobs:
+  #   reuse:
+  #     runs-on: sps-archiver1
+  #     uses: chime-sps/champss-software/.github/workflows/example.yml@main
+  #     with:
+  #       run_job_1: true
+  #       run_job_2: true
   workflow_call:
     inputs:
       run_job_1:
@@ -23,20 +37,20 @@ on:
       run_job_2:
         type: boolean
         default: false
+
+  # This allows you to run this GitHub Actions Workflow when another specified workflow is completed:
   workflow_run:
     workflows:
       - Continuous Integration
     types:
       - completed
 
-# How to run a GitHub Actions Workflow Dispatch from your CLI with inputs:
-# gh workflow run .github/workflows/example.yml --ref adapt-code-for-local-docker-image-registry --field run_job_1=true --field run_job_2=true
-
 jobs:
   job1:
     if: ${{ inputs.run_job_1 == true }}
     runs-on: ubuntu-latest
     steps:
+      # Get the code from the repository
       - uses: actions/checkout@v3
         with:
           fetch-depth: 1
@@ -44,19 +58,22 @@ jobs:
           ls -la
   job2:
     if: ${{ inputs.run_job_2 == true }}
-    needs: job1
-    # Currently, only can spawn jobs from Docker Swarm manager nodes, e.g. sps-archiver[1-2]
+    needs: job1 # This will wait for job1 to complete first
+    # Currently, you can only spawn jobs from Docker Swarm manager nodes, e.g. sps-archiver[1-2]
     runs-on: sps-archiver1
     steps:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 1
+      # Setup Python and pip
       - uses: actions/setup-python@v4
         with:
           python-version: 3.11
+      # Setup SSH agent to access private GitHub repository dependencies
       - uses: webfactory/ssh-agent@v0.4.1
         with:
           ssh-private-key: ${{ secrets.SPS_SSH_ID }}
+      # Add GitHub's SSH key to known_hosts
       - run: |
           ssh-keyscan github.com >> /root/.ssh/known_hosts
       - run: |
