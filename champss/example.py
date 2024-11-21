@@ -16,7 +16,7 @@ def example_workflow_function(my_input_value):
     random_plot_path = f"/champss_module/plots/J1629+4639_candidate.png"
     # Must return {}, [], []
     # The first dictionary is what will be saved in Results, and can be retrieved with get_work_from_results
-    # The last array is the path to any plots that will be visible in the Workflow UI
+    # The last array are the paths to any plots that will be visible in the Workflow UI
     # (the plots must be under /data/chime/sps/, and thus that path must be mounted in the Docker container!)
     return {"my_input_value": my_input_value, "node_name": node_name}, [random_plot_path], [random_plot_path]
 

@@ -35,6 +35,8 @@ jobs:
             [registry."sps-archiver1.chime:5000"]
               http = true
               insecure = true
+            [registry."docker.io"]
+              http = false
       - uses: docker/login-action@v2
         with:
           registry: docker.io
