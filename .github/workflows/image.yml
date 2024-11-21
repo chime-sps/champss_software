@@ -28,15 +28,15 @@ jobs:
         id: set-ssh
         with:
           ssh-private-key: ${{ secrets.SPS_SSH_ID }}
-      - uses: docker/setup-buildx-action@v1
-        with:
-          install: true
-          config-inline: |
-            [registry."sps-archiver1.chime:5000"]
-              http = true
-              insecure = true
-            [registry."docker.io"]
-              http = false
+      # - uses: docker/setup-buildx-action@v1
+      #   with:
+      #     install: true
+      #     config-inline: |
+      #       [registry."sps-archiver1.chime:5000"]
+      #         http = true
+      #         insecure = true
+      #       [registry."docker.io"]
+      #         http = false
       - uses: docker/login-action@v2
         with:
           registry: docker.io
