@@ -47,7 +47,7 @@ jobs:
           target: runtime
           tags: |
             sps-archiver1.chime:5000/${{ inputs.image_name }}:${{ inputs.image_tag }}
-            chimefrb/${{ inputs.image_name }}:${{ inputs.image_tag }}
+            docker.io/chimefrb/${{ inputs.image_name }}:${{ inputs.image_tag }}
           ssh: "github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}}"
           build-args: |
             SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }}
