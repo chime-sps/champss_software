@@ -413,7 +413,7 @@ class PowerSpectraCreation:
                 # initial labels are the barycentric frequencies that are actually recorded
                 # only the relation between the labels is used so we assume tsamp=1 here
                 target_labels = np.arange(len(power_spectrum))
-                initial_labels = target_labels * (1 - beta)
+                initial_labels = target_labels / (1 - beta)
                 power_spectrum = interp1d(
                     initial_labels,
                     power_spectrum,
@@ -558,7 +558,7 @@ class PowerSpectraCreation:
         # This function could be moved so sps_common to be used in transform_data
 
         target_labels = np.arange(len(power_spectrum))
-        initial_labels = target_labels * (1 - beta)
+        initial_labels = target_labels / (1 - beta)
         power_spectrum_interpolated = interp1d(
             initial_labels,
             power_spectrum,
