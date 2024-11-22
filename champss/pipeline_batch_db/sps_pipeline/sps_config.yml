@@ -73,64 +73,6 @@ ps:
           parameters:
             lower_percentile_cut: null
             upper_percentile_cut: null
-          qc_tests:
-            - metric: ksdist # This defined which value in the output of the qc_test is used
-              upper_limit: 0.0049 # Based on March 2024 data this would exclude 5 percent
-              upper_limit_dynamic: 3 # This defines how many median absolute deviations above the median the limit is
-# The final limits are max(upper_limit, upper_limit_dynamic) and min(lower_limit, lower_limit_dynamic)
-        ks_test_chan10:
-          type: kstest
-          channels: [10,20,30,40,50] # By default the DM 0 series is used
-          parameters:
-            lower_percentile_cut: null
-            upper_percentile_cut: null
-        ks_test_09_10:
-          type: kstest
-          parameters:
-            lower_percentile_cut: 0.9
-            upper_percentile_cut: null
-        ks_test_099_10:
-          type: kstest
-          parameters:
-            lower_percentile_cut: 0.99
-            upper_percentile_cut: null
-        ks_test_fit:
-           type: kstest_chi2_fit
-           range: 0.025
-           count: 11
-           parameters:
-             lower_percentile_cut: null
-             upper_percentile_cut: null
-        outlier_200_2000:
-          type: outlier
-          parameters:
-            min_count: 100
-            max_count: 2000
-          qc_tests:
-            - metric: fraction
-        masked_bins:
-          type: masked_bins
-          red_noise_nbins: 0
-          qc_tests:
-            - metric: mask_fraction
-        std:
-          type: np.std # Any imported function can be used
-          red_noise_nbins: 0
-        quantiles:
-          type: np.quantile
-          red_noise_nbins: 0
-          parameters:
-            q: [0. , 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-        obs_properties:
-          type: obs_properties
-          properties:
-            - num_detections
-            - num_clusters
-          qc_tests:
-            - metric: num_detections
-              upper_limit: 30000 # In March 2024 data this would exclude 4%
-              upper_limit_dynamic: 3
-            - metric: num_clusters
     stack_nbit: 16
     infile_overwrite: False
     readout_stack: True
