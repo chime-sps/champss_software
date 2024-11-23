@@ -6,6 +6,7 @@ from functools import partial
 from multiprocessing import Pool, shared_memory
 
 import numpy as np
+import pandas as pd
 import yaml
 from attr import ib as attribute
 from attr import s as attrs
@@ -244,29 +245,30 @@ class PowerSpectraSearch:
                 injection_dicts = injection_dict
             else:
                 injection_dicts = []
-                with open(injection_path) as file:
-                    injection_list = yaml.load(file, Loader=yaml.Loader)
-                    # injection_list are the initial injection parameters
-                    # injection_dicts are final injection parameters
-                    # Some entries from injection_list may create multiple injection or none
-                    if len(injection_indices) == 0:
-                        injection_indices = np.arange(len(injection_list))
-                    for injection_index in injection_indices:
-                        log.info(f"DM: {injection_list[injection_index]['DM']}")
-                        log.info(f"sigma: {injection_list[injection_index]['sigma']}")
-                        log.info(
-                            f"frequency: {injection_list[injection_index]['frequency']}"
-                        )
+                # injection_list = yaml.load(file, Loader=yaml.Loader)
+                injection_df = pd.read_pickle(injection_path)
+                # injection_df are the initial injection parameters
+                # injection_dicts are final injection parameters
+                # Some entries from injection_list may create multiple injection or none
+                if len(injection_indices) == 0:
+                    injection_indices = np.arange(len(injection_list))
+                for injection_index in injection_indices:
+                    log.info(f"DM: {injection_df.iloc[injection_index]['DM']}")
+                    log.info(f"sigma: {injection_df.iloc[injection_index]['sigma']}")
+                    log.info(
+                        f"frequency: {injection_df.iloc[injection_index]['frequency']}"
+                    )
 
-                        injection_dict = injection_list[injection_index]
+                    # injection_dict = injection_list[injection_index]
+                    injection_dict = injection_df.iloc[injection_index].to_dict()
 
-                        injection_dict = ps_inject.main(
-                            pspec,
-                            self.full_harm_bins,
-                            injection_dict,
-                            scale_injections=scale_injections,
-                        )
-                        injection_dicts.extend(injection_dict)
+                    injection_dict = ps_inject.main(
+                        pspec,
+                        self.full_harm_bins,
+                        injection_dict,
+                        scale_injections=scale_injections,
+                    )
+                    injection_dicts.extend(injection_dict)
             for injection_index, injection_dict in enumerate(injection_dicts):
                 injection_dict["injection_index"] = injection_index
         else:

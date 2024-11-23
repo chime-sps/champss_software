@@ -422,6 +422,7 @@ class MultiPointingCandidate:
             all_summaries=self.all_summaries,
             datetimes=self.datetimes,
             best_nharm=self.best_nharm,
+            best_harmonic_sum=self.best_harmonic_sum,
         )
         return cand_dict
 

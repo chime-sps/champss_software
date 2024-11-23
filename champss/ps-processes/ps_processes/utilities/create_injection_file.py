@@ -3,6 +3,7 @@ import os
 import click
 import numpy as np
 import numpy.random as rand
+import pandas as pd
 import yaml
 from ps_processes.processes import ps_inject
 
@@ -12,7 +13,7 @@ from ps_processes.processes import ps_inject
 @click.option(
     "--file-name",
     "--fn",
-    default="test_injections.yml",
+    default="test_injections.csv",
     type=str,
     help="Name of target file",
 )
@@ -30,7 +31,7 @@ from ps_processes.processes import ps_inject
 def main(n_injections, file_name, injection_path, focus):
     if injection_path != "random":
         load_profs = np.load(injection_path)
-        n_injections = len(load_profs)
+        # n_injections = len(load_profs)
 
     if focus == "frequency" or focus == "freq":
         # frequencies = np.logspace(1.8, 2.3, n_injections)
@@ -54,9 +55,9 @@ def main(n_injections, file_name, injection_path, focus):
         sigmas = 11.28372911 * np.ones(n_injections)
 
     else:
-        sigmas = np.random.uniform(10, 20, n_injections)
-        frequencies = np.random.uniform(0.1, 50, n_injections)
-        dms = np.random.uniform(3, 200, n_injections)
+        sigmas = np.random.uniform(6, 20, n_injections)
+        frequencies = np.random.uniform(0.1, 10, n_injections)
+        dms = np.random.uniform(3, 500, n_injections)
 
     data = []
     print(f"Creating {n_injections} fake pulsars into {injection_path}")
@@ -75,13 +76,18 @@ def main(n_injections, file_name, injection_path, focus):
             n_dict["profile"] = ps_inject.generate_pulse().tolist()
 
         else:
-            n_dict["profile"] = load_profs[i].tolist()
+            chosen_profile = np.random.choice(load_profs.shape[0])
+            n_dict["profile"] = load_profs[chosen_profile].tolist()
 
         data.append(n_dict)
 
     file_name = os.getcwd() + "/" + file_name
-    stream = open(file_name, "w")
-    yaml.dump(data, stream)
+    df = pd.DataFrame(data)
+    # move profile to last pos, for easier reading of csv
+    cols = df.columns
+    cols = cols[cols != "profile"].append(pd.Index(["profile"]))
+    df = df[cols]
+    df.to_pickle(file_name)
 
 
 if __name__ == "__main__":
