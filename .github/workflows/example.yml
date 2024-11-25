@@ -1,0 +1,85 @@
+name: Example
+
+on:
+  # push:
+  #  branches:
+  #    - <your_branch_name>
+
+  # pull_request:
+  #   branches:
+  #     - main
+
+  # This allows manual dispatch, through the "Actions" tab in your GitHub repository, or through the CLI:
+  # gh workflow run .github/workflows/example.yml --ref <your_branch> --field run_job_1=true --field run_job_2=true
+  workflow_dispatch:
+    inputs:
+      run_job_1:
+        type: boolean
+        default: false
+      run_job_2:
+        type: boolean
+        default: false
+
+  # This allows use to re-use this GitHub Actions Workflow in other workflows:
+  # name: EXAMPLE
+  # jobs:
+  #   my_job_testing_reuse:
+  #     runs-on: sps-archiver1
+  #     uses: chime-sps/champss-software/.github/workflows/example.yml@main
+  #     with:
+  #       run_job_1: true
+  #       run_job_2: true
+  workflow_call:
+    inputs:
+      run_job_1:
+        type: boolean
+        default: false
+      run_job_2:
+        type: boolean
+        default: false
+
+  # This allows you to run this GitHub Actions Workflow when another specified workflow is completed:
+  # workflow_run:
+  #   workflows:
+  #     - Continuous Integration
+  #   types:
+  #     - completed
+
+jobs:
+  job1:
+    if: ${{ inputs.run_job_1 == true }}
+    runs-on: ubuntu-latest
+    steps:
+      # Get the code from the repository
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      # List the files in the repository
+      - run: |
+          ls -la
+  job2:
+    if: ${{ inputs.run_job_2 == true }}
+    needs: job1 # This will wait for job1 to complete first
+    # Currently, you can only call schedule_workflow_job from Docker Swarm manager nodes, e.g. sps-archiver[1-2]
+    runs-on: sps-archiver1
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+      # Setup Python and pip
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      # Setup SSH agent to access private GitHub repository dependencies
+      - uses: webfactory/ssh-agent@v0.4.1
+        with:
+          ssh-private-key: ${{ secrets.SPS_SSH_ID }}
+      # Add GitHub's SSH key to known_hosts
+      - run: |
+          ssh-keyscan github.com >> /root/.ssh/known_hosts
+       # Will call schedule_workflow_job in example.py, but must set Workflow Workspace first
+       # so schedule_workflow_job knows where the Workflow servers are running (see file)
+      - run: |
+          python -m pip install .
+          workflow workspace set champss.workspace.yml
+          python champss/example.py
