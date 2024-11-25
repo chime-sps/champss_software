@@ -98,7 +98,7 @@ def find_all_dates_with_data(ra, dec, basepath, nday=10):
 )
 @click.option(
     "--docker-image-name",
-    default="chimefrb/champss_software:latest",
+    default="sps-archiver1.chime:5000/champss_software:latest",
     type=str,
     help="Which Docker Image name to use.",
 )
@@ -107,15 +107,6 @@ def find_all_dates_with_data(ra, dec, basepath, nday=10):
     default="fold-multiday",
     type=str,
     help="What prefix to apply to the Docker Service name",
-)
-@click.option(
-    "--docker-password",
-    prompt=True,
-    confirmation_prompt=False,
-    hide_input=True,
-    required=False,
-    type=str,
-    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
 def main(
     fs_id,
@@ -128,7 +119,6 @@ def main(
     workflow_buckets_name,
     docker_image_name,
     docker_service_name_prefix,
-    docker_password,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     source = db_api.get_followup_source(fs_id)
@@ -172,7 +162,6 @@ def main(
                 docker_mounts,
                 docker_name,
                 docker_memory_reservation,
-                docker_password,
                 workflow_buckets_name,
                 workflow_function,
                 workflow_params,

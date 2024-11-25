@@ -263,7 +263,6 @@ def schedule_workflow_job(
     docker_mounts,
     docker_name,
     docker_memory_reservation,
-    docker_password,
     workflow_buckets_name,
     workflow_function,
     workflow_params,
@@ -277,11 +276,10 @@ def schedule_workflow_job(
     Services, and output logs to /data/chime/sps/logs/services/<service_name>.log.
 
     Parameters:
-    docker_image (str): Custom name of your Docker Image, in form chimefrb/<repo>:<branch>
+    docker_image (str): Custom name of your Docker Image, in form sps-archiver1.chime:5000/<repo>:<branch>
     docker_mounts (list): List of mount paths for your Docker Service, in form source:target
     docker_name (str): Custom name for your Docker service.
     docker_memory_reservation (float): Memory reservation for your Docker Service in GB.
-    docker_password (str): Password for DockeHub registry login, typical frbadmin password.
     workflow_buckets_name (str): Custom name your the Workflow job to be deposited in.
     workflow_function (str): Path to your function, in form "module.function".
     workflow_params (dict): Parameters to your function, in form {"param1": "value1", "param2": "value2"}.
@@ -294,27 +292,6 @@ def schedule_workflow_job(
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
-
-    # This is needed to spawn a Docker Sevice if the Docker Image is on
-    # a private registry (e.g. ou chimefrb DockerHub account)
-    try:
-        docker_client.login(username="chimefrb", password=docker_password)
-    except Exception as error:
-        log.info(
-            f"Failed to login to DockerHub: {error}. "
-            "Will try to schedule this task anyway."
-        )
-
-    try:
-        docker_password_secret_name = "DOCKER_PASSWORD"
-        docker_password_secret_id = docker_client.secrets.list(
-            filters={"name": docker_password_secret_name}
-        )[0].id
-    except Exception as error:
-        log.info(
-            f"Failed to retrieve Docker Secrets: {error}. "
-            "Will try to schedule this task anyway."
-        )
 
     workflow_site = "chime"
 
@@ -401,13 +378,6 @@ def schedule_workflow_job(
             # to communicate with other containers (MongoDB, Prometheus, etc) that are
             # also manually added to this network
             "networks": ["pipeline-network"],
-            # Secrets are put into /run/secrets/<secret_name> inside the container
-            # (in the case that a Workflow runner will ALSO spawn Workflow runners!)
-            "secrets": [
-                docker.types.SecretReference(
-                    docker_password_secret_id, docker_password_secret_name
-                )
-            ],
         }
 
         log.info(f"Creating Docker Service: \n{docker_service}")

@@ -56,7 +56,7 @@ COPY . .
 RUN --mount=type=ssh,id=github_ssh_id set -ex \
     && python3 -m pip install . \
     && get-data \
-    && workflow workspace set champss/pipeline_batch_db/champss.workspace.yml \
+    && workflow workspace set champss.workspace.yml \
     && python3 download_files.py 
 # Above "get-data" call is needed for CHIMEFRB/beam-model
 # The astropy calls allow downloading of data that might be available when running the container
