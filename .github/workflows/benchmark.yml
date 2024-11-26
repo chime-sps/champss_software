@@ -19,12 +19,13 @@ jobs:
     needs: update-image
     runs-on: sps-compute2 # Image is only saved here
     steps:
-      - run: |
+      - run: | # || true is used to ignore the stopping error if the container doesn't exist
           docker rm -f champss-${{ inputs.branch_name }} || true
       - uses: addnab/docker-run-action@v3
         with:
-            image: chimefrb/champss_software:${{ inputs.branch_name }}
+            image: local/champss_software:${{ inputs.branch_name }}
             options: --rm --name champss-${{ inputs.branch_name }} -v /data/chime/sps/raw_backup:/data/chime/sps/raw_backup -v /data/chime/sps/benchmark/${{ inputs.branch_name }}:/champss_module/benchmark/ -v /dev/shm:/dev/shm --shm-size=100gb
+            image: local/champss_software:${{ inputs.branch_name }}
             # The following is only needed if running inside a Docker container
             run: |
               export NODE_NAME='sps-compute2'
@@ -32,5 +33,4 @@ jobs:
               chmod +x /module/champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh
               ./champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh '--using-docker'
       - run: |
-          docker image rmi chimefrb/champss_software:${{ inputs.branch_name }}
-          docker builder prune -f
+          docker image rmi local/champss_software:${{ inputs.branch_name }}

@@ -75,18 +75,9 @@ log = logging.getLogger(__name__)
 )
 @click.option(
     "--docker-image-name",
-    default="chimefrb/champss_software:latest",
+    default="sps-archiver1.chime:5000/champss_software:latest",
     type=str,
     help="Which Docker Image name to use.",
-)
-@click.option(
-    "--docker-password",
-    prompt=True,
-    confirmation_prompt=False,
-    hide_input=True,
-    required=False,
-    type=str,
-    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
 def main(
     candpath,
@@ -99,7 +90,6 @@ def main(
     use_workflow,
     workflow_buckets_name_prefix,
     docker_image_name,
-    docker_password,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     if psr != "":
@@ -109,22 +99,6 @@ def main(
     else:
         raise ValueError("Must provide either a candidate path or pulsar name")
     if use_workflow:
-        if docker_password == "" or docker_password is None:
-            # Possibly this function is running in a Workflow runner container
-            # and the password is in a secret file
-            docker_password_filepath = "/run/secrets/DOCKER_PASSWORD"
-            try:
-                with open(docker_password_filepath) as docker_password_file:
-                    # Need the password so that schedue_workflow_job can login to DockerHub
-                    # and pull private images to spawn Docker containers
-                    docker_password = docker_password_file.read()
-            except Exception as error:
-                log.info(
-                    "Could not read DockerHub password from"
-                    f" {docker_password_filepath}: {error} Will attempt under"
-                    " assumption that 'docker login' command was already called."
-                )
-
         docker_service_name_prefix = "fold-multiday"
 
         workflow_buckets_name = (
@@ -156,8 +130,6 @@ def main(
                 docker_service_name_prefix,
                 "--workflow-buckets-name",
                 workflow_buckets_name,
-                "--docker-password",
-                docker_password,
             ],
             standalone_mode=False,
         )
@@ -202,7 +174,6 @@ def main(
             docker_mounts,
             docker_name,
             docker_memory_reservation,
-            docker_password,
             workflow_buckets_name,
             workflow_function,
             workflow_params,

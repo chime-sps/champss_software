@@ -164,7 +164,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
 )
 @click.option(
     "--docker-image-name",
-    default="chimefrb/champss_software:latest",
+    default="sps-archiver1.chime:5000/champss_software:latest",
     type=str,
     help="Which Docker Image name to use.",
 )
@@ -173,15 +173,6 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
     default="fold",
     type=str,
     help="What prefix to apply to the Docker Service name",
-)
-@click.option(
-    "--docker-password",
-    prompt=True,
-    confirmation_prompt=False,
-    hide_input=True,
-    required=True,
-    type=str,
-    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
 def run_all_folding_processes(
     date,
@@ -194,7 +185,6 @@ def run_all_folding_processes(
     workflow_buckets_name,
     docker_image_name,
     docker_service_name_prefix,
-    docker_password,
 ):
     date = convert_date_to_datetime(date)
 
@@ -251,7 +241,6 @@ def run_all_folding_processes(
             docker_mounts,
             docker_name,
             docker_memory_reservation,
-            docker_password,
             workflow_buckets_name,
             workflow_function,
             workflow_params,
@@ -490,7 +479,7 @@ def find_all_pipeline_processes(
 )
 @click.option(
     "--docker-image-name",
-    default="chimefrb/champss_software:latest",
+    default="sps-archiver1.chime:5000/champss_software:latest",
     type=str,
     help="Which Docker Image name to use.",
 )
@@ -499,15 +488,6 @@ def find_all_pipeline_processes(
     default="pipeline",
     type=str,
     help="What prefix to apply to the Docker Service name",
-)
-@click.option(
-    "--docker-password",
-    prompt=True,
-    confirmation_prompt=False,
-    hide_input=True,
-    required=True,
-    type=str,
-    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
 def run_all_pipeline_processes(
     db_host,
@@ -526,7 +506,6 @@ def run_all_pipeline_processes(
     workflow_buckets_name,
     docker_image_name,
     docker_service_name_prefix,
-    docker_password,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -625,7 +604,6 @@ def run_all_pipeline_processes(
                         docker_mounts,
                         docker_name,
                         docker_memory_reservation,
-                        docker_password,
                         workflow_buckets_name,
                         workflow_function,
                         workflow_params,
@@ -721,16 +699,9 @@ def run_all_pipeline_processes(
 )
 @click.option(
     "--docker-image-name",
-    default="chimefrb/champss_software:latest",
+    default="sps-archiver1.chime:5000/champss_software:latest",
     type=str,
     help="Which Docker Image name to use.",
-)
-@click.option(
-    "--docker-password-filepath",
-    default="/run/secrets/DOCKER_PASSWORD",
-    required=True,
-    type=str,
-    help="The path to the file containing the DockerHub password.",
 )
 @click.option(
     "--run-pipeline",
@@ -764,7 +735,6 @@ def start_processing_manager(
     max_dec,
     workflow_buckets_name_prefix,
     docker_image_name,
-    docker_password_filepath,
     run_pipeline,
     run_multipointing,
     run_folding,
@@ -778,9 +748,6 @@ def start_processing_manager(
     start_date = convert_date_to_datetime(start_date)
 
     log.setLevel(logging.INFO)
-
-    with open(docker_password_filepath) as docker_password_file:
-        docker_password = docker_password_file.read()
 
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
 
@@ -914,8 +881,6 @@ def start_processing_manager(
                         docker_image_name,
                         "--docker-service-name-prefix",
                         docker_service_name_prefix,
-                        "--docker-password",
-                        docker_password,
                     ],
                     standalone_mode=False,
                 )
@@ -1051,7 +1016,6 @@ def start_processing_manager(
                     ],
                     docker_name=f"{docker_service_name_prefix}-{date_string}",
                     docker_memory_reservation=50,
-                    docker_password=docker_password,
                     workflow_buckets_name=workflow_buckets_name,
                     workflow_function="sps_multi_pointing.mp_pipeline.cli",
                     workflow_params={
@@ -1158,8 +1122,6 @@ def start_processing_manager(
                         docker_image_name,
                         "--docker-service-name-prefix",
                         docker_service_name_prefix,
-                        "--docker-password",
-                        docker_password,
                     ],
                     standalone_mode=False,
                 )
@@ -1235,13 +1197,13 @@ def start_processing_manager(
 )
 @click.option(
     "--manager-docker-image-name",
-    default="chimefrb/champss_software:latest",
+    default="sps-archiver1.chime:5000/champss_software:latest",
     type=str,
     help="Name of Docker Image to use for the processing manager.",
 )
 @click.option(
     "--pipeline-docker-image-name",
-    default="chimefrb/champss_software:latest",
+    default="sps-archiver1.chime:5000/champss_software:latest",
     type=str,
     help="Name of Docker Image to use for the processing pipeline.",
 )
@@ -1283,11 +1245,6 @@ def start_processing_services(
 
     docker_client = docker.from_env()
 
-    docker_password_secret_name = "DOCKER_PASSWORD"
-    docker_password_secret_id = docker_client.secrets.list(
-        filters={"name": docker_password_secret_name}
-    )[0].id
-
     docker_service_manager = {
         "image": manager_docker_image_name,
         "name": "processing-manager",
@@ -1320,12 +1277,6 @@ def start_processing_services(
         # to communicate with other containers (MongoDB, Prometheus, etc) that have
         # also been manually added to this network
         "networks": ["pipeline-network"],
-        # Secrets are put into /run/secrets/<secret_name> inside the container
-        "secrets": [
-            docker.types.SecretReference(
-                docker_password_secret_id, docker_password_secret_name
-            )
-        ],
     }
     docker_service_pipeline_image_clenaup = {
         "image": manager_docker_image_name,
