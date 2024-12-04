@@ -25,6 +25,8 @@ sps-databases = {path = "./champss/sps-databases", develop=true}
 sps-dedispersion = {path = "./champss/sps-dedispersion", develop=true}
 sps-multi-pointing = {path = "./champss/multi-pointing", develop=true}
 sps_pipeline = {path = "./champss/pipeline_batch_db", develop=true}
+jupyter = "^1.0.0"
+riptide-ffa = "^0.2.5"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
