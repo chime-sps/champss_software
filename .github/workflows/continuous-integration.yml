@@ -24,7 +24,7 @@ jobs:
   test:
     # Last check makes sure we're not building a test image if pushing to main, as that will already trigger a build in continuous-deployment.yml
     if: ${{ github.actor != 'github-actions' && (contains(github.event.head_commit.message, '[test]') == true) && github.event_name == 'push' && github.ref_name != 'main' }}
-    uses: chime-sps/champss_software/.github/workflows/image.yml@adapt-code-for-local-docker-image-registry # Usually '@main' but testing this branch's image.yml
+    uses: chime-sps/champss_software/.github/workflows/image.yml@main # Usually '@main' but testing this branch's image.yml
     secrets: inherit
     with:
       runs_on: self-hosted
