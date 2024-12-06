@@ -80,6 +80,12 @@ def find_all_dates_with_data(ra, dec, basepath, nday=10):
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default="/data/chime/sps/raw/",
+    type=str,
+    help="Path for raw data files.",
+)
+@click.option(
     "--nday",
     default=10,
     type=int,
@@ -114,6 +120,7 @@ def main(
     db_host,
     db_name,
     foldpath,
+    datpath,
     nday,
     use_workflow,
     workflow_buckets_name,
@@ -128,7 +135,7 @@ def main(
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
     dates_with_data = find_all_dates_with_data(
-        ra, dec, "/data/chime/sps/raw/", nday=nday
+        ra, dec, datpath, nday=nday
     )
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
@@ -136,7 +143,7 @@ def main(
             docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
             docker_memory_reservation = (nchan / 1024) * 8
             docker_mounts = [
-                "/data/chime/sps/raw:/data/chime/sps/raw",
+                f"{datpath}:{datpath}",
                 f"{foldpath}:{foldpath}",
             ]
 
@@ -147,6 +154,8 @@ def main(
                 "db_host": db_host,
                 "db_port": db_port,
                 "db_name": db_name,
+                "foldpath": foldpath,
+                "datpath": datpath,
                 "write_to_db": True,
                 "using_workflow": True,
             }
@@ -180,6 +189,10 @@ def main(
                     str(db_port),
                     "--db-name",
                     str(db_name),
+                    "--foldpath",
+                    str(foldpath),
+                    "--datpath",
+                    str(datpath),
                     "--write-to-db",
                 ],
                 standalone_mode=False,

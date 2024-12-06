@@ -164,6 +164,12 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default="/data/chime/sps/raw/",
+    type=str,
+    help="Path for raw data files.",
+)
+@click.option(
     "--candpath",
     type=str,
     default="",
@@ -193,6 +199,7 @@ def main(
     db_host,
     db_name,
     foldpath,
+    datpath,
     candpath="",
     write_to_db=False,
     using_workflow=False,
@@ -344,7 +351,7 @@ def main(
     for active_pointing in ap:
         data_list.extend(
             get_data_list(
-                active_pointing.max_beams, basepath="/data/chime/sps/raw/", extn="dat"
+                active_pointing.max_beams, basepath=datpath, extn="dat"
             )
         )
     if not data_list:
@@ -376,7 +383,7 @@ def main(
             extn="dat",
             update_db=False,
             min_data_frac=0.5,
-            basepath="/data/chime/sps/raw/",
+            basepath=datpath,
             add_local_median=True,
             detrend_data=True,
             detrend_nsamp=32768,

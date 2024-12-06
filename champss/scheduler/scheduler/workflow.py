@@ -1,5 +1,6 @@
 import datetime as dt
 import logging
+import os
 import re
 import time
 
@@ -85,7 +86,8 @@ def save_container_logs(service):
             clean_line = clean_pattern.sub('', log_line)
             log_text += clean_line + "\n"
 
-        path = f"/data/chime/sps/logs/services/{service.name}.log"
+        logpath = os.getenv("LOG_PATH", "/data/chime/sps/logs")
+        path = f"{logpath}/services/{service.name}.log"
         with open(path, "w") as file:
             file.write(log_text)
     except Exception as error:

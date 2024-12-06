@@ -151,6 +151,12 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default="/data/chime/sps/raw/",
+    type=str,
+    help="Path for raw data files.",
+)
+@click.option(
     "--processes",
     default=[],
     type=list,
@@ -181,6 +187,7 @@ def run_all_folding_processes(
     db_name,
     basepath,
     foldpath,
+    datpath,
     processes,
     workflow_buckets_name,
     docker_image_name,
@@ -211,7 +218,7 @@ def run_all_folding_processes(
         docker_memory_reservation = (nchan / 1024) * 8
         docker_image = docker_image_name
         docker_mounts = [
-            "/data/chime/sps/raw:/data/chime/sps/raw",
+            f"{datpath}:{datpath}",
             f"{basepath}:{basepath}",
             f"{foldpath}:{foldpath}",
         ]
@@ -224,6 +231,7 @@ def run_all_folding_processes(
             "db_port": db_port,
             "db_name": db_name,
             "foldpath": foldpath,
+            "datpath": datpath,
             "write_to_db": True,
             "using_workflow": True,
         }
@@ -472,6 +480,12 @@ def find_all_pipeline_processes(
     help="Path for the monthly stack. As default the basepath from the config is used.",
 )
 @click.option(
+    "--datpath",
+    default="/data/chime/sps/raw/",
+    type=str,
+    help="Path for raw data files.",
+)
+@click.option(
     "--workflow-buckets-name",
     default="champss-pipeline",
     type=str,
@@ -503,6 +517,7 @@ def run_all_pipeline_processes(
     dry_run,
     basepath,
     stackpath,
+    datpath,
     workflow_buckets_name,
     docker_image_name,
     docker_service_name_prefix,
@@ -543,6 +558,8 @@ def run_all_pipeline_processes(
                 cmd_string_list.extend(["--basepath", f"{basepath}"])
             if stackpath:
                 cmd_string_list.extend(["--stackpath", f"{stackpath}"])
+            if datpath:
+                cmd_string_list.extend(["--datpath", f"{datpath}"])
             cmd_string_list.extend(
                 [
                     f" {process.ra}",
@@ -564,7 +581,7 @@ def run_all_pipeline_processes(
                     docker_threads_needed = int(docker_memory_reservation / 3)
                     docker_image = docker_image_name
                     docker_mounts = [
-                        "/data/chime/sps/raw:/data/chime/sps/raw",
+                        f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
                     ]
                     docker_name = f"{docker_service_name_prefix}-{formatted_ra}-{formatted_dec}-{formatted_maxdm}-{formatted_date}"
@@ -586,6 +603,7 @@ def run_all_pipeline_processes(
                         "db_name": db_name,
                         "basepath": basepath,
                         "stackpath": stackpath,
+                        "datpath": datpath,
                         # Run Pyroscope profiling every 100th job
                         # "using_pyroscope": True if process_index % 100 == 0 else False,
                         "using_pyroscope": False,
@@ -668,6 +686,12 @@ def run_all_pipeline_processes(
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default="/data/chime/sps/raw/",
+    type=str,
+    help="Path for raw data files.",
+)
+@click.option(
     "--min-ra",
     default=0,
     type=float,
@@ -729,6 +753,8 @@ def start_processing_manager(
     number_of_days,
     basepath,
     foldpath,
+    datpath,
+    logpath,
     min_ra,
     max_ra,
     min_dec,
@@ -802,6 +828,8 @@ def start_processing_manager(
                         db_name,
                         "--date",
                         date_to_process,
+                        "--datpath",
+                        datpath
                     ],
                     standalone_mode=False,
                 )
@@ -881,6 +909,8 @@ def start_processing_manager(
                         docker_image_name,
                         "--docker-service-name-prefix",
                         docker_service_name_prefix,
+                        "--datpath",
+                        datpath
                     ],
                     standalone_mode=False,
                 )
@@ -1011,7 +1041,7 @@ def start_processing_manager(
                 work_id = schedule_workflow_job(
                     docker_image=docker_image_name,
                     docker_mounts=[
-                        "/data/chime/sps/raw:/data/chime/sps/raw",
+                        f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
                     ],
                     docker_name=f"{docker_service_name_prefix}-{date_string}",
@@ -1122,6 +1152,8 @@ def start_processing_manager(
                         docker_image_name,
                         "--docker-service-name-prefix",
                         docker_service_name_prefix,
+                        "--datpath",
+                        datpath
                     ],
                     standalone_mode=False,
                 )
@@ -1190,6 +1222,18 @@ def start_processing_manager(
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default="/data/chime/sps/raw/",
+    type=str,
+    help="Path for raw data files.",
+)
+@click.option(
+    "--logpath",
+    default="/data/chime/sps/logs/",
+    type=str,
+    help="Path for created files during Docker Service log saving.",
+)
+@click.option(
     "--workflow-buckets-name-prefix",
     default="champss",
     type=str,
@@ -1233,6 +1277,8 @@ def start_processing_services(
     number_of_days,
     basepath,
     foldpath,
+    datpath,
+    logpath,
     workflow_buckets_name_prefix,
     manager_docker_image_name,
     pipeline_docker_image_name,
@@ -1252,12 +1298,13 @@ def start_processing_services(
             f"start-processing-manager --db-host {db_host} --db-port"
             f" {db_port} --db-name {db_name} --start-date {start_date} --number-of-days"
             f" {number_of_days} --basepath {basepath} --foldpath"
-            f" {foldpath} --workflow-buckets-name-prefix"
+            f" {foldpath} --datpath {datpath} --workflow-buckets-name-prefix"
             f" {workflow_buckets_name_prefix} --docker-image-name"
             f" {pipeline_docker_image_name} --run-pipeline"
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
             f" {run_folding}"
         ),
+        "env": [f"LOG_PATH={logpath}"],
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
         # Labels allow for easy filtering with Docker CLI
@@ -1266,8 +1313,8 @@ def start_processing_services(
         # Will throw an error if you give two of the same bind mount paths
         # e.g. avoid double-mounting basepath and stackpath when they are the same
         "mounts": [
-            "/data/chime/sps/raw:/data/chime/sps/raw",
-            "/data/chime/sps/logs:/data/chime/sps/logs",
+            f"{datpath}:{datpath}",
+            f"{logpath}:{logpath}",
             f"{basepath}:{basepath}",
             f"{foldpath}:{foldpath}",
             # Need this mount so container can access host machine's Docker Client

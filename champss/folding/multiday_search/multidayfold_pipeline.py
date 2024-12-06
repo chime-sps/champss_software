@@ -39,6 +39,12 @@ log = logging.getLogger(__name__)
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default="/data/chime/sps/raw/",
+    type=str,
+    help="Path for raw data files.",
+)
+@click.option(
     "--db-port",
     default=27017,
     type=int,
@@ -83,6 +89,7 @@ def main(
     candpath,
     psr,
     foldpath,
+    datpath,
     db_port,
     db_host,
     db_name,
@@ -115,6 +122,8 @@ def main(
                 fs_id,
                 "--foldpath",
                 foldpath,
+                "--datpath",
+                datpath,
                 "--db-port",
                 db_port,
                 "--db-name",
@@ -144,7 +153,7 @@ def main(
         docker_name = f"{docker_service_name_prefix}-{fs_id}"
         docker_memory_reservation = 64
         docker_mounts = [
-            "/data/chime/sps/raw:/data/chime/sps/raw",
+            f"{datpath}:{datpath}",
             f"{foldpath}:{foldpath}",
         ]
 
@@ -195,6 +204,8 @@ def main(
                 fs_id,
                 "--foldpath",
                 foldpath,
+                "--datpath",
+                datpath,
                 "--db-port",
                 db_port,
                 "--db-name",

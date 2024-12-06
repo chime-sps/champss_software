@@ -98,10 +98,16 @@ def beam_dec_model(t_transit, ra, dec, A=1, nchan=2048):
     required=True,
     help="Date of data to process. Default = Today in UTC",
 )
+@click.option(
+    "--foldpath",
+    default="/data/chime/sps/archives",
+    type=str,
+    help="Path for created files during fold step.",
+)
 @click.option("--ra", type=float, help="RA", required=True)
 @click.option("--dec", type=float, help="DEC", required=True)
 @click.option("--nday", type=int, default=21, help="Number of days to fold")
-def main(ra, dec, date, nday):
+def main(date, foldpath, ra, dec, nday):
     """
     Code to localize new pulsar using folded SPS data.
 
@@ -124,7 +130,7 @@ def main(ra, dec, date, nday):
     dec_dir = round(ap[0].dec, 2)
 
     # Load the data of the promary beam
-    fpath = f"/data/chime/sps/archives/candidates/{ra_dir}_{dec_dir}"
+    fpath = f"{foldpath}/candidates/{ra_dir}_{dec_dir}"
 
     # Load the full array, get the spectrum
     fname_combfs = f"{fpath}/added.T"
@@ -190,7 +196,7 @@ def main(ra, dec, date, nday):
         ra_dir = round(ap[0].ra, 2)
         dec_dir = round(ap[0].dec, 2)
 
-        fname = f"/data/chime/sps/archives/candidates/{ra_dir}_{dec_dir}/added.T"
+        fname = f"{foldpath}/candidates/{ra_dir}_{dec_dir}/added.T"
 
         data, F, T, psr, tel = readpsrarch(fname)
         fs, flag, mask, bg, bpass = clean_foldspec(data.squeeze())
