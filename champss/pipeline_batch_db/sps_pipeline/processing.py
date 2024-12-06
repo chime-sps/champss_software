@@ -754,7 +754,6 @@ def start_processing_manager(
     basepath,
     foldpath,
     datpath,
-    logpath,
     min_ra,
     max_ra,
     min_dec,
