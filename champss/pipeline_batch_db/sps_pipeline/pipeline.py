@@ -701,7 +701,7 @@ def main(
             peak_memory = None
             peak_cpu = None
 
-            if False:
+            if using_docker:
                 try:
 
                     def get_peak_usage(values):
