@@ -393,6 +393,21 @@ class SinglePointingCandidate:
             ]
         )
 
+    @property
+    def sorted_datetimes(self):
+        """Returns sorted datetimes."""
+        return sorted(self.datetimes)
+
+    @property
+    def first_date(self):
+        """Returns a spring representing the first date."""
+        return self.sorted_datetimes[0].strftime("%Y/%m/%d")
+
+    @property
+    def last_date(self):
+        """Returns a spring representing the first date."""
+        return self.sorted_datetimes[-1].strftime("%Y/%m/%d")
+
     def as_dict(self):
         """Return this candidate's properties as a Python dictionary."""
         ret_dict = dict(
