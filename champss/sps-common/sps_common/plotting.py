@@ -286,6 +286,9 @@ def plot_scatter_positions(fig, panel, grid_points, candidate):
     ax_time_sigma.xaxis.set_major_formatter(
         mdates.ConciseDateFormatter(ax_time_sigma.xaxis.get_major_locator())
     )
+    ax_time_sigma.xaxis.set_major_locator(
+        mdates.AutoDateLocator(minticks=3, maxticks=5)
+    )
     ax_time_sigma.autoscale_view()
 
     # Label wil overlap with xticks otherwise
