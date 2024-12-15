@@ -712,7 +712,7 @@ def main(
                                 peak_usage = usage
                         return peak_usage
 
-                    prometheus_url = f"http://{db_host}:9090"
+                    prometheus_url = f"http://sps-archiver1.chime:9090"
                     prometheus_client = PrometheusConnect(url=prometheus_url)
                     container_name = os.environ.get("CONTAINER_NAME")
                     pipeline_execution_time = (time.time() - pipeline_start_time) / 60
@@ -731,7 +731,7 @@ def main(
                         f"rate(container_cpu_user_seconds_total{{name='{container_name}'}}[120s])"
                         " * 100"
                     )
-                    http_params = {"timeout": 3}  # seconds
+                    http_params = {"timeout": 0.5}  # seconds
                     memory_response = prometheus_client.custom_query_range(
                         memory_query,
                         start_time,
