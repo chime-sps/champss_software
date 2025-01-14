@@ -145,7 +145,7 @@ ps:
     filter_by_nharm: False
     cluster_dm_cut: 2
     clustering_max_ndetect: 50000
-
+    
 cands:
   harmonics: {}
   features:

@@ -11,7 +11,7 @@ from scipy import interpolate
 from astropy.time import Time
 
 import sps_common.barycenter as barycenter
-from sps_common.constants import TSAMP
+TSAMP = 0.00032768
 
 def gaussian_model(x, a, mu, sigma):
     """
@@ -23,15 +23,13 @@ def standardize_pgram(pgram):
     """
     Standardize the noise distribution of a periodogram such that it is a Gaussian with mean=0, stdev=1
     """
+    # Standardize noise distribution
     snr_distrib = np.histogram(pgram.snrs.max(axis=1), bins=500)
-    try:
-        popt, _ = curve_fit(gaussian_model, snr_distrib[1][:-1], snr_distrib[0],p0=[3000,1,0.1],bounds=([0,0,0],[np.inf,np.inf,np.inf]))
-    except (RuntimeError, OptimizeWarning) as e:
-        # Make a rough guess of the noise properties based off what we'd expect empirically
-        popt = [1.0,0.1]
-    # Subtract the mean, divide by stdev
+    popt, _ = curve_fit(gaussian_model, snr_distrib[1][:-1], snr_distrib[0], p0=[3000, 1, 3])
     pgram.snrs -= popt[1]
-    pgram.snrs /= popt[2]
+    pgram.snrs /= abs(popt[2])
+
+    peaks, _ = riptide.find_peaks(pgram, smin = 7, nstd = 0)
     
     return pgram
 
@@ -106,8 +104,7 @@ def remove_baseline(pgram, b0=50, bmax=1000):
         for i in range(len(sections)-1):
             s[sections[i]:sections[i+1]] /= np.median(s[sections[i]:sections[i+1]])
         pgram.snrs[:, iw] = s
-
-    pgram = standardize_pgram(pgram)
+        
     return pgram
 
 
@@ -125,8 +122,10 @@ def periodogram_form(
         period_min, 
         period_max,
         barycentric_beta,
-        bins_min=190, 
-        bins_max=210, 
+        best_period_profile_bool,
+        expected_period,
+        bins_min=1900, 
+        bins_max=2100, 
         rmed_width=4.0, 
         ducy_max=0.05,
         num_birdie_harmonics=1
@@ -175,6 +174,8 @@ def periodogram_form(
     # Find every point above sigma 7 and cluster them into Peak objects
     peaks, _ = riptide.find_peaks(pgram, smin = 7, nstd = 0)
 
+    if len(peaks) > 0:
+        print("Topocentric", peaks[0])
     
     # Currently we only remove birdies for DM trials below 10. This is semi-arbitrary, could possibly make this more rigorous?
     # Ideally, this limit should depend on the maximum sigma of the DM 0 peaks
@@ -210,8 +211,31 @@ def periodogram_form(
 
     pgram = barycentric_shift(pgram, shifted_freqs, shift_min, shift_max)
 
+    # Standardize the noise distribution such that mean=0, stdev=1
+    pgram = standardize_pgram(pgram)
+
     # Unfortunately, we need to compute the peaks again in barycentric frame since the width/spacing could be different now
     peaks, _ = riptide.find_peaks(pgram, smin = 7, nstd = 0)
+    if len(peaks) > 0:
+        print("Barycentric", peaks[0])
+
+    # desired_peak = [peak for peak in peaks if peak.period > 0.38 and peak.period < 0.41]
+    # print(desired_peak)
+    # print([peak.period for peak in peaks if peak.period > 0.3 and peak.period < 0.5])
+    # folded_period = desired_peak[0].period
+    if len(peaks) > 0:
+        folded_period = peaks[0].period
+    else:
+        folded_period = expected_period
+
+    subints = []  
+    if best_period_profile_bool:
+        bins = 200
+        # try:
+        subints = ts.fold(folded_period, bins, subints=64)
+        # except:
+        #     print("Couldn't fold the profile at best period")
+        #     pass
     
     # Remove peaks at periods where one width is much stronger than the others
     peaks = rogue_width_filter(peaks, pgram.snrs, pgram.widths)
@@ -219,7 +243,7 @@ def periodogram_form(
     # Remove peaks with duplicate periods, only keep the strongest
     peaks = remove_duplicates(peaks)
                     
-    return ts, pgram, peaks
+    return ts, pgram, peaks, subints, folded_period
 
 
 
@@ -229,7 +253,10 @@ def FFA_search_CHIMEPulsar(
     date, 
     ra, 
     dec,
-    birdies
+    expected_period,
+    birdies,
+    stack_bool,
+    best_period_profile_bool
 ):
     """
     Performs the FFA search on a set of dedispersed time series for a single pointing.
@@ -239,13 +266,14 @@ def FFA_search_CHIMEPulsar(
         ra: Right Ascension of the observation
         dec: Declination of the observation
         birdies: Array of birdie periods to filter out (in s)
-        num_threads: Number of cores available. Recommended value is 16
+        stack_bool: Boolean. Whether or not to write to the stack files
+        best_period_profile_bool: Boolean. Whether or not to generate profile at best period
     Output:
         Appends periodograms to the stacks or creates a new stack for that pointing
     """
     tobs = len(ts)*TSAMP
     mjd_time = Time(date).mjd
-    date_string = date.strftime("%Y/%m/%d")
+    date_string = date.strftime("%Y%m%d")
     
     # Compute barycentric shift
     barycentric_beta = barycenter.get_mean_barycentric_correction(str(ra),str(dec),mjd_time,tobs)
@@ -253,57 +281,77 @@ def FFA_search_CHIMEPulsar(
 
     time_start = time.time()
 
-    ts, pgram, peaks = periodogram_form(ts, dm, birdies, 2, tobs/8, barycentric_beta)
+    ts, pgram, peaks, subints, folded_period = periodogram_form(
+        ts, 
+        dm, 
+        birdies, 
+        expected_period*0.9, 
+        expected_period*1.1, 
+        barycentric_beta, 
+        best_period_profile_bool,
+        expected_period
+    )
 
     total_time = time.time()-time_start
-    # log.info("Finished making periodograms for all DM trials")
-    # log.info(f"Time: {total_time} s")
+    print("Finished making periodograms for all DM trials")
+    print(f"Time: {total_time} s")
 
 
     ### WRITE SECTION ###
 
     start_time = time.time()
 
-    directory_name = f"/scratch/ltarabout/FFA_search_CHIMEPulsar_test/stack_{np.round(ra,2)}_{np.round(dec,2)}"
+    directory_name = f"./FFA_search_CHIMEPulsar_test/stack_{np.round(ra,2)}_{np.round(dec,2)}"
     os.makedirs(directory_name, exist_ok=True)
 
-    stack_name = f"stack_{np.round(ra,2)}_{np.round(dec,2)}.hdf5"
-    file_path = os.path.join(directory_name, stack_name)
-    # Write/add to the stack files
-    # log.info("Writing to stack")
-    
-    if os.path.exists(file_path):
-        with h5py.File(file_path, 'a') as hf:
-            if dm == hf.attrs['dm'] and np.array_equal(pgram.periods, hf['periods']):
-                stack_length = hf.attrs['stack_length']                    
-                stack_snrs = hf['snrs'][:]
-
-                # Rescale down, add the new pgram, then rescale back up to conserve similar sigmas
-                stack_snrs = (stack_snrs + (pgram.snrs / stack_length))
-                
-                # Standardize noise distribution
-                snr_distrib = np.histogram(stack_snrs.max(axis=1), bins=500)
-                popt, _ = curve_fit(gaussian_model, snr_distrib[1][:-1], snr_distrib[0], p0=[3000, 1, 3])
-                stack_snrs -= popt[1]
-                stack_snrs /= popt[2]
-    
-                hf['snrs'][...] = stack_snrs
-                hf.attrs['stack_length'] = stack_length + 1
-            else:
-                log.error("Cannot add data to stack as the DM or period range is different!")
+    if stack_bool:
+        stack_name = f"stack_{np.round(ra,2)}_{np.round(dec,2)}.hdf5"
+        file_path = os.path.join(directory_name, stack_name)
         
-    else:
-        with h5py.File(file_path, 'w') as hf:
-            hf.create_dataset('snrs', data=pgram.snrs)
-            hf.attrs['stack_length'] = 1
-            hf.attrs['ra'] = ra
-            hf.attrs['dec'] = dec
-            hf.attrs['dm'] = dm
-            hf.attrs['widths'] = pgram.widths
-            hf.create_dataset('periods', data=pgram.periods)
-            hf.create_dataset('foldbins', data=pgram.foldbins)
+        # Write/add to the stack files 
+        if os.path.exists(file_path):
+            with h5py.File(file_path, 'a') as hf:
+                if dm == hf.attrs['dm'] and np.array_equal(pgram.periods, hf['periods']):
+                    stack_length = hf.attrs['stack_length']                    
+                    stack_snrs = hf['snrs'][:]
     
-    # log.info(f"Write time: {time.time()-start_time}")
+                    # Rescale down, add the new pgram, then rescale back up to conserve similar sigmas
+                    stack_snrs = (stack_snrs + (pgram.snrs / stack_length))
+                    
+                    # Standardize noise distribution
+                    snr_distrib = np.histogram(stack_snrs.max(axis=1), bins=500)
+                    popt, _ = curve_fit(gaussian_model, snr_distrib[1][:-1], snr_distrib[0], p0=[3000, 1, 3])
+                    stack_snrs -= popt[1]
+                    stack_snrs /= abs(popt[2])
+        
+                    hf['snrs'][...] = stack_snrs
+                    hf.attrs['stack_length'] = stack_length + 1
+    
+                else:
+                    print("Cannot add data to stack as the DM or period range is different!")
+            
+        else:
+            with h5py.File(file_path, 'w') as hf:
+                hf.create_dataset('snrs', data=pgram.snrs)
+                hf.attrs['stack_length'] = 1
+                hf.attrs['ra'] = ra
+                hf.attrs['dec'] = dec
+                hf.attrs['dm'] = dm
+                hf.attrs['tobs'] = tobs
+                hf.attrs['widths'] = pgram.widths
+                hf.create_dataset('periods', data=pgram.periods)
+                hf.create_dataset('foldbins', data=pgram.foldbins)
+    
+        print(f"Wrote stack file at: {file_path}")
+
+    if best_period_profile_bool and subints != []:
+        profile_name = f"profile_{np.round(ra,2)}_{np.round(dec,2)}_{date_string}.npz"
+        file_path = os.path.join(directory_name, profile_name)
+        
+        np.savez(file_path, subints=subints, period=folded_period)
+        print(f"Wrote profile from {date_string} at {file_path}")
+        
+    print(f"Write time: {time.time()-start_time}")
     return
 
 

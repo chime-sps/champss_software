@@ -45,6 +45,7 @@ from sps_pipeline import (  # ps,
     rfi,
     utils,
 )
+from FFA.FFA_search_candtest import FFA_search
 
 datpath = "/data/chime/sps/raw"
 
@@ -605,8 +606,9 @@ def main(
                 )
                 power_spectra = psc_pipeline.transform(dedisp_ts)
                 # remove dedispersed time series from memory
-                del dedisp_ts
-                gc.collect()
+                if not "ffa" in components:
+                    del dedisp_ts
+                    gc.collect()
                 if "search" in components:
                     ps_detections = ps_pipeline.power_spectra_search(
                         power_spectra, obs_folder, prefix
@@ -639,6 +641,18 @@ def main(
                 del power_spectra
             else:
                 power_spectra = None
+            if "ffa" in components:
+                FFA_search(
+                    dedisp_ts,
+                    active_pointing.obs_id,
+                    date,
+                    ra, 
+                    dec,
+                    **OmegaConf.to_container(config.ffa),
+                    num_threads
+                )
+                del dedisp_ts
+                gc.collect()
             if "hhat" in components:
                 hhat.run(active_pointing)
             if "cleanup" in components:

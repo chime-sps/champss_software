@@ -39,6 +39,12 @@ default_config_path = (
     os.path.abspath(os.path.dirname(__file__)) + "/default_sp_plot.yml"
 )
 
+detections_dtype = [
+    ("dm", float),
+    ("freq", float),
+    ("sigma", float),
+    ("width", int)
+]
 
 class SearchAlgorithm_FFA(enum.Enum):
     """

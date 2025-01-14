@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import numpy as np
 import datetime
 import os
@@ -17,6 +19,7 @@ import multiprocessing
 import matplotlib.pyplot as plt
 from datetime import date
 import json
+import csv
 from astropy.time import Time
 import h5py
 from scipy.optimize import curve_fit
@@ -28,7 +31,9 @@ from sps_pipeline import utils
 from sps_common.constants import TSAMP
 #from sps_common.interfaces import SinglePointingCandidate_FFA, SearchAlgorithm_FFA
 
-from single_pointing_FFA import SinglePointingCandidate_FFA, SearchAlgorithm_FFA
+from single_pointing_FFA import SinglePointingCandidate_FFA, SearchAlgorithm_FFA, detections_dtype
+from clustering_FFA import Clusterer_FFA
+from interfaces_FFA import Cluster_FFA
 
 import yaml
 from rfi_mitigation import data as rfi_mitigation_data
@@ -193,7 +198,10 @@ def periodogram_form(
         shift_min, 
         shift_max, 
         period_min, 
-        period_max, 
+        period_max,
+        min_rfi_sigma=5,
+        min_detection_sigma=7,
+        birdie_tolerance=0.005,
         bins_min=190, 
         bins_max=210, 
         rmed_width=4.0, 
@@ -237,6 +245,8 @@ def periodogram_form(
         rmed_width=rmed_width, 
         ducy_max=ducy_max
     )
+    if dm == 0:
+        print("Comparison of time series downsampling:", len(tseries.data), len(ts.data))
 
     # For low dms, the baseline increases with trial period, so we need to remove it
     pgram = remove_baseline(pgram)
@@ -266,7 +276,7 @@ def periodogram_form(
                         period_index = peak.ip
                         # Find the width of the RFI peak in indexes
                         peak_width = 0
-                        while (pgram.snrs[max(0,period_index-peak_width)][peak.iw] > 5) and (pgram.snrs[min(pgram_len,period_index+peak_width)][peak.iw] > 5):
+                        while (pgram.snrs[max(0,period_index-peak_width)][peak.iw] > min_rfi_sigma) and (pgram.snrs[min(pgram_len,period_index+peak_width)][peak.iw] > min_rfi_sigma):
                             peak_width += 1
                         for index in range(max(0,period_index-peak_width), min(pgram_len,period_index+peak_width)):
                             pgram.snrs[index][peak.iw] = 0
@@ -291,8 +301,27 @@ def periodogram_form(
     
     # Remove peaks with duplicate periods, only keep the strongest
     peaks = remove_duplicates(peaks)
+
+    del tseries
                     
     return ts, pgram, peaks
+
+def find_area_around_peak(sigmas, peak_index, smin):
+    """
+    Returns minimum and maximum index around the peak_index whose sigma is higher than smin
+    """
+    min_index = peak_index
+    while min_index > 0 and sigmas[min_index-1] > smin:
+        min_index -= 1
+    
+    max_index = peak_index
+    while max_index < len(sigmas)-1 and sigmas[max_index+1] > smin:
+        max_index += 1
+
+    return min_index, max_index
+
+
+
 
 def rate_periodogram(peaks, dm, birdies):
     """
@@ -323,24 +352,6 @@ def rate_periodogram(peaks, dm, birdies):
         if harmonic_peaks:
             rating += harmonic_peaks[0].snr / 2
     return rating
-
-def find_area_around_peak(sigmas, peak_index, smin):
-    """
-    Returns minimum and maximum index around the peak_index whose sigma is higher than smin
-    """
-    min_index = peak_index
-    while min_index > 0 and sigmas[min_index-1] > smin:
-        min_index -= 1
-    
-    max_index = peak_index
-    while max_index < len(sigmas)-1 and sigmas[max_index+1] > smin:
-        max_index += 1
-
-    return min_index, max_index
-
-
-
-
 
 
 
@@ -462,17 +473,26 @@ def main(
     FFA_search(
         dedisp_ts,
         obs_id,
-        date, 
+        date,
+        ra,
+        dec,
+        True,
+        False,
+        plot,
         plot, 
+        stack,
         generate_candidates, 
-        stack, 
-        ra, 
-        dec, 
         dm_downsample, 
         dm_min, 
         dm_max, 
+        5,
+        7,
+        0.005,
         num_threads
     )
+
+    del dedisp_ts
+    del skybeam, spectra_shared, sbf, pst, ap
 
     return
 
@@ -487,16 +507,22 @@ def main(
 def FFA_search(
     dedisp_ts,
     obs_id,
-    date, 
-    plot, 
-    generate_candidates, 
-    stack, 
-    ra, 
-    dec, 
-    dm_downsample, 
-    dm_min, 
-    dm_max, 
-    num_threads
+    date,
+    ra,
+    dec,
+    run_ffa_search=True,
+    write_ffa_detections=False,
+    create_periodogram_plots=False,
+    create_profile_plots=False,
+    write_ffa_stack=True,
+    write_ffa_candidates=True,
+    dm_downsample=8, 
+    dm_min=0, 
+    dm_max=None, 
+    min_rfi_sigma=5,
+    min_detection_sigma=7,
+    birdie_tolerance=0.005,
+    num_threads=16
 ):
     """
     Performs the FFA search on a set of dedispersed time series for a single pointing.
@@ -542,21 +568,21 @@ def FFA_search(
 
     # Load birdies from the yaml file. Transform it to period birdies instead
     with pkg_resources.path(rfi_mitigation_data, "birdies.yaml") as p:
-                # the variable `p` is a PosixPath object, so we still need to open it
-                log.debug(f"Accessing known birdies list from {str(p)}")
-                known_birdies = yaml.load(
-                    open(p),
-                    Loader=yaml.FullLoader,
-                )
+        # the variable `p` is a PosixPath object, so we still need to open it
+        log.debug(f"Accessing known birdies list from {str(p)}")
+        known_birdies = yaml.load(
+            open(p),
+            Loader=yaml.FullLoader,
+        )
     birdies = []
     for k, bird in known_birdies["known_bad_frequencies"].items():
-            if barycentric_beta != 0:
-                birdies.append(1/barycenter.bary_from_topo_freq(bird["frequency"], barycentric_beta))
-            else:
-                birdies.append(1/bird["frequency"])
+        if barycentric_beta != 0:
+            birdies.append(1/barycenter.bary_from_topo_freq(bird["frequency"], barycentric_beta))
+        else:
+            birdies.append(1/bird["frequency"])
 
-    # Compute pgram at DM 0 to get additional birdies. A birdie is any peak above 5 snr (maybe tweak this value?)
-    ts_0, pgram_0, peaks_0 = periodogram_form(ts[0], 0, birdies, None, None, None, 2, tobs/8)
+    # Compute pgram at DM 0 to get additional birdies. A birdie is any peak above min_rfi_sigma snr (default 5)
+    ts_0, pgram_0, peaks_0 = periodogram_form(ts[0], 0, birdies, None, None, None, 2, tobs/8, min_rfi_sigma, min_detection_sigma)
     for peak in peaks_0:
         if peak.period not in birdies:
             birdies.append(peak.period)
@@ -576,7 +602,9 @@ def FFA_search(
         shift_min, 
         shift_max,
         2,
-        tobs/8
+        tobs/8,
+        min_rfi_sigma,
+        min_detection_sigma
     ) for ts_index in range(1,n_dm_trials)]
 
     with multiprocessing.Pool(processes=num_threads) as pool:
@@ -587,7 +615,7 @@ def FFA_search(
     pgram_array = np.concatenate(([pgram_0], pgram_array))
     peaks_array = [peaks_0] + list(peaks_array)
 
-    if generate_candidates or plot:
+    if create_periodogram_plots or create_profile_plots:
         best_dm_trial = 0
         best_rating = 0
         # Arrays for storing the fit parameters and errors
@@ -635,24 +663,64 @@ def FFA_search(
     log.info("Finished making periodograms for all DM trials")
     log.info(f"Time: {total_time} s")
 
-    candidates = np.array([])
-    if generate_candidates:
-        for dm_trial in range(n_dm_trials):
-            peaks = peaks_array[dm_trial]
-            for peak in peaks:
-                candidates = np.append(candidates, Test_Candidate(
-                    peak.period,  
-                    peak.width, 
-                    dms[dm_trial], 
-                    peak.snr
-                ))
+    detections = []
+    candidates = []
+    if write_ffa_candidates or write_ffa_detections:           
+        detections = np.array([(
+            dms[dm_trial],
+            1/peak.period,
+            peak.snr,
+            peak.width
+        ) for dm_trial in range(n_dm_trials) for peak in peaks_array[dm_trial]], dtype = detections_dtype)
+
+        clusterer = Clusterer_FFA()
+        cluster_dm_spacing = dms[1]-dms[0]
+        cluster_df_spacing = pgram_0.freqs[1]-pgram_0.freqs[0]
+        print(f"cluster_dm_spacing: {cluster_dm_spacing}, cluster_df_spacing: {cluster_df_spacing}")
+
+        clusterer.cluster(detections,cluster_dm_spacing,cluster_df_spacing)
+
+        (
+            clusters,
+            summary,
+            clustering_sigma_min,
+            used_detections_len,
+        ) = clusterer.make_clusters(
+            detections,
+            cluster_dm_spacing,
+            cluster_df_spacing,
+            plot_fname="",
+            only_injections=only_injections,
+        )
+
+        candidates = np.array([(
+            {
+                "freq": cluster.freq,
+                "dm": cluster.dm,
+                "sigma": cluster.sigma,
+                #"features": ,
+                "rfi": False,
+                "max_sig_det": cluster.max_sig_det,
+                "ndetections": len(cluster.detections),
+                "detections": cluster.detections,
+                "unique_freqs": cluster.unique_freqs,
+                "unique_dms": cluster.unique_dms,
+                "num_unique_freqs": cluster.num_unique_freqs,
+                "num_unique_dms": cluster.num_unique_dms,
+                "obs_id": obs_id,
+            
+            }
+        ) for cluster in clusters])
+
+        log.info("Finished clustering detections into single pointing candidates")
                 
 
     ### WRITE SECTION ###
 
     start_time = time.time()
 
-    directory_name = f"/scratch/ltarabout/stack_{np.round(ra,2)}_{np.round(dec,2)}"
+    directory_name = f"/data2/chime/sps/sps_processing"
+    # directory_name = f"/scratch/ltarabout/stack_{np.round(ra,2)}_{np.round(dec,2)}"
     os.makedirs(directory_name, exist_ok=True)
 
     # Save the periods and foldbins in a separate file, since they are the same for every dm trial
@@ -668,24 +736,74 @@ def FFA_search(
     #     with open(file_path, 'w') as json_file:
     #         json.dump(periods_bins, json_file, indent=4)
     
-    if generate_candidates and len(candidates) != 0:
-        # Save the candidates in the candidate file
-        # In reality, full path will be /data/chime/sps/sps_processing/FFA/{year}/{month}/{day}/{ra}_{dec}_FFA_candidates.npz 
-        os.makedirs(f"candidates/{date.year}/{date.month}/{date.day}", exist_ok=True)
-        file_path = f"candidates/{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}_FFA_candidates.npz"
-        np.savez(file_path, candidates=candidates, allow_pickle=True)
+    if write_ffa_detections and len(detections) > 0:
+        # Save the detections in the appropriate files
+        # os.makedirs(f"detections/{date.year}/{date.month}/{date.day}", exist_ok=True)
+        # file_path = f"detections/{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}_FFA_detections.npz"
+        # np.savez(file_path, detections=detections, allow_pickle=True)
             
-        log.info(f"Saved a new candidate file at {file_path}")
+        # log.info(f"Saved a new detections file at {file_path}")
 
-    if plot:
+    if write_ffa_candidates and len(candidates) > 0:
+        # Save the candidates in the appropriate files
+        # In reality, full path will be /data/chime/sps/sps_processing/FFA/{year}/{month}/{day}/{ra}_{dec}_FFA_candidates.npz
+        candidate_directory_name = os.path.join(directory_name, f"{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}")
+        os.makedirs(candidate_directory_name, exist_ok=True)
+        file_path = os.path.join(candidate_directory_name, f"{np.round(ra,2)}_{np.round(dec,2)}_FFA_detections.npz")
+        np.savez(file_path, candidates=candidates, allow_pickle=True)
+
+        # Also append the candidate to the list of candidates for that day, for the Candidate Visualizer
+        csv_candidates = [
+            {
+                "": i,
+                "mean_freq": cand['freq'],
+                "mean_dm": cand['dm'],
+                "sigma": cand['sigma'],
+                "ra": ra,
+                "dec": dec,
+                "best_ra": ra,
+                "best_dec": dec,
+                "ncands": cand['ndetections'],
+                "std_ra": 0,
+                "std_dec": 0,
+                "delta_ra": 0,
+                "delta_dec": 0,
+                "file_name": filepath,
+                "plot_path": "",
+                "known_source_label": 0,
+                "known_source_likelihood": "",
+                "known_source_name": "",
+                "known_source_p0": "",
+                "known_source_dm": "",
+                "known_source_ra": "",
+                "known_source_dec": ""
+            } for i, cand in enumerate(candidates)
+        ]
+
+        fieldnames = ["","mean_freq","mean_dm","sigma","ra","dec","best_ra","best_dec","ncands","std_ra","std_dec","delta_ra","delta_dec","file_name","plot_path","known_source_label","known_source_likelihood","known_source_name","known_source_p0","known_source_dm","known_source_ra","known_source_dec"]
+
+        csv_path = os.path.join(directory_name, f"{date.year}/{date.month}/{date.day}/all_sp_cands.csv")
+        if os.path.exists(csv_path):
+            with open(csv_path, "a", newline="") as file:
+                writer = csv.DictWriter(file, fieldnames=fieldnames)
+                writer.writerows(csv_detections)  # Write candidate data
+        else:
+            with open(csv_path, "w", newline="") as file:
+                writer = csv.DictWriter(file, fieldnames=fieldnames)
+                writer.writeheader()  # Write column headers
+                writer.writerows(csv_detections)  # Write candidate data
+            
+        log.info(f"Saved a new single pointing candidates file at {file_path}")
+    
+    if create_periodogram_plots:
         best_pgram.plot()
         os.makedirs(f"dailies/plots", exist_ok=True)
-        file_path = f"dailies/plots/FFA_periodogram_{np.round(ra,2)}_{np.round(dec,2)}_{np.round(best_peak.snr,2)}_{np.round(best_peak.freq,3)}_{np.round(best_dm,3)}.png"
+        file_path = f"/home/ltarabout/champss_software/champss/FFA/dailies/plots/FFA_periodogram_{np.round(ra,2)}_{np.round(dec,2)}_{np.round(best_peak.snr,2)}_{np.round(best_peak.freq,3)}_{np.round(best_dm,3)}.png"
         plt.savefig(file_path)
         log.info(f"Saved best periodogram at {file_path}")
         plt.clf()
     
-        
+    if create_profile_plots:   
         bins = 256
         subints = best_ts.fold(best_peak.period, bins, subints=16)
     
@@ -695,15 +813,18 @@ def FFA_search(
         plt.xlabel("Phase bins")
         plt.title("Folded profile at best DM and best period trial")
 
-        file_path = f"dailies/plots/FFA_profile_{np.round(ra,2)}_{np.round(dec,2)}_{np.round(best_peak.freq,3)}_{np.round(best_dm,3)}.png"
+        file_path = f"/home/ltarabout/champss_software/champss/FFA/dailies/plots/FFA_profile_{np.round(ra,2)}_{np.round(dec,2)}_{np.round(best_peak.freq,3)}_{np.round(best_dm,3)}.png"
         plt.savefig(file_path)
         log.info(f"Saved best folded pulse profile at {file_path}")
         plt.clf()
 
 
-    if stack:
-        stack_name = f"stack_{np.round(ra,2)}_{np.round(dec,2)}.hdf5"
-        file_path = os.path.join(directory_name, stack_name)
+    if write_ffa_stack:
+        stack_directory_name = os.path.join(directory_name, "stack_FFA")
+        os.makedirs(stack_directory_name, exist_ok=True)
+        
+        stack_name = f"{np.round(ra,2)}_{np.round(dec,2)}_ffa_stack.hdf5"
+        file_path = os.path.join(stack_directory, stack_name)
         # Write/add to the stack files
         log.info("Writing to stack")
         
@@ -733,6 +854,7 @@ def FFA_search(
                     # Write updated SNRs back to the file
                     hf['snrs'][...] = snrs
                     hf.attrs['stack_length'] = stack_length + 1
+                    log.info(f"Appended the stack file at {file_path}")
                 else:
                     log.error("Cannot add data to stack as the DM range or period range is different!")
         
@@ -746,40 +868,18 @@ def FFA_search(
                 hf.attrs["widths"] = pgram_array[0].widths
                 hf.create_dataset("periods", data=pgram_array[0].periods)
                 hf.create_dataset("foldbins", data=pgram_array[0].foldbins)
+                log.info(f"Created a stack file at {file_path}")
 
 
-        
-        # for dm_index in range(n_dm_trials):
-        #     stack_name = f"stack_{np.round(ra,2)}_{np.round(dec,2)}_{np.round(dms[dm_index],2)}.hdf5"
-        #     file_path = os.path.join(directory_name, stack_name)
+    log.info(f"FFA Write time: {time.time()-start_time}")
 
-        #     # If file already exists, add each periodogram to the stack
-        #     if os.path.exists(file_path):
-        #         with h5py.File(file_path, 'a') as hf:
-        #             stack_snrs = hf['snrs'][:]
-        #             stack_length = hf.attrs['stack_length']
-
-        #             # Rescale down then back up to preserve similar sigmas across different days
-        #             stack_snrs = (stack_snrs + (pgram_array[dm_index].snrs / stack_length))
-
-        #             # Standardize the noise distribution such that mean sigma is 0, stdev is 1
-        #             snr_distrib = np.histogram(stack_snrs.max(axis=1), bins=500)
-        #             popt, pcov = curve_fit(gaussian_model, snr_distrib[1][:-1], snr_distrib[0],p0=[3000,1,3])
-        #             stack_snrs -= popt[1]
-        #             stack_snrs /= popt[2]
-                    
-        #             hf['snrs'][:] = stack_snrs
-        #             hf.attrs['stack_length'] = stack_length+1
-        #     else:
-        #         with h5py.File(file_path, 'w') as hf:
-        #             hf.create_dataset('snrs', data=pgram_array[dm_index].snrs)
-        #             hf.attrs['stack_length'] = 1
-        #             hf.attrs['ra'] = ra
-        #             hf.attrs['dec'] = dec
-        #             hf.attrs['dm'] = dms[dm_index]
-
-
-    log.info(f"Write time: {time.time()-start_time}")
+    del pgram_array
+    del peaks_array
+    del ts_array
+    del detections
+    del args, results
+    del ts, ts_0, pgram_0, peaks_0, shifted_freqs
+    
     return
 
 log_stream = logging.StreamHandler()

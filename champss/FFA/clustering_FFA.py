@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+# Credit: Most of the code in this entire file was copy and pasted with slight adaptations
+# from Kathryn Crowter's code in clustering.py
+
 import itertools
 import logging
 import warnings
@@ -16,7 +19,7 @@ from sklearn.cluster import DBSCAN, HDBSCAN
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import paired_distances
 from sklearn.neighbors import radius_neighbors_graph, sort_graph_by_row_values
-from sps_common.interfaces import Cluster
+from interfaces_FFA import Cluster_FFA
 
 warnings.filterwarnings("ignore", category=SparseEfficiencyWarning)
 
@@ -308,17 +311,16 @@ class Clusterer_FFA:
     """
 
     # cluster_scale_factor: float = attribute(default=10)
-    freq_scale_factor: float = attribute(default=1)
-    dm_scale_factor: float = attribute(default=0.1)
+    freq_scale_factor: float = attribute(default=300)
+    dm_scale_factor: float = attribute(default=1)
     dbscan_eps: float = attribute(default=1)
     dbscan_min_samples: int = attribute(default=5)
     max_ndetect: int = attribute(
         default=50000
     )  # 32-bit max_ndetect x max_ndetect matrix is ~4GB
     sigma_detection_threshold: int = attribute(default=5)
-    group_duplicate_freqs: bool = attribute(default=True)
     clustering_method: str = attribute(default="DBSCAN")
-    rogue_width_scheme: str = attribute(default="tweak")
+    filter_width: bool = attribute(default=False)
     cluster_dm_cut: float = attribute(default=-1)
     overlap_scale: float = attribute(default=1)
     add_dm_when_replace: bool = attribute(default=False)
@@ -326,7 +328,7 @@ class Clusterer_FFA:
     use_sparse: bool = attribute(default=True)
     grouped_freq_dm_scale: float = attribute(default=1)
     use_dbscan_filter: bool = attribute(default=True)
-    dbscan_filter_filter_whole_freqs: bool = attribute(default=True)
+    dbscan_filter_whole_freqs: bool = attribute(default=False)
 
 
     @clustering_method.validator
@@ -350,7 +352,7 @@ class Clusterer_FFA:
         detections,
         cluster_dm_spacing,
         cluster_df_spacing,
-        scheme="combined",
+        scheme = "dmfreq",  # scheme="combined", (not implemented yet)
         plot_fname="",
     ):
         """
@@ -403,6 +405,8 @@ class Clusterer_FFA:
                 min_samples=self.dbscan_min_samples,
                 metric="precomputed",
             ).fit(metric_array)
+            labels = db_filter.labels_
+            
             filtered_indices = []
             bad_freqs = []
             filtered_labels = []
@@ -429,7 +433,8 @@ class Clusterer_FFA:
                 f"Dbscan filter removed {bad_low_dm_freqs} detections in low DM"
                 " clusters."
             )
-            if self.dbscan_filter_filter_whole_freqs:
+            
+            if self.dbscan_filter_whole_freqs:
                 for i in range(max(db_filter.labels_) + 1):
                     if i not in filtered_labels:
                         current_indices = np.arange(detections_filtered.shape[0])[
@@ -449,7 +454,13 @@ class Clusterer_FFA:
                 )
             mask = np.full(detections.shape[0], True)
             mask[filtered_indices] = False
-            detections_filtered = detections[mask]
+            # detections_filtered = detections[mask]
+            detections = detections[mask]
+            labels = labels[mask]
+            
+            mask = np.where(labels != -1)[0]
+            detections = detections[mask]
+            labels = labels[mask]
 
             del data_filter
             del metric_array
@@ -492,22 +503,6 @@ class Clusterer_FFA:
         ).T
 
         rhps = [set(det["harm_idx"][: det["nharm"]]) for det in detections]
-
-        # Find duplicate frequencies and only keep the highest-sigma detection for the harmonic metric caluclation
-        if self.group_duplicate_freqs:
-            log.info("Grouping duplicate frequencies together first")
-            harm, idx_to_skip = group_duplicates_freq(
-                detections, ignorenharm1=self.ignore_nharm1
-            )
-            # set lookup is faster
-            idx_to_skip = set(idx_to_skip)
-            log.info(
-                f"Grouping duplicate frequencies removed {len(idx_to_skip)} detections"
-                " from the harmonic metric computation"
-            )
-        else:
-            harm = None
-            idx_to_skip = []
 
         if scheme in ["combined", "dmfreq"]:
             log.info("Starting freq-DM distance metric computation")
@@ -756,6 +751,8 @@ class Clusterer_FFA:
         cluster_dm_spacing,
         cluster_df_spacing,
         plot_fname="",
+        filter_width=False,
+        cluster_dm_cut=0,
         only_injections=False,
     ):
         """
@@ -764,16 +761,13 @@ class Clusterer_FFA:
 
         Args:
             detections_in (np.ndaray): detections output from PowerSpectra search - numpy structured array
-                with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow", "injection"
+                with fields "dm", "freq", "sigma", "width"
             cluster_dm_spacing (float): spacing between DM trials
             plot_fname (str, optional): A plot of the detections and clusters will be made and saved to
                 this file. Defaults to "".
-            filter_nharm (bool, optional): If True, for each cluster, only keep detections where the nharm
+            filter_width (bool, optional): If True, for each cluster, only keep detections where the width
                 matches that of the highest-sigma detection. Defaults to False.
-            remove_harm_idx (bool, optional): If True, remove the "harm_idx" field from the cluster
-                detections. Defaults to False.
             cluster_dm_cut (float, optional): Filter all clusters equal or below this DM.
-            only_injections: bool Whether non-injections are filtered out. Default: False
 
         Returns:
             clusters (dict): A dict of Cluster objects
@@ -781,13 +775,13 @@ class Clusterer_FFA:
                                   Fields are "cluster_id", "freq", "sigma", "nharm", "injection"
                                   cluster_id corresponds to the keys in clusters
             sig_limit (float): The minimum sigma used when clustering.
-                               If there were many detections this may be higher than the limi used in the search
+                               If there were many detections this may be higher than the limit used in the search
         """
         detections, cluster_labels, sig_limit = self.cluster(
             detections_in,
             cluster_dm_spacing,
             cluster_df_spacing,
-            scheme="combined",
+            scheme="dmfreq",
             plot_fname=plot_fname,
         )
         unique_labels = np.unique(cluster_labels)
@@ -801,24 +795,18 @@ class Clusterer_FFA:
             for lbl in unique_labels:
                 if lbl == -1:
                     continue
-                cluster = Cluster.from_raw_detections(detections[cluster_labels == lbl])
+                cluster = Cluster_FFA.from_raw_detections(detections[cluster_labels == lbl])
                 if self.cluster_dm_cut >= cluster.dm:
                     zero_dm_count += 1
                     continue
-                if self.filter_nharm:
-                    cluster.filter_nharm()
-                if self.remove_harm_idx:
-                    cluster.remove_harm_idx()
-                    cluster.remove_harm_pow()
-                if only_injections and cluster.injection_index == -1:
-                    continue
+                if self.filter_width:
+                    cluster.filter_width()
                 clusters[current_label] = cluster
                 summary[current_label] = dict(
                     freq=cluster.freq,
                     dm=cluster.dm,
                     sigma=cluster.sigma,
-                    nharm=cluster.nharm,
-                    harm_idx=cluster.harm_idx,
+                    width=cluster.width,
                     injection=cluster.injection_index,
                 )
                 current_label += 1
