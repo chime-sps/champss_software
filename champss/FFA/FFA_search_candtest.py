@@ -477,7 +477,7 @@ def main(
         True,
         plot,
         plot, 
-        True,# False,
+        False,
         generate_candidates, 
         stack,
         dm_downsample, 
@@ -701,8 +701,33 @@ def FFA_search(
             plot_fname=""
         )
 
-        candidates = np.array([(
-            {
+        for cluster in clusters.values():
+            # The candidate is saved with a map showing sigma & width as a function of dm and frequency
+            # This allows us to make the candidate plots later
+            # The DM range looks at 10 units around the edges of the cluster
+            min_dm_index = np.abs(dms - (min(cluster.unique_dms)-10)).argmin()
+            max_dm_index = np.abs(dms - (max(cluster.unique_dms)+10)).argmin()
+            dm_range = np.array(dms[min_dm_index:max_dm_index])
+
+            # The frequency range looks at 0.001 Hz around the edges of the cluster
+            max_p_index = np.abs(pgram_0.periods - 1/(min(cluster.unique_freqs)-0.001)).argmin()
+            min_p_index = np.abs(pgram_0.periods - 1/(max(cluster.unique_freqs)+0.001)).argmin()
+            freq_range = np.array([1/pgram_0.periods[period_index] for period_index in range(max_p_index,min_p_index,-1)])
+
+            dm_freq_sigma = np.array([[
+                pgram_array[dm_index].snrs[period_index].max()
+                    for period_index in range(max_p_index,min_p_index,-1)] 
+                    for dm_index in range(min_dm_index,max_dm_index)]
+            )
+
+            dm_freq_widths = np.array([[
+                pgram_0.widths[np.argmax(pgram_array[dm_index].snrs[period_index])]
+                    for period_index in range(max_p_index,min_p_index,-1)] 
+                    for dm_index in range(min_dm_index,max_dm_index)]
+            )
+            
+
+            candidates.append({
                 "freq": cluster.freq,
                 "dm": cluster.dm,
                 "sigma": cluster.sigma,
@@ -716,9 +741,30 @@ def FFA_search(
                 "num_unique_freqs": cluster.num_unique_freqs,
                 "num_unique_dms": cluster.num_unique_dms,
                 "obs_id": obs_id,
-            
-            }
-        ) for cluster in clusters.values()])
+                "dm_freq_sigma": dm_freq_sigma,
+                "dm_freq_widths": dm_freq_widths,
+                "dm_range": dm_range,
+                "freq_range": freq_range,
+            })
+
+        # candidates = np.array([(
+        #     {
+        #         "freq": cluster.freq,
+        #         "dm": cluster.dm,
+        #         "sigma": cluster.sigma,
+        #         #"features": ,
+        #         "rfi": False,
+        #         "max_sig_det": cluster.max_sig_det,
+        #         "ndetections": len(cluster.detections),
+        #         "detections": cluster.detections,
+        #         "unique_freqs": cluster.unique_freqs,
+        #         "unique_dms": cluster.unique_dms,
+        #         "num_unique_freqs": cluster.num_unique_freqs,
+        #         "num_unique_dms": cluster.num_unique_dms,
+        #         "obs_id": obs_id,
+        #         "dm_freq_sigma": [],
+        #     }
+        # ) for cluster in clusters.values()])
 
         log.info("Finished clustering detections into single pointing candidates")
                 
