@@ -245,8 +245,6 @@ def periodogram_form(
         rmed_width=rmed_width, 
         ducy_max=ducy_max
     )
-    if dm == 0:
-        print("Comparison of time series downsampling:", len(tseries.data), len(ts.data))
 
     # For low dms, the baseline increases with trial period, so we need to remove it
     pgram = remove_baseline(pgram)
@@ -477,11 +475,11 @@ def main(
         ra,
         dec,
         True,
-        False,
         plot,
         plot, 
-        stack,
+        True,# False,
         generate_candidates, 
+        stack,
         dm_downsample, 
         dm_min, 
         dm_max, 
@@ -511,11 +509,11 @@ def FFA_search(
     ra,
     dec,
     run_ffa_search=True,
-    write_ffa_detections=False,
     create_periodogram_plots=False,
     create_profile_plots=False,
-    write_ffa_stack=True,
+    write_ffa_detections=False,
     write_ffa_candidates=True,
+    write_ffa_stack=True,
     dm_downsample=8, 
     dm_min=0, 
     dm_max=None, 
@@ -530,20 +528,29 @@ def FFA_search(
         dedisp_ts: The array of dedispersed time series from the FDMT. Should include dedisp_ts.dedisp_ts AND dedisp_ts.dms
         obs_id: Observation id of the pointing
         date: datetime object corresponding to the observation
-        plot: boolean. Whether or not to generate periodogram plots and pulse profiles at best DM
-        generate_candidates: boolean. Whether or not to generate candidates
-        stack: boolean. Whether or not to write to the stacks
         ra: Right Ascension of the observation
         dec: Declination of the observation
+        run_ffa_search: boolean. This is just part of the config file, should always be True in this function.
+        create_periodogram_plots: boolean. Whether or not to plot the periodogram at the best DM trial. 
+            These are saved at "/data2/chime/sps/sps_processing/{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}/plots/FFA_periodogram_ra_{np.round(ra,2)}_dec_{np.round(dec,2)}_snr_{np.round(best_peak.snr,2)}_dm_{np.round(best_dm,3)}.png"
+        create_profile_plots: boolean. Whether or not to plot the folded pulse profile at the best DM and period trial.
+            These are saved at "/data2/chime/sps/sps_processing/{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}/plots/FFA_profile_ra_{np.round(ra,2)}_dec_{np.round(dec,2)}_snr_{np.round(best_peak.snr,2)}_p_{np.round(best_peak.period,6)}_dm_{np.round(best_dm,3)}.png"
+        write_ffa_detections: boolean. Whether or not to write the detections (peaks of the periodograms) in a separate file.
+            These are saved at "/data2/chime/sps/sps_processing/detections/{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}_FFA_detections.npz"
+        write_ffa_candidates: boolean. Whether or not to write the single pointing candidates in a separate file
+            These are saved at "/data2/chime/sps/sps_processing/{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}/{np.round(ra,2)}_{np.round(dec,2)}_FFA_candidates.npz"
+        write_ffa_stack: boolean. Whether or not to write to the stacks.
+            These are saved at "/data2/chime/sps/sps_processing/stack_FFA/{np.round(ra,2)}_{np.round(dec,2)}_FFA_stack.hdf5"
         dm_downsample: The downsampling factor in DM trials. Must be an integer >= 1. Recommended value is 8
-        dm_min: Only search for DMs above this value. Optional
-        dm_max: Only search for DMs below this value. Optional
+        dm_min: Only search for DMs above this value.
+        dm_max: Only search for DMs below this value.
+        min_rfi_sigma: float. Birdies are classified as any peak in the periodogram at DM 0 above min_rfi_sigma
+        min_detection_sigma: float. Detections are classified as any peak in any periodogram above min_detection_sigma
         num_threads: Number of cores available. Recommended value is 16
     Output:
-        If generate_candidates is set to true, will create SinglePointingCandidate_FFA files in the appropriate folder
-        If plot is set to true, will create periodogram plots and pulse profiles in the appropriate folder
-        If stack is set to true, will append periodograms to the stacks or create a new stack
+        None. All data products will be written to disk as described above.
     """
+    total_start_time = time.time()
     
     # Takes one of every dm_downsample DM trials from initial array
     ts = dedisp_ts.dedisp_ts[::dm_downsample]
@@ -673,9 +680,11 @@ def FFA_search(
             peak.width
         ) for dm_trial in range(n_dm_trials) for peak in peaks_array[dm_trial]], dtype = detections_dtype)
 
+        log.info(f"Periodogram resulted in {len(detections)} raw detections")
+
         clusterer = Clusterer_FFA()
         cluster_dm_spacing = dms[1]-dms[0]
-        cluster_df_spacing = pgram_0.freqs[1]-pgram_0.freqs[0]
+        cluster_df_spacing = pgram_0.freqs[0]-pgram_0.freqs[1]
         print(f"cluster_dm_spacing: {cluster_dm_spacing}, cluster_df_spacing: {cluster_df_spacing}")
 
         clusterer.cluster(detections,cluster_dm_spacing,cluster_df_spacing)
@@ -689,8 +698,7 @@ def FFA_search(
             detections,
             cluster_dm_spacing,
             cluster_df_spacing,
-            plot_fname="",
-            only_injections=only_injections,
+            plot_fname=""
         )
 
         candidates = np.array([(
@@ -710,7 +718,7 @@ def FFA_search(
                 "obs_id": obs_id,
             
             }
-        ) for cluster in clusters])
+        ) for cluster in clusters.values()])
 
         log.info("Finished clustering detections into single pointing candidates")
                 
@@ -722,34 +730,22 @@ def FFA_search(
     directory_name = f"/data2/chime/sps/sps_processing"
     # directory_name = f"/scratch/ltarabout/stack_{np.round(ra,2)}_{np.round(dec,2)}"
     os.makedirs(directory_name, exist_ok=True)
-
-    # Save the periods and foldbins in a separate file, since they are the same for every dm trial
-    # periods_bins_name = f"periods_bins_{np.round(ra,2)}_{np.round(dec,2)}.json"
-    # file_path = os.path.join(directory_name, periods_bins_name)
-    # if not os.path.exists(file_path):
-    #     periods_bins = {
-    #         "widths": pgram_array[0].widths.tolist(),
-    #         "periods": pgram_array[0].periods.tolist(),
-    #         "foldbins": pgram_array[0].foldbins.tolist(),
-    #         "metadata": {"tobs":tobs}
-    #     }
-    #     with open(file_path, 'w') as json_file:
-    #         json.dump(periods_bins, json_file, indent=4)
     
     if write_ffa_detections and len(detections) > 0:
         # Save the detections in the appropriate files
-        # os.makedirs(f"detections/{date.year}/{date.month}/{date.day}", exist_ok=True)
-        # file_path = f"detections/{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}_FFA_detections.npz"
-        # np.savez(file_path, detections=detections, allow_pickle=True)
+        detection_directory_name = os.path.join(directory_name, f"detections/{date.year}/{date.month}/{date.day}")
+        os.makedirs(detection_directory_name, exist_ok=True)
+        file_path = os.path.join(detection_directory_name, f"{np.round(ra,2)}_{np.round(dec,2)}_FFA_detections.npz")
+        np.savez(file_path, detections=detections, allow_pickle=True)
             
-        # log.info(f"Saved a new detections file at {file_path}")
+        log.info(f"Saved a new detections file at {file_path}")
 
     if write_ffa_candidates and len(candidates) > 0:
         # Save the candidates in the appropriate files
         # In reality, full path will be /data/chime/sps/sps_processing/FFA/{year}/{month}/{day}/{ra}_{dec}_FFA_candidates.npz
         candidate_directory_name = os.path.join(directory_name, f"{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}")
         os.makedirs(candidate_directory_name, exist_ok=True)
-        file_path = os.path.join(candidate_directory_name, f"{np.round(ra,2)}_{np.round(dec,2)}_FFA_detections.npz")
+        file_path = os.path.join(candidate_directory_name, f"{np.round(ra,2)}_{np.round(dec,2)}_FFA_candidates.npz")
         np.savez(file_path, candidates=candidates, allow_pickle=True)
 
         # Also append the candidate to the list of candidates for that day, for the Candidate Visualizer
@@ -768,7 +764,7 @@ def FFA_search(
                 "std_dec": 0,
                 "delta_ra": 0,
                 "delta_dec": 0,
-                "file_name": filepath,
+                "file_name": file_path,
                 "plot_path": "",
                 "known_source_label": 0,
                 "known_source_likelihood": "",
@@ -786,34 +782,51 @@ def FFA_search(
         if os.path.exists(csv_path):
             with open(csv_path, "a", newline="") as file:
                 writer = csv.DictWriter(file, fieldnames=fieldnames)
-                writer.writerows(csv_detections)  # Write candidate data
+                writer.writerows(csv_candidates)  # Write candidate data
         else:
             with open(csv_path, "w", newline="") as file:
                 writer = csv.DictWriter(file, fieldnames=fieldnames)
                 writer.writeheader()  # Write column headers
-                writer.writerows(csv_detections)  # Write candidate data
+                writer.writerows(csv_candidates)  # Write candidate data
             
         log.info(f"Saved a new single pointing candidates file at {file_path}")
     
     if create_periodogram_plots:
-        best_pgram.plot()
-        os.makedirs(f"dailies/plots", exist_ok=True)
-        file_path = f"/home/ltarabout/champss_software/champss/FFA/dailies/plots/FFA_periodogram_{np.round(ra,2)}_{np.round(dec,2)}_{np.round(best_peak.snr,2)}_{np.round(best_peak.freq,3)}_{np.round(best_dm,3)}.png"
+        plot_directory_name = os.path.join(directory_name, f"{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}/plots")
+        os.makedirs(plot_directory_name, exist_ok=True)
+        file_path = os.path.join(plot_directory_name, f"FFA_periodogram_ra_{np.round(ra,2)}_dec_{np.round(dec,2)}_snr_{np.round(best_peak.snr,2)}_dm_{np.round(best_dm,3)}.png")
+
+        fig, ax = plt.subplots(figsize=(15, 5))
+        ax.plot(pgram.periods, pgram.snrs.max(axis=1),linewidth=0.3, marker='o', markersize=0.7)
+        plt.title("Best Sigma at any trial width")
+        plt.xlim(min(pgram.periods),max(pgram.periods))
+        plt.xlabel("Trial Period (s)")
+        plt.ylabel("Sigma")
+        plt.grid(True)
+        
         plt.savefig(file_path)
         log.info(f"Saved best periodogram at {file_path}")
         plt.clf()
     
     if create_profile_plots:   
+        plot_directory_name = os.path.join(directory_name, f"{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}/plots")
+        os.makedirs(plot_directory_name, exist_ok=True)
+        file_path = os.path.join(plot_directory_name, f"FFA_profile_ra_{np.round(ra,2)}_dec_{np.round(dec,2)}_snr_{np.round(best_peak.snr,2)}_p_{np.round(best_peak.period,6)}_dm_{np.round(best_dm,3)}.png")
+        
         bins = 256
         subints = best_ts.fold(best_peak.period, bins, subints=16)
     
+        plt.subplot(211)
+        plt.title(f"Folded profile at p={np.round(best_peak.period,4)}s, dm={np.round(best_dm,3)}, {date_string}")
+        plt.imshow(subints, cmap='Greys', aspect='auto')
+        plt.xlim(0,255)
+        plt.ylabel("Subints")
+        plt.subplot(212)
         plt.plot(subints.sum(axis=0))
-        plt.xlim(0, bins)
+        plt.xlabel("Bins")
         plt.ylabel("Intensity")
-        plt.xlabel("Phase bins")
-        plt.title("Folded profile at best DM and best period trial")
+        plt.xlim(0,255)
 
-        file_path = f"/home/ltarabout/champss_software/champss/FFA/dailies/plots/FFA_profile_{np.round(ra,2)}_{np.round(dec,2)}_{np.round(best_peak.freq,3)}_{np.round(best_dm,3)}.png"
         plt.savefig(file_path)
         log.info(f"Saved best folded pulse profile at {file_path}")
         plt.clf()
@@ -823,8 +836,8 @@ def FFA_search(
         stack_directory_name = os.path.join(directory_name, "stack_FFA")
         os.makedirs(stack_directory_name, exist_ok=True)
         
-        stack_name = f"{np.round(ra,2)}_{np.round(dec,2)}_ffa_stack.hdf5"
-        file_path = os.path.join(stack_directory, stack_name)
+        stack_name = f"{np.round(ra,2)}_{np.round(dec,2)}_FFA_stack.hdf5"
+        file_path = os.path.join(stack_directory_name, stack_name)
         # Write/add to the stack files
         log.info("Writing to stack")
         
@@ -872,6 +885,7 @@ def FFA_search(
 
 
     log.info(f"FFA Write time: {time.time()-start_time}")
+    log.info(f"Total FFA time: {time.time()-total_start_time}")
 
     del pgram_array
     del peaks_array

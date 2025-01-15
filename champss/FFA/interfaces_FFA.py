@@ -1,7 +1,13 @@
 #!/usr/bin/env python
 
 import numpy as np
+from attr import ib as attrib
+from attr import s as attrs
+from attr.setters import validate
+from attr.validators import instance_of
+from easydict import EasyDict
 
+@attrs
 class Cluster_FFA:
     """
     A cluster of detections.

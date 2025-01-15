@@ -148,11 +148,11 @@ ps:
 
 ffa:
   run_ffa_search: True
-  write_ffa_detections: False
   create_periodogram_plots: False
   create_profile_plots: False
-  write_ffa_stack: True
+  write_ffa_detections: False
   write_ffa_candidates: True
+  write_ffa_stack: True
   dm_downsample: 8
   dm_min: 0
   dm_max: None
