@@ -789,7 +789,7 @@ def FFA_search(
     if write_ffa_candidates and len(candidates) > 0:
         # Save the candidates in the appropriate files
         # In reality, full path will be /data/chime/sps/sps_processing/FFA/{year}/{month}/{day}/{ra}_{dec}_FFA_candidates.npz
-        candidate_directory_name = os.path.join(directory_name, f"{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}")
+        candidate_directory_name = os.path.join(directory_name, f"{date_string}/{np.round(ra,2)}_{np.round(dec,2)}")
         os.makedirs(candidate_directory_name, exist_ok=True)
         file_path = os.path.join(candidate_directory_name, f"{np.round(ra,2)}_{np.round(dec,2)}_FFA_candidates.npz")
         np.savez(file_path, candidates=candidates, allow_pickle=True)
@@ -824,7 +824,7 @@ def FFA_search(
 
         fieldnames = ["","mean_freq","mean_dm","sigma","ra","dec","best_ra","best_dec","ncands","std_ra","std_dec","delta_ra","delta_dec","file_name","plot_path","known_source_label","known_source_likelihood","known_source_name","known_source_p0","known_source_dm","known_source_ra","known_source_dec"]
 
-        csv_path = os.path.join(directory_name, f"{date.year}/{date.month}/{date.day}/all_sp_cands.csv")
+        csv_path = os.path.join(directory_name, f"{date_string}/all_sp_cands.csv")
         if os.path.exists(csv_path):
             with open(csv_path, "a", newline="") as file:
                 writer = csv.DictWriter(file, fieldnames=fieldnames)
@@ -838,7 +838,7 @@ def FFA_search(
         log.info(f"Saved a new single pointing candidates file at {file_path}")
     
     if create_periodogram_plots:
-        plot_directory_name = os.path.join(directory_name, f"{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}/plots")
+        plot_directory_name = os.path.join(directory_name, f"{date_string}/{np.round(ra,2)}_{np.round(dec,2)}/plots")
         os.makedirs(plot_directory_name, exist_ok=True)
         file_path = os.path.join(plot_directory_name, f"FFA_periodogram_ra_{np.round(ra,2)}_dec_{np.round(dec,2)}_snr_{np.round(best_peak.snr,2)}_dm_{np.round(best_dm,3)}.png")
 
@@ -855,7 +855,7 @@ def FFA_search(
         plt.clf()
     
     if create_profile_plots:   
-        plot_directory_name = os.path.join(directory_name, f"{date.year}/{date.month}/{date.day}/{np.round(ra,2)}_{np.round(dec,2)}/plots")
+        plot_directory_name = os.path.join(directory_name, f"{date_string}/{np.round(ra,2)}_{np.round(dec,2)}/plots")
         os.makedirs(plot_directory_name, exist_ok=True)
         file_path = os.path.join(plot_directory_name, f"FFA_profile_ra_{np.round(ra,2)}_dec_{np.round(dec,2)}_snr_{np.round(best_peak.snr,2)}_p_{np.round(best_peak.period,6)}_dm_{np.round(best_dm,3)}.png")
         
