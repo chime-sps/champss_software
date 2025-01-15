@@ -449,9 +449,9 @@ class Clusterer_FFA:
             detections = detections[mask]
             labels = labels[mask]
             
-            mask = np.where(labels != -1)[0]
-            detections = detections[mask]
-            labels = labels[mask]
+            # mask = np.where(labels != -1)[0]
+            # detections = detections[mask]
+            # labels = labels[mask]
 
             del data_filter
             del metric_array
