@@ -311,8 +311,8 @@ class Clusterer_FFA:
     """
 
     # cluster_scale_factor: float = attribute(default=10)
-    freq_scale_factor: float = attribute(default=1)
-    dm_scale_factor: float = attribute(default=0.1)
+    freq_scale_factor: float = attribute(default=0.002)
+    dm_scale_factor: float = attribute(default=0.5)
     dbscan_eps: float = attribute(default=1)
     dbscan_min_samples: int = attribute(default=5)
     max_ndetect: int = attribute(
