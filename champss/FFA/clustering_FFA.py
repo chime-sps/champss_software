@@ -311,8 +311,8 @@ class Clusterer_FFA:
     """
 
     # cluster_scale_factor: float = attribute(default=10)
-    freq_scale_factor: float = attribute(default=300)
-    dm_scale_factor: float = attribute(default=1)
+    freq_scale_factor: float = attribute(default=1)
+    dm_scale_factor: float = attribute(default=0.1)
     dbscan_eps: float = attribute(default=1)
     dbscan_min_samples: int = attribute(default=5)
     max_ndetect: int = attribute(
@@ -337,14 +337,6 @@ class Clusterer_FFA:
             "DBSCAN",
             "HDBSCAN",
         ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
-
-    @rogue_width_scheme.validator
-    def _validate_rogue_width_scheme(self, attribute, value):
-        assert value in [
-            "presto",
-            "tweak",
-            "alt",
-        ], "harmpow_scheme must be 'presto', 'tweak' or 'alt'"
 
 
     def cluster(
@@ -388,7 +380,7 @@ class Clusterer_FFA:
                     detections["dm"]
                     / cluster_dm_spacing
                     * self.dm_scale_factor,
-                    detections_filtered["freq"]
+                    detections["freq"]
                     / cluster_df_spacing
                     * self.freq_scale_factor,
                 ),
@@ -411,7 +403,7 @@ class Clusterer_FFA:
             bad_freqs = []
             filtered_labels = []
             for i in range(max(db_filter.labels_) + 1):
-                current_indices = np.arange(detections_filtered.shape[0])[
+                current_indices = np.arange(detections.shape[0])[
                     db_filter.labels_ == i
                 ]
                 det_sample = detections[current_indices]
@@ -437,10 +429,10 @@ class Clusterer_FFA:
             if self.dbscan_filter_whole_freqs:
                 for i in range(max(db_filter.labels_) + 1):
                     if i not in filtered_labels:
-                        current_indices = np.arange(detections_filtered.shape[0])[
+                        current_indices = np.arange(detections.shape[0])[
                             db_filter.labels_ == i
                         ]
-                        det_sample = detections_filtered[current_indices]
+                        det_sample = detections[current_indices]
                         mean_freq = det_sample["freq"].mean()
                         for row in bad_freqs:
                             if mean_freq > row[1] and mean_freq < row[2]:
@@ -454,7 +446,6 @@ class Clusterer_FFA:
                 )
             mask = np.full(detections.shape[0], True)
             mask[filtered_indices] = False
-            # detections_filtered = detections[mask]
             detections = detections[mask]
             labels = labels[mask]
             
@@ -491,7 +482,6 @@ class Clusterer_FFA:
                 f"The minimum sigma has been raised to {sig_limit} to reduce the number"
                 f" of detections to {len(detections)}"
             )
-        del detections_filtered
 
         # make data products necessary for clustering and making the harmonic metric
         data = np.vstack(
@@ -501,8 +491,6 @@ class Clusterer_FFA:
             ),
             dtype=np.float32,
         ).T
-
-        rhps = [set(det["harm_idx"][: det["nharm"]]) for det in detections]
 
         if scheme in ["combined", "dmfreq"]:
             log.info("Starting freq-DM distance metric computation")
@@ -806,8 +794,7 @@ class Clusterer_FFA:
                     freq=cluster.freq,
                     dm=cluster.dm,
                     sigma=cluster.sigma,
-                    width=cluster.width,
-                    injection=cluster.injection_index,
+                    width=cluster.width
                 )
                 current_label += 1
         if zero_dm_count:
