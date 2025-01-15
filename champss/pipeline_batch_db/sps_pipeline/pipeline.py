@@ -198,7 +198,7 @@ def dbexcepthook(type, value, tb):
 @click.argument(
     "components",
     type=click.Choice(
-        ["all", "quant", "rfi", "beamform", "dedisp", "ps", "hhat", "search", "cleanup"]
+        ["all", "quant", "rfi", "beamform", "dedisp", "ps", "ffa", "hhat", "search", "cleanup"]
     ),
     nargs=-1,
 )
