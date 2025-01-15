@@ -477,7 +477,7 @@ def main(
         True,
         plot,
         plot, 
-        False,
+        True,#False,
         generate_candidates, 
         stack,
         dm_downsample, 
@@ -634,23 +634,23 @@ def FFA_search(
                 best_dm_trial = dm_trial
     
         # Find the best fit and error for the main peak, if there is one
-        if len(peaks_array[best_dm_trial]) > 0:
-            main_peak = peaks_array[best_dm_trial][0]
-            pgram = pgram_array[best_dm_trial]
-            mask = (pgram.periods >= main_peak.period-0.01) & (pgram.periods <= main_peak.period+0.01)
-            periods_section = pgram.periods[mask]
-            snrs_section = pgram.snrs.max(axis=1)[mask]
+        # if len(peaks_array[best_dm_trial]) > 0:
+        #     main_peak = peaks_array[best_dm_trial][0]
+        #     pgram = pgram_array[best_dm_trial]
+        #     mask = (pgram.periods >= main_peak.period-0.01) & (pgram.periods <= main_peak.period+0.01)
+        #     periods_section = pgram.periods[mask]
+        #     snrs_section = pgram.snrs.max(axis=1)[mask]
             
-            # Fit the Lorentzian curve to the selected data if possible
-            try:
-                popt, pcov = curve_fit(lorentzian, periods_section, snrs_section, p0=[main_peak.period, 0.01, main_peak.snr])
-                perr = np.sqrt(np.diag(pcov))
-            except (RuntimeError, OptimizeWarning) as e:
-                popt = None
-                perr = None
-        else:
-            popt = None
-            perr = None
+        #     # Fit the Lorentzian curve to the selected data if possible
+        #     try:
+        #         popt, pcov = curve_fit(lorentzian, periods_section, snrs_section, p0=[main_peak.period, 0.01, main_peak.snr])
+        #         perr = np.sqrt(np.diag(pcov))
+        #     except (RuntimeError, OptimizeWarning) as e:
+        #         popt = None
+        #         perr = None
+        # else:
+        #     popt = None
+        #     perr = None
         
         best_pgram = pgram_array[best_dm_trial]
         if len(peaks_array[best_dm_trial]) > 0:
@@ -843,9 +843,9 @@ def FFA_search(
         file_path = os.path.join(plot_directory_name, f"FFA_periodogram_ra_{np.round(ra,2)}_dec_{np.round(dec,2)}_snr_{np.round(best_peak.snr,2)}_dm_{np.round(best_dm,3)}.png")
 
         fig, ax = plt.subplots(figsize=(15, 5))
-        ax.plot(pgram.periods, pgram.snrs.max(axis=1),linewidth=0.3, marker='o', markersize=0.7)
+        ax.plot(best_pgram.periods, best_pgram.snrs.max(axis=1),linewidth=0.3, marker='o', markersize=0.7)
         plt.title("Best Sigma at any trial width")
-        plt.xlim(min(pgram.periods),max(pgram.periods))
+        plt.xlim(min(best_pgram.periods),max(best_pgram.periods))
         plt.xlabel("Trial Period (s)")
         plt.ylabel("Sigma")
         plt.grid(True)
@@ -860,7 +860,7 @@ def FFA_search(
         file_path = os.path.join(plot_directory_name, f"FFA_profile_ra_{np.round(ra,2)}_dec_{np.round(dec,2)}_snr_{np.round(best_peak.snr,2)}_p_{np.round(best_peak.period,6)}_dm_{np.round(best_dm,3)}.png")
         
         bins = 256
-        subints = best_ts.fold(best_peak.period, bins, subints=16)
+        subints = best_ts.fold(best_peak.period, bins)
     
         plt.subplot(211)
         plt.title(f"Folded profile at p={np.round(best_peak.period,4)}s, dm={np.round(best_dm,3)}, {date_string}")
