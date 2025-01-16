@@ -244,13 +244,18 @@ class PowerSpectraSearch:
                 injection_dicts = injection_dict
             else:
                 injection_dicts = []
-                # injection_list = yaml.load(file, Loader=yaml.Loader)
-                injection_df = pd.read_pickle(injection_path)
+                try:
+                    with open(injection_path) as file:
+                        injection_list = yaml.safe_load(file)
+                    injection_df = pd.DataFrame(injection_list)
+                    print("zo")
+                except:
+                    injection_df = pd.read_pickle(injection_path)
                 # injection_df are the initial injection parameters
                 # injection_dicts are final injection parameters
                 # Some entries from injection_list may create multiple injection or none
                 if len(injection_indices) == 0:
-                    injection_indices = np.arange(len(injection_list))
+                    injection_indices = np.arange(len(injection_df))
                 for injection_index in injection_indices:
                     log.info(f"DM: {injection_df.iloc[injection_index]['DM']}")
                     log.info(f"sigma: {injection_df.iloc[injection_index]['sigma']}")
