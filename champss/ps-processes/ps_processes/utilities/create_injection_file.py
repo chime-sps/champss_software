@@ -13,9 +13,19 @@ from ps_processes.processes import ps_inject
 @click.option(
     "--file-name",
     "--fn",
-    default="test_injections.csv",
+    default="test_injections.pickle",
     type=str,
     help="Name of target file",
+)
+@click.option(
+    "--file-type",
+    "--ft",
+    type=click.Choice(["pickle", "yaml"], case_sensitive=False),
+    default="pickle",
+    help=(
+        "Output type. Possible: pickle, yaml. Pickle is a pickled pd.DataFrame. yaml"
+        " has bad performance due to the profile array"
+    ),
 )
 @click.option(
     "--injection-path",
@@ -28,7 +38,7 @@ from ps_processes.processes import ps_inject
     default=None,
     help="Iterates over selected field (sigma, frequency, or DM).",
 )
-def main(n_injections, file_name, injection_path, focus):
+def main(n_injections, file_name, file_type, injection_path, focus):
     if injection_path != "random":
         load_profs = np.load(injection_path)
         # n_injections = len(load_profs)
@@ -82,12 +92,16 @@ def main(n_injections, file_name, injection_path, focus):
         data.append(n_dict)
 
     file_name = os.getcwd() + "/" + file_name
-    df = pd.DataFrame(data)
-    # move profile to last pos, for easier reading of csv
-    cols = df.columns
-    cols = cols[cols != "profile"].append(pd.Index(["profile"]))
-    df = df[cols]
-    df.to_pickle(file_name)
+    if file_type == "pickle":
+        df = pd.DataFrame(data)
+        # move profile to last pos, for easier reading of csv
+        cols = df.columns
+        cols = cols[cols != "profile"].append(pd.Index(["profile"]))
+        df = df[cols]
+        df.to_pickle(file_name)
+    else:
+        stream = open(file_name, "w")
+        yaml.dump(data, stream)
 
 
 if __name__ == "__main__":
