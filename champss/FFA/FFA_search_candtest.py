@@ -725,6 +725,43 @@ def FFA_search(
                     for period_index in range(max_p_index,min_p_index,-1)] 
                     for dm_index in range(min_dm_index,max_dm_index)]
             )
+
+            # If sigma is high enough, make a small plot of the above maps
+            if cluster.sigma > 8:
+                fig, axs = plt.subplots(1, 5, figsize=(10, 3), gridspec_kw={'width_ratios': [1, 1, 1, 1, 0.5]})
+                axs[0].imshow(dm_freq_sigma, aspect='auto', cmap='viridis', origin='lower',
+                           extent=[freq_range.min(), freq_range.max(), dm_range.min(), dm_range.max()])
+                
+                axs[0].set_xlabel('Frequency (Hz)')
+                axs[0].set_ylabel('DM')
+                axs[0].set_title('Sigma')
+            
+                axs[1].imshow(dm_freq_widths, aspect='auto', cmap='Oranges', origin='lower',
+                           extent=[freq_range.min(), freq_range.max(), dm_range.min(), dm_range.max()])
+                
+                axs[1].set_xlabel('Frequency (Hz)')
+                axs[1].set_ylabel('DM')
+                axs[1].set_title('Best Width')
+            
+                axs[2].plot(dm_range,dm_freq_sigma.max(axis=1),color="black")
+                axs[2].set_xlabel('DM')
+                axs[2].set_ylabel('Sigma')
+            
+                axs[3].plot(freq_range,dm_freq_sigma.max(axis=0),color="black")
+                axs[3].set_xlabel('Frequency (Hz)')
+                axs[3].set_ylabel('Sigma')
+            
+                text_info = f"ra:{ra}\ndec:{dec}\ndate:{date_string}\nsigma:{cluster.sigma}\nfreq:{cluster.freq}\ndm:{cluster.dm}"
+                axs[4].text(0, 0.5, text_info, fontsize=12, verticalalignment='center', horizontalalignment='left')
+                axs[4].axis('off')
+            
+                plt.tight_layout()
+                os.makedirs(f"/data2/chime/sps/sps_processing/{date_string}/{np.round(ra,2)}_{np.round(dec,2)}/plots/", exist_ok=True)
+                plot_path = f"/data2/chime/sps/sps_processing/{date_string}/{np.round(ra,2)}_{np.round(dec,2)}/plots/FFA_cand_{np.round(ra,2)}_{np.round(dec,2)}_sigma_{np.round(cluster.sigma,2)}_freq_{np.round(cluster.freq,4)}_dm_{np.round(cluster.dm,3)}.png"
+                plt.savefig(plot_path)
+                plt.clf()
+            else:
+                plot_path = ""
             
 
             candidates.append({
@@ -745,6 +782,7 @@ def FFA_search(
                 "dm_freq_widths": dm_freq_widths,
                 "dm_range": dm_range,
                 "freq_range": freq_range,
+                "plot_path": plot_path,
             })
 
         # candidates = np.array([(
@@ -811,7 +849,7 @@ def FFA_search(
                 "delta_ra": 0,
                 "delta_dec": 0,
                 "file_name": file_path,
-                "plot_path": "",
+                "plot_path": cand['plot_path'],
                 "known_source_label": 0,
                 "known_source_likelihood": "",
                 "known_source_name": "",
