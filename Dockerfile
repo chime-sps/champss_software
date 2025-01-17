@@ -59,7 +59,7 @@ RUN --mount=type=ssh,id=github_ssh_id set -ex \
 # Above "get-data" call is needed for CHIMEFRB/beam-model
 # The astropy calls allow downloading of data that might be available when running the container
 
-RUN run-stack-search-pipeline --help
+# RUN run-stack-search-pipeline --help
 
 # Stage 4: Cleanup to prpeare for runtime
 FROM pip as runtime
