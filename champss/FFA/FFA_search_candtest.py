@@ -520,7 +520,8 @@ def FFA_search(
     min_rfi_sigma=5,
     min_detection_sigma=7,
     birdie_tolerance=0.005,
-    num_threads=16
+    num_threads=16,
+    basepath
 ):
     """
     Performs the FFA search on a set of dedispersed time series for a single pointing.
@@ -811,13 +812,13 @@ def FFA_search(
 
     start_time = time.time()
 
-    directory_name = f"/data2/chime/sps/sps_processing"
+    directory_name = basepath
     # directory_name = f"/scratch/ltarabout/stack_{np.round(ra,2)}_{np.round(dec,2)}"
     os.makedirs(directory_name, exist_ok=True)
     
     if write_ffa_detections and len(detections) > 0:
         # Save the detections in the appropriate files
-        detection_directory_name = os.path.join(directory_name, f"detections/{date.year}/{date.month}/{date.day}")
+        detection_directory_name = os.path.join(directory_name, f"detections_FFA/{date.year}/{date.month}/{date.day}")
         os.makedirs(detection_directory_name, exist_ok=True)
         file_path = os.path.join(detection_directory_name, f"{np.round(ra,2)}_{np.round(dec,2)}_FFA_detections.npz")
         np.savez(file_path, detections=detections, allow_pickle=True)
@@ -862,7 +863,7 @@ def FFA_search(
 
         fieldnames = ["","mean_freq","mean_dm","sigma","ra","dec","best_ra","best_dec","ncands","std_ra","std_dec","delta_ra","delta_dec","file_name","plot_path","known_source_label","known_source_likelihood","known_source_name","known_source_p0","known_source_dm","known_source_ra","known_source_dec"]
 
-        csv_path = os.path.join(directory_name, f"{date_string}/all_sp_cands.csv")
+        csv_path = os.path.join(directory_name, f"{date_string}/all_sp_ffa_cands.csv")
         if os.path.exists(csv_path):
             with open(csv_path, "a", newline="") as file:
                 writer = csv.DictWriter(file, fieldnames=fieldnames)

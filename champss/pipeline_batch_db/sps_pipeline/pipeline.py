@@ -649,7 +649,8 @@ def main(
                     ra, 
                     dec,
                     **OmegaConf.to_container(config.ffa),
-                    num_threads
+                    num_threads,
+                    basepath
                 )
                 del dedisp_ts
                 gc.collect()
