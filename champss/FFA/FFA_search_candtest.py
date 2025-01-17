@@ -757,8 +757,8 @@ def FFA_search(
                 axs[4].axis('off')
             
                 plt.tight_layout()
-                os.makedirs(f"/data2/chime/sps/sps_processing/{date_string}/{np.round(ra,2)}_{np.round(dec,2)}/plots/", exist_ok=True)
-                plot_path = f"/data2/chime/sps/sps_processing/{date_string}/{np.round(ra,2)}_{np.round(dec,2)}/plots/FFA_cand_{np.round(ra,2)}_{np.round(dec,2)}_sigma_{np.round(cluster.sigma,2)}_freq_{np.round(cluster.freq,4)}_dm_{np.round(cluster.dm,3)}.png"
+                os.makedirs(f"{basepath}/{date_string}/{np.round(ra,2)}_{np.round(dec,2)}/plots/", exist_ok=True)
+                plot_path = f"{basepath}/{date_string}/{np.round(ra,2)}_{np.round(dec,2)}/plots/FFA_cand_{np.round(ra,2)}_{np.round(dec,2)}_sigma_{np.round(cluster.sigma,2)}_freq_{np.round(cluster.freq,4)}_dm_{np.round(cluster.dm,3)}.png"
                 plt.savefig(plot_path)
                 plt.clf()
             else:
