@@ -521,7 +521,7 @@ def FFA_search(
     min_detection_sigma=7,
     birdie_tolerance=0.005,
     num_threads=16,
-    basepath
+    basepath=""
 ):
     """
     Performs the FFA search on a set of dedispersed time series for a single pointing.
