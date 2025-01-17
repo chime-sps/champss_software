@@ -150,7 +150,7 @@ ffa:
   run_ffa_search: True
   create_periodogram_plots: False
   create_profile_plots: False
-  write_ffa_detections: False
+  write_ffa_detections: True
   write_ffa_candidates: True
   write_ffa_stack: True
   dm_downsample: 8
