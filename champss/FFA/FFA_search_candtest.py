@@ -31,9 +31,9 @@ from sps_pipeline import utils
 from sps_common.constants import TSAMP
 #from sps_common.interfaces import SinglePointingCandidate_FFA, SearchAlgorithm_FFA
 
-from single_pointing_FFA import SinglePointingCandidate_FFA, SearchAlgorithm_FFA, detections_dtype
-from clustering_FFA import Clusterer_FFA
-from interfaces_FFA import Cluster_FFA
+from .single_pointing_FFA import SinglePointingCandidate_FFA, SearchAlgorithm_FFA, detections_dtype
+from .clustering_FFA import Clusterer_FFA
+from .interfaces_FFA import Cluster_FFA
 
 import yaml
 from rfi_mitigation import data as rfi_mitigation_data
