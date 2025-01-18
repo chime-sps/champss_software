@@ -45,7 +45,8 @@ from sps_pipeline import (  # ps,
     rfi,
     utils,
 )
-from FFA.FFA_search_candtest import FFA_search
+from champss.FFA.FFA_search_candtest import FFA_search
+
 
 datpath = "/data/chime/sps/raw"
 

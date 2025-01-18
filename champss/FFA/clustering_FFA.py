@@ -19,7 +19,7 @@ from sklearn.cluster import DBSCAN, HDBSCAN
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import paired_distances
 from sklearn.neighbors import radius_neighbors_graph, sort_graph_by_row_values
-from interfaces_FFA import Cluster_FFA
+from .interfaces_FFA import Cluster_FFA
 
 warnings.filterwarnings("ignore", category=SparseEfficiencyWarning)
 
