@@ -580,7 +580,6 @@ def run_all_pipeline_processes(
                         "ra": process.ra,
                         "dec": process.dec,
                         "components": {"rfi","beamform", "dedisp", "ffa", "cleanup"},
-                        "config_file": "champss_software/champss/FFA/sps_config_Laurent.yml",
                         "num_threads": docker_threads_needed,
                         "db_port": db_port,
                         "db_host": db_host,
@@ -591,6 +590,8 @@ def run_all_pipeline_processes(
                         # "using_pyroscope": True if process_index % 100 == 0 else False,
                         "using_pyroscope": False,
                         "using_docker": True,
+                        "known_source_threshold": 7.0,
+                        "config_file": "champss/FFA/sps_config_Laurent.yml",
                     }
                     workflow_tags = [
                         "pipeline",
