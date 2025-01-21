@@ -509,6 +509,16 @@ def main(
                     "cleanup",
                 }
 
+            # !!!!! IMPORTANT !!!!! Only for testing, remove later!!!
+            if True:
+                components = {
+                    "rfi",
+                    "beamform",
+                    "dedisp",
+                    "ffa",
+                    "cleanup"
+                }
+
             dedisp_ts = None
             ps_detections = None
             prefix = (
