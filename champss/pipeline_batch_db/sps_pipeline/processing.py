@@ -579,7 +579,7 @@ def run_all_pipeline_processes(
                         "plot_threshold": 8.0,
                         "ra": process.ra,
                         "dec": process.dec,
-                        "components": ["rfi","beamform", "dedisp", "ffa", "cleanup"],
+                        "components": "all",
                         "num_threads": docker_threads_needed,
                         "db_port": db_port,
                         "db_host": db_host,
