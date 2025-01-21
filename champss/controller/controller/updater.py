@@ -10,10 +10,8 @@ from controller.l1_rpc import get_beam_ip
 
 log = logging.getLogger("issuer")
 
-SPS_DATA_DIR = "/sps-archiver/chime/sps/raw"
 
-
-async def pointing_beam_control(new_pointing_listen, pointing_done_announce):
+async def pointing_beam_control(new_pointing_listen, pointing_done_announce, basepath):
     """
     Task that issues beam pointing updates on a generated schedule.
 
@@ -108,7 +106,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce):
                                 [
                                     "rpc-client --spulsar-writer-params"
                                     f" {b.beam} {new_max_nchans} 1024 5"
-                                    f" {SPS_DATA_DIR} tcp://{get_beam_ip(b.beam)}:5555"
+                                    f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
                                 ],
                                 shell=True,  # nosec
                                 stdout=subprocess.PIPE,
@@ -152,7 +150,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce):
                                     [
                                         "rpc-client --spulsar-writer-params"
                                         f" {b.beam} {new_max_nchans} 1024 5"
-                                        f" {SPS_DATA_DIR} tcp://{get_beam_ip(b.beam)}:5555"
+                                        f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
                                     ],
                                     shell=True,  # nosec
                                     stdout=subprocess.PIPE,

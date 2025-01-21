@@ -11,7 +11,7 @@ import click
 import trio
 from controller.l1_rpc import get_beam_ip, get_node_beams
 from controller.pointer import generate_pointings
-from controller.updater import SPS_DATA_DIR, pointing_beam_control
+from controller.updater import pointing_beam_control
 
 log = logging.getLogger("spsctl")
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
@@ -34,7 +34,7 @@ async def announce_pointing_done(pointing_done_listen):
             print(f"  Row { beam_row } / pointing { pointing_id } DONE")
 
 
-async def entry_point(active_beams):
+async def entry_point(active_beams, basepath):
     """
     Parent for the pointer and updater tasks.
 
@@ -57,13 +57,14 @@ async def entry_point(active_beams):
                 pointing_beam_control,
                 new_pointing_listen,
                 pointing_done_announce.clone(),
+                basepath
             )
             beam_schedule_channels[beam_id] = new_pointing_announce
         log.debug(f"strat: spawning pointer for { active_beams }...")
         nursery.start_soon(generate_pointings, active_beams, beam_schedule_channels)
 
 
-def stop_beam(beam: int):
+def stop_beam(beam: int, basepath: str):
     """
     Stop beam acquisition.
 
@@ -74,7 +75,7 @@ def stop_beam(beam: int):
         output: Union[subprocess.CompletedProcess[bytes], str] = subprocess.run(
             [
                 f"rpc-client --spulsar-writer-params {beam} {0} 1024 5"
-                f" {SPS_DATA_DIR} tcp://{get_beam_ip(beam)}:5555"
+                f" {basepath} tcp://{get_beam_ip(beam)}:5555"
             ],
             shell=True,  # nosec
             stdin=subprocess.PIPE,
@@ -111,7 +112,13 @@ def stop_beam(beam: int):
     help="Set logging level.",
 )
 @click.option("--logtofile", is_flag=True, help="Enable file logging.")
-def cli(host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool):
+@click.option(
+    "--basepath",
+    type=str,
+    default="/sps-archiver2/raw/",
+    help="Path on L1 cf nodes to a CHAMPSS mount.",
+)
+def cli(host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool, basepath: str):
     """
     L1 controller for Slow Pulsar Search.
 
@@ -156,7 +163,7 @@ def cli(host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool):
     finally:
         log.info("Stopping acquisition...")
         for beam in active_beams:
-            output = stop_beam(beam)
+            output = stop_beam(beam, basepath)
             log.info(output)
 
 
@@ -172,7 +179,13 @@ def cli(host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool):
 )
 @click.argument("rows", type=click.IntRange(min=0, max=223), nargs=-1, required=True)
 @click.option("--debug", is_flag=True, help="Enable debug logging.")
-def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool):
+@click.option(
+    "--basepath",
+    type=str,
+    default="/sps-archiver2/raw/",
+    help="Path on L1 cf nodes to a CHAMPSS mount.",
+)
+def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str):
     if debug:
         # Set logging level to debug
         log.setLevel(logging.DEBUG)
@@ -190,5 +203,5 @@ def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool):
         active_beams.intersection_update(host_beams)
     log.info("Stopping beams: %s", sorted(list(active_beams)))
     for beam in sorted(list(active_beams)):
-        output = stop_beam(beam)
+        output = stop_beam(beam, basepath)
         log.info(output)
