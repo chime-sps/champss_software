@@ -35,7 +35,6 @@ from .single_pointing_FFA import SinglePointingCandidate_FFA, SearchAlgorithm_FF
 from .clustering_FFA import Clusterer_FFA
 from .interfaces_FFA import Cluster_FFA
 
-
 import yaml
 from rfi_mitigation import data as rfi_mitigation_data
 try:
