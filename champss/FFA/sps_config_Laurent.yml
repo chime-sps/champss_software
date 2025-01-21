@@ -155,7 +155,7 @@ ffa:
   write_ffa_stack: True
   dm_downsample: 8
   dm_min: 0
-  dm_max: None
+  dm_max: null
   min_rfi_sigma: 5
   min_detection_sigma: 7
   birdie_tolerance: 0.005
