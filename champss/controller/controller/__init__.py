@@ -155,7 +155,7 @@ def cli(host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool, base
     log.info("Controlling only beams: %s", sorted(list(active_beams)))
 
     try:
-        trio.run(entry_point, active_beams)
+        trio.run(entry_point, active_beams, basepath)
     except KeyboardInterrupt:
         log.info("Keyboard interrupt received. Exiting...")
     except Exception as err:
