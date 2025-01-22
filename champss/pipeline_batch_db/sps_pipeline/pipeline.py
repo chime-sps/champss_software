@@ -460,7 +460,18 @@ def main(
                     sub_pointing = int(obs_id_file.split("obs")[0].split("_")[-2])
                     for active_pointing in active_pointings:
                         if active_pointing.sub_pointing == sub_pointing:
-                            active_pointing.obs_id = infile.read()
+                            current_obs_id = infile.read()
+                            try:
+                                old_obs_entry = db_api.get_observation(current_obs_id)
+                            except models.DatabaseError:
+                                log.error(
+                                    f"Observation with obs id {current_obs_id} from"
+                                    f" file {obs_id_file} does not exist in used"
+                                    " database. It may have been created using a"
+                                    " different database or the entry was deleted."
+                                )
+                                exit(1)
+                            active_pointing.obs_id = current_obs_id
         else:
             # New observation
             os.makedirs(

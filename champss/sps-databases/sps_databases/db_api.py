@@ -8,6 +8,7 @@ from sps_common.constants import SIDEREAL_S
 from sps_databases import db_utils
 from sps_databases.models import (
     Candidate,
+    DatabaseError,
     FollowUpSource,
     HhatStack,
     KnownSource,
@@ -18,10 +19,6 @@ from sps_databases.models import (
     ProcessStatus,
     PsStack,
 )
-
-
-class DatabaseError(Exception):
-    pass
 
 
 def create_pointing(payload):
@@ -149,7 +146,13 @@ def get_observation(observation_id):
     db = db_utils.connect()
     if isinstance(observation_id, str):
         observation_id = ObjectId(observation_id)
-    return Observation.from_db(db.observations.find_one(observation_id))
+    obs_dic = db.observations.find_one(observation_id)
+    if obs_dic == None:
+        raise DatabaseError(
+            f"Could not find observation with id {observation_id} in database."
+        )
+    else:
+        return Observation.from_db(obs_dic)
 
 
 def update_observation(observation_id, payload):
