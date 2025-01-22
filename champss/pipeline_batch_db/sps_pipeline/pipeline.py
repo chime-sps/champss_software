@@ -463,7 +463,8 @@ def main(
                             current_obs_id = infile.read()
                             try:
                                 old_obs_entry = db_api.get_observation(current_obs_id)
-                            except models.DatabaseError:
+                            except models.DatabaseError as db_error:
+                                log.error(db_error)
                                 log.error(
                                     f"Observation with obs id {current_obs_id} from"
                                     f" file {obs_id_file} does not exist in used"
