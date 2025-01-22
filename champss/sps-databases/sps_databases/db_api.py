@@ -20,6 +20,10 @@ from sps_databases.models import (
 )
 
 
+class DatabaseError(Exception):
+    pass
+
+
 def create_pointing(payload):
     """
     Create a `Pointing` instance and inserts it into the database.
@@ -169,11 +173,16 @@ def update_observation(observation_id, payload):
     payload["last_changed"] = dt.datetime.now()
     if isinstance(observation_id, str):
         observation_id = ObjectId(observation_id)
-    return db.observations.find_one_and_update(
+    new_obs = db.observations.find_one_and_update(
         {"_id": observation_id},
         {"$set": payload},
         return_document=pymongo.ReturnDocument.AFTER,
+        upsert=False,
     )
+    if new_obs == None:
+        raise DatabaseError("Trying to update observation that does not exist.")
+    else:
+        return new_obs
 
 
 def get_observations(pointing_id):
