@@ -287,7 +287,10 @@ class Chunk:
         quantize_now=False,
         shape=None,
     ):
-        mydat = data.astype(data_dtype)
+        if data.dtype != data_dtype:
+            mydat = data.astype(data_dtype)
+        else:
+            mydat = data
         self.chunk_header = chunk_header
         nfreq, ntime = self.chunk_header.shape
 
@@ -308,7 +311,7 @@ class Chunk:
                 (nfreq, ntime)
             )
         else:
-            self.data = mydat.copy()
+            self.data = mydat  # .copy()
 
     @classmethod
     def min_size(cls):
