@@ -122,7 +122,7 @@ def main(
     M_f0 = int(np.max((M_f0, 1)))  # To make sure M_f0 does not return 0
     # factor of 2, since we reference to central observation
     f0_points = 2 * int(delta_f0max * T * npbin / M_f0)
-    f1_points = 2 * int(0.5 * delta_f1max * T**2 * npbin / M_f0)
+    f1_points = 2 * int(np.max((0.5 * delta_f1max * T**2 * npbin / M_f0, 1)))
 
     print(f"Running search with {f0_points} f0 bins, {f1_points} f1 bins")
     explore_grid = ExploreGrid(data, f0_lims, f1_lims, f0_points, f1_points)
