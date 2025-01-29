@@ -410,11 +410,13 @@ class StackSearchPipeline:
                 )
             else:
                 monthly_power_spectra_detection_clusters = None
+                monthly_power_spectra_detections = None
         else:
             monthly_power_spectra = None
             monthly_power_spectra_detection_clusters = None
+            monthly_power_spectra_detections = None
 
-        return monthly_power_spectra_detection_clusters, monthly_power_spectra
+        return monthly_power_spectra_detections, monthly_power_spectra_detection_clusters, monthly_power_spectra
 
     def stack_and_search(
         self,
@@ -459,6 +461,7 @@ class StackSearchPipeline:
                         " now."
                     )
                     (
+                        monthly_power_spectra_detections,
                         monthly_power_spectra_detection_clusters,
                         monthly_power_spectra,
                     ) = self.load_and_search_monthly(

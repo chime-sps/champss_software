@@ -975,6 +975,7 @@ def stack_and_search(
             else:
                 log.info(f"Performing searching on {file}")
         (
+            ps_detections_monthly_raw,
             ps_detections_monthly,
             power_spectra_monthly,
         ) = ps_cumul_stack_processor.pipeline.load_and_search_monthly(
@@ -986,6 +987,45 @@ def stack_and_search(
             scale_injections,
             file=file,
         )
+        if ps_detections_monthly_raw is not None and config.ps_cumul_stack.write_ps_raw_detections:
+            # ugh have to do this even though it's in cands.run_interface
+            if "/stack/" in stack_path:
+                stack_root_folder = stack_path.rsplit("/stack/")[0]
+            else:
+                stack_root_folder = os.path.abspath(stack_path).rsplit("/", 1)[0]
+            if not cand_path:
+                if only_injections:
+                    candidate_folder = f"{stack_root_folder}/injections/"
+                else:
+                    candidate_folder = f"{stack_root_folder}/candidates"
+            else:
+                if only_injections:
+                    candidate_folder = f"{cand_path}/injections/"
+                else:
+                    candidate_folder = f"{cand_path}/candidates"
+            if not only_injections:
+                if "cumulative" in stack_path.rsplit("/", 1)[-1]:
+                    candidate_folder += "_cumul/"
+                else:
+                    candidate_folder += "_monthly/"
+            os.makedirs(candidate_folder, exist_ok=True)
+            base_name = os.path.basename(stack_path)
+            if only_injections:
+                # Brackets in file name may cause ls to show the file name in quotes
+                monthly_ps_raw_detections_fname = (
+                    f"{candidate_folder}{base_name.rstrip('.hdf5')}_"
+                    f"{power_spectra_monthly.datetimes[-1].strftime('%Y%m%d')}"
+                    f"_{len(power_spectra_monthly.datetimes)}_"
+                    f"{injection_path.split('/')[-1]}_{str(injection_idx).replace(' ', '')}_power_spectra_detections.npz"
+                )
+            else:
+                monthly_ps_raw_detections_fname = (
+                    f"{candidate_folder}{base_name.rstrip('.hdf5')}_"
+                    f"{power_spectra_monthly.datetimes[-1].strftime('%Y%m%d')}"
+                    f"_{len(power_spectra_monthly.datetimes)}_power_spectra_detections.npz"
+                )
+            log.info(f"Saving power spectra detections to {monthly_ps_raw_detections_fname}")
+            np.savez(monthly_ps_raw_detections_fname, detections=ps_detections_monthly_raw)
         if db_connection:
             ps_stack = db_api.get_ps_stack(closest_pointing_id)
             stack_path = ps_stack.datapath_month
