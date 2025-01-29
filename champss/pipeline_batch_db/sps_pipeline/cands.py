@@ -201,7 +201,7 @@ def run_interface(
     if not only_injections:
         if "cumulative" in stack_path.rsplit("/", 1)[-1]:
             candidate_folder += "_cumul/"
-        else:
+        else: 
             candidate_folder += "_monthly/"
     os.makedirs(candidate_folder, exist_ok=True)
     base_name = path.basename(stack_path)
