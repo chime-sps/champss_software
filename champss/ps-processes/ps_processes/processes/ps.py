@@ -277,6 +277,7 @@ class PowerSpectraCreation:
                     bad_freq_indices=bad_freq_indices,
                     shared_target_name=power_spectra_shared.name,
                     target_shape=power_spectra.shape,
+                    save_medians=True,
                     observation=observation,
                 ),
                 zip(dm_indices, dedisp_series_list),
@@ -294,17 +295,18 @@ class PowerSpectraCreation:
                 medians.extend(info[1])
                 scales.extend(info[2])
 
-            medians = np.asarray(medians)
-            median_dm_indices = np.asarray(median_dm_indices)
-            scales = np.asarray(scales)
+            # print(median_dm_indices)
 
-            rn_medians = np.ones((1, medians.shape[0], medians.shape[1]))
-            rn_medians[0] = medians
-            rn_dm_indices = np.ones((1, len(median_dm_indices)))
-            rn_dm_indices[0] = median_dm_indices
-            rn_scales = np.ones((1, len(scales)))
-            rn_scales[0] = scales
+            if save_medians:
+                medians_path = f"{os.path.abspath(observation.datapath)}/medians.npz"
+                log.info(f"Saving medians to {medians_path}.")
 
+                np.savez(
+                    medians_path,
+                    medians=medians,
+                    scales=scales,
+                    dms=dedisp_time_series.dms[median_dm_indices],
+                )
             # update the observation database
             if self.update_db:
                 self.update_database(
