@@ -95,6 +95,7 @@ def plot_dm_freq_3(fig, panel, grid_points, candidate):
         ax_2d_nharm.set_xlabel("Frequency (Hz)", fontsize=8)
         ax_2d_nharm.set_ylabel("DM", fontsize=8)
         ax_2d_nharm.xaxis.set_tick_params(rotation=30, labelsize=8)
+        ax_2d_nharm.ticklabel_format(useOffset=False)
 
     current_subplot_index += 1
     ax_dm = fig.add_subplot(sgs[current_subplot_index])
@@ -173,6 +174,9 @@ def plot_dm_freq_3(fig, panel, grid_points, candidate):
     ax_2d.xaxis.set_tick_params(rotation=30, labelsize=8)
     ax_dm.xaxis.set_tick_params(rotation=30, labelsize=8)
     ax_freq.xaxis.set_tick_params(rotation=30, labelsize=8)
+
+    ax_2d.ticklabel_format(useOffset=False)
+    ax_freq.ticklabel_format(useOffset=False)
 
     ax_dm.sharey(ax_freq)
 
@@ -282,6 +286,9 @@ def plot_scatter_positions(fig, panel, grid_points, candidate):
     ax_time_sigma.xaxis.set_major_formatter(
         mdates.ConciseDateFormatter(ax_time_sigma.xaxis.get_major_locator())
     )
+    ax_time_sigma.xaxis.set_major_locator(
+        mdates.AutoDateLocator(minticks=3, maxticks=5)
+    )
     ax_time_sigma.autoscale_view()
 
     # Label wil overlap with xticks otherwise
@@ -349,7 +356,7 @@ def plot_candidate(
         f"{folder}/{prefix}_{sp_candidate.ra:.2f}_"
         f"{sp_candidate.dec:.2f}_{sp_candidate.sigma:06.2f}_"
         f"{sp_candidate.freq:.5f}_{sp_candidate.dm:.3f}_"
-        f"{sp_candidate.obs_id[-1]}.png"
+        f"{sp_candidate.datetimes[-1].strftime('%Y%m%d')}.png"
     )
     fig = plt.figure(figsize=config["figure"]["figsize"], layout="constrained")
     gs = GridSpec(**config["figure"]["grid"], figure=fig)

@@ -33,6 +33,8 @@ panels:
   - freq
   - period
   - dm
+  - first_date
+  - last_date
   - num_days
   - ndetections
   - masked_fraction_at_best_sigma
