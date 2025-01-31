@@ -141,6 +141,8 @@ class PowerSpectraSearch:
     skip_first_n_bins: int = attribute(default=2)
     # cluster_dm_cut: bool = attribute(default=-1)
     known_source_threshold: float = attribute(default=np.inf)
+    filter_birdies: bool = attribute(default=False)
+    mean_bin_sigma_threshold: float = attribute(default=0)
     use_stack_threshold = attribute(validator=instance_of(bool), default=False)
     full_harm_bins = attribute(init=False)
     update_db = attribute(default=True, validator=instance_of(bool))
@@ -299,6 +301,35 @@ class PowerSpectraSearch:
                     f" {filtered_psr_names}"
                 )
                 self.full_harm_bins[dummy_harmonics != 0] = 0
+
+        if self.filter_birdies:
+            # This allows filtering birdies using an updated birdie list
+            # if some birdies were not filtered during ps creation
+            static_filter = StaticPeriodicFilter()
+            bad_freq_indices = static_filter.apply_static_mask(pspec.freq_labels, 0)
+
+            dummy_spec = np.zeros(self.padded_length // 2)
+            dummy_spec[bad_freq_indices] = 1
+            dummy_harmonics = dummy_spec[self.full_harm_bins]
+            log.info(f"Filter {len(bad_freq_indices)} indices based on birdie list.")
+            self.full_harm_bins[dummy_harmonics != 0] = 0
+
+        if self.mean_bin_sigma_threshold:
+            # Filter out bins where mean sigma across all DM trials would be above some threshold
+            mean_spec = pspec.power_spectra.mean(0)
+            mean_sigma = sigma_sum_powers(mean_spec, pspec.get_bin_weights())
+            bad_freq_indices = np.arange(pspec.power_spectra.shape[1])[
+                mean_sigma >= self.mean_bin_sigma_threshold
+            ]
+
+            dummy_spec = np.zeros(self.padded_length // 2)
+            dummy_spec[bad_freq_indices] = 1
+            dummy_harmonics = dummy_spec[self.full_harm_bins]
+            log.info(
+                f"Filter {len(bad_freq_indices)} indices based on mean bin sigma above"
+                f" {self.mean_bin_sigma_threshold}."
+            )
+            self.full_harm_bins[dummy_harmonics != 0] = 0
 
         # Calculate the used number of each days in each pixel for each harmonic sum
         # From that calculate the power_cutoff.

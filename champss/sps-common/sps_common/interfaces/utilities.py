@@ -128,7 +128,9 @@ def sigma_sum_powers(power, nsum, max_iter=20):
         if case_array.any():
             # nsum may have a smaller shape than power when power come from the different
             # dms which all share the same nsum
-            if len(power.shape) != len(nsum.shape):
+            if np.isscalar(nsum):
+                nsum = np.broadcast_to(nsum, power.shape)
+            elif len(power.shape) != len(nsum.shape):
                 nsum = np.broadcast_to(nsum, power.shape)
             sigma[case_array] = extended_equiv_gaussian_sigma(
                 log_prob_sum_powers_asymptotic(
