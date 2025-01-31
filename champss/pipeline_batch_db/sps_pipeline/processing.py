@@ -675,6 +675,18 @@ def run_all_pipeline_processes(
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--foldpath",
+    default="/data/chime/sps/archives",
+    type=str,
+    help="Path for created files during fold step.",
+)
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+@click.option(
     "--min-ra",
     default=0,
     type=float,
@@ -742,6 +754,7 @@ def start_processing_manager(
     number_of_days,
     basepath,
     foldpath,
+    datpath,
     min_ra,
     max_ra,
     min_dec,
@@ -889,6 +902,8 @@ def start_processing_manager(
                         basepath,
                         "--stackpath",
                         basepath,
+                        "--datpath",
+                        datpath,
                         "--workflow-buckets-name",
                         workflow_buckets_name,
                         "--docker-image-name",
@@ -1206,6 +1221,12 @@ def start_processing_manager(
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+@click.option(
     "--workflow-buckets-name-prefix",
     default="champss",
     type=str,
@@ -1255,6 +1276,7 @@ def start_processing_services(
     number_of_days,
     basepath,
     foldpath,
+    datpath,
     workflow_buckets_name_prefix,
     manager_docker_image_name,
     pipeline_docker_image_name,
@@ -1279,7 +1301,7 @@ def start_processing_services(
             f" {workflow_buckets_name_prefix} --docker-image-name"
             f" {pipeline_docker_image_name} --run-pipeline"
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
-            f" {run_folding} --run-stacking {run_stacking}"
+            f" {run_folding} --run-stacking {run_stacking} --datpath {datpath}"
         ),
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
@@ -1293,6 +1315,7 @@ def start_processing_services(
             "/data/chime/sps/logs:/data/chime/sps/logs",
             f"{basepath}:{basepath}",
             f"{foldpath}:{foldpath}",
+            f"{datpath}:{datpath}",
             # Need this mount so container can access host machine's Docker Client
             "/var/run/docker.sock:/var/run/docker.sock",
         ],
