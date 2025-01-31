@@ -632,18 +632,12 @@ class PowerSpectraSearch:
                     for list_index, injection_dict in enumerate(injection_dicts):
                         injected_bins = injection_dict["bins"]
                         injected_dms = injection_dict["dms"]
-                        injection_fraction = 0
                         if dm_index in injected_dms:
                             injection_overlap = np.intersect1d(
                                 sorted_harm_bins, injected_bins
                             )
                             if injection_overlap.size != 0:
                                 injected_index = list_index
-                                injection_fraction = len(injection_overlap) / len(
-                                    sorted_harm_bins
-                                )
-
-                        injection_dict["injection_fraction"] = injection_fraction
 
                     if replace_last:
                         detection_list[-1] = (
