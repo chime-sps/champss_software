@@ -8,6 +8,7 @@ from sps_common.constants import SIDEREAL_S
 from sps_databases import db_utils
 from sps_databases.models import (
     Candidate,
+    DatabaseError,
     FollowUpSource,
     HhatStack,
     KnownSource,
@@ -145,7 +146,13 @@ def get_observation(observation_id):
     db = db_utils.connect()
     if isinstance(observation_id, str):
         observation_id = ObjectId(observation_id)
-    return Observation.from_db(db.observations.find_one(observation_id))
+    obs_dic = db.observations.find_one(observation_id)
+    if obs_dic == None:
+        raise DatabaseError(
+            f"Could not find observation with id {observation_id} in database."
+        )
+    else:
+        return Observation.from_db(obs_dic)
 
 
 def update_observation(observation_id, payload):
@@ -169,11 +176,16 @@ def update_observation(observation_id, payload):
     payload["last_changed"] = dt.datetime.now()
     if isinstance(observation_id, str):
         observation_id = ObjectId(observation_id)
-    return db.observations.find_one_and_update(
+    new_obs = db.observations.find_one_and_update(
         {"_id": observation_id},
         {"$set": payload},
         return_document=pymongo.ReturnDocument.AFTER,
+        upsert=False,
     )
+    if new_obs == None:
+        raise DatabaseError("Trying to update observation that does not exist.")
+    else:
+        return new_obs
 
 
 def get_observations(pointing_id):

@@ -31,6 +31,10 @@ class ProcessStatus(enum.Enum):
     blocked = 5
 
 
+class DatabaseError(Exception):
+    pass
+
+
 @attrs
 class Pointing:
     ra = attrib(converter=float)
