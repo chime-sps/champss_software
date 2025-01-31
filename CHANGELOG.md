@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.0](https://github.com/chime-sps/champss_software/compare/v0.9.0...v0.10.0) (2025-01-31)
+
+
+### Features
+
+* **controller:** Add basepath on L1 nodes as a Click CLI parameter ([a8cefab](https://github.com/chime-sps/champss_software/commit/a8cefabacb63875a044dd5e6ab9fe22bff3b21ff))
+* **image.yml:** Add support for new self-hosted Docker Image registry ([d0e9c26](https://github.com/chime-sps/champss_software/commit/d0e9c26af52ea4e06f9f3e56c1bc5cbbc88f9499))
+* Update birdies.yaml, expand RFI filtering method and enable birdie report ([#83](https://github.com/chime-sps/champss_software/issues/83)) ([c3cb022](https://github.com/chime-sps/champss_software/commit/c3cb0229fc136f4188e673709251f5ba3c63c433))
+
+
+### Bug Fixes
+
+* benchmark mount ([#99](https://github.com/chime-sps/champss_software/issues/99)) ([9b2f9d8](https://github.com/chime-sps/champss_software/commit/9b2f9d855d6576713f7081377a83ad6c28b91aa9))
+* Plot refinements ([#100](https://github.com/chime-sps/champss_software/issues/100)) ([d220027](https://github.com/chime-sps/champss_software/commit/d220027b656ed411fd3dfe9be21994ef8c1debe7))
+
+
+### Documentation
+
+* More explanations about setting up a database ([6f2153b](https://github.com/chime-sps/champss_software/commit/6f2153b48963330d338af36c0c9baa0757baefa9))
+
 ## [0.9.0](https://github.com/chime-sps/champss_software/compare/v0.8.0...v0.9.0) (2024-10-25)
 
 
