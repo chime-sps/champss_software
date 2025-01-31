@@ -472,6 +472,12 @@ def find_all_pipeline_processes(
     help="Path for the monthly stack. As default the basepath from the config is used.",
 )
 @click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+@click.option(
     "--workflow-buckets-name",
     default="champss-pipeline",
     type=str,
@@ -509,6 +515,7 @@ def run_all_pipeline_processes(
     dry_run,
     basepath,
     stackpath,
+    datpath,
     workflow_buckets_name,
     docker_image_name,
     docker_service_name_prefix,
@@ -571,7 +578,7 @@ def run_all_pipeline_processes(
                     docker_threads_needed = int(docker_memory_reservation / 3)
                     docker_image = docker_image_name
                     docker_mounts = [
-                        "/data/chime/sps/raw:/data/chime/sps/raw",
+                        f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
                     ]
                     docker_name = f"{docker_service_name_prefix}-{formatted_ra}-{formatted_dec}-{formatted_maxdm}-{formatted_date}"
@@ -593,6 +600,7 @@ def run_all_pipeline_processes(
                         "db_name": db_name,
                         "basepath": basepath,
                         "stackpath": stackpath,
+                        "datpath": datpath,
                         # Run Pyroscope profiling every 100th job
                         # "using_pyroscope": True if process_index % 100 == 0 else False,
                         "using_pyroscope": False,
@@ -1042,7 +1050,7 @@ def start_processing_manager(
                 work_id = schedule_workflow_job(
                     docker_image=docker_image_name,
                     docker_mounts=[
-                        "/data/chime/sps/raw:/data/chime/sps/raw",
+                        f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
                     ],
                     docker_name=f"{docker_service_name_prefix}-{date_string}",
@@ -1311,11 +1319,10 @@ def start_processing_services(
         # Will throw an error if you give two of the same bind mount paths
         # e.g. avoid double-mounting basepath and stackpath when they are the same
         "mounts": [
-            "/data/chime/sps/raw:/data/chime/sps/raw",
+            f"{datpath}:{datpath}",
             "/data/chime/sps/logs:/data/chime/sps/logs",
             f"{basepath}:{basepath}",
             f"{foldpath}:{foldpath}",
-            f"{datpath}:{datpath}",
             # Need this mount so container can access host machine's Docker Client
             "/var/run/docker.sock:/var/run/docker.sock",
         ],
