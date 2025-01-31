@@ -368,7 +368,7 @@ def find_all_pipeline_processes(
                             if (
                                 process.is_in_stack == False
                                 and process.quality_label != False
-                                and process.nchan < 16000
+                                and process.nchan < 32000
                             ):
                                 memory_needed = int(4 + ((process.maxdm / 100) * 4))
                                 cores_needed = int(memory_needed / 3)
@@ -489,6 +489,12 @@ def find_all_pipeline_processes(
     type=str,
     help="What prefix to apply to the Docker Service name",
 )
+@click.option(
+    "--run-stacking",
+    default=True,
+    type=bool,
+    help="To run the stacking part of the pipeline or not.",
+)
 def run_all_pipeline_processes(
     db_host,
     db_port,
@@ -506,6 +512,7 @@ def run_all_pipeline_processes(
     workflow_buckets_name,
     docker_image_name,
     docker_service_name_prefix,
+    run_stacking,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -572,7 +579,7 @@ def run_all_pipeline_processes(
                     workflow_function = "sps_pipeline.pipeline.main"
                     workflow_params = {
                         "date": process.date,
-                        "stack": True,
+                        "stack": run_stacking,
                         "fdmt": True,
                         "rfi_beamform": True,
                         "plot": True,
@@ -721,6 +728,12 @@ def run_all_pipeline_processes(
     type=bool,
     help="To run the folding phase of processing or not.",
 )
+@click.option(
+    "--run-stacking",
+    default=True,
+    type=bool,
+    help="To run the stacking part of the pipeline or not.",
+)
 def start_processing_manager(
     db_host,
     db_port,
@@ -738,6 +751,7 @@ def start_processing_manager(
     run_pipeline,
     run_multipointing,
     run_folding,
+    run_stacking,
 ):
     atexit.register(remove_processing_services, None, None)
     signal.signal(signal.SIGINT, remove_processing_services)
@@ -881,6 +895,8 @@ def start_processing_manager(
                         docker_image_name,
                         "--docker-service-name-prefix",
                         docker_service_name_prefix,
+                        "--run_stacking",
+                        run_stacking,
                     ],
                     standalone_mode=False,
                 )
@@ -1225,6 +1241,12 @@ def start_processing_manager(
     type=bool,
     help="To run the folding phase of processing or not.",
 )
+@click.option(
+    "--run-stacking",
+    default=True,
+    type=bool,
+    help="To run the stacking part of the pipeline or not.",
+)
 def start_processing_services(
     db_host,
     db_port,
@@ -1239,6 +1261,7 @@ def start_processing_services(
     run_pipeline,
     run_multipointing,
     run_folding,
+    run_stacking,
 ):
     # Please run "docker login" in your CLI to allow retrieval of the images
     log.setLevel(logging.INFO)
@@ -1256,7 +1279,7 @@ def start_processing_services(
             f" {workflow_buckets_name_prefix} --docker-image-name"
             f" {pipeline_docker_image_name} --run-pipeline"
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
-            f" {run_folding}"
+            f" {run_folding} --run-stacking {run_stacking}"
         ),
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
