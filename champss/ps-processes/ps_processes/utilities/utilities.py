@@ -5,7 +5,7 @@ from scipy.special import gamma, gammainc
 from scipy.stats import chi2, kstwo
 
 
-def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=False):
+def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True):
     """
     Script to normalise power spectrum while removing rednoise. Based on presto's method
     of rednoise removal, in which a logarithmically increasing window is used at low
@@ -52,10 +52,13 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=False):
     old_median = 1
     normalised_power_spectrum = np.zeros(shape=np.shape(power_spectrum))
     if get_medians:
-        medians = np.zeros(shape=np.shape(power_spectrum))
+        # medians = np.zeros(len(power_spectrum))
+        medians = []
     for bins in scale:
         mid_bin = int(start + bins / 2)
         new_median = np.nanmedian(power_spectrum[start : start + bins])
+        if get_medians:
+            medians.append(new_median)
         i = 0
         while np.isnan(new_median):
             i += 1
@@ -77,15 +80,19 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=False):
             normalised_power_spectrum[start : start + mid_bin] = power_spectrum[
                 start : start + mid_bin
             ] / (new_median / np.log(2))
-            if get_medians:
-                medians[start : start + mid_bin] = new_median
+            # if get_medians:
+            # medians[start : start + mid_bin] = new_median
+            # if get_medians:
+            #   medians.append(new_median)
         elif start + bins >= ps_len:
             median_slope = np.linspace(old_median, new_median, num=ps_len - old_mid_bin)
             normalised_power_spectrum[old_mid_bin:] = power_spectrum[old_mid_bin:] / (
                 median_slope / np.log(2)
             )
-            if get_medians:
-                medians[old_mid_bin:] = median_slope
+            # if get_medians:
+            # medians[old_mid_bin:] = median_slope
+        # if get_medians:
+        #   medians.append(new_median)
         else:
             # compute slope of the power spectra
             median_slope = np.linspace(
@@ -94,13 +101,13 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=False):
             normalised_power_spectrum[old_mid_bin:mid_bin] = power_spectrum[
                 old_mid_bin:mid_bin
             ] / (median_slope / np.log(2))
-            if get_medians:
-                medians[old_mid_bin:mid_bin] = median_slope
+            # if get_medians:
+            # medians[old_mid_bin:mid_bin] = median_slope
         start += bins
         old_mid_bin = mid_bin
         old_median = new_median
     if get_medians:
-        return normalised_power_spectrum, medians
+        return normalised_power_spectrum, medians, scale
     return normalised_power_spectrum
 
 

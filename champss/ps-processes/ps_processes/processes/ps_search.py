@@ -211,6 +211,7 @@ class PowerSpectraSearch:
             PowerSpectraDetectionClusters object with the properties of all the
             detections clusters from the pointing.
         """
+
         ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         # compute harmonic bins based on power spectra properties
         if not self.precompute_harms:
@@ -631,12 +632,18 @@ class PowerSpectraSearch:
                     for list_index, injection_dict in enumerate(injection_dicts):
                         injected_bins = injection_dict["bins"]
                         injected_dms = injection_dict["dms"]
+                        injection_fraction = 0
                         if dm_index in injected_dms:
                             injection_overlap = np.intersect1d(
                                 sorted_harm_bins, injected_bins
                             )
                             if injection_overlap.size != 0:
                                 injected_index = list_index
+                                injection_fraction = len(injection_overlap) / len(
+                                    sorted_harm_bins
+                                )
+
+                        injection_dict["injection_fraction"] = injection_fraction
 
                     if replace_last:
                         detection_list[-1] = (
