@@ -920,7 +920,7 @@ def start_processing_manager(
                         docker_image_name,
                         "--docker-service-name-prefix",
                         docker_service_name_prefix,
-                        "--run_stacking",
+                        "--run-stacking",
                         run_stacking,
                     ],
                     standalone_mode=False,
