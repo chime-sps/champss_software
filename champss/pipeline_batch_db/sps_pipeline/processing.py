@@ -569,8 +569,8 @@ def run_all_pipeline_processes(
                 log.info(f"Running command: run-pipeline {' '.join(cmd_string_list)}")
             if not dry_run:
                 if workflow_buckets_name:
-                    formatted_ra = f"{process.ra:.02f}"
-                    formatted_dec = f"{process.dec:.02f}"
+                    formatted_ra = f" {process.ra:.02f}"
+                    formatted_dec = f" {process.dec:.02f}"
                     formatted_maxdm = f"{process.maxdm:.02f}"
                     formatted_date = process.date
 
