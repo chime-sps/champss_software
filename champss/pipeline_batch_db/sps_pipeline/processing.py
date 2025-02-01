@@ -837,6 +837,8 @@ def start_processing_manager(
                         db_name,
                         "--date",
                         date_to_process,
+                        "--datpath",
+                        datpath,
                     ],
                     standalone_mode=False,
                 )
