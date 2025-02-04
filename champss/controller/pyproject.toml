@@ -32,6 +32,7 @@ pytest = "^7.3.2"
 
 [tool.poetry.scripts]
 spsctl = "controller:cli"
+spsctl_batched = "controller:cli_batched"
 stopacq = "controller:stop_acq"
 rpc-client = "controller.rpc_client:main"
 sched-known-psrs = "scheduling.scheduleknownpulsars:main"

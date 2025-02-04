@@ -5,9 +5,11 @@ import math
 import os
 import subprocess  # nosec
 from datetime import datetime
+from itertools import islice
 from typing import Tuple, Union
 
 import click
+import pathos
 import trio
 from controller.l1_rpc import get_beam_ip, get_node_beams
 from controller.pointer import generate_pointings
@@ -15,6 +17,17 @@ from controller.updater import pointing_beam_control
 
 log = logging.getLogger("spsctl")
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
+
+
+def batched(iterable, n, *, strict=False):
+    # batched('ABCDEFG', 3) → ABC DEF G
+    if n < 1:
+        raise ValueError("n must be at least one")
+    iterator = iter(iterable)
+    while batch := tuple(islice(iterator, n)):
+        if strict and len(batch) != n:
+            raise ValueError("batched(): incomplete batch")
+        yield batch
 
 
 async def announce_pointing_done(pointing_done_listen):
@@ -57,7 +70,7 @@ async def entry_point(active_beams, basepath):
                 pointing_beam_control,
                 new_pointing_listen,
                 pointing_done_announce.clone(),
-                basepath
+                basepath,
             )
             beam_schedule_channels[beam_id] = new_pointing_announce
         log.debug(f"strat: spawning pointer for { active_beams }...")
@@ -118,7 +131,9 @@ def stop_beam(beam: int, basepath: str):
     default="/sps-archiver2/raw/",
     help="Path on L1 cf nodes to a CHAMPSS mount.",
 )
-def cli(host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool, basepath: str):
+def cli(
+    host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool, basepath: str
+):
     """
     L1 controller for Slow Pulsar Search.
 
@@ -128,7 +143,7 @@ def cli(host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool, base
     Can be cancelled with Ctrl-C, or with the stop_acq command for the appropriate beam
     row(s).
     """
-
+    print("zo")
     if logtofile:
         log_filename = f'./logs/spsctl_{datetime.now().strftime("%Y_%m_%d")}.log'
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
@@ -165,6 +180,63 @@ def cli(host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool, base
         for beam in active_beams:
             output = stop_beam(beam, basepath)
             log.info(output)
+
+
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.option(
+    "--host",
+    multiple=True,
+    metavar="HOSTNAME",
+    help=(
+        "Generate the schedule only for beam(s) running on HOSTNAME(s). (Repeat to"
+        " include multiple hosts.)"
+    ),
+)
+@click.argument("rows", type=click.IntRange(min=0, max=223), nargs=-1, required=True)
+@click.option(
+    "--loglevel",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
+    default="INFO",
+    help="Set logging level.",
+)
+@click.option("--logtofile", is_flag=True, help="Enable file logging.")
+@click.option(
+    "--basepath",
+    type=str,
+    default="/sps-archiver2/raw/",
+    help="Path on L1 cf nodes to a CHAMPSS mount.",
+)
+@click.option(
+    "--batchsize",
+    type=int,
+    default=3,
+    help="Jobs per row.",
+)
+def cli_batched(
+    host: Tuple[str],
+    rows: Tuple[int],
+    loglevel: str,
+    logtofile: bool,
+    basepath: str,
+    batchsize: int,
+):
+    """
+    L1 controller for Slow Pulsar Search.
+
+    ROW is the beam row(s) to record (in the range of 0-223), ints separated by spaces.
+    Default: all.
+
+    Can be cancelled with Ctrl-C, or with the stop_acq command for the appropriate beam
+    row(s).
+    """
+    batched_rows = batched(rows, batchsize)
+    for row in batched_rows:
+        print("____")
+        for ro in row:
+            print(ro)
+    print(batched_rows, list(batched_rows))
+    pool = pathos.pools.ProcessPool(2)
+    results = pool.amap(cli, batched_rows)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
