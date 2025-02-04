@@ -4,6 +4,7 @@ import subprocess
 
 import click
 import numpy as np
+import sys
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 
@@ -396,12 +397,17 @@ def main(
             beam_to_normalise=1,
         )
         skybeam, spectra_shared = sbf.form_skybeam(ap[0], num_threads=num_threads)
-
-        log.info(f"Writing to {fil}")
-        skybeam.write(fil)
-        spectra_shared.close()
-        spectra_shared.unlink()
-        del skybeam
+        if skybeam is None:
+            log.info("Not writing to filterbank")
+            spectra_shared.close()
+            spectra_shared.unlink()
+            return
+        else:
+            log.info(f"Writing to {fil}")
+            skybeam.write(fil)
+            spectra_shared.close()
+            spectra_shared.unlink()
+            del skybeam
 
     if not os.path.isfile(f"{archive_fname}.ar"):
         log.info("Folding...")
