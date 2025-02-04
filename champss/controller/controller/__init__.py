@@ -1,16 +1,16 @@
 # Controller for the Slow Pulsar Search (SPS) L1 system.
 
+import atexit
 import logging
 import math
 import os
+import signal
 import subprocess  # nosec
 from datetime import datetime
 from itertools import islice
 from typing import Tuple, Union
 
 import click
-import pathos
-import subprocess
 import trio
 from controller.l1_rpc import get_beam_ip, get_node_beams
 from controller.pointer import generate_pointings
@@ -144,7 +144,6 @@ def cli(
     Can be cancelled with Ctrl-C, or with the stop_acq command for the appropriate beam
     row(s).
     """
-    print("zo")
     if logtofile:
         log_filename = f'./logs/spsctl_{datetime.now().strftime("%Y_%m_%d")}.log'
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
@@ -210,7 +209,7 @@ def cli(
 @click.option(
     "--batchsize",
     type=int,
-    default=3,
+    default=10,
     help="Jobs per row.",
 )
 def cli_batched(
@@ -222,26 +221,54 @@ def cli_batched(
     batchsize: int,
 ):
     """
-    L1 controller for Slow Pulsar Search.
+    Batched wrapper for L1 controller.
 
-    ROW is the beam row(s) to record (in the range of 0-223), ints separated by spaces.
-    Default: all.
+    Same arguments as spsctl/cli(), except for --batchsize which defines the rows per
+    jobs.
 
-    Can be cancelled with Ctrl-C, or with the stop_acq command for the appropriate beam
-    row(s).
+    Needed because otherwise generate_pointings can't catch up for many beams.
     """
     batched_rows = batched(rows, batchsize)
-    for batch in batched_rows:
-        print("hu", type(basepath), type(host), type(loglevel), type(logtofile), host)
-        batch_str = [str(i) for i in batch]
-        command_list = ["spsctl", #" ".join(str(i) for i in batch),
-                        *batch_str,  
-                          "--basepath", basepath,
-#                          "--host", host,
-                          "--loglevel", loglevel,
- #                         "--logtofile", logtofile
- ]
-        subprocess.Popen(command_list)
+    all_procs = []
+    os.setpgrp()
+    # Killing the jobs in the background can be a hassle
+    # I think either the try finally method or this would be enough
+    # Not sure if one is superior
+    atexit.register(batched_cleanup)
+    # These logs will not be written to file. The file writing logic is in cli().
+    log.info(f"Will record {len(rows)} pointings.")
+    try:
+        for batch in batched_rows:
+            batch_str = [str(i) for i in batch]
+            command_list = [
+                "spsctl",
+                *batch_str,
+                "--basepath",
+                basepath,
+                "--loglevel",
+                loglevel,
+            ]
+            if host:
+                for hostname in host:
+                    command_list.extend(["--host", hostname])
+            if logtofile:
+                command_list.append("--logtofile")
+            proc = subprocess.Popen(command_list)
+            all_procs.append(proc)
+        log.info(f"Started {len(all_procs)} recording jobs.")
+        # proc.wait in order for the program not to end, so that i can be easily cancelled
+        # Not sure if that can fail in any case
+        proc.wait()
+    except KeyboardInterrupt:
+        log.info("Keyboard interrupt received. Exiting...")
+    except Exception as err:
+        log.error("Unknown error detected: %s", err)
+    finally:
+        os.killpg(0, signal.SIGKILL)
+
+
+def batched_cleanup():
+    os.killpg(0, signal.SIGKILL)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
