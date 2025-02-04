@@ -10,6 +10,7 @@ from typing import Tuple, Union
 
 import click
 import pathos
+import subprocess
 import trio
 from controller.l1_rpc import get_beam_ip, get_node_beams
 from controller.pointer import generate_pointings
@@ -230,13 +231,17 @@ def cli_batched(
     row(s).
     """
     batched_rows = batched(rows, batchsize)
-    for row in batched_rows:
-        print("____")
-        for ro in row:
-            print(ro)
-    print(batched_rows, list(batched_rows))
-    pool = pathos.pools.ProcessPool(2)
-    results = pool.amap(cli, batched_rows)
+    for batch in batched_rows:
+        print("hu", type(basepath), type(host), type(loglevel), type(logtofile), host)
+        batch_str = [str(i) for i in batch]
+        command_list = ["spsctl", #" ".join(str(i) for i in batch),
+                        *batch_str,  
+                          "--basepath", basepath,
+#                          "--host", host,
+                          "--loglevel", loglevel,
+ #                         "--logtofile", logtofile
+ ]
+        subprocess.Popen(command_list)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
