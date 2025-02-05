@@ -1,13 +1,13 @@
 # Controller for the Slow Pulsar Search (SPS) L1 system.
 
-import atexit
 import logging
 import math
 import os
-import signal
 import subprocess  # nosec
 from datetime import datetime
+from functools import partial
 from itertools import islice
+from multiprocessing import Pool
 from typing import Tuple, Union
 
 import click
@@ -86,6 +86,7 @@ def stop_beam(beam: int, basepath: str):
     Args:
         beam (int): Beam number
     """
+    print("stopping beam", beam)
     try:
         output: Union[subprocess.CompletedProcess[bytes], str] = subprocess.run(
             [
@@ -100,11 +101,12 @@ def stop_beam(beam: int, basepath: str):
             # text=True,
             timeout=5,
         )
+        # log.debug(output)
     except TimeoutError as e:
-        log.info(e)
+        # log.warning(e)
         output = f"Unable to run cli cmd rpc-client on {beam}"
     except subprocess.TimeoutExpired as e:
-        log.info(e)
+        # log.warning(e)
         output = f"Unable to run cmd rpc-client on {beam}"
     return output
 
@@ -181,6 +183,8 @@ def cli(
         for beam in active_beams:
             output = stop_beam(beam, basepath)
             log.info(output)
+        # with Pool(32) as p:
+        #     output = p.map(partial(stop_beam, basepath=basepath), active_beams)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -231,13 +235,15 @@ def cli_batched(
     """
     batched_rows = batched(rows, batchsize)
     all_procs = []
-    os.setpgrp()
+    # os.setpgrp()
     # Killing the jobs in the background can be a hassle
-    # I think either the try finally method or this would be enough
+    # I think either the try finally method or atexit would be enough
     # Not sure if one is superior
-    atexit.register(batched_cleanup)
+    # atexit.register(batched_cleanup)
     # These logs will not be written to file. The file writing logic is in cli().
     log.info(f"Will record {len(rows)} pointings.")
+    # from signal import signal, SIGPIPE, SIG_DFL
+    # signal(SIGPIPE,SIG_DFL)
     try:
         for batch in batched_rows:
             batch_str = [str(i) for i in batch]
@@ -265,12 +271,16 @@ def cli_batched(
     except Exception as err:
         log.error("Unknown error detected: %s", err)
     finally:
-        batched_cleanup()
+        log.info("Exiting batch recording.")
+        batched_cleanup(all_procs)
+        log.info("Cleaning batch jobs finished.")
 
 
-def batched_cleanup():
+def batched_cleanup(all_procs):
     # Stop all batch processes gracefully
-    os.killpg(0, signal.SIGTERM)
+    for proc in all_procs:
+        pass
+        # os.kill(proc.pid, signal.SIGTERM)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -308,6 +318,6 @@ def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str):
             host_beams.update(get_node_beams(h))
         active_beams.intersection_update(host_beams)
     log.info("Stopping beams: %s", sorted(list(active_beams)))
-    for beam in sorted(list(active_beams)):
-        output = stop_beam(beam, basepath)
-        log.info(output)
+    sorted_active_beams = sorted(list(active_beams))
+    with Pool(32) as p:
+        output = p.map(partial(stop_beam, basepath=basepath), sorted_active_beams)
