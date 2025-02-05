@@ -22,6 +22,7 @@ logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
 def batched(iterable, n, *, strict=False):
     # batched('ABCDEFG', 3) → ABC DEF G
+    # Based on function in itertools which is added in 3.12
     if n < 1:
         raise ValueError("n must be at least one")
     iterator = iter(iterable)
@@ -260,15 +261,16 @@ def cli_batched(
         # Not sure if that can fail in any case
         proc.wait()
     except KeyboardInterrupt:
-        log.info("Keyboard interrupt received. Exiting...")
+        log.info("Keyboard interrupt received. Will exit batch recording.")
     except Exception as err:
         log.error("Unknown error detected: %s", err)
     finally:
-        os.killpg(0, signal.SIGKILL)
+        batched_cleanup()
 
 
 def batched_cleanup():
-    os.killpg(0, signal.SIGKILL)
+    # Stop all batch processes gracefully
+    os.killpg(0, signal.SIGTERM)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
