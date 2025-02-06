@@ -24,6 +24,8 @@ def find_all_dates_with_data(ra, dec, basepath, nday=10):
     dates_with_data = []
 
     for filepath in filepaths:
+        if "log" in filepath:
+            continue
         year = int(filepath.split("/")[-3])
         month = int(filepath.split("/")[-2])
         day = int(filepath.split("/")[-1])
