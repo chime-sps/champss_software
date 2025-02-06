@@ -103,7 +103,7 @@ def stop_beam(beam: int, basepath: str):
             stderr=subprocess.STDOUT,
             # capture_output=True,
             # text=True,
-            timeout=5,
+            timeout=10,
         )
         # log.debug(output)
         if "parameters successfully applied" in str(full_output.stdout):
