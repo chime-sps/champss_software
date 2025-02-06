@@ -44,7 +44,13 @@ from sps_databases import db_api, db_utils
     "--phase_accuracy",
     type=float,
     default=1.0 / 64,
-    help="required accuracy in pulse phase, which determines step size",
+    help="Required accuracy in pulse phase, which determines step size.",
+)
+@click.option(
+    "--nday",
+    default="",
+    type=int,
+    help="Number of days to search. Default is to search all available archives."
 )
 @click.option(
     "--write-to-db",
@@ -62,6 +68,7 @@ def main(
     db_host,
     db_name,
     phase_accuracy,
+    nday,
     write_to_db=False,
     check_cands=False,
 ):
@@ -92,7 +99,10 @@ def main(
     else:
         log.error(f"Source {fs_id} has no folding history in db, exiting...")
         return
-
+    if nday != "":
+        fold_dates = fold_dates[:nday]
+        fold_SN = fold_SN[:nday]
+        archives = archives[:nday]
     par_file = source.path_to_ephemeris
     par_vals = read_par(par_file)
     DM_incoherent = par_vals["DM"]
