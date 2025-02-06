@@ -48,7 +48,7 @@ from sps_databases import db_api, db_utils
 )
 @click.option(
     "--nday",
-    default="",
+    default=999,
     type=int,
     help="Number of days to search. Default is to search all available archives."
 )
@@ -99,10 +99,13 @@ def main(
     else:
         log.error(f"Source {fs_id} has no folding history in db, exiting...")
         return
-    if nday != "":
+    if nday != 999:
         fold_dates = fold_dates[:nday]
         fold_SN = fold_SN[:nday]
         archives = archives[:nday]
+    print(fold_dates)
+    print(fold_SN)
+    print(archives)
     par_file = source.path_to_ephemeris
     par_vals = read_par(par_file)
     DM_incoherent = par_vals["DM"]
