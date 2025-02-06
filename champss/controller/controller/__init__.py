@@ -199,7 +199,7 @@ def cli(
     finally:
         log.info("Stopping acquisition...")
         if not nocleanup:
-            with Pool(8) as p:
+            with Pool(16) as p:
                 output = p.imap(partial(stop_beam, basepath=basepath), active_beams)
                 for out in output:
                     log.info(out)
