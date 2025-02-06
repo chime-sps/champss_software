@@ -3,6 +3,7 @@
 import logging
 import math
 import os
+import signal
 import subprocess  # nosec
 from datetime import datetime
 from functools import partial
@@ -60,23 +61,27 @@ async def entry_point(active_beams, basepath):
     """
     pointing_done_announce, pointing_done_listen = trio.open_memory_channel(math.inf)
     beam_schedule_channels = {}
-    async with trio.open_nursery() as nursery:
-        log.debug("strat: spawning announcer...")
-        nursery.start_soon(announce_pointing_done, pointing_done_listen)
-        for beam_id in active_beams:
-            new_pointing_announce, new_pointing_listen = trio.open_memory_channel(
-                math.inf
-            )
-            log.debug(f"strat: spawning controller for beam { beam_id }...")
-            nursery.start_soon(
-                pointing_beam_control,
-                new_pointing_listen,
-                pointing_done_announce.clone(),
-                basepath,
-            )
-            beam_schedule_channels[beam_id] = new_pointing_announce
-        log.debug(f"strat: spawning pointer for { active_beams }...")
-        nursery.start_soon(generate_pointings, active_beams, beam_schedule_channels)
+    try:
+        async with trio.open_nursery() as nursery:
+            log.debug("strat: spawning announcer...")
+            nursery.start_soon(announce_pointing_done, pointing_done_listen)
+            for beam_id in active_beams:
+                new_pointing_announce, new_pointing_listen = trio.open_memory_channel(
+                    math.inf
+                )
+                log.debug(f"strat: spawning controller for beam { beam_id }...")
+                nursery.start_soon(
+                    pointing_beam_control,
+                    new_pointing_listen,
+                    pointing_done_announce.clone(),
+                    basepath,
+                )
+                beam_schedule_channels[beam_id] = new_pointing_announce
+            log.debug(f"strat: spawning pointer for { active_beams }...")
+            nursery.start_soon(generate_pointings, active_beams, beam_schedule_channels)
+    except BaseExceptionGroup:
+        pass
+        # When cancelling the batch acquisition this Exception will be thrown by trio.
 
 
 def stop_beam(beam: int, basepath: str):
@@ -86,9 +91,8 @@ def stop_beam(beam: int, basepath: str):
     Args:
         beam (int): Beam number
     """
-    print("stopping beam", beam)
     try:
-        output: Union[subprocess.CompletedProcess[bytes], str] = subprocess.run(
+        full_output: Union[subprocess.CompletedProcess[bytes], str] = subprocess.run(
             [
                 f"rpc-client --spulsar-writer-params {beam} {0} 1024 5"
                 f" {basepath} tcp://{get_beam_ip(beam)}:5555"
@@ -102,6 +106,10 @@ def stop_beam(beam: int, basepath: str):
             timeout=5,
         )
         # log.debug(output)
+        if "parameters successfully applied" in str(full_output.stdout):
+            output = f"Successfully stopped {beam}"
+        else:
+            output = full_output
     except TimeoutError as e:
         # log.warning(e)
         output = f"Unable to run cli cmd rpc-client on {beam}"
@@ -135,8 +143,18 @@ def stop_beam(beam: int, basepath: str):
     default="/sps-archiver2/raw/",
     help="Path on L1 cf nodes to a CHAMPSS mount.",
 )
+@click.option(
+    "--nocleanup",
+    is_flag=True,
+    help="Do not clean up. Used to not interfere with batch processing.",
+)
 def cli(
-    host: Tuple[str], rows: Tuple[int], loglevel: str, logtofile: bool, basepath: str
+    host: Tuple[str],
+    rows: Tuple[int],
+    loglevel: str,
+    logtofile: bool,
+    basepath: str,
+    nocleanup: bool,
 ):
     """
     L1 controller for Slow Pulsar Search.
@@ -180,11 +198,11 @@ def cli(
         log.error("Unknown error detected: %s", err)
     finally:
         log.info("Stopping acquisition...")
-        for beam in active_beams:
-            output = stop_beam(beam, basepath)
-            log.info(output)
-        # with Pool(32) as p:
-        #     output = p.map(partial(stop_beam, basepath=basepath), active_beams)
+        if not nocleanup:
+            with Pool(8) as p:
+                output = p.imap(partial(stop_beam, basepath=basepath), active_beams)
+                for out in output:
+                    log.info(out)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -235,15 +253,7 @@ def cli_batched(
     """
     batched_rows = batched(rows, batchsize)
     all_procs = []
-    # os.setpgrp()
-    # Killing the jobs in the background can be a hassle
-    # I think either the try finally method or atexit would be enough
-    # Not sure if one is superior
-    # atexit.register(batched_cleanup)
-    # These logs will not be written to file. The file writing logic is in cli().
     log.info(f"Will record {len(rows)} pointings.")
-    # from signal import signal, SIGPIPE, SIG_DFL
-    # signal(SIGPIPE,SIG_DFL)
     try:
         for batch in batched_rows:
             batch_str = [str(i) for i in batch]
@@ -254,6 +264,7 @@ def cli_batched(
                 basepath,
                 "--loglevel",
                 loglevel,
+                "--nocleanup",  # Disabling cleanup makes it easier for wrapper to cleanup
             ]
             if host:
                 for hostname in host:
@@ -272,15 +283,14 @@ def cli_batched(
         log.error("Unknown error detected: %s", err)
     finally:
         log.info("Exiting batch recording.")
-        batched_cleanup(all_procs)
-        log.info("Cleaning batch jobs finished.")
-
-
-def batched_cleanup(all_procs):
-    # Stop all batch processes gracefully
-    for proc in all_procs:
-        pass
-        # os.kill(proc.pid, signal.SIGTERM)
+        log.info(
+            f"Logs for stopped beams should appear. Will try to stop beam rows {rows}."
+        )
+        # Kill all spsctl
+        for proc in all_procs:
+            os.kill(proc.pid, signal.SIGTERM)
+        # Make sure that all rpc-clients are stopped
+        stop_acq.callback(host=host, rows=rows, debug=False, basepath=basepath)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -320,4 +330,6 @@ def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str):
     log.info("Stopping beams: %s", sorted(list(active_beams)))
     sorted_active_beams = sorted(list(active_beams))
     with Pool(32) as p:
-        output = p.map(partial(stop_beam, basepath=basepath), sorted_active_beams)
+        output = p.imap(partial(stop_beam, basepath=basepath), sorted_active_beams)
+        for out in output:
+            log.info(out)

@@ -121,6 +121,9 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                         except subprocess.TimeoutExpired as e:
                             log.info(e)
                             output = f"Unable to run rpc-client on {b.beam}"
+                        except KeyboardInterrupt:
+                            # Suppresses traceback when cancelled
+                            pass
                         log.info(output)
                 else:
                     # Remove the pointing from the beam's active list
