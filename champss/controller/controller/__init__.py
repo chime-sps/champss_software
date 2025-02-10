@@ -288,7 +288,10 @@ def cli_batched(
         )
         # Kill all spsctl
         for proc in all_procs:
-            os.kill(proc.pid, signal.SIGTERM)
+            try:
+                os.kill(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         # Make sure that all rpc-clients are stopped
         stop_acq.callback(host=host, rows=rows, debug=False, basepath=basepath)
 

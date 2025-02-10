@@ -1034,7 +1034,7 @@ class RpcClient:
             [sockets.get(token, None) for token in tokens],
         )
 
-    def set_spulsar_writer_params(self, beam, nfreq_out, ntime_out, nbins_out, base_path, servers=None, timeout=-1):
+    def set_spulsar_writer_params(self, beam, nfreq_out, ntime_out, nbins_out, base_path, servers=None, timeout=15):
         if servers is None:
             servers = self.servers.keys()
         tokens = []
