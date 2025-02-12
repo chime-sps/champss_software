@@ -2,6 +2,8 @@ import datetime as dt
 import heapq
 import logging
 import math
+import os
+import signal
 import subprocess  # nosec
 
 import pytz
@@ -101,30 +103,18 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                             max_nchans,
                             new_max_nchans,
                         )
-                        try:
-                            output = subprocess.run(
-                                [
-                                    "rpc-client --spulsar-writer-params"
-                                    f" {b.beam} {new_max_nchans} 1024 5"
-                                    f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
-                                ],
-                                shell=True,  # nosec
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                # capture_output=True,
-                                # text=True,
-                                timeout=20,
-                            )
-                        except TimeoutError as e:
-                            log.info(e)
-                            output = f"Unable to run rpc-client on {b.beam}"
-                        except subprocess.TimeoutExpired as e:
-                            log.info(e)
-                            output = f"Unable to run rpc-client on {b.beam}"
-                        except KeyboardInterrupt:
-                            # Suppresses traceback when cancelled
-                            pass
+                        output, err, proc = popen_with_timeout(
+                            [
+                                "rpc-client --spulsar-writer-params"
+                                f" {b.beam} {new_max_nchans} 1024 5"
+                                f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
+                            ],
+                            timeout=20,
+                        )
+                        if "not successful" in "output":
+                            log.warning(err)
                         log.info(output)
+
                 else:
                     # Remove the pointing from the beam's active list
                     max_nchans = max(beam_active.values())
@@ -148,26 +138,16 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                 max_nchans,
                                 new_max_nchans,
                             )
-                            try:
-                                output = subprocess.run(
-                                    [
-                                        "rpc-client --spulsar-writer-params"
-                                        f" {b.beam} {new_max_nchans} 1024 5"
-                                        f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
-                                    ],
-                                    shell=True,  # nosec
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT,
-                                    # capture_output=True,
-                                    # text=True,
-                                    timeout=20,
-                                )
-                            except TimeoutError as e:
-                                log.info(e)
-                                output = f"Unable to run rpc-client on {b.beam}"
-                            except subprocess.TimeoutExpired as e:
-                                log.info(e)
-                                output = f"Unable to run rpc-client on {b.beam}"
+                            output, err, proc = popen_with_timeout(
+                                [
+                                    "rpc-client --spulsar-writer-params"
+                                    f" {b.beam} {new_max_nchans} 1024 5"
+                                    f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
+                                ],
+                                timeout=20,
+                            )
+                            if "not successful" in "output":
+                                log.warning(err)
                             log.info(output)
 
                         # After the last beam has completed,
@@ -179,3 +159,24 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     else:
                         # No more active pointings, turn the beam off
                         log.info("OFF %d / %04d", b.id, b.beam)
+
+
+def popen_with_timeout(args, timeout=20):
+    proc = subprocess.Popen(
+        args, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        proc.kill()
+        proc.wait()
+        stdout = "Updating beam {args.split[2]} not successful"
+        stderr = exc
+    finally:
+        # Make sure that every process has stopped
+        try:
+            os.kill(proc.pid, signal.SIGKILL)
+            log.warning(f"Process with args {args} was not dead already")
+        except ProcessLookupError:
+            pass
+    return stdout, stderr, proc
