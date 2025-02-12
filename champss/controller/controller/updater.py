@@ -143,7 +143,9 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     # active pointings
                     if new_max_nchans != max_nchans or folder_age > max_folder_age:
                         try:
-                            with timeout(20):
+                            with timeout(
+                                20, error_message=f"Unable to update beam {b.beam}"
+                            ):
                                 client = rpc_client.RpcClient(
                                     {"a": f"tcp://{get_beam_ip(b.beam)}:5555"}
                                 )
@@ -185,7 +187,9 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                 new_max_nchans,
                             )
                             try:
-                                with timeout(20):
+                                with timeout(
+                                    20, error_message=f"Unable to update beam {b.beam}"
+                                ):
                                     client = rpc_client.RpcClient(
                                         {"a": f"tcp://{get_beam_ip(b.beam)}:5555"}
                                     )
