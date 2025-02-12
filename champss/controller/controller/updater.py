@@ -8,6 +8,7 @@ import subprocess  # nosec
 
 import pytz
 import trio
+from controller import rpc_client
 from controller.l1_rpc import get_beam_ip
 
 log = logging.getLogger("issuer")
@@ -98,7 +99,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                 now = dt.datetime.utcnow().replace(tzinfo=pytz.utc).timestamp()
                 data_folder = (
                     local_path
-                    + dt.datetime.utcnow().strftime("%Y/%m/%d/")
+                    + dt.datetime.utcnow().strftime("/%Y/%m/%d/")
                     + f"{str(b.beam).zfill(4)}"
                 )
                 try:
@@ -109,7 +110,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     previous_data_folder = (
                         local_path
                         + (dt.datetime.utcnow() - dt.timedelta(days=1)).strftime(
-                            "%Y/%m/%d/"
+                            "/%Y/%m/%d/"
                         )
                         + f"{str(b.beam).zfill(4)}"
                     )
@@ -141,23 +142,24 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     # of channels required by all the currently
                     # active pointings
                     if new_max_nchans != max_nchans or folder_age > max_folder_age:
-                        log.info(
-                            "INCREASE %04d: %d -> %d",
-                            b.beam,
-                            max_nchans,
-                            new_max_nchans,
-                        )
-                        output, err, proc = popen_with_timeout(
-                            [
-                                "rpc-client --spulsar-writer-params"
-                                f" {b.beam} {new_max_nchans} 1024 5"
-                                f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
-                            ],
-                            timeout=20,
-                        )
-                        if "not successful" in "output":
-                            log.warning(err)
-                        log.info(output)
+                        try:
+                            with timeout(20):
+                                client = rpc_client.RpcClient(
+                                    {"a": f"tcp://{get_beam_ip(b.beam)}:5555"}
+                                )
+                                output = client.set_spulsar_writer_params(
+                                    b.beam,
+                                    new_max_nchans,
+                                    1024,
+                                    5,
+                                    basepath,
+                                    timeout=-1,
+                                )
+                                log.debug(output)
+                        except TimeoutError as te:
+                            log.warning(
+                                f"Could not update beam {b.beam}. rpc-client timed out."
+                            )
 
                 else:
                     # Remove the pointing from the beam's active list
@@ -182,17 +184,25 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                 max_nchans,
                                 new_max_nchans,
                             )
-                            output, err, proc = popen_with_timeout(
-                                [
-                                    "rpc-client --spulsar-writer-params"
-                                    f" {b.beam} {new_max_nchans} 1024 5"
-                                    f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
-                                ],
-                                timeout=20,
-                            )
-                            if "not successful" in "output":
-                                log.warning(err)
-                            log.info(output)
+                            try:
+                                with timeout(20):
+                                    client = rpc_client.RpcClient(
+                                        {"a": f"tcp://{get_beam_ip(b.beam)}:5555"}
+                                    )
+                                    output = client.set_spulsar_writer_params(
+                                        b.beam,
+                                        new_max_nchans,
+                                        1024,
+                                        5,
+                                        basepath,
+                                        timeout=-1,
+                                    )
+                                    log.debug(output)
+                            except TimeoutError as te:
+                                log.warning(
+                                    f"Could not update beam {b.beam}. rpc-client timed"
+                                    " out."
+                                )
 
                         # After the last beam has completed,
                         # we can announce to the listeners
@@ -205,26 +215,18 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                         log.info("OFF %d / %04d", b.id, b.beam)
 
 
-def popen_with_timeout(args, timeout=20):
-    proc = subprocess.Popen(
-        args,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        preexec_fn=os.setsid,
-    )
-    try:
-        stdout, stderr = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired as exc:
-        proc.kill()
-        proc.wait()
-        stdout = "Updating beam {args.split[2]} not successful"
-        stderr = exc
-    finally:
-        # Make sure that every process has stopped
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            log.warning(f"Process with args {args} was not dead already")
-        except ProcessLookupError:
-            pass
-    return stdout, stderr, proc
+class timeout:
+    # Taken from https://stackoverflow.com/a/22348885
+    def __init__(self, seconds=1, error_message="Timeout"):
+        self.seconds = seconds
+        self.error_message = error_message
+
+    def handle_timeout(self, signum, frame):
+        raise TimeoutError(self.error_message)
+
+    def __enter__(self):
+        signal.signal(signal.SIGALRM, self.handle_timeout)
+        signal.alarm(self.seconds)
+
+    def __exit__(self, type, value, traceback):
+        signal.alarm(0)
