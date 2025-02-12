@@ -32,9 +32,23 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
     scheduled_updates = []  # priority queue of the beam update schedule
     beam_active = {}  # map of this task's beam's active pointings to their nchans
     done = False
+    proc = None
+    max_folder_age = 600
+
+    # Quick and dirty way of changing mount name
+    local_path = basepath.replace("/sps-archiver2/", "/mnt/beegfs-client/").replace(
+        "/sps-archiver1/", "/data/"
+    )
+
     async with new_pointing_listen:
         async with pointing_done_announce:
             while scheduled_updates or not done:
+                try:
+                    if proc is not None:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                        log.warning(f"Process with args {args} was not dead already")
+                except ProcessLookupError:
+                    pass
                 now = dt.datetime.utcnow().replace(tzinfo=pytz.utc).timestamp()
                 # decide how long to wait for a new pointing update from the
                 # `new_pointing` channel: either until the next scheduled update,
@@ -81,7 +95,37 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                         time_to_next_update,
                     )
                     await trio.sleep(time_to_next_update)
-
+                now = dt.datetime.utcnow().replace(tzinfo=pytz.utc).timestamp()
+                data_folder = (
+                    local_path
+                    + dt.datetime.utcnow().strftime("%Y/%m/%d/")
+                    + f"{str(b.beam).zfill(4)}"
+                )
+                try:
+                    folder_age = now - os.path.getmtime(data_folder)
+                except FileNotFoundError:
+                    log.warning(f"Data Folder {data_folder} not found")
+                    # Check previous day because I am not sure how it performs at the date change
+                    previous_data_folder = (
+                        local_path
+                        + (dt.datetime.utcnow() - dt.timedelta(days=1)).strftime(
+                            "%Y/%m/%d/"
+                        )
+                        + f"{str(b.beam).zfill(4)}"
+                    )
+                    try:
+                        folder_age = now - os.path.getmtime(data_folder)
+                        log.info(
+                            "Checked age of data older of previous day:"
+                            f" {previous_data_folder}"
+                        )
+                    except FileNotFoundError:
+                        folder_age = max_folder_age + 1
+                if folder_age > max_folder_age:
+                    log.warning(
+                        f"Folder {data_folder} is too old ({folder_age:.2f}) or was not"
+                        " found."
+                    )
                 if b.activate:
                     max_nchans = max(beam_active.values()) if beam_active else 0
                     beam_active[b.id] = b.nchans
@@ -96,7 +140,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     # We want to save using the maximum number
                     # of channels required by all the currently
                     # active pointings
-                    if new_max_nchans != max_nchans:
+                    if new_max_nchans != max_nchans or folder_age > max_folder_age:
                         log.info(
                             "INCREASE %04d: %d -> %d",
                             b.beam,
@@ -131,7 +175,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                             b.nchans,
                         )
                         new_max_nchans = max(beam_active.values())
-                        if new_max_nchans != max_nchans:
+                        if new_max_nchans != max_nchans or folder_age > max_folder_age:
                             log.info(
                                 "REDUCE %04d: %d -> %d",
                                 b.beam,
