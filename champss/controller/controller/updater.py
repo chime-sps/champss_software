@@ -163,7 +163,11 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
 
 def popen_with_timeout(args, timeout=20):
     proc = subprocess.Popen(
-        args, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        args,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        preexec_fn=os.setsid,
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -175,7 +179,7 @@ def popen_with_timeout(args, timeout=20):
     finally:
         # Make sure that every process has stopped
         try:
-            os.kill(proc.pid, signal.SIGKILL)
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             log.warning(f"Process with args {args} was not dead already")
         except ProcessLookupError:
             pass
