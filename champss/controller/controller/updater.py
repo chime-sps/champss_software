@@ -155,7 +155,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                     1024,
                                     5,
                                     basepath,
-                                    timeout=-1,
+                                    timeout=1000,
                                 )
                                 log.debug(output)
                         except TimeoutError as te:
@@ -199,7 +199,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                         1024,
                                         5,
                                         basepath,
-                                        timeout=-1,
+                                        timeout=1000,
                                     )
                                     log.debug(output)
                             except TimeoutError as te:
