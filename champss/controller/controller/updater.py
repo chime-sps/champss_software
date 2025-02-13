@@ -35,6 +35,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
     done = False
     proc = None
     max_folder_age = 600
+    client = rpc_client.RpcClient({})
 
     # Quick and dirty way of changing mount name
     local_path = basepath.replace("/sps-archiver2/", "/mnt/beegfs-client/").replace(
@@ -143,19 +144,21 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     # active pointings
                     if new_max_nchans != max_nchans or folder_age > max_folder_age:
                         try:
+                            if b.beam not in client.servers:
+                                client.add_server(
+                                    b.beam, f"tcp://{get_beam_ip(b.beam)}:5555"
+                                )
                             with timeout(
                                 20, error_message=f"Unable to update beam {b.beam}"
                             ):
-                                client = rpc_client.RpcClient(
-                                    {"a": f"tcp://{get_beam_ip(b.beam)}:5555"}
-                                )
                                 output = client.set_spulsar_writer_params(
                                     b.beam,
                                     new_max_nchans,
                                     1024,
                                     5,
                                     basepath,
-                                    timeout=1000,
+                                    timeout=-1,
+                                    servers=[b.beam],
                                 )
                                 log.debug(output)
                         except TimeoutError as te:
@@ -187,19 +190,21 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                 new_max_nchans,
                             )
                             try:
+                                if b.beam not in client.servers:
+                                    client.add_server(
+                                        b.beam, f"tcp://{get_beam_ip(b.beam)}:5555"
+                                    )
                                 with timeout(
                                     20, error_message=f"Unable to update beam {b.beam}"
                                 ):
-                                    client = rpc_client.RpcClient(
-                                        {"a": f"tcp://{get_beam_ip(b.beam)}:5555"}
-                                    )
                                     output = client.set_spulsar_writer_params(
                                         b.beam,
                                         new_max_nchans,
                                         1024,
                                         5,
                                         basepath,
-                                        timeout=1000,
+                                        timeout=-1,
+                                        servers=[b.beam],
                                     )
                                     log.debug(output)
                             except TimeoutError as te:
