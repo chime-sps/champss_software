@@ -33,9 +33,10 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
     scheduled_updates = []  # priority queue of the beam update schedule
     beam_active = {}  # map of this task's beam's active pointings to their nchans
     done = False
-    proc = None
-    max_folder_age = 600
+    max_combined_age = 600
+    allowed_timeout = 10
     client = rpc_client.RpcClient({})
+    last_update = dt.datetime.utcnow().replace(tzinfo=pytz.utc).timestamp()
 
     # Quick and dirty way of changing mount name
     local_path = basepath.replace("/sps-archiver2/", "/mnt/beegfs-client/").replace(
@@ -45,12 +46,6 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
     async with new_pointing_listen:
         async with pointing_done_announce:
             while scheduled_updates or not done:
-                try:
-                    if proc is not None:
-                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                        log.warning(f"Process with args {args} was not dead already")
-                except ProcessLookupError:
-                    pass
                 now = dt.datetime.utcnow().replace(tzinfo=pytz.utc).timestamp()
                 # decide how long to wait for a new pointing update from the
                 # `new_pointing` channel: either until the next scheduled update,
@@ -75,7 +70,6 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                             log.debug("No more pointing updates")
                             done = True
                         continue  # back to the top of the scheduling loop
-
                 b = heapq.heappop(scheduled_updates)
                 log.debug(
                     "Next pointing %d / %04d @ %.1f - %s",
@@ -103,6 +97,9 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     + dt.datetime.utcnow().strftime("/%Y/%m/%d/")
                     + f"{str(b.beam).zfill(4)}"
                 )
+                # update_age makes sure that in the case of a file writing error, the cal to restart
+                # writing is not repeated all the time
+                update_age = now - last_update
                 try:
                     folder_age = now - os.path.getmtime(data_folder)
                 except FileNotFoundError:
@@ -122,12 +119,17 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                             f" {previous_data_folder}"
                         )
                     except FileNotFoundError:
-                        folder_age = max_folder_age + 1
-                if folder_age > max_folder_age:
+                        folder_age = max_combined_age + 1
+                # Only update if folder and recent update are old, otherwise, will perform too many calls
+                combined_age = min(update_age, folder_age)
+                if combined_age > max_combined_age:
                     log.warning(
                         f"Folder {data_folder} is too old ({folder_age:.2f}) or was not"
                         " found."
                     )
+                    update_and_folder_too_old = True
+                else:
+                    update_and_folder_too_old = False
                 if b.activate:
                     max_nchans = max(beam_active.values()) if beam_active else 0
                     beam_active[b.id] = b.nchans
@@ -142,7 +144,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     # We want to save using the maximum number
                     # of channels required by all the currently
                     # active pointings
-                    if new_max_nchans != max_nchans or folder_age > max_folder_age:
+                    if new_max_nchans != max_nchans or update_and_folder_too_old:
                         try:
                             if b.beam not in client.servers:
                                 log.debug(f"Will try adding server {b.beam}")
@@ -151,8 +153,10 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                 )
                                 log.debug(f"Added server {b.beam}")
                             with timeout(
-                                20, error_message=f"Unable to update beam {b.beam}"
+                                allowed_timeout,
+                                error_message=f"Unable to update beam {b.beam}",
                             ):
+                                last_update = now
                                 output = client.set_spulsar_writer_params(
                                     b.beam,
                                     new_max_nchans,
@@ -184,7 +188,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                             b.nchans,
                         )
                         new_max_nchans = max(beam_active.values())
-                        if new_max_nchans != max_nchans or folder_age > max_folder_age:
+                        if new_max_nchans != max_nchans or update_and_folder_too_old:
                             log.info(
                                 "REDUCE %04d: %d -> %d",
                                 b.beam,
@@ -197,8 +201,10 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                         b.beam, f"tcp://{get_beam_ip(b.beam)}:5555"
                                     )
                                 with timeout(
-                                    20, error_message=f"Unable to update beam {b.beam}"
+                                    allowed_timeout,
+                                    error_message=f"Unable to update beam {b.beam}",
                                 ):
+                                    last_update = now
                                     output = client.set_spulsar_writer_params(
                                         b.beam,
                                         new_max_nchans,
