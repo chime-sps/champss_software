@@ -148,6 +148,12 @@ def stop_beam(beam: int, basepath: str):
     is_flag=True,
     help="Do not clean up. Used to not interfere with batch processing.",
 )
+@click.option(
+    "--logid",
+    type=str,
+    default="",
+    help="Additonal identifier to sepearte the log_files.",
+)
 def cli(
     host: Tuple[str],
     rows: Tuple[int],
@@ -155,6 +161,7 @@ def cli(
     logtofile: bool,
     basepath: str,
     nocleanup: bool,
+    logid: str,
 ):
     """
     L1 controller for Slow Pulsar Search.
@@ -166,7 +173,13 @@ def cli(
     row(s).
     """
     if logtofile:
-        log_filename = f'./logs/spsctl_{datetime.now().strftime("%Y_%m_%d")}.log'
+        if logid:
+            log_append = "_" + logid
+        else:
+            log_append = ""
+        log_filename = (
+            f'./logs/spsctl_{datetime.now().strftime("%Y_%m_%d")}{log_append}.log'
+        )
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
         logging.basicConfig(
             filename=log_filename,
@@ -235,6 +248,7 @@ def cli(
     default=10,
     help="Jobs per row.",
 )
+@click.option("--splitlogs", is_flag=True, help="Split the logs per job.")
 def cli_batched(
     host: Tuple[str],
     rows: Tuple[int],
@@ -242,6 +256,7 @@ def cli_batched(
     logtofile: bool,
     basepath: str,
     batchsize: int,
+    splitlogs: bool,
 ):
     """
     Batched wrapper for L1 controller.
@@ -255,7 +270,7 @@ def cli_batched(
     all_procs = []
     log.info(f"Will record {len(rows)} pointings.")
     try:
-        for batch in batched_rows:
+        for count, batch in enumerate(batched_rows):
             batch_str = [str(i) for i in batch]
             command_list = [
                 "spsctl",
@@ -271,6 +286,8 @@ def cli_batched(
                     command_list.extend(["--host", hostname])
             if logtofile:
                 command_list.append("--logtofile")
+            if splitlogs:
+                command_list.extend(["--logid", f"b{count}"])
             proc = subprocess.Popen(command_list)
             all_procs.append(proc)
         log.info(f"Started {len(all_procs)} recording jobs.")
