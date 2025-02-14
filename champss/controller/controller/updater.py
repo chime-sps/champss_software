@@ -145,9 +145,11 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     if new_max_nchans != max_nchans or folder_age > max_folder_age:
                         try:
                             if b.beam not in client.servers:
+                                log.debug(f"Will try adding server {b.beam}")
                                 client.add_server(
                                     b.beam, f"tcp://{get_beam_ip(b.beam)}:5555"
                                 )
+                                log.debug(f"Added server {b.beam}")
                             with timeout(
                                 20, error_message=f"Unable to update beam {b.beam}"
                             ):
