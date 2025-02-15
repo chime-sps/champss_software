@@ -48,7 +48,7 @@ from sps_databases import db_api, db_utils
 )
 @click.option(
     "--nday",
-    default=999,
+    default=0,
     type=int,
     help="Number of days to search. Default is to search all available archives."
 )
@@ -99,7 +99,7 @@ def main(
     else:
         log.error(f"Source {fs_id} has no folding history in db, exiting...")
         return
-    if nday != 999:
+    if nday:
         fold_dates = fold_dates[:nday]
         fold_SN = fold_SN[:nday]
         archives = archives[:nday]

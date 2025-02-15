@@ -398,7 +398,7 @@ def main(
         )
         skybeam, spectra_shared = sbf.form_skybeam(ap[0], num_threads=num_threads)
         if skybeam is None:
-            log.info("Not writing to filterbank")
+            log.info("Insufficient unmasked data to form skybeam, exiting before filterbank creation")
             spectra_shared.close()
             spectra_shared.unlink()
             return

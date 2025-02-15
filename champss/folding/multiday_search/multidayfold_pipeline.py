@@ -58,7 +58,7 @@ log = logging.getLogger(__name__)
 )
 @click.option(
     "--nday",
-    default=999,
+    default=0,
     type=int,
     help="Number of days to fold and search. Default will fold and search all available days.",
 )
