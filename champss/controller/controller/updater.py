@@ -71,6 +71,12 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                             done = True
                         continue  # back to the top of the scheduling loop
                 b = heapq.heappop(scheduled_updates)
+                # Alternatively could also initialize client here, since each instance only contains one beam
+                # Shouls not make a difference
+                if b.beam not in client.servers:
+                    log.debug(f"Will try adding server {b.beam}")
+                    client.add_server(b.beam, f"tcp://{get_beam_ip(b.beam)}:5555")
+                    log.debug(f"Added server {b.beam}")
                 log.debug(
                     "Next pointing %d / %04d @ %.1f - %s",
                     b.id,
@@ -146,12 +152,6 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     # active pointings
                     if new_max_nchans != max_nchans or update_and_folder_too_old:
                         try:
-                            if b.beam not in client.servers:
-                                log.debug(f"Will try adding server {b.beam}")
-                                client.add_server(
-                                    b.beam, f"tcp://{get_beam_ip(b.beam)}:5555"
-                                )
-                                log.debug(f"Added server {b.beam}")
                             with timeout(
                                 allowed_timeout,
                                 error_message=f"Unable to update beam {b.beam}",
@@ -196,10 +196,6 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                 new_max_nchans,
                             )
                             try:
-                                if b.beam not in client.servers:
-                                    client.add_server(
-                                        b.beam, f"tcp://{get_beam_ip(b.beam)}:5555"
-                                    )
                                 with timeout(
                                     allowed_timeout,
                                     error_message=f"Unable to update beam {b.beam}",
