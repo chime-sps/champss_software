@@ -5,17 +5,16 @@ import math
 import os
 import signal
 import subprocess  # nosec
+import time
 from datetime import datetime
-from functools import partial
 from itertools import islice
-from multiprocessing import Pool
-from typing import Tuple, Union
+from typing import Tuple
 
 import click
 import trio
 from controller.l1_rpc import get_beam_ip, get_node_beams
 from controller.pointer import generate_pointings
-from controller.updater import pointing_beam_control
+from controller.updater import pointing_beam_control, timeout
 
 log = logging.getLogger("spsctl")
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
@@ -91,32 +90,40 @@ def stop_beam(beam: int, basepath: str):
     Args:
         beam (int): Beam number
     """
-    try:
-        full_output: Union[subprocess.CompletedProcess[bytes], str] = subprocess.run(
-            [
-                f"rpc-client --spulsar-writer-params {beam} {0} 1024 5"
-                f" {basepath} tcp://{get_beam_ip(beam)}:5555"
-            ],
-            shell=True,  # nosec
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            # capture_output=True,
-            # text=True,
-            timeout=20,
-        )
-        # log.debug(output)
-        if "parameters successfully applied" in str(full_output.stdout):
-            output = f"Successfully stopped {beam}"
-        else:
-            output = full_output
-    except TimeoutError as e:
-        # log.warning(e)
-        output = f"Unable to run cli cmd rpc-client on {beam}"
-    except subprocess.TimeoutExpired as e:
-        # log.warning(e)
-        output = f"Unable to run cmd rpc-client on {beam}"
-    return output
+    proc = subprocess.Popen(
+        [
+            f"rpc-client --spulsar-writer-params {beam} {0} 1024 5"
+            f" {basepath} tcp://{get_beam_ip(beam)}:5555"
+        ],
+        shell=True,  # nosec
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        preexec_fn=os.setsid,
+    )
+    return proc
+
+
+def stop_all_beams(active_beams, basepath):
+    """
+    Stop all beams.
+
+    Args:
+        active_beams list(int): Beam number
+    """
+    procs = [stop_beam(beam, basepath) for beam in active_beams]
+    time.sleep(5)
+    for proc, beam in zip(procs, active_beams):
+        try:
+            output = proc.communicate(timeout=0.1)
+            if "parameters successfully applied" in str(output[0]):
+                output = f"Successfully stopped {beam}"
+        except subprocess.TimeoutExpired as e:
+            output = f"Unable to stop beam {beam}"
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        finally:
+            log.info(output)
+    return procs
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -212,10 +219,7 @@ def cli(
     finally:
         log.info("Stopping acquisition...")
         if not nocleanup:
-            with Pool(16) as p:
-                output = p.imap(partial(stop_beam, basepath=basepath), active_beams)
-                for out in output:
-                    log.info(out)
+            procs = stop_all_beams(active_beams, basepath)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -349,7 +353,4 @@ def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str):
         active_beams.intersection_update(host_beams)
     log.info("Stopping beams: %s", sorted(list(active_beams)))
     sorted_active_beams = sorted(list(active_beams))
-    with Pool(32) as p:
-        output = p.imap(partial(stop_beam, basepath=basepath), sorted_active_beams)
-        for out in output:
-            log.info(out)
+    procs = stop_all_beams(sorted_active_beams, basepath)
