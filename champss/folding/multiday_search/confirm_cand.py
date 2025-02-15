@@ -96,6 +96,9 @@ def main(
         fold_dates = [entry["date"].date() for entry in source.folding_history]
         fold_SN = [entry["SN"] for entry in source.folding_history]
         archives = [entry["archive_fname"] for entry in source.folding_history]
+        if len(archives) < 2:
+            log.error(f"Source {fs_id} does not have more than 1 archive required to run the search, exiting...")
+            return
     else:
         log.error(f"Source {fs_id} has no folding history in db, exiting...")
         return
