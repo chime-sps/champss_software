@@ -44,7 +44,13 @@ from sps_databases import db_api, db_utils
     "--phase_accuracy",
     type=float,
     default=1.0 / 64,
-    help="required accuracy in pulse phase, which determines step size",
+    help="Required accuracy in pulse phase, which determines step size.",
+)
+@click.option(
+    "--nday",
+    default=0,
+    type=int,
+    help="Number of days to search. Default is to search all available archives."
 )
 @click.option(
     "--write-to-db",
@@ -62,6 +68,7 @@ def main(
     db_host,
     db_name,
     phase_accuracy,
+    nday,
     write_to_db=False,
     check_cands=False,
 ):
@@ -89,10 +96,19 @@ def main(
         fold_dates = [entry["date"].date() for entry in source.folding_history]
         fold_SN = [entry["SN"] for entry in source.folding_history]
         archives = [entry["archive_fname"] for entry in source.folding_history]
+        if len(archives) < 2:
+            log.error(f"Source {fs_id} does not have more than 1 archive required to run the search, exiting...")
+            return
     else:
         log.error(f"Source {fs_id} has no folding history in db, exiting...")
         return
-
+    if nday:
+        fold_dates = fold_dates[:nday]
+        fold_SN = fold_SN[:nday]
+        archives = archives[:nday]
+    print(fold_dates)
+    print(fold_SN)
+    print(archives)
     par_file = source.path_to_ephemeris
     par_vals = read_par(par_file)
     DM_incoherent = par_vals["DM"]
@@ -122,7 +138,7 @@ def main(
     M_f0 = int(np.max((M_f0, 1)))  # To make sure M_f0 does not return 0
     # factor of 2, since we reference to central observation
     f0_points = 2 * int(delta_f0max * T * npbin / M_f0)
-    f1_points = 2 * int(0.5 * delta_f1max * T**2 * npbin / M_f0)
+    f1_points = 2 * int(np.max((0.5 * delta_f1max * T**2 * npbin / M_f0, 1)))
 
     print(f"Running search with {f0_points} f0 bins, {f1_points} f1 bins")
     explore_grid = ExploreGrid(data, f0_lims, f1_lims, f0_points, f1_points)

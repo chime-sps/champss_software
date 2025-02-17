@@ -58,9 +58,9 @@ log = logging.getLogger(__name__)
 )
 @click.option(
     "--nday",
-    default=10,
+    default=0,
     type=int,
-    help="Number of days to fold.",
+    help="Number of days to fold and search. Default will fold and search all available days.",
 )
 @click.option(
     "--use-workflow",
@@ -162,6 +162,7 @@ def main(
             "db_host": db_host,
             "db_port": db_port,
             "db_name": db_name,
+            "nday": nday,
             "write_to_db": True,
         }
         workflow_tags = [
@@ -218,6 +219,8 @@ def main(
                 db_name,
                 "--db-host",
                 db_host,
+                "--nday",
+                nday,
             ],
             standalone_mode=False,
         )
