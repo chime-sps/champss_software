@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 import logging
 import re
 import time
@@ -71,6 +72,8 @@ def save_container_logs(service):
     """
 
     try:
+        docker_client = docker.from_env()
+        
         clean_pattern = re.compile(r'^\S+\s+')
         
         log_text = ""
@@ -86,8 +89,18 @@ def save_container_logs(service):
             log_text += clean_line + "\n"
 
         path = f"/data/chime/sps/logs/services/{service.name}.log"
+        
         with open(path, "w") as file:
             file.write(log_text)
+            
+        for task in service.tasks():
+            task_id = task["ID"]
+            task_inspection = docker_client.api.inspect_task(task_id)
+            task_inspection_json = json.dumps(task_inspection, indent=4)
+            
+        with open(path, "a") as file:
+            file.write(task_inspection_json)
+            
     except Exception as error:
         log.info(f"Error dumping logs at {path}: {error} (will skip gracefully).")
 
