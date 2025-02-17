@@ -3,13 +3,36 @@ import os
 import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from scipy.constants import c
+from scipy.optimize import curve_fit
 from astropy.time import Time
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
 from matplotlib.gridspec import GridSpec
 from sps_databases.db_api import get_nearby_known_sources
 from sps_multi_pointing.known_source_sifter import known_source_filters
+from multiday_search.phase_aligned_search import phase_loop
 
-
+def compute_accel_steps(dts, f0, npbin, vmax=500*u.km/u.s, Pbmin=2*u.hour, phase_accuracy=1./256):    
+    P = 1./f0
+    dphase = P/npbin
+    M_f0 = npbin * phase_accuracy
+    M_f0 = int(np.max((M_f0, 1)))  # To make sure M_f0 does not return 0
+    
+    dfmax = f0*(vmax/(c*u.m/u.s)).decompose()
+    f1max = (2*np.pi*dfmax*u.Hz/Pbmin).to(u.s**-2).value
+    dfmax = dfmax.value
+    
+    # factor of 2, since we reference to central observation
+    Tobs = max(dts) - min(dts)
+    f0_points = 2 * int(dfmax * Tobs * npbin / M_f0)
+    f1_points = 2 * int(0.5 * f1max * Tobs**2 * npbin / M_f0)
+    
+    f0s = np.linspace(-dfmax, dfmax, f0_points, endpoint=True)
+    f1s = np.linspace(-f1max, f1max, f1_points, endpoint=True)
+    print(f"Acceleration search with {len(f0s)} F0, {len(f1s)} F1 trials")
+    return f0s, f1s
+    
 def plot_candidate_archive(
     fn,
     sigma,
@@ -18,11 +41,12 @@ def plot_candidate_archive(
     ra,
     dec,
     coord_path,
+    accel_search=True,
+    dm_search=True,
     known=" ",
-    foldpath="/data/chime/sps/archives",
+    foldpath="/data/chime/sps/archives/plots/folded_candidate_plots",
 ):
     data, F, T, psr, tel = readpsrarch(fn)
-    print(data.shape)
 
     fs, flag, mask, bg, bpass = clean_foldspec(data.squeeze())
     taxis = ((T - T[0]) * u.day).to(u.min)
@@ -40,29 +64,184 @@ def plot_candidate_archive(
     fs_bin = np.nanmean(
         fs_bin.reshape(fs_bin.shape[0], fs_bin.shape[1] // binf, binf, -1), 2
     )
+    fs_bin[np.isnan(fs_bin)] = 0
+
+    fig = plt.figure(figsize=(24, 20))
+
+    gs = GridSpec(28, 36)
+
+    ax0 = fig.add_subplot(gs[0:4, 0:9])  
+    ax1 = fig.add_subplot(gs[4:16, 0:9])  
+    ax2 = fig.add_subplot(gs[16:, 0:9])  
+    
+    ax3top = fig.add_subplot(gs[8, 11:17])
+    ax3 = fig.add_subplot(gs[9:17, 11:17])
+    ax3left = fig.add_subplot(gs[9:17, 10])
+
+    ax4top = fig.add_subplot(gs[19, 11:17])
+    ax4 = fig.add_subplot(gs[20:, 11:17])
+    ax4left = fig.add_subplot(gs[20:, 10])  
+
+    axtext = fig.add_subplot(gs[0, 0]) 
+    axtext.axis("off")
+    ax_kstext = fig.add_subplot(gs[7, 10:17])
+    ax_kstext.axis("off")
+
+    plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
+
+    if accel_search:
+        dts = taxis.to(u.s).value
+        dts = dts - np.median(dts)
+        npbin = fs_bin.shape[-1]
+        f0s, f1s = compute_accel_steps(dts, f0, npbin)
+        
+        prof2D = np.mean(fs_bin.squeeze(), 1)
+        chi2_grid = phase_loop(prof2D, dts, f0s, f1s)
+        i_f0, i_f1 = np.unravel_index(np.argmax(chi2_grid), chi2_grid.shape)
+        f0_best = f0s[i_f0]
+        f1_best = f1s[i_f1]
+        f0_slice = chi2_grid[:,i_f1]
+        f1_slice = chi2_grid[i_f0]
+        
+        npbin = fs_bin.shape[-1]
+        dphis = f0_best * dts + 0.5 * f1_best * dts**2
+        i_phis = (dphis * npbin).astype("int")
+        for i in range(fs_bin.shape[0]):
+            fs_bin[i] = np.roll(fs_bin[i], -i_phis[i], axis=-1)
+
+        ax3.pcolormesh(f0s, f1s, chi2_grid.T)
+        ax3.scatter(f0_best, f1_best, color='w', marker='*')
+        ax3top.plot(f0s, f0_slice)
+        ax3left.plot(-f1_slice, f1s)
+        ax3left.set_yticks([])
+        ax3left.set_xticks([])
+        ax3top.set_xticks([])
+        ax3top.set_yticks([])
+        ax3.yaxis.tick_right()
+        ax3.yaxis.set_label_position("right")
+        ax3.set_ylabel('F1 (Hz/s)', fontsize=16)
+        ax3.set_xlabel(r'$\Delta$F0 (Hz)', fontsize=16)
+        ax3top.set_xlim(min(f0s), max(f0s))
+        ax3left.set_ylim(min(f1s), max(f1s))
+    
+        F1_scinot = ax3.yaxis.get_offset_text()
+        F1_scinot.set_x(1.15)
+
+        def gaussian(x, x0, sigma, A, C):
+            return A*np.exp( -(x-x0)**2/(2*sigma**2) ) + C
+        try:
+            p0 = [ f0s[np.argmax(f0s)], 0.0002, np.max(f0_slice)-np.median(f0_slice), np.median(f0_slice) ]
+            popt, pcov = curve_fit(gaussian, f0s, f0_slice, p0=p0)
+            w = popt[1]
+            xerr = np.sqrt(pcov[0][0])
+        except:
+            print("Fit bad")
+            w = 0.0002
+    else: 
+        ax3.axis("off")
+        ax3top.axis("off")
+        ax3left.axis("off")
+
+    if dm_search:
+        freq = F[::binf]
+        f_ref = np.max(freq)
+        dDM = 0.125
+        nDM = int(np.ceil(2*dm/dDM))
+        DMs = np.linspace(0, nDM*dDM, nDM)
+        DMs -= np.mean(DMs)
+        P = (1/f0)*u.s
+        fs_fp = fs_bin.mean(0)
+        DMprofs = np.zeros((nDM, fs_bin.shape[-1]))
+
+        for i,DMi in enumerate(DMs):        
+            t_delay = (1/2.41e-4) * DMi * (1./f_ref**2 - 1./freq**2)
+            pshifts = (t_delay/P).decompose().value
+            pshifts = (pshifts*npbin).astype('int')
+            
+            fs_shifted = np.zeros_like(fs_fp)
+            for j,p in enumerate(pshifts):
+                fs_shifted[j] = np.roll(fs_fp[j], int(pshifts[j]))
+            DMprofs[i] = fs_shifted.mean(0)
+
+        DMprofs = np.tile(DMprofs, (1,2))
+        DM_slice = np.max(DMprofs, axis=-1)
+        DM_prof = DMprofs[np.argmax(DM_slice)]
+
+        ax4.pcolormesh(np.linspace(0,2,2*npbin), dm+DMs, DMprofs)
+        ax4left.plot(-DM_slice, dm+DMs)
+        ax4top.plot(np.linspace(0,2, len(DM_prof)), DM_prof)
+        ax4left.set_yticks([])
+        ax4left.set_xticks([])
+        ax4top.set_xticks([])
+        ax4top.set_yticks([])
+        ax4.yaxis.tick_right()
+        ax4.yaxis.set_label_position("right")
+        ax4.set_xlabel('Phase', fontsize=16)
+        ax4.set_ylabel(r'DM (pc cm$^3$)', fontsize=16)
+        ax4top.set_xlim(0, 2)
+        ax4left.set_ylim(min(dm+DMs), max(dm+DMs))
+
+    else: 
+        ax4.axis("off")
+        ax4top.axis("off")
+        ax4left.axis("off")
+        
 
     profile = np.nanmean(np.nanmean(fs_bin, 0), 0)
     SNR_val, SNprof = get_SN(profile, return_profile=True)
+    fs_bin = np.tile(fs_bin, (1,2))
+    SNprof = np.tile(SNprof, 2)
 
     vfmin = np.nanmean(fs_bin) - 1 * np.nanstd(np.nanmean(fs_bin, 0))
     vfmax = np.nanmean(fs_bin) + 3 * np.nanstd(np.nanmean(fs_bin, 0))
     vtmin = np.nanmean(fs_bin) - 1 * np.nanstd(np.nanmean(fs_bin, 1))
     vtmax = np.nanmean(fs_bin) + 3 * np.nanstd(np.nanmean(fs_bin, 1))
 
-    fig = plt.figure(figsize=(12, 8))
 
-    gs = GridSpec(3, 3, height_ratios=[1, 2, 2])
+    radius = 5 
+    pos_diffs = []
+    sources = get_nearby_known_sources(ra, dec, radius)
+    remove_idx = []
+    for i, pulsar1 in enumerate(sources):
+        for j, pulsar2 in enumerate(sources):
+            if i != j: 
+                if np.abs(pulsar1.dm - pulsar2.dm) < 10:
+                    if np.abs(pulsar1.spin_period_s - pulsar2.spin_period_s) < 0.1:
+                        if np.abs(pulsar1.pos_dec_deg - pulsar2.pos_dec_deg) < 1:
+                            if np.abs(pulsar1.pos_ra_deg - pulsar2.pos_ra_deg) < 1:
+                                if pulsar1.survey[-1] != 'psr_scraper': 
+                                    remove_idx.append(j)
+                                else:
+                                    remove_idx.append(i)
+    sources = np.delete(sources, remove_idx)
+    for source in sources:
+        pos_diff = known_source_filters.angular_separation(ra, dec, source.pos_ra_deg, source.pos_dec_deg)[1]
+        pos_diffs.append(pos_diff)
+    i_order = np.argsort(pos_diffs)
+    sources_ordered = [sources[i] for i in i_order]
 
-    ax0 = fig.add_subplot(gs[0, 0])  # First row, first column
-    ax1 = fig.add_subplot(gs[1:, 0])  # Second and third rows, first column
-    ax2 = fig.add_subplot(gs[1:, 1])  # Second and third rows, second column
+    num_ks = 16 # Max number of ks displayed in table
+    ks_params = []
+    for source in sources_ordered:
+        ks_name = source.source_name
+        ks_epoch = source.spin_period_epoch
+        ks_ra = round(source.pos_ra_deg, 2)
+        ks_dec = round(source.pos_dec_deg, 2)
+        ks_f0 = round(1 / source.spin_period_s, 4)
+        ks_dm = round(source.dm, 2)
+        ks_survey = source.survey[:1]
+        if not ks_survey:
+            ks_survey = ['N/A']
+        pos_diff = known_source_filters.angular_separation(ra, dec, source.pos_ra_deg, source.pos_dec_deg)[1]
+        if np.abs(dm - ks_dm) < dm/10.:
+            ks_param = [ks_name, round(pos_diff, 2), ks_ra, ks_dec, ks_f0, ks_dm, ks_survey[0]]
+            if len(ks_params) < num_ks:
+                ks_params.append(ks_param)
+    
+    ks_text = f"Closest {len(ks_params)} known sources within {radius} degrees, $\Delta$DM < 10%\n"
 
-    ax3 = fig.add_subplot(gs[0, 1])  # First row, first column
-    ax3.axis("off")
-
-    plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
-
-    ax0.set_title(f"{psr} {T0.isot[:10]}", fontsize=18)
+    column_labels=["Name", "$\Delta Pos.$", "RA", "Dec", "F0", "DM", "Survey(s)"]
+    df=pd.DataFrame(ks_params,columns=column_labels)
 
     ax1.imshow(
         np.nanmean(fs_bin, 0),
@@ -70,7 +249,7 @@ def plot_candidate_archive(
         interpolation="nearest",
         vmin=vfmin,
         vmax=vfmax,
-        extent=[0, 1, F[-1], F[1]],
+        extent=[0, 2, F[-1], F[1]],
     )
     ax2.imshow(
         np.nanmean(fs_bin, 1),
@@ -79,92 +258,72 @@ def plot_candidate_archive(
         vmin=vtmin,
         vmax=vtmax,
         origin="lower",
-        extent=[0, 1, 0, max(taxis.to(u.min).value)],
+        extent=[0, 2, 0, max(taxis.to(u.min).value)],
     )
 
-    ax1.set_ylabel("Frequency (MHz)", fontsize=18)
-    ax1.set_xlabel("Phase", fontsize=18)
+    ax1.set_ylabel("Obs Frequency (MHz)", fontsize=16)
+    ax1.set_xticks([])
 
-    ax2.set_ylabel("Time (min)", fontsize=18)
-    ax2.set_xlabel("Phase", fontsize=18)
-    ax2.yaxis.tick_right()
-    ax2.yaxis.set_label_position("right")
+    ax2.set_ylabel("Time (min)", fontsize=16)
+    ax2.set_xlabel("Phase", fontsize=16)
 
-    phaseaxis = np.linspace(0, 1, ngate, endpoint=False)
+    phaseaxis = np.linspace(0, 2, 2*ngate, endpoint=False)
+    dp = phaseaxis[1] - phaseaxis[0]
+    phaseaxis += dp/2.
     ax0.plot(phaseaxis, SNprof)
-    ax0.set_xlim(0, 1)
+    ax0.set_xlim(0, 2)
     ax0.set_xticks([])
-    if known.strip():
-        print(f"Known pulsar {known} detected")
-        parameters_text = (
-            f"{known} \n"
-            f"Incoherent $\\sigma$: {sigma:.2f}\n"
-            f"Folded $\\sigma$: {SNR_val:.2f}\n"
-            f"RA (deg): {ra:,.5g}\n"
-            f"DEC (deg): {dec:,.5g}\n"
-            f"DM: {dm:.2f}\n"
-            f"f0: {f0}"
-        )
-        txt_height = 1.4
-    else:
-        parameters_text = (
-            f"Incoherent $\\sigma$: {sigma:.2f}\n"
-            f"Folded $\\sigma$: {SNR_val:.2f}\n"
-            f"RA (deg): {ra:,.5g}\n"
-            f"DEC (deg): {dec:,.5g}\n"
-            f"DM: {dm:.2f}\n"
-            f"f0: {f0}"
-        )
-        txt_height = 1.3
-
-    ax3.text(
-        0.0,
-        txt_height,
+    if sigma is not None:
+        sigma = round(sigma, 2)
+    parameters_text = (
+        rf"{psr} $\quad \quad$"
+        f"Date: {T0.isot[:10]} \n"
+        rf"RA (deg): {ra:,.5g} $\quad \quad$"
+        f"f0: {f0:.5f} $\quad \quad$"
+        f"Incoh. $\\sigma$: {sigma:.2f} \n"
+        rf"DEC (deg): {dec:,.5g} $\quad \quad$"
+        f"DM: {dm:.2f} $\quad \quad$"
+        f"Folded $\\sigma$: {SNR_val:.2f}"
+    )
+ 
+    axtext.text(
+        0,
+        1,
         parameters_text,
         fontsize=10,
-        va="top",
+        va="bottom",
         ha="left",
-        backgroundcolor="white",
+        transform=axtext.transAxes,
     )
 
-    radius = 5
-    sources = get_nearby_known_sources(ra, dec, radius)
+    ax_kstext.text(
+        0,
+        0.8,
+        ks_text,
+        fontsize=8,
+        va="top",
+        ha="left",
+        transform=ax_kstext.transAxes,
+    )
 
-    ks_text = [f"Known sources within {radius} degrees\n"]
-    source_texts = []
-    for source in sources:
-        ks_name = source.source_name
-        ks_epoch = source.spin_period_epoch
-        ks_ra = round(source.pos_ra_deg, 2)
-        ks_dec = round(source.pos_dec_deg, 2)
-        ks_f0 = round(1 / source.spin_period_s, 4)
-        ks_dm = round(source.dm, 2)
-        ks_survey = source.survey
-        pos_diff = known_source_filters.angular_separation(ra, dec, ks_ra, ks_dec)[1]
-        source_texts.append(
-            [
-                pos_diff,
-                (
-                    f"{ks_name}: pos_diff={pos_diff:.4f}, ra={ks_ra}, dec={ks_dec},"
-                    f" dm={ks_dm}, f0={ks_f0}, survey={ks_survey} \n"
-                ),
-            ]
-        )
-    source_texts.sort(key=lambda x: x[0])
-    ks_text.extend([text[1] for text in source_texts])
-    ks_text = " ".join(ks_text)
+    param_table = ax_kstext.table(cellText=df.values,
+            colLabels=df.columns,
+            colColours =["lavender"] * len(df.columns),
+            cellLoc='left',
+            loc="top")
+    param_table.auto_set_font_size(False)
+    param_table.set_fontsize(8)
+    param_table.auto_set_column_width(col=list(range(len(df.columns))))
 
-    ax3.text(1.25, 1.2, ks_text, fontsize=8, ha="left", va="top")
+    plt.savefig(coord_path + f"/{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png", dpi=fig.dpi, bbox_inches='tight')
 
-    plt.savefig(coord_path + f"/{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png")
-
-    img_path = f"{foldpath}/plots/folded_candidate_plots/{T0.isot[:10]}-plots/"
+    img_path = f"{foldpath}/{T0.isot[:10]}-plots/"
     if not os.path.exists(img_path):
         os.makedirs(img_path)
     else:
         print(f"Directory '{img_path}' already exists.")
     plot_fname = img_path + f"{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png"
-    plt.savefig(plot_fname)
+    plt.savefig(plot_fname, dpi=fig.dpi, bbox_inches='tight')
     plt.close()
 
     return SNprof, SNR_val, plot_fname
