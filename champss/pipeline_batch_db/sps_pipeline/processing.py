@@ -6,7 +6,9 @@ import signal
 import sys
 import time
 import traceback
+from functools import partial
 from glob import glob
+from multiprocessing import Pool
 
 import click
 import docker
@@ -313,6 +315,9 @@ def find_all_pipeline_processes(
     date = convert_date_to_datetime(date)
 
     log.setLevel(logging.INFO)
+    import multiprocessing
+
+    multiprocessing.set_start_method("forkserver", force=True)
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     strat = PointingStrategist(create_db=False)
     if not date:
@@ -332,7 +337,7 @@ def find_all_pipeline_processes(
     info = []
     for day in all_days:
         log.info(f"Creating processes for {day}.")
-        beam = np.arange(0, 224)
+        beams = np.arange(0, 224)
         total_processes_day = 0
         split_day = day.split("/")
         date = dt.datetime(int(split_day[-3]), int(split_day[-2]), int(split_day[-1]))
@@ -346,57 +351,58 @@ def find_all_pipeline_processes(
         try:
             first_coordinates = None
             last_coordinates = None
-            for b in beam:
-                datlist = sorted(glob(os.path.join(day, str(b).zfill(4), "*.dat")))[:]
-                start_times, end_times = get_pointings_from_list(datlist)
-                for i in range(len(start_times)):
-                    active_pointings = strat.get_pointings(
-                        start_times[i], end_times[i], np.asarray([b])
+            with Pool(32) as pool:
+                active_pointings_list = pool.map(
+                    partial(
+                        find_processes,
+                        day=day,
+                        strat=strat,
+                        full_transit=full_transit,
+                        db_name=db_name,
+                        db_host=db_host,
+                        db_port=db_port,
+                    ),
+                    beams,
+                )
+                active_pointings = [
+                    ap for ap_list in active_pointings_list for ap in ap_list
+                ]
+
+            if len(active_pointings) >= 1:
+                first_coordinates = (
+                    active_pointings[0].ra,
+                    active_pointings[0].dec,
+                )
+                last_coordinates = (
+                    active_pointings[-1].ra,
+                    active_pointings[-1].dec,
+                )
+            for ap in active_pointings:
+                existing_proc = proc_dict.get(ap.pointing_id, {})
+                if not existing_proc:
+                    process = db_api.get_process_from_active_pointing(
+                        ap, assume_new=True
                     )
-                    if full_transit:
-                        new_active_pointings = []
-                        for ap in active_pointings:
-                            if (
-                                ap.max_beams[0]["utc_start"] >= start_times[i]
-                                and ap.max_beams[-1]["utc_end"] <= end_times[i]
-                            ):
-                                new_active_pointings.append(ap)
-                        active_pointings = new_active_pointings
-                    if len(active_pointings) >= 1:
-                        first_coordinates = (
-                            active_pointings[0].ra,
-                            active_pointings[0].dec,
-                        )
-                        last_coordinates = (
-                            active_pointings[-1].ra,
-                            active_pointings[-1].dec,
-                        )
-                        for ap in active_pointings:
-                            existing_proc = proc_dict.get(ap.pointing_id, {})
-                            if not existing_proc:
-                                process = db_api.get_process_from_active_pointing(
-                                    ap, assume_new=True
-                                )
-                            else:
-                                process = models.Process.from_db(existing_proc)
-                            total_processes_day += 1
-                            if (
-                                process.is_in_stack == False
-                                and process.quality_label != False
-                                and process.nchan < 16000
-                            ):
-                                memory_needed = int(4 + ((process.maxdm / 100) * 4))
-                                cores_needed = int(memory_needed / 3)
-                                info.append(
-                                    {
-                                        "ra": process.ra,
-                                        "dec": process.dec,
-                                        "maxdm": process.maxdm,
-                                        "nchan": process.nchan,
-                                        "memory_needed": memory_needed,
-                                        "cores_needed": cores_needed,
-                                    }
-                                )
+                else:
+                    process = models.Process.from_db(existing_proc)
+                total_processes_day += 1
+                if (
+                    process.is_in_stack == False
+                    and process.quality_label != False
+                    and process.nchan < 16000
+                ):
+                    memory_needed = int(4 + ((process.maxdm / 100) * 4))
+                    cores_needed = int(memory_needed / 3)
+                    info.append(
+                        {
+                            "ra": process.ra,
+                            "dec": process.dec,
+                            "maxdm": process.maxdm,
+                            "nchan": process.nchan,
+                            "memory_needed": memory_needed,
+                            "cores_needed": cores_needed,
+                        }
+                    )
             total_processes += total_processes_day
             log.info(f"{total_processes_day} available processes created for {day}.")
             log.info(f"First coordinates : {first_coordinates}")
@@ -406,6 +412,26 @@ def find_all_pipeline_processes(
             log.info(f"Can't create processes for {day}")
     log.info(f"{total_processes} available processes in total.")
     return {"info": info}, [], []
+
+
+def find_processes(beam, day, strat, full_transit, db_name, db_host, db_port):
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+    datlist = sorted(glob(os.path.join(day, str(beam).zfill(4), "*.dat")))[:]
+    start_times, end_times = get_pointings_from_list(datlist)
+    for i in range(len(start_times)):
+        active_pointings = strat.get_pointings(
+            start_times[i], end_times[i], np.asarray([beam])
+        )
+        if full_transit:
+            new_active_pointings = []
+            for ap in active_pointings:
+                if (
+                    ap.max_beams[0]["utc_start"] >= start_times[i]
+                    and ap.max_beams[-1]["utc_end"] <= end_times[i]
+                ):
+                    new_active_pointings.append(ap)
+            active_pointings = new_active_pointings
+    return active_pointings
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
