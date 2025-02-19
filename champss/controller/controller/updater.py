@@ -2,10 +2,13 @@ import datetime as dt
 import heapq
 import logging
 import math
+import os
+import signal
 import subprocess  # nosec
 
 import pytz
 import trio
+from controller import rpc_client
 from controller.l1_rpc import get_beam_ip
 
 log = logging.getLogger("issuer")
@@ -30,6 +33,16 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
     scheduled_updates = []  # priority queue of the beam update schedule
     beam_active = {}  # map of this task's beam's active pointings to their nchans
     done = False
+    max_combined_age = 600
+    allowed_timeout = 10
+    client = rpc_client.RpcClient({})
+    last_update = dt.datetime.utcnow().replace(tzinfo=pytz.utc).timestamp()
+
+    # Quick and dirty way of changing mount name
+    local_path = basepath.replace("/sps-archiver2/", "/mnt/beegfs-client/").replace(
+        "/sps-archiver1/", "/data/"
+    )
+
     async with new_pointing_listen:
         async with pointing_done_announce:
             while scheduled_updates or not done:
@@ -57,8 +70,13 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                             log.debug("No more pointing updates")
                             done = True
                         continue  # back to the top of the scheduling loop
-
                 b = heapq.heappop(scheduled_updates)
+                # Alternatively could also initialize client here, since each instance only contains one beam
+                # Shouls not make a difference
+                if b.beam not in client.servers:
+                    log.debug(f"Will try adding server {b.beam}")
+                    client.add_server(b.beam, f"tcp://{get_beam_ip(b.beam)}:5555")
+                    log.debug(f"Added server {b.beam}")
                 log.debug(
                     "Next pointing %d / %04d @ %.1f - %s",
                     b.id,
@@ -79,7 +97,45 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                         time_to_next_update,
                     )
                     await trio.sleep(time_to_next_update)
-
+                now = dt.datetime.utcnow().replace(tzinfo=pytz.utc).timestamp()
+                data_folder = (
+                    local_path
+                    + dt.datetime.utcnow().strftime("/%Y/%m/%d/")
+                    + f"{str(b.beam).zfill(4)}"
+                )
+                # update_age makes sure that in the case of a file writing error, the cal to restart
+                # writing is not repeated all the time
+                update_age = now - last_update
+                try:
+                    folder_age = now - os.path.getmtime(data_folder)
+                except FileNotFoundError:
+                    log.warning(f"Data Folder {data_folder} not found")
+                    # Check previous day because I am not sure how it performs at the date change
+                    previous_data_folder = (
+                        local_path
+                        + (dt.datetime.utcnow() - dt.timedelta(days=1)).strftime(
+                            "/%Y/%m/%d/"
+                        )
+                        + f"{str(b.beam).zfill(4)}"
+                    )
+                    try:
+                        folder_age = now - os.path.getmtime(data_folder)
+                        log.info(
+                            "Checked age of data older of previous day:"
+                            f" {previous_data_folder}"
+                        )
+                    except FileNotFoundError:
+                        folder_age = max_combined_age + 1
+                # Only update if folder and recent update are old, otherwise, will perform too many calls
+                combined_age = min(update_age, folder_age)
+                if combined_age > max_combined_age:
+                    log.warning(
+                        f"Folder {data_folder} is too old ({folder_age:.2f}) or was not"
+                        " found."
+                    )
+                    update_and_folder_too_old = True
+                else:
+                    update_and_folder_too_old = False
                 if b.activate:
                     max_nchans = max(beam_active.values()) if beam_active else 0
                     beam_active[b.id] = b.nchans
@@ -94,34 +150,28 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     # We want to save using the maximum number
                     # of channels required by all the currently
                     # active pointings
-                    if new_max_nchans != max_nchans:
-                        log.info(
-                            "INCREASE %04d: %d -> %d",
-                            b.beam,
-                            max_nchans,
-                            new_max_nchans,
-                        )
+                    if new_max_nchans != max_nchans or update_and_folder_too_old:
                         try:
-                            output = subprocess.run(
-                                [
-                                    "rpc-client --spulsar-writer-params"
-                                    f" {b.beam} {new_max_nchans} 1024 5"
-                                    f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
-                                ],
-                                shell=True,  # nosec
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                # capture_output=True,
-                                # text=True,
-                                timeout=20,
+                            with timeout(
+                                allowed_timeout,
+                                error_message=f"Unable to update beam {b.beam}",
+                            ):
+                                last_update = now
+                                output = client.set_spulsar_writer_params(
+                                    b.beam,
+                                    new_max_nchans,
+                                    1024,
+                                    5,
+                                    basepath,
+                                    timeout=-1,
+                                    servers=[b.beam],
+                                )
+                                log.debug(output)
+                        except TimeoutError as te:
+                            log.warning(
+                                f"Could not update beam {b.beam}. rpc-client timed out."
                             )
-                        except TimeoutError as e:
-                            log.info(e)
-                            output = f"Unable to run rpc-client on {b.beam}"
-                        except subprocess.TimeoutExpired as e:
-                            log.info(e)
-                            output = f"Unable to run rpc-client on {b.beam}"
-                        log.info(output)
+
                 else:
                     # Remove the pointing from the beam's active list
                     max_nchans = max(beam_active.values())
@@ -138,7 +188,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                             b.nchans,
                         )
                         new_max_nchans = max(beam_active.values())
-                        if new_max_nchans != max_nchans:
+                        if new_max_nchans != max_nchans or update_and_folder_too_old:
                             log.info(
                                 "REDUCE %04d: %d -> %d",
                                 b.beam,
@@ -146,26 +196,26 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                 new_max_nchans,
                             )
                             try:
-                                output = subprocess.run(
-                                    [
-                                        "rpc-client --spulsar-writer-params"
-                                        f" {b.beam} {new_max_nchans} 1024 5"
-                                        f" {basepath} tcp://{get_beam_ip(b.beam)}:5555"
-                                    ],
-                                    shell=True,  # nosec
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT,
-                                    # capture_output=True,
-                                    # text=True,
-                                    timeout=20,
+                                with timeout(
+                                    allowed_timeout,
+                                    error_message=f"Unable to update beam {b.beam}",
+                                ):
+                                    last_update = now
+                                    output = client.set_spulsar_writer_params(
+                                        b.beam,
+                                        new_max_nchans,
+                                        1024,
+                                        5,
+                                        basepath,
+                                        timeout=-1,
+                                        servers=[b.beam],
+                                    )
+                                    log.debug(output)
+                            except TimeoutError as te:
+                                log.warning(
+                                    f"Could not update beam {b.beam}. rpc-client timed"
+                                    " out."
                                 )
-                            except TimeoutError as e:
-                                log.info(e)
-                                output = f"Unable to run rpc-client on {b.beam}"
-                            except subprocess.TimeoutExpired as e:
-                                log.info(e)
-                                output = f"Unable to run rpc-client on {b.beam}"
-                            log.info(output)
 
                         # After the last beam has completed,
                         # we can announce to the listeners
@@ -176,3 +226,20 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                     else:
                         # No more active pointings, turn the beam off
                         log.info("OFF %d / %04d", b.id, b.beam)
+
+
+class timeout:
+    # Taken from https://stackoverflow.com/a/22348885
+    def __init__(self, seconds=1, error_message="Timeout"):
+        self.seconds = seconds
+        self.error_message = error_message
+
+    def handle_timeout(self, signum, frame):
+        raise TimeoutError(self.error_message)
+
+    def __enter__(self):
+        signal.signal(signal.SIGALRM, self.handle_timeout)
+        signal.alarm(self.seconds)
+
+    def __exit__(self, type, value, traceback):
+        signal.alarm(0)

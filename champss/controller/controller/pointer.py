@@ -100,6 +100,11 @@ async def generate_pointings(
             log.info(
                 "Wait %d s to calculate the next pointing batch", time_to_next_update
             )
+            if time_to_next_update == 0:
+                log.error(
+                    f"Time to next update is {time_to_next_update}. Pointing map will"
+                    " not have right channel number."
+                )
             await trio.sleep(time_to_next_update)
 
 
@@ -180,7 +185,8 @@ async def update_pointing_schedule(
             beam_schedule_channel = send_channels[b["beam"]]
             if b["utc_end"] + 10 > now:
                 # add 20 seconds buffer to before start and 10s after end time of the beam transits
-                log.info(
+                # Added this log statement to debug for now
+                log.debug(
                     "Schedule pointing %d / %04d (%.2f, %.2f) @ %d - %d",
                     i,
                     b["beam"],
