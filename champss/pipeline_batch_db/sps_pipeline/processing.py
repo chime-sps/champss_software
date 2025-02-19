@@ -313,7 +313,7 @@ def find_all_pipeline_processes(
     date = convert_date_to_datetime(date)
 
     log.setLevel(logging.INFO)
-    db_utils.connect(host=db_host, port=db_port, name=db_name)
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     strat = PointingStrategist(create_db=False)
     if not date:
         all_days = glob(os.path.join(datpath, "*/*/*"))
@@ -334,6 +334,15 @@ def find_all_pipeline_processes(
         log.info(f"Creating processes for {day}.")
         beam = np.arange(0, 224)
         total_processes_day = 0
+        split_day = day.split("/")
+        date = dt.datetime(int(split_day[-3]), int(split_day[-2]), int(split_day[-1]))
+        end_date = date + dt.timedelta(days=1)
+        old_proc = list(
+            db.processes.find({"datetime": {"$gte": date, "$lte": end_date}})
+        )
+        proc_dict = {}
+        for proc in old_proc:
+            proc_dict[str(proc["pointing_id"])] = proc
         try:
             first_coordinates = None
             last_coordinates = None
@@ -363,7 +372,13 @@ def find_all_pipeline_processes(
                             active_pointings[-1].dec,
                         )
                         for ap in active_pointings:
-                            process = db_api.get_process_from_active_pointing(ap)
+                            existing_proc = proc_dict.get(ap.pointing_id, {})
+                            if not existing_proc:
+                                process = db_api.get_process_from_active_pointing(
+                                    ap, assume_new=True
+                                )
+                            else:
+                                process = models.Process.from_db(existing_proc)
                             total_processes_day += 1
                             if (
                                 process.is_in_stack == False

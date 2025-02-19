@@ -1003,7 +1003,7 @@ def delete_followup_source(fs_id):
     return db.followup_sources.find_one_and_delete({"_id": fs_id})
 
 
-def create_process(payload):
+def create_process(payload, assume_new=False):
     """
     Create an `Process` instance and inserts it into the database.
 
@@ -1022,19 +1022,24 @@ def create_process(payload):
     process = Process(**payload)
     doc = process.to_db()
     del doc["_id"]
-    query = {k: doc[k] for k in doc.keys() & {"pointing_id", "datetime"}}
+    if not assume_new:
+        query = {k: doc[k] for k in doc.keys() & {"pointing_id", "datetime"}}
 
-    old_proc = db.processes.find_one(query)
-    if old_proc:
-        doc["status"] = old_proc["status"]
-    rc = db.processes.find_one_and_replace(
-        query, doc, upsert=True, return_document=pymongo.ReturnDocument.AFTER
-    )
-    process._id = rc["_id"]
+        old_proc = db.processes.find_one(query)
+        if old_proc:
+            doc["status"] = old_proc["status"]
+        rc = db.processes.find_one_and_replace(
+            query, doc, upsert=True, return_document=pymongo.ReturnDocument.AFTER
+        )
+        process._id = rc["_id"]
+    else:
+        # Not sure if that ever would cause trouble
+        inserted = db.processes.insert_one(doc)
+        process._id = inserted.inserted_id
     return process
 
 
-def create_process_from_active_pointing(active_pointing):
+def create_process_from_active_pointing(active_pointing, assume_new=False):
     """
     Create a `Process` instance from an active pointing.
 
@@ -1053,19 +1058,25 @@ def create_process_from_active_pointing(active_pointing):
         active_pointing.max_beams[0]["utc_start"]
     ).replace(tzinfo=pytz.UTC)
     date_string = datetime.strftime("%Y/%m/%d")
-    obs = get_observation_date(active_pointing.pointing_id, datetime)
-    if obs is not None:
-        obs_status = obs.status
-        quality_label = obs.add_to_stack
-        if obs_status.value == 2:
-            status = ProcessStatus.complete
+    if not assume_new:
+        obs = get_observation_date(active_pointing.pointing_id, datetime)
+        if obs is not None:
+            obs_status = obs.status
+            quality_label = obs.add_to_stack
+            if obs_status.value == 2:
+                status = ProcessStatus.complete
+            else:
+                status = ProcessStatus.scheduled
         else:
+            obs_status = ObservationStatus.scheduled
+            quality_label = None
             status = ProcessStatus.scheduled
+        is_in_stack = obs_in_stack(obs)
     else:
         obs_status = ObservationStatus.scheduled
         quality_label = None
         status = ProcessStatus.scheduled
-    is_in_stack = obs_in_stack(obs)
+        is_in_stack = False
     doc = {
         "pointing_id": active_pointing.pointing_id,
         "ra": active_pointing.ra,
@@ -1081,7 +1092,7 @@ def create_process_from_active_pointing(active_pointing):
         "is_in_stack": is_in_stack,
         "obs_id": active_pointing.obs_id,
     }
-    process = create_process(doc)
+    process = create_process(doc, assume_new=assume_new)
     return process
 
 
@@ -1162,7 +1173,7 @@ def dequeue_process(process_id):
     )
 
 
-def get_process_from_active_pointing(active_pointing):
+def get_process_from_active_pointing(active_pointing, assume_new=False):
     """
     Find an `Process` instance based on an active pointing.
 
@@ -1180,16 +1191,20 @@ def get_process_from_active_pointing(active_pointing):
     datetime = dt.datetime.utcfromtimestamp(
         active_pointing.max_beams[0]["utc_start"]
     ).replace(tzinfo=pytz.UTC)
-    query = {
-        "datetime": {"$gte": datetime, "$lte": datetime + dt.timedelta(days=1)},
-        "pointing_id": active_pointing.pointing_id,
-    }
-    process = db.processes.find_one(query)
+    if not assume_new:
+        query = {
+            "datetime": {"$gte": datetime, "$lte": datetime + dt.timedelta(days=1)},
+            "pointing_id": active_pointing.pointing_id,
+        }
+        process = db.processes.find_one(query)
+    process = None
     if process:
         if active_pointing.obs_id and process.id:
             process = update_process(process.id, {"obs_id": active_pointing.obs_id})
     else:
-        process = create_process_from_active_pointing(active_pointing)
+        process = create_process_from_active_pointing(
+            active_pointing, assume_new=assume_new
+        )
     return process
 
 
