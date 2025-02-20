@@ -147,7 +147,7 @@ def get_observation(observation_id):
     if isinstance(observation_id, str):
         observation_id = ObjectId(observation_id)
     obs_dic = db.observations.find_one(observation_id)
-    if obs_dic == None:
+    if obs_dic is None:
         raise DatabaseError(
             f"Could not find observation with id {observation_id} in database."
         )
@@ -182,7 +182,7 @@ def update_observation(observation_id, payload):
         return_document=pymongo.ReturnDocument.AFTER,
         upsert=False,
     )
-    if new_obs == None:
+    if new_obs is None:
         raise DatabaseError("Trying to update observation that does not exist.")
     else:
         return new_obs

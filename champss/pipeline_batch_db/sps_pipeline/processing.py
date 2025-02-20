@@ -1,3 +1,5 @@
+"""Functions to enable automatic processing."""
+
 import atexit
 import datetime as dt
 import logging
@@ -17,9 +19,8 @@ import pytz
 from beamformer.strategist.strategist import PointingStrategist
 from folding.filter_mpcandidates import Filter
 from scheduler.utils import convert_date_to_datetime
-from scheduler.workflow import (
+from scheduler.workflow import (  # docker_swarm_pending_states,
     clear_workflow_buckets,
-    docker_swarm_pending_states,
     docker_swarm_running_states,
     get_work_from_results,
     message_slack,
@@ -70,6 +71,7 @@ log = logging.getLogger()
     help="Path for created files during fold step.",
 )
 def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpath):
+    """Find all available folding processes for a given date."""
     log.setLevel(logging.INFO)
 
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -88,7 +90,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
         foldpath=foldpath,
     )
 
-    log.info(f"Candidate filtering complete")
+    log.info("Candidate filtering complete")
 
     # Update FollowUpSources database, then get all ids where active is True
     IDs = []
@@ -188,6 +190,7 @@ def run_all_folding_processes(
     docker_image_name,
     docker_service_name_prefix,
 ):
+    """Run all available folding processes for a given date."""
     date = convert_date_to_datetime(date)
 
     date_string = date.strftime("%Y/%m/%d")
@@ -209,7 +212,10 @@ def run_all_folding_processes(
         formatted_dm = f"{dm:.02f}"
         formatted_id = str(fs_id)
 
-        docker_name = f"{docker_service_name_prefix}-{formatted_ra}-{formatted_dec}-{formatted_date}-{formatted_id}"
+        docker_name = (
+            f"{docker_service_name_prefix}-{formatted_ra}-"
+            f"{formatted_dec}-{formatted_date}-{formatted_id}"
+        )
         docker_memory_reservation = (nchan / 1024) * 8
         docker_image = docker_image_name
         docker_mounts = [
@@ -387,8 +393,8 @@ def find_all_pipeline_processes(
                     process = models.Process.from_db(existing_proc)
                 total_processes_day += 1
                 if (
-                    process.is_in_stack == False
-                    and process.quality_label != False
+                    process.is_in_stack is False
+                    and process.quality_label is not False
                     and process.nchan < 16000
                 ):
                     memory_needed = int(4 + ((process.maxdm / 100) * 4))
@@ -415,7 +421,10 @@ def find_all_pipeline_processes(
 
 
 def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_port):
-    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+    """Multiprocessing enabled function to look for active pointings for a single
+    beam.
+    """
+    db_utils.connect(host=db_host, port=db_port, name=db_name)
     datlist = sorted(glob(os.path.join(day, str(beam).zfill(4), "*.dat")))[:]
     start_times, end_times = get_pointings_from_list(datlist)
     all_active_pointings = []
@@ -612,7 +621,10 @@ def run_all_pipeline_processes(
                         "/data/chime/sps/raw:/data/chime/sps/raw",
                         f"{basepath}:{basepath}",
                     ]
-                    docker_name = f"{docker_service_name_prefix}-{formatted_ra}-{formatted_dec}-{formatted_maxdm}-{formatted_date}"
+                    docker_name = (
+                        f"{docker_service_name_prefix}-{formatted_ra}-"
+                        f"{formatted_dec}-{formatted_maxdm}-{formatted_date}"
+                    )
 
                     workflow_function = "sps_pipeline.pipeline.main"
                     workflow_params = {
@@ -974,7 +986,8 @@ def start_processing_manager(
                     ]
                 )
 
-                # Get the mean number of detections for the day, or just 0 if there are no None observations
+                # Get the mean number of detections for the day,
+                # or just 0 if there are no None observations
                 if len(observations) > 0:
                     mean_detections = round(np.mean(observations))
                 else:
@@ -1285,6 +1298,7 @@ def start_processing_services(
     run_multipointing,
     run_folding,
 ):
+    """Start the processing manager and the cleanup service."""
     # Please run "docker login" in your CLI to allow retrieval of the images
     log.setLevel(logging.INFO)
 
@@ -1345,6 +1359,7 @@ def start_processing_services(
 
 
 def remove_processing_services(signal, frame):
+    """Remove all processing services."""
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
@@ -1377,6 +1392,7 @@ def remove_processing_services(signal, frame):
 
 
 def start_processing_cleanup():
+    """Cleanup by removing old images."""
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
@@ -1389,7 +1405,7 @@ def start_processing_cleanup():
             try:
                 # If the image was pulled from a repository and not locally built:
                 image_name = image.attrs["RepoDigests"][0].split("@")[0]
-            except Exception as e:
+            except Exception:
                 try:
                     # If the image was locally built:
                     image_name = image.attrs["RepoTags"][0].split(":")[0]
