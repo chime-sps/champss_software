@@ -364,9 +364,9 @@ def find_all_pipeline_processes(
                     ),
                     beams,
                 )
-                active_pointings = [
-                    ap for ap_list in active_pointings_list for ap in ap_list
-                ]
+            active_pointings = [
+                ap for ap_list in active_pointings_list for ap in ap_list
+            ]
 
             if len(active_pointings) >= 1:
                 first_coordinates = (
@@ -418,6 +418,8 @@ def find_processes(beam, day, strat, full_transit, db_name, db_host, db_port):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     datlist = sorted(glob(os.path.join(day, str(beam).zfill(4), "*.dat")))[:]
     start_times, end_times = get_pointings_from_list(datlist)
+    if not start_times:
+        return []
     for i in range(len(start_times)):
         active_pointings = strat.get_pointings(
             start_times[i], end_times[i], np.asarray([beam])
