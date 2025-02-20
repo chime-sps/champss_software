@@ -421,9 +421,7 @@ def find_all_pipeline_processes(
 
 
 def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_port):
-    """Multiprocessing enabled function to look for active pointings for a single
-    beam.
-    """
+    """Helper function to look for active pointings for a single beam."""
     db_utils.connect(host=db_host, port=db_port, name=db_name)
     datlist = sorted(glob(os.path.join(day, str(beam).zfill(4), "*.dat")))[:]
     start_times, end_times = get_pointings_from_list(datlist)
@@ -796,6 +794,7 @@ def start_processing_manager(
     run_multipointing,
     run_folding,
 ):
+    """Manager function containing the multiple processing steps."""
     atexit.register(remove_processing_services, None, None)
     signal.signal(signal.SIGINT, remove_processing_services)
     signal.signal(signal.SIGQUIT, remove_processing_services)
