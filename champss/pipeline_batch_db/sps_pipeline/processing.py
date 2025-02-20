@@ -354,7 +354,7 @@ def find_all_pipeline_processes(
             with Pool(32) as pool:
                 active_pointings_list = pool.map(
                     partial(
-                        find_processes,
+                        find_active_pointings,
                         day=day,
                         strat=strat,
                         full_transit=full_transit,
@@ -414,7 +414,7 @@ def find_all_pipeline_processes(
     return {"info": info}, [], []
 
 
-def find_processes(beam, day, strat, full_transit, db_name, db_host, db_port):
+def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_port):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     datlist = sorted(glob(os.path.join(day, str(beam).zfill(4), "*.dat")))[:]
     start_times, end_times = get_pointings_from_list(datlist)
