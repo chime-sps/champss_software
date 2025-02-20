@@ -1197,7 +1197,8 @@ def get_process_from_active_pointing(active_pointing, assume_new=False):
             "pointing_id": active_pointing.pointing_id,
         }
         process = db.processes.find_one(query)
-    process = None
+    else:
+        process = None
     if process:
         if active_pointing.obs_id and process.id:
             process = update_process(process.id, {"obs_id": active_pointing.obs_id})
