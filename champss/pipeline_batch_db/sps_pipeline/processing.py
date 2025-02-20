@@ -418,6 +418,7 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     datlist = sorted(glob(os.path.join(day, str(beam).zfill(4), "*.dat")))[:]
     start_times, end_times = get_pointings_from_list(datlist)
+    all_active_pointings = []
     if not start_times:
         return []
     for i in range(len(start_times)):
@@ -433,7 +434,8 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
                 ):
                     new_active_pointings.append(ap)
             active_pointings = new_active_pointings
-    return active_pointings
+        all_active_pointings.extend(active_pointings)
+    return all_active_pointings
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
