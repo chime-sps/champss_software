@@ -338,6 +338,7 @@ def find_all_pipeline_processes(
     log.info(f"Number of days: {len(all_days)}")
     total_processes = 0
     info = []
+
     for day in all_days:
         log.info(f"Creating processes for {day}.")
         beam = np.arange(0, 224)
