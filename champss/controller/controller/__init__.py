@@ -104,26 +104,28 @@ def stop_beam(beam: int, basepath: str):
     return proc
 
 
-def stop_all_beams(active_beams, basepath):
+def stop_all_beams(active_beams, basepath, batchsize=100):
     """
     Stop all beams.
 
     Args:
         active_beams list(int): Beam number
     """
-    procs = [stop_beam(beam, basepath) for beam in active_beams]
-    time.sleep(5)
-    for proc, beam in zip(procs, active_beams):
-        try:
-            output = proc.communicate(timeout=0.1)
-            if "parameters successfully applied" in str(output[0]):
-                output = f"Successfully stopped {beam}"
-        except subprocess.TimeoutExpired as e:
-            output = f"Unable to stop beam {beam}"
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        finally:
-            log.info(output)
-    return procs
+    # Creating processes for all beams at once will lead to a crash
+    batched_beams = batched(active_beams, batchsize)
+    for beam_batch in batched_beams:
+        procs = [stop_beam(beam, basepath) for beam in beam_batch]
+        time.sleep(5)
+        for proc, beam in zip(procs, beam_batch):
+            try:
+                output = proc.communicate(timeout=0.1)
+                if "parameters successfully applied" in str(output[0]):
+                    output = f"Successfully stopped {beam}"
+            except subprocess.TimeoutExpired as e:
+                output = f"Unable to stop beam {beam}"
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            finally:
+                log.info(output)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -219,7 +221,7 @@ def cli(
     finally:
         log.info("Stopping acquisition...")
         if not nocleanup:
-            procs = stop_all_beams(active_beams, basepath)
+            stop_all_beams(active_beams, basepath)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -353,4 +355,4 @@ def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str):
         active_beams.intersection_update(host_beams)
     log.info("Stopping beams: %s", sorted(list(active_beams)))
     sorted_active_beams = sorted(list(active_beams))
-    procs = stop_all_beams(sorted_active_beams, basepath)
+    stop_all_beams(sorted_active_beams, basepath)
