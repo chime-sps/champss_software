@@ -1,3 +1,5 @@
+"""Functions to enable automatic processing."""
+
 import atexit
 import datetime as dt
 import logging
@@ -6,7 +8,9 @@ import signal
 import sys
 import time
 import traceback
+from functools import partial
 from glob import glob
+from multiprocessing import Pool
 
 import click
 import docker
@@ -15,9 +19,8 @@ import pytz
 from beamformer.strategist.strategist import PointingStrategist
 from folding.filter_mpcandidates import Filter
 from scheduler.utils import convert_date_to_datetime
-from scheduler.workflow import (
+from scheduler.workflow import (  # docker_swarm_pending_states,
     clear_workflow_buckets,
-    docker_swarm_pending_states,
     docker_swarm_running_states,
     get_work_from_results,
     message_slack,
@@ -68,6 +71,7 @@ log = logging.getLogger()
     help="Path for created files during fold step.",
 )
 def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpath):
+    """Find all available folding processes for a given date."""
     log.setLevel(logging.INFO)
 
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -86,7 +90,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
         foldpath=foldpath,
     )
 
-    log.info(f"Candidate filtering complete")
+    log.info("Candidate filtering complete")
 
     # Update FollowUpSources database, then get all ids where active is True
     IDs = []
@@ -193,6 +197,7 @@ def run_all_folding_processes(
     docker_image_name,
     docker_service_name_prefix,
 ):
+    """Run all available folding processes for a given date."""
     date = convert_date_to_datetime(date)
 
     date_string = date.strftime("%Y/%m/%d")
@@ -214,7 +219,10 @@ def run_all_folding_processes(
         formatted_dm = f"{dm:.02f}"
         formatted_id = str(fs_id)
 
-        docker_name = f"{docker_service_name_prefix}-{formatted_ra}-{formatted_dec}-{formatted_date}-{formatted_id}"
+        docker_name = (
+            f"{docker_service_name_prefix}-{formatted_ra}-"
+            f"{formatted_dec}-{formatted_date}-{formatted_id}"
+        )
         docker_memory_reservation = (nchan / 1024) * 8
         docker_image = docker_image_name
         docker_mounts = [
@@ -321,7 +329,10 @@ def find_all_pipeline_processes(
     date = convert_date_to_datetime(date)
 
     log.setLevel(logging.INFO)
-    db_utils.connect(host=db_host, port=db_port, name=db_name)
+    import multiprocessing
+
+    multiprocessing.set_start_method("forkserver", force=True)
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     strat = PointingStrategist(create_db=False)
     if not date:
         all_days = glob(os.path.join(datpath, "*/*/*"))
@@ -341,56 +352,72 @@ def find_all_pipeline_processes(
 
     for day in all_days:
         log.info(f"Creating processes for {day}.")
-        beam = np.arange(0, 224)
+        beams = np.arange(0, 224)
         total_processes_day = 0
+        split_day = day.split("/")
+        date = dt.datetime(int(split_day[-3]), int(split_day[-2]), int(split_day[-1]))
+        end_date = date + dt.timedelta(days=1)
+        old_proc = list(
+            db.processes.find({"datetime": {"$gte": date, "$lte": end_date}})
+        )
+        proc_dict = {}
+        for proc in old_proc:
+            proc_dict[str(proc["pointing_id"])] = proc
         try:
             first_coordinates = None
             last_coordinates = None
-            for b in beam:
-                datlist = sorted(glob(os.path.join(day, str(b).zfill(4), "*.dat")))[:]
-                start_times, end_times = get_pointings_from_list(datlist)
-                for i in range(len(start_times)):
-                    active_pointings = strat.get_pointings(
-                        start_times[i], end_times[i], np.asarray([b])
+            with Pool(32) as pool:
+                active_pointings_list = pool.map(
+                    partial(
+                        find_active_pointings,
+                        day=day,
+                        strat=strat,
+                        full_transit=full_transit,
+                        db_name=db_name,
+                        db_host=db_host,
+                        db_port=db_port,
+                    ),
+                    beams,
+                )
+            active_pointings = [
+                ap for ap_list in active_pointings_list for ap in ap_list
+            ]
+
+            if len(active_pointings) >= 1:
+                first_coordinates = (
+                    active_pointings[0].ra,
+                    active_pointings[0].dec,
+                )
+                last_coordinates = (
+                    active_pointings[-1].ra,
+                    active_pointings[-1].dec,
+                )
+            for ap in active_pointings:
+                existing_proc = proc_dict.get(ap.pointing_id, {})
+                if not existing_proc:
+                    process = db_api.get_process_from_active_pointing(
+                        ap, assume_new=True
                     )
-                    if full_transit:
-                        new_active_pointings = []
-                        for ap in active_pointings:
-                            if (
-                                ap.max_beams[0]["utc_start"] >= start_times[i]
-                                and ap.max_beams[-1]["utc_end"] <= end_times[i]
-                            ):
-                                new_active_pointings.append(ap)
-                        active_pointings = new_active_pointings
-                    if len(active_pointings) >= 1:
-                        first_coordinates = (
-                            active_pointings[0].ra,
-                            active_pointings[0].dec,
-                        )
-                        last_coordinates = (
-                            active_pointings[-1].ra,
-                            active_pointings[-1].dec,
-                        )
-                        for ap in active_pointings:
-                            process = db_api.get_process_from_active_pointing(ap)
-                            total_processes_day += 1
-                            if (
-                                process.is_in_stack == False
-                                and process.quality_label != False
-                                and process.nchan < 32000
-                            ):
-                                memory_needed = int(4 + ((process.maxdm / 100) * 4))
-                                cores_needed = int(memory_needed / 3)
-                                info.append(
-                                    {
-                                        "ra": process.ra,
-                                        "dec": process.dec,
-                                        "maxdm": process.maxdm,
-                                        "nchan": process.nchan,
-                                        "memory_needed": memory_needed,
-                                        "cores_needed": cores_needed,
-                                    }
-                                )
+                else:
+                    process = models.Process.from_db(existing_proc)
+                total_processes_day += 1
+                if (
+                    process.is_in_stack is False
+                    and process.quality_label is not False
+                    and process.nchan < 20000
+                ):
+                    memory_needed = int(4 + ((process.maxdm / 100) * 4))
+                    cores_needed = int(memory_needed / 3)
+                    info.append(
+                        {
+                            "ra": process.ra,
+                            "dec": process.dec,
+                            "maxdm": process.maxdm,
+                            "nchan": process.nchan,
+                            "memory_needed": memory_needed,
+                            "cores_needed": cores_needed,
+                        }
+                    )
             total_processes += total_processes_day
             log.info(f"{total_processes_day} available processes created for {day}.")
             log.info(f"First coordinates : {first_coordinates}")
@@ -400,6 +427,31 @@ def find_all_pipeline_processes(
             log.info(f"Can't create processes for {day}")
     log.info(f"{total_processes} available processes in total.")
     return {"info": info}, [], []
+
+
+def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_port):
+    """Helper function to look for active pointings for a single beam."""
+    db_utils.connect(host=db_host, port=db_port, name=db_name)
+    datlist = sorted(glob(os.path.join(day, str(beam).zfill(4), "*.dat")))[:]
+    start_times, end_times = get_pointings_from_list(datlist)
+    all_active_pointings = []
+    if not start_times:
+        return []
+    for i in range(len(start_times)):
+        active_pointings = strat.get_pointings(
+            start_times[i], end_times[i], np.asarray([beam])
+        )
+        if full_transit:
+            new_active_pointings = []
+            for ap in active_pointings:
+                if (
+                    ap.max_beams[0]["utc_start"] >= start_times[i]
+                    and ap.max_beams[-1]["utc_end"] <= end_times[i]
+                ):
+                    new_active_pointings.append(ap)
+            active_pointings = new_active_pointings
+        all_active_pointings.extend(active_pointings)
+    return all_active_pointings
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -590,7 +642,10 @@ def run_all_pipeline_processes(
                         f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
                     ]
-                    docker_name = f"{docker_service_name_prefix}-{formatted_ra}-{formatted_dec}-{formatted_maxdm}-{formatted_date}"
+                    docker_name = (
+                        f"{docker_service_name_prefix}-{formatted_ra}-"
+                        f"{formatted_dec}-{formatted_maxdm}-{formatted_date}"
+                    )
 
                     workflow_function = "sps_pipeline.pipeline.main"
                     workflow_params = {
@@ -783,6 +838,7 @@ def start_processing_manager(
     run_folding,
     run_stacking,
 ):
+    """Manager function containing the multiple processing steps."""
     atexit.register(remove_processing_services, None, None)
     signal.signal(signal.SIGINT, remove_processing_services)
     signal.signal(signal.SIGQUIT, remove_processing_services)
@@ -979,7 +1035,8 @@ def start_processing_manager(
                     ]
                 )
 
-                # Get the mean number of detections for the day, or just 0 if there are no None observations
+                # Get the mean number of detections for the day,
+                # or just 0 if there are no None observations
                 if len(observations) > 0:
                     mean_detections = round(np.mean(observations))
                 else:
@@ -1304,6 +1361,7 @@ def start_processing_services(
     run_folding,
     run_stacking,
 ):
+    """Start the processing manager and the cleanup service."""
     # Please run "docker login" in your CLI to allow retrieval of the images
     log.setLevel(logging.INFO)
 
@@ -1364,6 +1422,7 @@ def start_processing_services(
 
 
 def remove_processing_services(signal, frame):
+    """Remove all processing services."""
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
@@ -1396,6 +1455,7 @@ def remove_processing_services(signal, frame):
 
 
 def start_processing_cleanup():
+    """Cleanup by removing old images."""
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
@@ -1408,7 +1468,7 @@ def start_processing_cleanup():
             try:
                 # If the image was pulled from a repository and not locally built:
                 image_name = image.attrs["RepoDigests"][0].split("@")[0]
-            except Exception as e:
+            except Exception:
                 try:
                     # If the image was locally built:
                     image_name = image.attrs["RepoTags"][0].split(":")[0]
