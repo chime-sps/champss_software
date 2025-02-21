@@ -379,6 +379,7 @@ def find_all_pipeline_processes(
                     ),
                     beams,
                 )
+
             active_pointings = [
                 ap for ap_list in active_pointings_list for ap in ap_list
             ]
