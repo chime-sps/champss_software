@@ -379,6 +379,13 @@ class RpcClient:
             return
         print(*args)
 
+    def add_server(self, server_name, server_address):
+        if server_name not in self.servers:
+            self.servers[server_name] = server_address
+            self.sockets[server_name] = self.context.socket(zmq.DEALER)
+            self.sockets[server_name].connect(server_address)
+            self.rsockets[self.sockets[server_name]] = server_name
+
     def get_statistics(self, servers=None, wait=True, timeout=-1):
         """
         Retrieves statistics from each server.
@@ -1038,7 +1045,6 @@ class RpcClient:
         if servers is None:
             servers = self.servers.keys()
         tokens = []
-
         for k in servers:
             self.token += 1
             req = msgpack.packb(['set_spulsar_writer_params', self.token])

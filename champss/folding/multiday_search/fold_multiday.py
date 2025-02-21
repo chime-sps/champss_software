@@ -14,7 +14,7 @@ from sps_databases import db_api, db_utils, models
 log = logging.getLogger()
 
 
-def find_all_dates_with_data(ra, dec, basepath, nday=10):
+def find_all_dates_with_data(ra, dec, basepath, nday=0):
     log.setLevel(logging.INFO)
 
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
@@ -24,6 +24,8 @@ def find_all_dates_with_data(ra, dec, basepath, nday=10):
     dates_with_data = []
 
     for filepath in filepaths:
+        if "log" in filepath:
+            continue
         year = int(filepath.split("/")[-3])
         month = int(filepath.split("/")[-2])
         day = int(filepath.split("/")[-1])
@@ -42,8 +44,9 @@ def find_all_dates_with_data(ra, dec, basepath, nday=10):
                 print(filepath, len(files))
                 dates_with_data.append(date.strftime("%Y%m%d"))
 
-            if len(dates_with_data) >= nday:
-                return dates_with_data
+            if nday:
+                if len(dates_with_data) >= nday:
+                    return dates_with_data
 
     return dates_with_data
 
@@ -81,9 +84,9 @@ def find_all_dates_with_data(ra, dec, basepath, nday=10):
 )
 @click.option(
     "--nday",
-    default=10,
+    default=0,
     type=int,
-    help="Number of days to fold.",
+    help="Number of days to fold. Default is to fold all available days.",
 )
 @click.option(
     "--use-workflow",

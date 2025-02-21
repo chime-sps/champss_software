@@ -68,7 +68,7 @@ def load_profiles(archives, max_npbin=256):
     profs = []
     times = []
     PEPOCHs = []
-    print(archives)
+    print(*archives,sep='\n')
     for filename in sorted(archives):
         f = filename.replace(".ar", ".FT")
         if os.path.isfile(f) and f.endswith(".FT"):
