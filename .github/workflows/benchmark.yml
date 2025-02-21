@@ -6,6 +6,11 @@ on:
       branch_name:
         type: string
 
+# Will stop previous benchmark of the same branch if it's still running
+concurrency:
+  group: benchmark-${{ inputs.branch_name }}
+  cancel-in-progress: true
+
 jobs:
   update-image:
    # Create an image of your branch with the branch name as tag, and save it locally on the testbed since it'll only run there

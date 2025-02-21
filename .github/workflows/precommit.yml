@@ -1,5 +1,7 @@
 name: Precommit
 
+# Currently unused
+
 on:
   workflow_call:
 
@@ -20,6 +22,7 @@ jobs:
         with:
           path: |
             ~/.cache/precommit
+          # You can have a separate Precommit config for changes you only want in the CI
           key: precommit-${{ runner.os }}-${{ hashFiles('.pre-commit-manual.yaml') }}
       # Only run Precommit on files that have changed
       - id: get-changed-files
