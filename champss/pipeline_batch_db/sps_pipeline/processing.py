@@ -151,6 +151,12 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+@click.option(
     "--processes",
     default=[],
     type=list,
@@ -181,6 +187,7 @@ def run_all_folding_processes(
     db_name,
     basepath,
     foldpath,
+    datpath,
     processes,
     workflow_buckets_name,
     docker_image_name,
@@ -211,7 +218,7 @@ def run_all_folding_processes(
         docker_memory_reservation = (nchan / 1024) * 8
         docker_image = docker_image_name
         docker_mounts = [
-            "/data/chime/sps/raw:/data/chime/sps/raw",
+            f"{datpath}:{datpath}",
             f"{basepath}:{basepath}",
             f"{foldpath}:{foldpath}",
         ]
@@ -224,6 +231,7 @@ def run_all_folding_processes(
             "db_port": db_port,
             "db_name": db_name,
             "foldpath": foldpath,
+            "datpath": datpath,
             "write_to_db": True,
             "using_workflow": True,
         }

@@ -4,7 +4,6 @@ import subprocess
 
 import click
 import numpy as np
-import sys
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 
@@ -19,6 +18,7 @@ from beamformer.utilities.common import find_closest_pointing, get_data_list
 from folding.plot_candidate import plot_candidate_archive
 from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
+from sps_pipeline.pipeline import default_datpath
 
 
 def update_folding_history(id, payload):
@@ -165,6 +165,12 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+@click.option(
     "--candpath",
     type=str,
     default="",
@@ -194,6 +200,7 @@ def main(
     db_host,
     db_name,
     foldpath,
+    datpath,
     candpath="",
     write_to_db=False,
     using_workflow=False,
@@ -344,9 +351,7 @@ def main(
     data_list = []
     for active_pointing in ap:
         data_list.extend(
-            get_data_list(
-                active_pointing.max_beams, basepath="/data/chime/sps/raw/", extn="dat"
-            )
+            get_data_list(active_pointing.max_beams, basepath=datpath, extn="dat")
         )
     if not data_list:
         log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
@@ -377,7 +382,7 @@ def main(
             extn="dat",
             update_db=False,
             min_data_frac=0.5,
-            basepath="/data/chime/sps/raw/",
+            basepath=datpath,
             add_local_median=True,
             detrend_data=True,
             detrend_nsamp=32768,
@@ -398,7 +403,10 @@ def main(
         )
         skybeam, spectra_shared = sbf.form_skybeam(ap[0], num_threads=num_threads)
         if skybeam is None:
-            log.info("Insufficient unmasked data to form skybeam, exiting before filterbank creation")
+            log.info(
+                "Insufficient unmasked data to form skybeam, exiting before filterbank"
+                " creation"
+            )
             spectra_shared.close()
             spectra_shared.unlink()
             return
