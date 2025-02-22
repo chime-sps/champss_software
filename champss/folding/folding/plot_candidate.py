@@ -7,6 +7,8 @@ import pandas as pd
 from scipy.constants import c
 from scipy.optimize import curve_fit
 from astropy.time import Time
+import itertools
+
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
 from matplotlib.gridspec import GridSpec
 from sps_databases.db_api import get_nearby_known_sources
@@ -199,21 +201,24 @@ def plot_candidate_archive(
 
 
     radius = 5 
-    pos_diffs = []
     sources = get_nearby_known_sources(ra, dec, radius)
     remove_idx = []
-    for i, pulsar1 in enumerate(sources):
-        for j, pulsar2 in enumerate(sources):
-            if i != j: 
-                if np.abs(pulsar1.dm - pulsar2.dm) < 10:
-                    if np.abs(pulsar1.spin_period_s - pulsar2.spin_period_s) < 0.1:
-                        if np.abs(pulsar1.pos_dec_deg - pulsar2.pos_dec_deg) < 1:
-                            if np.abs(pulsar1.pos_ra_deg - pulsar2.pos_ra_deg) < 1:
-                                if pulsar1.survey[-1] != 'psr_scraper': 
-                                    remove_idx.append(j)
-                                else:
-                                    remove_idx.append(i)
+    for ks1_idx,ks2_idx in itertools.combinations(range(len(sources)), 2):
+        ks1 = sources[ks1_idx]
+        ks2 = sources[ks2_idx]
+        del_dm = np.abs(ks1.dm - ks2.dm)
+        del_spin_period = np.abs(ks1.spin_period_s - ks2.spin_period_s)
+        del_pos = known_source_filters.angular_separation(ks1.pos_ra_deg, 
+                                                          ks1.pos_dec_deg, 
+                                                          ks2.pos_ra_deg, 
+                                                          ks2.pos_dec_deg)[1]
+        if del_dm < 10 and del_spin_period < 0.01 and del_pos < 0.5:
+            if ks1.survey[-1] != 'psr_scraper': 
+                remove_idx.append(ks1_idx)
+            else:
+                remove_idx.append(ks2_idx)
     sources = np.delete(sources, remove_idx)
+    pos_diffs = []
     for source in sources:
         pos_diff = known_source_filters.angular_separation(ra, dec, source.pos_ra_deg, source.pos_dec_deg)[1]
         pos_diffs.append(pos_diff)
@@ -324,6 +329,7 @@ def plot_candidate_archive(
         print(f"Directory '{img_path}' already exists.")
     plot_fname = img_path + f"{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png"
     plt.savefig(plot_fname, dpi=fig.dpi, bbox_inches='tight')
+    plt.show()
     plt.close()
 
     return SNprof, SNR_val, plot_fname
