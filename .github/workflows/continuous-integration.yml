@@ -10,11 +10,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  precommit:
-    # First check avoid double checks from bot's automated release PR
-    if: ${{ github.actor != 'github-actions' && github.event_name == 'pull_request' }}
-    uses: chime-sps/champss_software/.github/workflows/precommit.yml@main
-    secrets: inherit
+  # Commenting this out as all Precommit checks are now done locally and have been automated as much as possible
+  # precommit:
+  #   Avoid double checks from bot's automated release PR
+  #   if: ${{ github.actor != 'github-actions' && github.event_name == 'pull_request' }}
+  #   uses: chime-sps/champss_software/.github/workflows/precommit.yml@main
+  #   secrets: inherit
   benchmark:
     if: ${{ github.actor != 'github-actions' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
     uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
