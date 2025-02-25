@@ -84,8 +84,9 @@ def plot_candidate_archive(
     ax4 = fig.add_subplot(gs[20:, 11:17])
     ax4left = fig.add_subplot(gs[20:, 10])  
 
-    axtext = fig.add_subplot(gs[0, 0]) 
+    axtext = fig.add_subplot(gs[0, 4]) 
     axtext.axis("off")
+    
     ax_kstext = fig.add_subplot(gs[7, 10:17])
     ax_kstext.axis("off")
 
@@ -200,24 +201,8 @@ def plot_candidate_archive(
     vtmax = np.nanmean(fs_bin) + 3 * np.nanstd(np.nanmean(fs_bin, 1))
 
 
-    radius = 5 
+    radius = 50 
     sources = get_nearby_known_sources(ra, dec, radius)
-    remove_idx = []
-    for ks1_idx,ks2_idx in itertools.combinations(range(len(sources)), 2):
-        ks1 = sources[ks1_idx]
-        ks2 = sources[ks2_idx]
-        del_dm = np.abs(ks1.dm - ks2.dm)
-        del_spin_period = np.abs(ks1.spin_period_s - ks2.spin_period_s)
-        del_pos = known_source_filters.angular_separation(ks1.pos_ra_deg, 
-                                                          ks1.pos_dec_deg, 
-                                                          ks2.pos_ra_deg, 
-                                                          ks2.pos_dec_deg)[1]
-        if del_dm < 10 and del_spin_period < 0.01 and del_pos < 0.5:
-            if ks1.survey[-1] != 'psr_scraper': 
-                remove_idx.append(ks1_idx)
-            else:
-                remove_idx.append(ks2_idx)
-    sources = np.delete(sources, remove_idx)
     pos_diffs = []
     for source in sources:
         pos_diff = known_source_filters.angular_separation(ra, dec, source.pos_ra_deg, source.pos_dec_deg)[1]
@@ -246,7 +231,7 @@ def plot_candidate_archive(
     ks_text = f"Closest {len(ks_params)} known sources within {radius} degrees, $\Delta$DM < 10%\n"
 
     column_labels=["Name", "$\Delta Pos.$", "RA", "Dec", "F0", "DM", "Survey(s)"]
-    df=pd.DataFrame(ks_params,columns=column_labels)
+    ks_df=pd.DataFrame(ks_params,columns=column_labels)
 
     ax1.imshow(
         np.nanmean(fs_bin, 0),
@@ -280,27 +265,17 @@ def plot_candidate_archive(
     ax0.set_xticks([])
     if sigma is not None:
         sigma = round(sigma, 2)
-    parameters_text = (
-        rf"{psr} $\quad \quad$"
-        f"Date: {T0.isot[:10]} \n"
-        rf"RA (deg): {ra:,.5g} $\quad \quad$"
-        f"f0: {f0:.5f} $\quad \quad$"
-        f"Incoh. $\\sigma$: {sigma:.2f} \n"
-        rf"DEC (deg): {dec:,.5g} $\quad \quad$"
-        f"DM: {dm:.2f} $\quad \quad$"
-        f"Folded $\\sigma$: {SNR_val:.2f}"
-    )
- 
-    axtext.text(
-        0,
-        1,
-        parameters_text,
-        fontsize=10,
-        va="bottom",
-        ha="left",
-        transform=axtext.transAxes,
-    )
-
+    cand_params_text = [
+        [rf"{psr} $\quad \quad$",
+        f"Date: {T0.isot[:10]}", " "],
+        [rf"RA (deg): {ra:,.5g}",
+        f"f0: {f0:.5f}",
+        f"Incoh. $\\sigma$: {sigma:.2f}"],
+        [rf"DEC (deg): {dec:,.5g}",
+        f"DM: {dm:.2f}",
+        f"Folded $\\sigma$: {SNR_val:.2f}"]
+]
+    
     ax_kstext.text(
         0,
         0.8,
@@ -311,14 +286,22 @@ def plot_candidate_archive(
         transform=ax_kstext.transAxes,
     )
 
-    param_table = ax_kstext.table(cellText=df.values,
-            colLabels=df.columns,
-            colColours =["lavender"] * len(df.columns),
+    ks_param_table = ax_kstext.table(cellText=ks_df.values,
+            colLabels=ks_df.columns,
+            colColours =["lavender"] * len(ks_df.columns),
             cellLoc='left',
             loc="top")
-    param_table.auto_set_font_size(False)
-    param_table.set_fontsize(8)
-    param_table.auto_set_column_width(col=list(range(len(df.columns))))
+    ks_param_table.auto_set_font_size(False)
+    ks_param_table.set_fontsize(8)
+    ks_param_table.auto_set_column_width(col=list(range(len(ks_df.columns))))
+
+    cand_param_table = axtext.table(cellText=cand_params_text,
+            cellLoc='left',
+            loc="top",
+            edges='open')
+    cand_param_table.auto_set_font_size(False)
+    cand_param_table.set_fontsize(10)
+    cand_param_table.scale(10, 1.25)
 
     plt.savefig(coord_path + f"/{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png", dpi=fig.dpi, bbox_inches='tight')
 
@@ -329,7 +312,6 @@ def plot_candidate_archive(
         print(f"Directory '{img_path}' already exists.")
     plot_fname = img_path + f"{psr}_{T0.isot[:10]}_{round(dm,2)}_{round(f0,2)}.png"
     plt.savefig(plot_fname, dpi=fig.dpi, bbox_inches='tight')
-    plt.show()
     plt.close()
 
     return SNprof, SNR_val, plot_fname
