@@ -201,7 +201,7 @@ def plot_candidate_archive(
     vtmax = np.nanmean(fs_bin) + 3 * np.nanstd(np.nanmean(fs_bin, 1))
 
 
-    radius = 50 
+    radius = 5 
     sources = get_nearby_known_sources(ra, dec, radius)
     pos_diffs = []
     for source in sources:
@@ -266,7 +266,7 @@ def plot_candidate_archive(
     if sigma is not None:
         sigma = round(sigma, 2)
     cand_params_text = [
-        [rf"{psr} $\quad \quad$",
+        [rf"{psr}",
         f"Date: {T0.isot[:10]}", " "],
         [rf"RA (deg): {ra:,.5g}",
         f"f0: {f0:.5f}",
