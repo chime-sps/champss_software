@@ -416,7 +416,6 @@ class SinglePointingCandidate:
             dm_sigma_1d=self.dm_sigma_1d,
             sigmas_per_harmonic_sum=self.sigmas_per_harmonic_sum,
             pspec_freq_resolution=self.pspec_freq_resolution,
-            injection=self.injection,
             injection_dict=self.injection_dict,
             datetimes=self.datetimes,
         )

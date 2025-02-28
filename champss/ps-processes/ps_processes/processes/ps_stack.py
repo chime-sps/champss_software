@@ -373,6 +373,18 @@ class PowerSpectraStack:
             ).flatten()
             del h5f.attrs["observation ids"]
             h5f.attrs["observation ids"] = list(new_obs_ids)
+
+            if type(pspec.rn_medians) == np.ndarray:
+                h5f.attrs["rednoise medians"].append(pspec.rn_medians)
+                h5f.attrs["rednoise scales"].append(pspec.rn_scales)
+                h5f.attrs["rednoise dm indices"].append(pspec.rn_dm_indices)
+
+            elif pspec.rn_medians == None:
+                log.error("This power spectrum does not have rednoise info saved.")
+
+            elif h5f["rednoise medians"] == None:
+                log.error("This h5f file does not have rednoise info saved.")
+
         log.info("Stacking completed")
         if self.update_db:
             log.info(f"Updating the stack database for {pspec.ra} {pspec.dec}")
@@ -442,6 +454,21 @@ class PowerSpectraStack:
                 pspec.power_spectra[i] += h5f["power spectra"][(i,)]
             log.info(f"Updating the new {self.mode} power spectra information")
             pspec.num_days += h5f.attrs["number of days"]
+
+            if type(pspec.rn_medians) == np.ndarray:
+                pspec.rn_medians = [pspec.rn_medians, (h5f.attrs["rednoise medians"])]
+                pspec.rn_scales = [pspec.rn_scales, (h5f.attrs["rednoise scales"])]
+                pspec.rn_dm_indices = [
+                    pspec.rn_dm_indices,
+                    (h5f.attrs["rednoise dm indices"]),
+                ]
+
+            elif pspec.rn_medians == None:
+                log.error("This power spectrum does not have rednoise info saved.")
+
+            elif h5f["rednoise medians"] == None:
+                log.error("This h5 file does not have rednoise info saved.")
+
             bad_freq_arrays = [
                 key for key in h5f.keys() if "bad frequency indices" in key
             ]
@@ -503,6 +530,18 @@ class PowerSpectraStack:
         pspec_stack.bad_freq_indices.extend(pspec.bad_freq_indices)
         pspec_stack.datetimes.extend(pspec.datetimes)
         pspec_stack.obs_id.extend(pspec.obs_id)
+
+        try:
+            pspec_stack.rn_medians.append(pspec.rn_medians)
+            pspec_stack.rn_scales.append(pspec.rn_scales)
+            pspec_stack.rn_dm_indices.append(pspec.rn_scales)
+
+        except:
+            if pspec.rn_medians == None:
+                log.error("The daily power spectrum does not have rednoise info saved.")
+            if pspec_stack.rn_medians == None:
+                log.error("The power spectra stack does not have rednoise info saved.")
+
         stack_end = time.time()
         log.debug(f"Took {stack_end - stack_start} seconds to stack power spectra")
 

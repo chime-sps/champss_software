@@ -201,6 +201,9 @@ class PowerSpectra:
     beta = attrib(converter=float)
     bad_freq_indices = attrib(type=List[List[int]], on_setattr=validate)  # type: ignore
     obs_id = attrib(type=List[str], on_setattr=validate)  # type: ignore
+    rn_medians = attrib(type=np.ndarray)
+    rn_scales = attrib(type=np.ndarray)
+    rn_dm_indices = attrib(type=np.ndarray)
     power_spectra_shared = attrib(default=None)
 
     def __attrs_post_init__(self):
