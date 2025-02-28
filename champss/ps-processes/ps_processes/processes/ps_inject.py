@@ -52,7 +52,7 @@ def generate_pulse(noise=False):
             noise: bool
                 whether or not the pulse should be distorted by white noise
     """
-    u = rand.choice(np.linspace(0.01, 0.99, 1000))
+    u = rand.uniform(0.01, 0.99, 1000)
     # inverse sampling theorem for an exponential distribution with lambda = 1/15
     gamma = -15 * np.log(1 - u) / 2 / 360
     prof = lorentzian(phis, gamma)
