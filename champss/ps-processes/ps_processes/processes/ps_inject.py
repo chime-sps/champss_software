@@ -4,16 +4,13 @@ import os
 
 import numpy as np
 import scipy.stats as stats
-from matplotlib import pyplot as plt
-from scipy.fft import fft, rfft
+from scipy.fft import rfft
 from scipy.special import chdtri
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP
 from sps_common.interfaces.utilities import sigma_sum_powers
-from sps_databases import db_api
 
 log = logging.getLogger(__name__)
 
-import numpy as np
 import numpy.random as rand
 
 phis = np.linspace(0, 1, 1024)
@@ -171,12 +168,10 @@ class Injection:
         """Return the deltaDM where the dispersion smearing is one pulse period in
         duration.
         """
-        deltaDM = (
-            1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
-        )
+        deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
 
-    def sigma_to_power(self, n_harm):
+    def sigma_to_power(self, n_harm, df):
         """
         This function converts an input Gaussian sigma to an approximately equivalent
         power. In order to do so, we have to estimate the number of summed harmonics in
@@ -305,6 +300,64 @@ class Injection:
 
         return bins, harmonics
 
+    def rednoise_normalize(self, ps_len, inj_harms, inj_bins, rn_medians, rn_scales):
+        """
+        A scaled down version of the rednoise_normalize function from utilities.py for
+        when we already know all the median information. Currently this is DM-secular
+        but can be implemented easily to not be.
+
+        Inputs:
+        -------
+            ps_len (int):     the length of the power spectrum
+            inj_harms (arr):  array containing injection harmonics
+            inj_bins (arr):   array containing bins into which to inject
+            rn_medians (arr): array containing rednoise medians
+            rn_scales (arr):  array containing rednoise scales
+
+        Returns:
+        -------
+            rednoise-normalized harmonics
+        """
+        # get rid of 0th harmonic
+        ps_len -= 1
+        # recall that the medians set the normalization of the power spectrum
+        rn_medians = rn_medians[0] / rn_medians[0, -1]
+        rn_scales = rn_scales[0]
+        start = 0
+        old_mid_bin = 0
+        old_median = 1
+
+        # assign the medians to the correct bins
+        medians = np.ones(ps_len)
+        i = 0
+
+        for bins in rn_scales:
+            mid_bin = int(start + bins / 2)
+            new_median = rn_medians[i]
+            if start == 0:
+                medians[start : start + mid_bin] = new_median
+
+            # make sure we don't overflow our array
+            elif start + bins >= len(medians):
+                median_slope = np.linspace(
+                    old_median, new_median, num=len(medians) - old_mid_bin
+                )
+                medians[old_mid_bin:] = median_slope
+
+            else:
+                # compute slopes
+                median_slope = np.linspace(
+                    old_median, new_median, num=mid_bin - old_mid_bin
+                )
+                medians[old_mid_bin:mid_bin] = median_slope
+            start += bins
+            old_mid_bin = mid_bin
+            old_median = new_median
+            i += 1
+
+        # normalize:
+        return inj_harms / medians[inj_bins]
+
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
@@ -400,7 +453,7 @@ class Injection:
         df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
-        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm)
+        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm, df)
         used_nharm = len(scaled_prof_fft)
         log.info(f"Injecting {n_harm} harmonics.")
 
@@ -415,6 +468,16 @@ class Injection:
             harms.append(harm)
 
         harms = np.asarray(harms)
+
+        normalized_harms = 0
+        for day in range(self.ndays):
+            normalized_harms += self.rednoise_normalize(
+                len(self.pspec_obj.power_spectra[0]),
+                harms / self.ndays,
+                bins,
+                self.pspec_obj.rn_medians,
+                self.pspec_obj.rn_scales,
+            )
 
         # estimate sigma
         (
