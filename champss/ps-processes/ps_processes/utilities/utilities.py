@@ -52,7 +52,6 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True):
     old_median = 1
     normalised_power_spectrum = np.zeros(shape=np.shape(power_spectrum))
     if get_medians:
-        # medians = np.zeros(len(power_spectrum))
         medians = []
     for bins in scale:
         mid_bin = int(start + bins / 2)
