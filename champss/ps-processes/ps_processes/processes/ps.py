@@ -277,7 +277,6 @@ class PowerSpectraCreation:
                     bad_freq_indices=bad_freq_indices,
                     shared_target_name=power_spectra_shared.name,
                     target_shape=power_spectra.shape,
-                    save_medians=True,
                     observation=observation,
                 ),
                 zip(dm_indices, dedisp_series_list),
