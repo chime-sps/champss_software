@@ -5,7 +5,7 @@ from scipy.special import gamma, gammainc
 from scipy.stats import chi2, kstwo
 
 
-def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True):
+def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=False):
     """
     Script to normalise power spectrum while removing rednoise. Based on presto's method
     of rednoise removal, in which a logarithmically increasing window is used at low
@@ -53,6 +53,8 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True):
     normalised_power_spectrum = np.zeros(shape=np.shape(power_spectrum))
     if get_medians:
         medians = []
+    else:
+        log.info("Rednoise medians are not being stored to power spectrum.")
     for bins in scale:
         mid_bin = int(start + bins / 2)
         new_median = np.nanmedian(power_spectrum[start : start + bins])

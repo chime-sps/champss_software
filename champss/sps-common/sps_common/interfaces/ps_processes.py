@@ -365,6 +365,12 @@ class PowerSpectra:
             datetime.utcfromtimestamp(date).replace(tzinfo=pytz.UTC)
             for date in datetimes_unix
         ]
+        rn_medians = np.ones(h5f["rednoise medians"].shape)
+        h5f["rednoise medians"].read_direct(rn_medians)
+        rn_scales = np.ones(h5f["rednoise scales"].shape)
+        h5f["rednoise scales"].read_direct(rn_scales)
+        rn_dm_indices = np.ones(h5f["rednoise dm indices"].shape)
+        h5f["rednoise dm indices"].read_direct(rn_dm_indices)
 
         ra = h5f.attrs["ra"]
         dec = h5f.attrs["dec"]
@@ -408,6 +414,9 @@ class PowerSpectra:
             bad_freq_indices=bad_freq_indices,
             obs_id=obs_id.astype(str).tolist(),
             power_spectra_shared=power_spectra_shared,
+            rn_medians=rn_medians,
+            rn_scales=rn_scales,
+            rn_dm_indices=rn_dm_indices,
         )
 
     def write(self, filename, nbit=32):
@@ -447,6 +456,9 @@ class PowerSpectra:
                     )
             datetimes_unix = np.asarray([date.timestamp() for date in self.datetimes])
             h5f.create_dataset("datetimes", data=datetimes_unix)
+            h5f.create_dataset("rn medians", data=self.rn_medians)
+            h5f.create_dataset("rn scales", data=self.rn_scales)
+            h5f.create_dataset("rn dm indices", data=self.rn_dm_indices)
 
             h5f.attrs["ra"] = self.ra
             h5f.attrs["dec"] = self.dec
