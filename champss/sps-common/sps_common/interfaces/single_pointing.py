@@ -43,8 +43,7 @@ class SearchAlgorithm(enum.Enum):
     """
 
     power_spec = 1
-    hhat = 2
-    power_spec_and_hhat = 3
+    ffa = 2
 
 
 def check_detection_statistic(instance, attribute, value):
@@ -53,11 +52,6 @@ def check_detection_statistic(instance, attribute, value):
         raise TypeError(
             f"Detection statistic attribute ({attribute.name}={value}) must be "
             + "of SearchAlgorithm enum"
-        )
-    if value == SearchAlgorithm.power_spec_and_hhat:
-        raise ValueError(
-            f"Detection statistic attribute ({attribute.name}={value}) must be "
-            + "either power_spec or hhat only"
         )
 
 
@@ -410,32 +404,9 @@ class SinglePointingCandidate:
 
     def as_dict(self):
         """Return this candidate's properties as a Python dictionary."""
-        ret_dict = dict(
-            freq=self.freq,
-            dm=self.dm,
-            sigma=self.sigma,
-            features=self.features,
-            rfi=self.rfi,
-            max_sig_det=self.max_sig_det,
-            ndetections=self.ndetections,
-            detections=self.detections,
-            dm_freq_sigma=self.dm_freq_sigma,
-            unique_freqs=self.unique_freqs,
-            unique_dms=self.unique_dms,
-            ra=self.ra,
-            dec=self.dec,
-            detection_statistic=self.detection_statistic.value,
-            obs_id=self.obs_id,
-            raw_harmonic_powers_array=self.raw_harmonic_powers_array,
-            harmonics_info=self.harmonics_info,
-            dm_sigma_1d=self.dm_sigma_1d,
-            sigmas_per_harmonic_sum=self.sigmas_per_harmonic_sum,
-            pspec_freq_resolution=self.pspec_freq_resolution,
-            injection=self.injection,
-            injection_dict=self.injection_dict,
-            datetimes=self.datetimes,
-        )
-        return ret_dict
+        # Can just use __dict__ instead of the previously defined function
+        # at least when tested with 3.11
+        return self.__dict__
 
     def plot_candidate(self, folder="./plots/", config=default_config_path):
         """
@@ -456,6 +427,27 @@ class SinglePointingCandidate:
         """
         plot_name = plot_candidate(self, config, folder, "single_point_cand")
         return plot_name
+
+    @classmethod
+    def get_from_spcc(cls, filename, index):
+        data = np.load(filename, allow_pickle=True)
+        cand_count_entry = data.get("cand_count", 0)
+        if cand_count_entry:
+            if index >= cand_count_entry:
+                log.error("Requested candidate index does not exist in file.")
+                return None
+            cand_dict = data[f"candidate_{index}"].item()
+            # Allow backwards compability
+            cand_dict = filter_class_dict(cls, cand_dict)
+        else:
+            # This method needs to load all candidates
+            cand_dicts = data["candidate_dicts"]
+            if index >= len(cand_dicts):
+                log.error("Requested candidate index does not exist in file.")
+                return None
+            cand_dict = data["candidate_dicts"][index]
+            cand_dict = filter_class_dict(cls, cand_dict)
+        return cls(**cand_dict)
 
 
 @attrs
@@ -513,29 +505,32 @@ class SinglePointingCandidateCollection:
     def read(cls, filename, verbose=True):
         """Read in candidates from (npz) file."""
         data = np.load(filename, allow_pickle=True)
-        cand_list = []
-        # allow backward-compatibility with old files
-        if "harmonics_info" not in data["candidate_dicts"][0]:
-            log.warning(
-                "Old file without harmonics_info, populating them all with an empty"
-                " array"
-            )
-            harm_dtype = [
-                ("freq", float),
-                ("dm", float),
-                ("nharm", int),
-                ("sigma", float),
-                ("injection", bool),
-            ]
-            dummy_harm_info = np.array([], dtype=harm_dtype)
 
-        for cand_dict in data["candidate_dicts"]:
-            if "harmonics_info" not in cand_dict:
-                cand_dict["harmonics_info"] = dummy_harm_info
-            # Allow backwards compability
-            cand_dict = filter_class_dict(SinglePointingCandidate, cand_dict)
-            sp_cand = SinglePointingCandidate(**cand_dict)
-            cand_list.append(sp_cand)
+        # Test if split_cands argument was used when writing the file
+        # Reading the full file will be slower with that argument but much faster
+        # when retrieving individual candidates
+        cand_count_entry = data.get("cand_count", 0)
+        if cand_count_entry:
+            cand_list = []
+            for index in range(cand_count_entry):
+                cand_dict = data[f"candidate_{index}"].item()
+                # Allow backwards compability
+                cand_dict = filter_class_dict(SinglePointingCandidate, cand_dict)
+                sp_cand = SinglePointingCandidate(**cand_dict)
+                cand_list.append(sp_cand)
+        else:
+            cand_list = []
+            # Explicitly lod the candidate dictionaries, to prevent accidentally rereading
+            cand_dicts = data["candidate_dicts"]
+
+            # Previously a code block here was used for compativility with old files
+            # This block has been removed now
+
+            for cand_dict in cand_dicts:
+                # Allow backwards compability
+                cand_dict = filter_class_dict(SinglePointingCandidate, cand_dict)
+                sp_cand = SinglePointingCandidate(**cand_dict)
+                cand_list.append(sp_cand)
         if verbose:
             log.info(f"Read {len(cand_list)} candidates from {filename}")
         return cls(
@@ -543,15 +538,29 @@ class SinglePointingCandidateCollection:
             injections=data.get("injection_dicts", np.empty(0)).tolist(),
         )
 
-    def write(self, filename):
-        """Write candidates to npz file."""
-        cand_dicts = []
-        for spc in self.candidates:
-            cand_dicts.append(spc.as_dict())
-        save_dict = dict(
-            candidate_dicts=cand_dicts,
-            injection_dicts=self.injections,
-        )
+    def write(self, filename, split_cands=True):
+        """Write candidates to npz file.
+
+        Parameters
+        ----------
+        split_cands: bool
+                Will write candiates into fields candidate_0, ... separately to
+                allow quicker retrieval of individual files
+        """
+        if split_cands:
+            save_dict = {}
+            for index, spc in enumerate(self.candidates):
+                save_dict[f"candidate_{index}"] = spc.__dict__
+            save_dict["injection_dicts"] = self.injections
+            save_dict["cand_count"] = len(self.candidates)
+        else:
+            cand_dicts = []
+            for spc in self.candidates:
+                cand_dicts.append(spc.__dict__)
+            save_dict = dict(
+                candidate_dicts=cand_dicts,
+                injection_dicts=self.injections,
+            )
         np.savez(filename, **save_dict)
         log.info(f"saved candidates to {filename}")
 
@@ -565,7 +574,7 @@ class SinglePointingCandidateCollection:
     ):
         """Plot all candidates of the collection."""
         # Load layout here so it doesn't have to be read for each plot individually
-        if type(config) == str:
+        if type(config) is str:
             config = yaml.safe_load(open(config))
         if num_threads == 1:
             plots = []

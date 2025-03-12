@@ -17,7 +17,6 @@ from sps_common.constants import (
 )
 from sps_common.interfaces.single_pointing import (
     SinglePointingCandidate,
-    SinglePointingCandidateCollection,
 )
 from sps_common.interfaces.utilities import within_range
 from sps_common.plotting import plot_candidate
@@ -285,7 +284,7 @@ class MultiPointingCandidate:
     # @best_freq_arr.validator
     # @best_dm_arr.validator
     def _check_array(self, attribute, value):
-        if type(value) != np.ndarray:
+        if type(value) is not np.ndarray:
             raise TypeError(
                 f"The array ({attribute.name}={value}) is must be a numpy.ndarray"
             )
@@ -328,7 +327,7 @@ class MultiPointingCandidate:
     # @features.validator
     @position_features.validator
     def _check_features(self, attribute, value):
-        if type(value) != np.ndarray:
+        if type(value) is not np.ndarray:
             raise TypeError(
                 f"Feature attribute ({attribute.name}={value}) must be a numpy.ndarray"
             )
@@ -358,15 +357,15 @@ class MultiPointingCandidate:
             known_source_string += (
                 f"\n{source[0]} ({source[1]:.2f}, {source[2]:.2f}): {source[5]:.5f}"
             )
-            known_source_string += f"\n F0: {1/source[3]:.4f}, DM: {source[4]:.2f}"
+            known_source_string += f"\n F0: {1 / source[3]:.4f}, DM: {source[4]:.2f}"
         return known_source_string
 
     def single_candidate(self, index):
         """Load a SinglePointingCandidate based on an index."""
-        cand_collection = SinglePointingCandidateCollection.read(
-            self.all_summaries[index]["file_name"], verbose=False
+        candidate = SinglePointingCandidate.get_from_spcc(
+            self.all_summaries[index]["file_name"],
+            self.all_summaries[index]["cand_index"],
         )
-        candidate = cand_collection.candidates[self.all_summaries[index]["cand_index"]]
         return candidate
 
     @property
