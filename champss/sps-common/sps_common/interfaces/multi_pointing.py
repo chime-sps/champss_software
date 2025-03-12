@@ -240,7 +240,6 @@ class MultiPointingCandidate:
         ),
         default=[],
     )
-
     # I want best_candidate to be a SinglePointingCandidate, but when loading a file I get a dict
     # I fix this in post_init. A custom converter would also work probabaly.
 
