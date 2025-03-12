@@ -12,7 +12,7 @@ on:
         type: boolean
       runs_on:
         type: string
-        default: 'self-hosted'
+        default: 'sps-compute2' # Temporary as BeeGFS servers have TCP settings that currently break Internet downloads
 
 jobs:
   build-image-and-push-to-remote:
