@@ -588,14 +588,22 @@ def run_all_pipeline_processes(
 
     log.setLevel(logging.INFO)
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
-    query = {
-        "ra": {"$gte": min_ra, "$lte": max_ra},
-        "dec": {"$gte": min_dec, "$lte": max_dec},
-        #    "status": 1,   For now grad all processes which are not
-        #                   in stack and also not are considered RFI
-        "$and": [{"is_in_stack": False}, {"quality_label": {"$ne": False}}],
-        "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
-    }
+    if run_stacking:
+        query = {
+            "ra": {"$gte": min_ra, "$lte": max_ra},
+            "dec": {"$gte": min_dec, "$lte": max_dec},
+            #    "status": 1,   For now grad all processes which are not
+            #                   in stack and also not are considered RFI
+            "$and": [{"is_in_stack": False}, {"quality_label": {"$ne": False}}],
+            "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
+        }
+    else:
+        query = {
+            "ra": {"$gte": min_ra, "$lte": max_ra},
+            "dec": {"$gte": min_dec, "$lte": max_dec},
+            "status": {"$ne$": 2},
+            "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
+        }
     if date:
         query["datetime"] = {"$gte": date, "$lte": date + dt.timedelta(days=ndays)}
     all_processes = list(db.processes.find(query))
