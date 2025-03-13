@@ -601,7 +601,7 @@ def run_all_pipeline_processes(
         query = {
             "ra": {"$gte": min_ra, "$lte": max_ra},
             "dec": {"$gte": min_dec, "$lte": max_dec},
-            "status": {"$ne$": 2},
+            "status": {"$ne": 2},
             "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
         }
     if date:
