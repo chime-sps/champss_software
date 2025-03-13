@@ -37,12 +37,14 @@ mlp_trainer.train(mp_cands, compute_metrics=True, save_model=True, filename="./m
 
 ### Updating the known source database
 
-The known source database is a MongoDB created from two scripts. The first is `write_psrcat_to_ksdb.py`, and it uses `psrqpy` to grab the latest version of the ATNF catalogue database file. The second is `write_psrscraper_to_ksdb.py`. This script grabs known sources from David Kaplan's Pulsar Scraper, which contains unpublished pulsars, often acquired by 'scraping' pulsar survey websites where new discoveries are posted. 
+The known source database is a MongoDB created from two scripts. The first is `write_psrcat_to_ksdb.py` and it uses `psrqpy` to grab the latest version of the ATNF catalogue database file. The second is `write_psrscraper_to_ksdb.py`. This script grabs known sources from David Kaplan's Pulsar Scraper, which contains unpublished pulsars, often acquired by 'scraping' pulsar survey websites where new discoveries are posted. 
 
 To populate a known source database, run `write_psrcat_to_ksdb.py`, followed by `write_psrscraper_to_ksdb.py`. Specify the database name, host and port. The update option is also needed if you want to only update the database with new sources or known sources that have updated ephemerides. Otherwise, all new sources will be added to the database and any existing sources in the databse will be replaced. There is a check for duplicate sources performed in `write_psrscraper_to_ksdb.py` to ensure the same pulsar is not added multiple times. 
 
-`python3 write_psrcat_to_ksdb.py --db-host sps-archiver1 --db-name test --update`
-`python3 write_psrscraper_to_ksdb.py --db-host sps-archiver1 --db-name test --update`
+```
+python3 write_psrcat_to_ksdb.py --db-host sps-archiver1 --db-name test --update
 
+python3 write_psrscraper_to_ksdb.py --db-host sps-archiver1 --db-name test --update
+```
 
 
