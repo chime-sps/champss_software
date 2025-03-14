@@ -630,7 +630,7 @@ def run_all_pipeline_processes(
             cmd_string_list.extend(
                 [
                     process.ra,
-                    f"' {process.dec}'",
+                    f" {process.dec}",
                     "all",
                 ]
             )
