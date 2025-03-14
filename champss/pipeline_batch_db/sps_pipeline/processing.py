@@ -665,7 +665,7 @@ def run_all_pipeline_processes(
                         "plot": True,
                         "plot_threshold": 8.0,
                         "ra": process.ra,
-                        "dec": f"' {process.dec}'",
+                        "dec": f" {process.dec}",
                         "components": ["all"],
                         "num_threads": docker_threads_needed,
                         "db_port": db_port,
