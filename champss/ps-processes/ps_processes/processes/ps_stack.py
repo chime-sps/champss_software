@@ -462,13 +462,10 @@ class PowerSpectraStack:
             log.info(f"Updating the new {self.mode} power spectra information")
             pspec.num_days += h5f.attrs["number of days"]
 
-            if type(pspec.rn_medians) == np.ndarray:
-                pspec.rn_medians = [pspec.rn_medians, (h5f.attrs["rednoise medians"])]
-                pspec.rn_scales = [pspec.rn_scales, (h5f.attrs["rednoise scales"])]
-                pspec.rn_dm_indices = [
-                    pspec.rn_dm_indices,
-                    (h5f.attrs["rednoise dm indices"]),
-                ]
+            if len(pspec.rn_medians) == 1:
+                pspec.rn_medians.extend(h5f.attrs["rednoise medians"])
+                pspec.rn_scales.extend(h5f.attrs["rednoise scales"])
+                pspec.rn_dm_indices.extend(h5f.attrs["rednoise dm indices"])
 
             elif pspec.rn_medians == None:
                 log.error("This power spectrum does not have rednoise info saved.")
@@ -539,9 +536,9 @@ class PowerSpectraStack:
         pspec_stack.obs_id.extend(pspec.obs_id)
 
         try:
-            pspec_stack.rn_medians.append(pspec.rn_medians)
-            pspec_stack.rn_scales.append(pspec.rn_scales)
-            pspec_stack.rn_dm_indices.append(pspec.rn_scales)
+            pspec_stack.rn_medians.extend(pspec.rn_medians)
+            pspec_stack.rn_scales.extend(pspec.rn_scales)
+            pspec_stack.rn_dm_indices.extend(pspec.rn_scales)
 
         except:
             if pspec.rn_medians == None:
