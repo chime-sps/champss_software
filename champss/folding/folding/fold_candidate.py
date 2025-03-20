@@ -4,9 +4,7 @@ import subprocess
 
 import click
 import numpy as np
-import sys
 from astropy.coordinates import SkyCoord
-from astropy.time import Time
 from glob import glob
 
 # set these up before importing any SPS packages
@@ -14,9 +12,6 @@ log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
-from beamformer.skybeam import SkyBeamFormer
-from beamformer.strategist.strategist import PointingStrategist
-from beamformer.utilities.common import find_closest_pointing, get_data_list
 from folding.plot_candidate import plot_candidate_archive
 from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
@@ -88,7 +83,7 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     cand_pos = SkyCoord(ra, dec, unit="deg")
     raj = f"{cand_pos.ra.hms.h:02.0f}:{cand_pos.ra.hms.m:02.0f}:{cand_pos.ra.hms.s:.6f}"
     decj = f"{cand_pos.dec.dms.d:02.0f}:{abs(cand_pos.dec.dms.m):02.0f}:{abs(cand_pos.dec.dms.s):.6f}"
-    pepoch = obs_date#Time(obs_date).mjd
+    pepoch = obs_date  # Time(obs_date).mjd
     log.info("Making new candidate ephemeris...")
     ephem = [
         ["PSRJ", name],
@@ -310,18 +305,16 @@ def main(
         # ra = coords.ra
         # dec = coords.dec
         sigma = 1
-        dir_suffix = "ffa_followup" 
+        dir_suffix = "ffa_followup"
         name = candidate_name(ra, dec)
         # year = date.year
         # month = date.month
         # day = date.day
-        
+
         log.info(f"Setting up pointing for {round(ra, 2)} {round(dec, 2)}...")
         directory_path = f"{foldpath}/{dir_suffix}"
         coord_path = f"{directory_path}/{round(ra, 2)}_{round(dec, 2)}"
-        archive_fname = (
-            f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{date}"
-        )
+        archive_fname = f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{date}"
         if not os.path.exists(coord_path):
             os.makedirs(coord_path)
         else:
@@ -329,18 +322,16 @@ def main(
 
         fname = f"/{name}_{date}_pow.fil"
         fil = fil_path + fname
-        
-        ephem_path = (
-            f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}.par"
-            )        
-        
+
+        ephem_path = f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}.par"
+
         if not os.path.exists(ephem_path):
             archs = glob(f"{fil_path}/{name}*.fil")
             print(archs)
             obs_dates = []
             for fn in archs:
                 print(fn)
-                date_new = float(fn.split('/')[-1].split("_")[1])
+                date_new = float(fn.split("/")[-1].split("_")[1])
                 print(date_new)
                 obs_dates.append(date_new)
             ref_date = ((np.max(obs_dates) - np.min(obs_dates)) / 2) + np.min(obs_dates)
@@ -349,7 +340,6 @@ def main(
         # if not os.path.exists(ephem_path):
         #     log.error(f"Ephemeris file {ephem_path} not found")
         #     return {}, [], []
-
 
         # set number of turns, roughly equalling 10s
         turns = int(np.ceil(10 * f0))
@@ -378,17 +368,17 @@ def main(
                 ],
                 capture_output=True,
             )
-            print( 'exit status:', fold_proc.returncode )
-            print( 'stdout:', fold_proc.stdout.decode() )
-            print( 'stderr:', fold_proc.stderr.decode() )
+            print("exit status:", fold_proc.returncode)
+            print("stdout:", fold_proc.stdout.decode())
+            print("stderr:", fold_proc.stderr.decode())
 
             # p_scrunch = f"pam -p -e p {archive_fname}" + ".ar"
             # subprocess.run(p_scrunch, shell=True, capture_output=True, text=True)
-            
-            p_name = archive_fname + '.ar'
+
+            p_name = archive_fname + ".ar"
             run_clfd = f"clfd {p_name} --no-report"
             subprocess.run(run_clfd, shell=True, capture_output=True, text=True)
-            
+
             clfd_fname = p_name + ".clfd"
             create_FT = f"pam -T -F {clfd_fname} -e FT"
             subprocess.run(create_FT, shell=True, capture_output=True, text=True)
@@ -405,7 +395,7 @@ def main(
                 known,
                 foldpath,
             )
-        
+
             log.info(f"SN of folded profile: {SN_arr}")
             fold_details = {
                 "date": date,
@@ -414,13 +404,11 @@ def main(
                 "path_to_plot": plot_fname,
             }
         else:
-            print(f'Already folded on {date}')
-        
+            print(f"Already folded on {date}")
+
         # fold_details["date"] = fold_details["date"].strftime("%Y%m%d")
         # Silence Workflow errors, requires results, products, plots
         # return fold_details, [plot_fname], [plot_fname]
-            
-
 
     # if dir_suffix == "candidates":
     #     log.info(f"Setting up pointing for {round(ra, 2)} {round(dec, 2)}...")
@@ -481,8 +469,6 @@ def main(
     # num_threads = 4 * nchan // 1024
     # log.info(f"using {num_threads} threads")
 
-
-
     # if not os.path.isfile(fil):
     #     log.info(f"Beamforming...")
     #     sbf = SkyBeamFormer(
@@ -521,8 +507,6 @@ def main(
     #         spectra_shared.unlink()
     #         del skybeam
 
-
-
     # if fs_id and write_to_db:
     #     log.info("Updating FollowUpSource with folding history")
     #     folding_history = source.folding_history
@@ -540,7 +524,6 @@ def main(
     #         )
     #         db_api.update_followup_source(fs_id, {"active": False})
 
-  
 
 if __name__ == "__main__":
     main()

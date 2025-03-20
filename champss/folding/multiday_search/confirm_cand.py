@@ -10,8 +10,7 @@ log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
-from folding.archive_utils import read_par
-from multiday_search.load_profiles import load_profiles, load_unwrapped_archives
+from multiday_search.load_profiles import load_profiles
 from multiday_search.phase_aligned_search import ExploreGrid
 from sps_databases import db_api, db_utils
 
@@ -61,7 +60,7 @@ from sps_databases import db_api, db_utils
     "--nday",
     default=0,
     type=int,
-    help="Number of days to search. Default is to search all available archives."
+    help="Number of days to search. Default is to search all available archives.",
 )
 @click.option(
     "--write-to-db",
@@ -137,7 +136,9 @@ def main(
     RA = ra
     DEC = dec
 
-    archives = glob(f'{foldpath}/ffa_followup/{round(ra, 2)}_{round(dec, 2)}/cand_{round(dm, 2)}_{round(f0, 2)}*.ar.clfd')
+    archives = glob(
+        f"{foldpath}/ffa_followup/{round(ra, 2)}_{round(dec, 2)}/cand_{round(dm, 2)}_{round(f0, 2)}*.ar.clfd"
+    )
     data = load_profiles(archives)
     print(len(data["profiles"]))
 
@@ -197,7 +198,7 @@ def main(
     f0_optimal = optimal_parameters[0]  # + F0_incoherent
     f1_optimal = optimal_parameters[1]
 
-    par_file = f'{foldpath}/ffa_followup/{round(ra, 2)}_{round(dec, 2)}/cand_{round(dm, 2)}_{round(f0, 2)}.par'
+    par_file = f"{foldpath}/ffa_followup/{round(ra, 2)}_{round(dec, 2)}/cand_{round(dm, 2)}_{round(f0, 2)}.par"
     optimal_par_file = par_file.replace(".par", "_optimal.par")
     directory = data["directory"]
     with open(par_file) as input:

@@ -3,21 +3,14 @@
 import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy as sp
-from astropy.constants import au, c
 from astropy.coordinates import (
-    BarycentricTrueEcliptic,
-    EarthLocation,
     SkyCoord,
-    get_body_barycentric,
 )
-from astropy.time import Time
 from beamformer.utilities.common import find_closest_pointing
 from folding.archive_utils import get_SN
 from multiday_search.load_profiles import load_unwrapped_archives, unwrap_profiles
 from numba import njit, prange, set_num_threads
 from numpy import unravel_index
-from scipy.ndimage import uniform_filter
 
 
 @njit(parallel=True)
@@ -60,13 +53,14 @@ class ExploreGrid:
         profiles = data["profiles"]
         print(type(profiles))
         from scipy.ndimage import gaussian_filter, median_filter
+
         profs = []
         for prof in profiles:
-            profile_medfilter = median_filter(prof, len(prof)//4 )
-            profile_medfilter = gaussian_filter(profile_medfilter, len(prof)//16 )
+            profile_medfilter = median_filter(prof, len(prof) // 4)
+            profile_medfilter = gaussian_filter(profile_medfilter, len(prof) // 16)
             profs.append(prof - profile_medfilter)
         profs = np.array(profs)
-        self.profiles = profs#data["profiles"]
+        self.profiles = profs  # data["profiles"]
         self.ngate = len(data["profiles"][0])
         self.dts = data["times"]
         self.f0_incoherent = data["F0"]
@@ -185,7 +179,7 @@ class ExploreGrid:
         param_txt3 = (
             f"$\\ell$ (deg): {round(l, 2)}\n"
             f"$\\it{{b}}$ (deg): {round(b, 2)}\n"
-            f"Max DM: {round(max_dm,2)}"
+            f"Max DM: {round(max_dm, 2)}"
         )
 
         axs[0, 1].text(
@@ -259,7 +253,7 @@ class ExploreGrid:
             axs[0, 2].yaxis.set_label_position("left")
             axs[0, 2].xaxis.get_major_ticks()[0].label1.set_visible(False)
 
-        plot_name = f"{self.directory}/phase_search_{round(self.DM,2)}_{round(self.f0_incoherent,2)}.png"
+        plot_name = f"{self.directory}/phase_search_{round(self.DM, 2)}_{round(self.f0_incoherent, 2)}.png"
         print(f"Saving diagnostic plot to {plot_name}")
         plt.savefig(plot_name, bbox_inches="tight")
         plt.close()

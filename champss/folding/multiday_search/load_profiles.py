@@ -5,7 +5,6 @@ import numpy as np
 from astropy.constants import au, c
 from astropy.coordinates import (
     BarycentricTrueEcliptic,
-    EarthLocation,
     SkyCoord,
     get_body_barycentric,
 )
@@ -68,7 +67,7 @@ def load_profiles(archives, max_npbin=256):
     profs = []
     times = []
     PEPOCHs = []
-    print(*archives,sep='\n')
+    print(*archives, sep="\n")
     for filename in sorted(archives):
         f = filename.replace("ar.clfd", "ar.FT")
         if os.path.isfile(f) and f.endswith("ar.FT"):

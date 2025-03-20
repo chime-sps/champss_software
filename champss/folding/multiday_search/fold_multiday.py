@@ -9,7 +9,7 @@ import numpy as np
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import get_data_list
 from scheduler.workflow import schedule_workflow_job
-from sps_databases import db_api, db_utils, models
+from sps_databases import db_utils
 from folding.fold_candidate import candidate_name
 
 log = logging.getLogger()
@@ -156,11 +156,11 @@ def main(
     #     ra, dec, "/data/chime/sps/raw/", nday=nday
     # )
     # log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
-    name = candidate_name(ra,dec)
-    fil_paths = glob(f'{fil_path}/{name}*.fil')
+    name = candidate_name(ra, dec)
+    fil_paths = glob(f"{fil_path}/{name}*.fil")
     # for date in dates_with_data:
     for fn in fil_paths:
-        date = fn.split('/')[-1].split('_')[1]
+        date = fn.split("/")[-1].split("_")[1]
         if use_workflow:
             docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
             docker_memory_reservation = (nchan / 1024) * 8
@@ -214,11 +214,11 @@ def main(
                     "--ffa_followup",
                     "--write-to-db",
                     "--fil_path",
-                    str(fil_path)
+                    str(fil_path),
                 ],
                 standalone_mode=False,
             )
-    
+
 
 if __name__ == "__main__":
     main()

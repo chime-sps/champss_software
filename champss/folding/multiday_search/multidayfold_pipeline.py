@@ -1,17 +1,15 @@
-import datetime as dt
 import logging
 
 import click
 import multiday_search.confirm_cand as confirm_cand
 import multiday_search.fold_multiday as fold_multiday
-from foldutils.database_utils import add_mdcand_from_candpath, add_mdcand_from_psrname
 from scheduler.workflow import (
     clear_workflow_buckets,
     docker_swarm_running_states,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
 )
-from sps_databases import db_api, db_utils, models
+from sps_databases import db_utils
 
 log = logging.getLogger()
 log_stream = logging.StreamHandler()
@@ -206,24 +204,24 @@ def main(
         return foldresults_dict, [], []
     else:
         fold_multiday.main(
-             args=[
-                    "--dm",
-                    str(dm),
-                    "--f0",
-                    str(f0),
-                    "--ra",
-                    str(ra),
-                    "--dec",
-                    str(dec),
-                    "--foldpath",
-                    str(foldpath),
-                    "--ffa_followup",
-                    "--fil_path",
-                    str(fil_path)
-                ],
+            args=[
+                "--dm",
+                str(dm),
+                "--f0",
+                str(f0),
+                "--ra",
+                str(ra),
+                "--dec",
+                str(dec),
+                "--foldpath",
+                str(foldpath),
+                "--ffa_followup",
+                "--fil_path",
+                str(fil_path),
+            ],
             standalone_mode=False,
         )
-        
+
         print("Finished multiday folding, beginning the coherent search")
         confirm_cand.main(
             args=[
