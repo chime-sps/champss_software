@@ -12,6 +12,8 @@ from numpy.lib.recfunctions import (
     structured_to_unstructured,
     unstructured_to_structured,
 )
+from functools import partial
+from multiprocessing import Pool
 from sklearn.cluster import DBSCAN
 from sps_common.interfaces import MultiPointingCandidate, SinglePointingCandidate
 
@@ -377,19 +379,32 @@ class SinglePointingCandidateGrouper:
         uniq_labels = set(labels)
         core_samples_mask = np.zeros_like(labels, dtype=bool)
         core_samples_mask[dbres.core_sample_indices_] = True
+        log.info(f"Finished DBSCAN. Found {len(uniq_labels)} clusters.")
 
         # iterate over the unique labels to access which SinglePointingCandidates have
         # been clustered together
-        mp_cands = []
-        for k in uniq_labels:
-            cluster_member_mask = labels == k
-            clustered_cands = data[core_samples_mask & cluster_member_mask]
-            clustered_cands_idx = list(set(clustered_cands[:, 0].astype(int)))
-            # for each cluster, create a SinglePointingCandidate object and add its
-            # MultiPointingCandidate representation to the list
-            group = SinglePointingCandidateGroup(
-                [cands[idx] for idx in clustered_cands_idx]
+        with Pool(num_threads) as p:
+            mp_cands = p.map(
+                partial(
+                    create_mp_candidate_from_label,
+                    labels,
+                    data,
+                    core_samples_mask,
+                    cands,
+                ),
+                uniq_labels,
             )
-            mp_cands.append(group.as_candidate())
+        log.info(f"Created {len(mp_cands)} multipointing candidates.")
 
         return mp_cands
+
+
+def create_mp_candidate_from_label(labels, data, core_samples_mask, cands, label):
+    cluster_member_mask = labels == label
+    clustered_cands = data[core_samples_mask & cluster_member_mask]
+    clustered_cands_idx = list(set(clustered_cands[:, 0].astype(int)))
+    # for each cluster, create a SinglePointingCandidate object and add its
+    # MultiPointingCandidate representation to the list
+    group = SinglePointingCandidateGroup([cands[idx] for idx in clustered_cands_idx])
+    mp_cand = group.as_candidate()
+    return mp_cand
