@@ -265,6 +265,14 @@ class SinglePointingCandidateGroup:
         spc_dms = [spc.dm for spc in self.group_members]
         spc_sigmas = [spc.sigma for spc in self.group_members]
 
+        all_spcc_files = [summary["file_name"] for summary in self.group_members]
+        all_spcc_indices = [summary["cand_index"] for summary in self.group_members]
+        all_date_ranges = [
+            (min(summary["datetimes"]), max(summary["datetimes"]))
+            for summary in self.group_members
+        ]
+        all_num_days = [len(summary["datetimes"]) for summary in self.group_members]
+
         attributes = {
             "best_sigma": max_sigma,
             "best_dm": max_sigma_cand["dm"],
@@ -279,9 +287,13 @@ class SinglePointingCandidateGroup:
             "obs_id": obs_id,
             "datetimes": datetimes,
             "summed_raw_harmonic_powers": summed_raw_harmonic_powers,
-            "all_summaries": sorted_members,
+            "all_summaries": [],  # Disabled for now to make candidates lighter
             "best_nharm": max_sigma_cand["nharm"],
             "best_harmonic_sum": max_sigma_cand["best_harmonic_sum"],
+            "all_spcc_files": all_spcc_files,
+            "all_spcc_indices": all_spcc_indices,
+            "all_date_ranges": all_date_ranges,
+            "all_num_days": all_num_days,
         }
 
         self.group_summary.update(reduced_summary)
