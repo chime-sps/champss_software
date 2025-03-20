@@ -70,8 +70,8 @@ def load_profiles(archives, max_npbin=256):
     PEPOCHs = []
     print(*archives,sep='\n')
     for filename in sorted(archives):
-        f = filename.replace(".ar", ".FT")
-        if os.path.isfile(f) and f.endswith(".FT"):
+        f = filename.replace("ar.clfd", "ar.FT")
+        if os.path.isfile(f) and f.endswith("ar.FT"):
             print(f)
             data_ar, F, T, source, tel = readpsrarch(f)
             data_ar = data_ar.squeeze()
@@ -85,7 +85,7 @@ def load_profiles(archives, max_npbin=256):
             times.append(T[0])
             PEPOCH = get_archive_parameter(f, "PEPOCH")
             PEPOCHs.append(PEPOCH)
-
+    print(PEPOCHs)
     if np.unique(PEPOCHs).size > 1:
         print(
             "Not all profiles reference the same PEPOCHs, re-apply same ephemeris to"
@@ -98,6 +98,7 @@ def load_profiles(archives, max_npbin=256):
 
     npbin = len(profs[0])
     profs = np.array(profs)
+
     if npbin > max_npbin:
         print(f"Binning to {max_npbin} phase bins.")
         profs = profs.reshape(

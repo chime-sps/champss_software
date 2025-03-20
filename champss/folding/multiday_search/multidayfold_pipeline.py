@@ -20,6 +20,16 @@ log = logging.getLogger(__name__)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.option("--dm", type=float, help="DM")
+@click.option("--f0", type=float, help="F0")
+@click.option("--ra", type=float, help="RA")
+@click.option("--dec", type=float, help="DEC")
+@click.option(
+    "--fil_path",
+    type=str,
+    default="",
+    help="Path to filterbanks",
+)
 @click.option(
     "--candpath",
     type=str,
@@ -80,6 +90,11 @@ log = logging.getLogger(__name__)
     help="Which Docker Image name to use.",
 )
 def main(
+    dm,
+    f0,
+    ra,
+    dec,
+    fil_path,
     candpath,
     psr,
     foldpath,
@@ -92,12 +107,12 @@ def main(
     docker_image_name,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
-    if psr != "":
-        fs_id = str(add_mdcand_from_psrname(psr, dt.datetime.now()))
-    elif candpath != "":
-        fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
-    else:
-        raise ValueError("Must provide either a candidate path or pulsar name")
+    # if psr != "":
+    #     fs_id = str(add_mdcand_from_psrname(psr, dt.datetime.now()))
+    # elif candpath != "":
+    #     fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
+    # else:
+    #     raise ValueError("Must provide either a candidate path or pulsar name")
     if use_workflow:
         docker_service_name_prefix = "fold-multiday"
 
@@ -191,36 +206,37 @@ def main(
         return foldresults_dict, [], []
     else:
         fold_multiday.main(
-            args=[
-                "--fs_id",
-                fs_id,
-                "--foldpath",
-                foldpath,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-host",
-                db_host,
-                "--nday",
-                nday,
-            ],
+             args=[
+                    "--dm",
+                    str(dm),
+                    "--f0",
+                    str(f0),
+                    "--ra",
+                    str(ra),
+                    "--dec",
+                    str(dec),
+                    "--foldpath",
+                    str(foldpath),
+                    "--ffa_followup",
+                    "--fil_path",
+                    str(fil_path)
+                ],
             standalone_mode=False,
         )
-
+        
         print("Finished multiday folding, beginning the coherent search")
         confirm_cand.main(
             args=[
-                "--fs_id",
-                fs_id,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-host",
-                db_host,
-                "--nday",
-                nday,
+                "--dm",
+                dm,
+                "--f0",
+                f0,
+                "--ra",
+                ra,
+                "--dec",
+                dec,
+                "--foldpath",
+                foldpath,
             ],
             standalone_mode=False,
         )

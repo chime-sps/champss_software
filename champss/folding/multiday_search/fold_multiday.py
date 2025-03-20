@@ -10,6 +10,7 @@ from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import get_data_list
 from scheduler.workflow import schedule_workflow_job
 from sps_databases import db_api, db_utils, models
+from folding.fold_candidate import candidate_name
 
 log = logging.getLogger()
 
@@ -52,11 +53,26 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.option("--dm", type=float, help="DM")
+@click.option("--f0", type=float, help="F0")
+@click.option("--ra", type=float, help="RA")
+@click.option("--dec", type=float, help="DEC")
 @click.option(
     "--fs_id",
     type=str,
     default="",
     help="FollowUpSource ID, to fold from database values",
+)
+@click.option(
+    "--ffa_followup",
+    is_flag=True,
+    help="FFA Followup Source",
+)
+@click.option(
+    "--fil_path",
+    type=str,
+    default="",
+    help="Path to filterbanks",
 )
 @click.option(
     "--db-port",
@@ -113,10 +129,16 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
 )
 def main(
     fs_id,
+    ra,
+    dec,
+    dm,
+    f0,
+    fil_path,
     db_port,
     db_host,
     db_name,
     foldpath,
+    ffa_followup,
     nday,
     use_workflow,
     workflow_buckets_name,
@@ -124,17 +146,21 @@ def main(
     docker_service_name_prefix,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
-    source = db_api.get_followup_source(fs_id)
-    ra = source.ra
-    dec = source.dec
-    dm = source.dm
+    # source = db_api.get_followup_source(fs_id)
+    # ra = source.ra
+    # dec = source.dec
+    # dm = source.dm
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    dates_with_data = find_all_dates_with_data(
-        ra, dec, "/data/chime/sps/raw/", nday=nday
-    )
-    log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
-    for date in dates_with_data:
+    # dates_with_data = find_all_dates_with_data(
+    #     ra, dec, "/data/chime/sps/raw/", nday=nday
+    # )
+    # log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
+    name = candidate_name(ra,dec)
+    fil_paths = glob(f'{fil_path}/{name}*.fil')
+    # for date in dates_with_data:
+    for fn in fil_paths:
+        date = fn.split('/')[-1].split('_')[1]
         if use_workflow:
             docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
             docker_memory_reservation = (nchan / 1024) * 8
@@ -175,19 +201,24 @@ def main(
                 args=[
                     "--date",
                     str(date),
-                    "--fs_id",
-                    str(fs_id),
-                    "--db-host",
-                    str(db_host),
-                    "--db-port",
-                    str(db_port),
-                    "--db-name",
-                    str(db_name),
+                    "--dm",
+                    str(dm),
+                    "--f0",
+                    str(f0),
+                    "--ra",
+                    str(ra),
+                    "--dec",
+                    str(dec),
+                    "--foldpath",
+                    str(foldpath),
+                    "--ffa_followup",
                     "--write-to-db",
+                    "--fil_path",
+                    str(fil_path)
                 ],
                 standalone_mode=False,
             )
-
+    
 
 if __name__ == "__main__":
     main()

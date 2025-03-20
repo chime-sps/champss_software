@@ -57,7 +57,16 @@ class ExploreGrid:
     def __init__(self, data, f0_lims, f1_lims, f0_points, f1_points):
         self.f0_lims = f0_lims
         self.f1_lims = f1_lims
-        self.profiles = data["profiles"]
+        profiles = data["profiles"]
+        print(type(profiles))
+        from scipy.ndimage import gaussian_filter, median_filter
+        profs = []
+        for prof in profiles:
+            profile_medfilter = median_filter(prof, len(prof)//4 )
+            profile_medfilter = gaussian_filter(profile_medfilter, len(prof)//16 )
+            profs.append(prof - profile_medfilter)
+        profs = np.array(profs)
+        self.profiles = profs#data["profiles"]
         self.ngate = len(data["profiles"][0])
         self.dts = data["times"]
         self.f0_incoherent = data["F0"]

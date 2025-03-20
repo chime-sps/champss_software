@@ -49,13 +49,15 @@ def plot_candidate_archive(
     foldpath="/data/chime/sps/archives/plots/folded_candidate_plots",
 ):
     data, F, T, psr, tel = readpsrarch(fn)
+    print(len(F))
+    print(len(T))
 
-    fs, flag, mask, bg, bpass = clean_foldspec(data.squeeze())
+    fs, flag, mask, bg, bpass = clean_foldspec(data[:,0])
     taxis = ((T - T[0]) * u.day).to(u.min)
     T0 = Time(T[0], format="mjd")
 
     fs_bg = fs - np.median(fs, axis=-1, keepdims=True)
-    fs_bg = fs_bg[1:-1]
+    # fs_bg = fs_bg[1:-1]
 
     ngate = fs.shape[-1]
     nc = 256
@@ -192,6 +194,7 @@ def plot_candidate_archive(
 
     profile = np.nanmean(np.nanmean(fs_bin, 0), 0)
     SNR_val, SNprof = get_SN(profile, return_profile=True)
+    print(SNR_val)
     fs_bin = np.tile(fs_bin, (1,2))
     SNprof = np.tile(SNprof, 2)
 

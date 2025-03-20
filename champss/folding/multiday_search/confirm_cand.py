@@ -3,6 +3,7 @@ import logging
 
 import click
 import numpy as np
+from glob import glob
 
 # set these up before importing any SPS packages
 log_stream = logging.StreamHandler()
@@ -16,6 +17,16 @@ from sps_databases import db_api, db_utils
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.option("--dm", type=float, help="DM")
+@click.option("--f0", type=float, help="F0")
+@click.option("--ra", type=float, help="RA")
+@click.option("--dec", type=float, help="DEC")
+@click.option(
+    "--foldpath",
+    default="/data/chime/sps/archives",
+    type=str,
+    help="Path for created files during fold step.",
+)
 @click.option(
     "--fs_id",
     type=str,
@@ -63,6 +74,11 @@ from sps_databases import db_api, db_utils
     help="Output possible candidates.",
 )
 def main(
+    dm,
+    f0,
+    ra,
+    dec,
+    foldpath,
     fs_id,
     db_port,
     db_host,
@@ -85,37 +101,43 @@ def main(
             )
         return
 
-    source = db_api.get_followup_source(fs_id)
-    print(fs_id, source)
-    source_type = source.source_type
-    if source_type != "md_candidate":
-        log.error(f"Source {fs_id} is not a multi-day candidate, exiting...")
-        return
+    # source = db_api.get_followup_source(fs_id)
+    # print(fs_id, source)
+    # source_type = source.source_type
+    # if source_type != "md_candidate":
+    #     log.error(f"Source {fs_id} is not a multi-day candidate, exiting...")
+    #     return
 
-    if source.folding_history:
-        fold_dates = [entry["date"].date() for entry in source.folding_history]
-        fold_SN = [entry["SN"] for entry in source.folding_history]
-        archives = [entry["archive_fname"] for entry in source.folding_history]
-        if len(archives) < 2:
-            log.error(f"Source {fs_id} does not have more than 1 archive required to run the search, exiting...")
-            return
-    else:
-        log.error(f"Source {fs_id} has no folding history in db, exiting...")
-        return
-    if nday:
-        fold_dates = fold_dates[:nday]
-        fold_SN = fold_SN[:nday]
-        archives = archives[:nday]
-    print(fold_dates)
-    print(fold_SN)
-    print(archives)
-    par_file = source.path_to_ephemeris
-    par_vals = read_par(par_file)
-    DM_incoherent = par_vals["DM"]
-    F0_incoherent = par_vals["F0"]
-    RA = par_vals["RAJD"]
-    DEC = par_vals["DECJD"]
+    # if source.folding_history:
+    #     fold_dates = [entry["date"].date() for entry in source.folding_history]
+    #     fold_SN = [entry["SN"] for entry in source.folding_history]
+    #     archives = [entry["archive_fname"] for entry in source.folding_history]
+    #     if len(archives) < 2:
+    #         log.error(f"Source {fs_id} does not have more than 1 archive required to run the search, exiting...")
+    #         return
+    # else:
+    #     log.error(f"Source {fs_id} has no folding history in db, exiting...")
+    #     return
+    # if nday:
+    #     fold_dates = fold_dates[:nday]
+    #     fold_SN = fold_SN[:nday]
+    #     archives = archives[:nday]
+    # print(fold_dates)
+    # print(fold_SN)
+    # print(archives)
+    # par_file = source.path_to_ephemeris
+    # par_vals = read_par(par_file)
+    # DM_incoherent = par_vals["DM"]
+    # F0_incoherent = par_vals["F0"]
+    # RA = par_vals["RAJD"]
+    # DEC = par_vals["DECJD"]
 
+    DM_incoherent = dm
+    F0_incoherent = f0
+    RA = ra
+    DEC = dec
+
+    archives = glob(f'{foldpath}/ffa_followup/{round(ra, 2)}_{round(dec, 2)}/cand_{round(dm, 2)}_{round(f0, 2)}*.ar.clfd')
     data = load_profiles(archives)
     print(len(data["profiles"]))
 
@@ -175,6 +197,7 @@ def main(
     f0_optimal = optimal_parameters[0]  # + F0_incoherent
     f1_optimal = optimal_parameters[1]
 
+    par_file = f'{foldpath}/ffa_followup/{round(ra, 2)}_{round(dec, 2)}/cand_{round(dm, 2)}_{round(f0, 2)}.par'
     optimal_par_file = par_file.replace(".par", "_optimal.par")
     directory = data["directory"]
     with open(par_file) as input:
