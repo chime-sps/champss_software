@@ -4,7 +4,6 @@ import datetime
 import os
 from enum import Enum
 
-import attr
 import numpy as np
 import numpy.lib.recfunctions as rfn
 from attr import attrib, attrs, converters
@@ -205,9 +204,9 @@ class MultiPointingCandidate:
         in teh search but the harm_sigma_curve.
     """
 
-    all_dms = attrib(type=list)
-    all_freqs = attrib(type=list)
-    all_sigmas = attrib(type=list)
+    all_dms = attrib(type=np.ndarray, converter=np.array)
+    all_freqs = attrib(type=np.ndarray, converter=np.array)
+    all_sigmas = attrib(type=np.ndarray, converter=np.array)
     best_freq = attrib(converter=float)
     mean_freq = attrib(converter=float)
     delta_freq = attrib(converter=float)
@@ -222,12 +221,25 @@ class MultiPointingCandidate:
     position_features = attrib(type=np.ndarray)
     obs_id = attrib(
         validator=deep_iterable(
-            member_validator=instance_of(str), iterable_validator=instance_of(list)
-        )
+            member_validator=instance_of(str), iterable_validator=None
+        ),
+        converter=np.array,
     )
     position_sigmas = attrib(type=np.ndarray)
     summed_raw_harmonic_powers = attrib(type=np.ndarray)
-    all_summaries = attrib(type=list)
+    all_summaries = attrib(type=list, default=[], converter=converters.optional(list))
+    all_spcc_files = attrib(
+        type=np.ndarray, default=None, converter=converters.optional(np.array)
+    )
+    all_spcc_indices = attrib(
+        type=np.ndarray, default=None, converter=converters.optional(np.array)
+    )
+    all_date_ranges = attrib(
+        type=np.ndarray, default=None, converter=converters.optional(np.array)
+    )
+    all_num_days = attrib(
+        type=np.ndarray, default=None, converter=converters.optional(np.array)
+    )
     best_candidate_object = attrib(type=SinglePointingCandidate, default=None)
     best_nharm = attrib(converter=converters.optional(int), default=None)
     best_harmonic_sum = attrib(converter=converters.optional(int), default=None)
@@ -236,9 +248,10 @@ class MultiPointingCandidate:
     datetimes = attrib(
         validator=deep_iterable(
             member_validator=instance_of(datetime.datetime),
-            iterable_validator=instance_of(list),
+            iterable_validator=None,
         ),
-        default=[],
+        default=np.array([]),
+        converter=converters.optional(np.array),
     )
     # I want best_candidate to be a SinglePointingCandidate, but when loading a file I get a dict
     # I fix this in post_init. A custom converter would also work probabaly.
@@ -246,6 +259,34 @@ class MultiPointingCandidate:
     def __attrs_post_init__(self):
         """Convert the best_candidate from a dict to a SinglePointingCandidate."""
         # self.best_candidate_object = self.best_candidate
+        # In order to save on disk space, I removed all_summaries, for compability I load those here
+        if self.all_summaries:
+            self.all_spcc_files = np.array(
+                [summary["file_name"] for summary in self.all_summaries]
+            )
+            self.all_spcc_indices = np.array(
+                [summary["cand_index"] for summary in self.all_summaries]
+            )
+            self.all_date_ranges = np.array(
+                [
+                    (min(summary["datetimes"]), max(summary["datetimes"]))
+                    for summary in self.all_summaries
+                ]
+            )
+            self.all_num_days = np.array(
+                [len(summary["datetimes"]) for summary in self.all_summaries]
+            )
+
+        # Saving and retreiving these classes does not work always nicely
+        if isinstance(self.classification, np.ndarray):
+            self.classification = self.classification.item()
+        elif isinstance(self.classification, dict):
+            self.classification = CandidateClassification(**self.classification)
+
+        if isinstance(self.known_source, np.ndarray):
+            self.known_source = self.known_source.item()
+        elif isinstance(self.known_source, dict):
+            self.known_source = KnownSourceClassification(**self.known_source)
 
     # @best_freq.validator
     @mean_freq.validator
@@ -363,8 +404,8 @@ class MultiPointingCandidate:
     def single_candidate(self, index):
         """Load a SinglePointingCandidate based on an index."""
         candidate = SinglePointingCandidate.get_from_spcc(
-            self.all_summaries[index]["file_name"],
-            self.all_summaries[index]["cand_index"],
+            self.all_spcc_files[index],
+            self.all_spcc_indices[index],
         )
         return candidate
 
@@ -377,65 +418,31 @@ class MultiPointingCandidate:
         """
         return self.single_candidate(0)
 
+    def get_all_summaries(self):
+        """Load a SinglePointingCandidate based on an index."""
+        all_summaries = [
+            SinglePointingCandidate.get_from_spcc(
+                self.all_spcc_files[index],
+                self.all_spcc_indices[index],
+            ).summary
+            for index in range(self.num_candidates)
+        ]
+        self.all_summaries = all_summaries
+        return all_summaries
+
     def as_dict(self):
         """Return this candidate's properties as a Python dictionary."""
-        if self.classification is not None:
-            classification_dict = dict(
-                label=self.classification.label.name, grade=self.classification.grade
-            )
-        else:
-            classification_dict = None
-        if self.known_source is not None:
-            known_source_dict = dict(
-                label=self.known_source.label.name,
-                matches=self.known_source.matches.tolist(),
-                matches_names=self.known_source.matches.dtype.names,
-            )
-        else:
-            known_source_dict = None
-        cand_dict = dict(
-            best_freq=self.best_freq,
-            #        best_freq_arr=self.best_freq_arr.tolist(),
-            mean_freq=self.mean_freq,
-            delta_freq=self.delta_freq,
-            best_dm=self.best_dm,
-            #        best_dm_arr=self.best_dm_arr.tolist(),
-            mean_dm=self.mean_dm,
-            delta_dm=self.delta_dm,
-            # best_dc=self.best_dc,
-            ra=self.ra,
-            dec=self.dec,
-            best_sigma=self.best_sigma,
-            summary=self.summary,
-            features=self.features.tolist(),
-            features_names=self.features.dtype.names,
-            position_features=self.position_features.tolist(),
-            position_features_names=self.position_features.dtype.names,
-            obs_id=self.obs_id,
-            classification=classification_dict,
-            known_source=known_source_dict,
-            # best_candidate=self.best_candidate.as_dict(),
-            all_dms=self.all_dms,
-            all_freqs=self.all_freqs,
-            all_sigmas=self.all_sigmas,
-            all_summaries=self.all_summaries,
-            datetimes=self.datetimes,
-            best_nharm=self.best_nharm,
-        )
-        return cand_dict
+        return self.__dict__
 
     @classmethod
     def read(cls, filename):
         """Read MultiPointingCandidate from disk."""
-        mpc_dict = np.load(filename, allow_pickle=True)["properties"][()]
-        if mpc_dict["classification"]:
-            mpc_dict["classification"] = CandidateClassification(
-                **mpc_dict["classification"]
-            )
-        if mpc_dict["known_source"]:
-            mpc_dict["known_source"] = KnownSourceClassification(
-                **mpc_dict["known_source"]
-            )
+        mpc_load = np.load(filename, allow_pickle=True)
+        old_properties = mpc_load.get("properties", None)
+        if old_properties:
+            mpc_dict = old_properties.item()
+        else:
+            mpc_dict = dict(mpc_load.items())
         return cls(**mpc_dict)
 
     def write(self, file_prefix):
@@ -447,8 +454,11 @@ class MultiPointingCandidate:
         filename = file_prefix + "_f_{:.3f}_DM_{:.3f}_class_{}.npz".format(
             self.best_freq, self.best_dm, class_value
         )
-        properties = attr.asdict(self)
-        np.savez(filename, properties=properties)
+        cand_dict = self.__dict__.copy()
+        # Prevent all summaries from being written if they have been loaded
+        # Copying the dict, prevents the allPsummaries field from being overwritten
+        cand_dict["all_summaries"] = []
+        np.savez(filename, **cand_dict)
         return filename
 
     def plot_candidate(self, path="./plots_mp/", config=default_config_path):
