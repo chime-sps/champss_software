@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from matplotlib.gridspec import GridSpec
+import warnings
+
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ def plot_text(fig, panel, grid_points, candidate):
     if "values" in panel.keys():
         for value in panel["values"]:
             if not value:
-                text += f"\n"
+                text += "\n"
                 continue
             if isinstance(getattr(candidate, value), dict):
                 val_dict = getattr(candidate, value)
@@ -267,29 +269,21 @@ def plot_scatter_positions(fig, panel, grid_points, candidate):
     ax_dm_freq.scatter(freq_vals, dm_vals, alpha=0.7, edgecolors="black")
 
     ax_time_sigma = fig.add_subplot(sgs[1, 1])
-    for index, cand_summary in enumerate(candidate.all_summaries):
-        sorted_dates = cand_summary["datetimes"]
-        if len(sorted_dates) == 1:
-            width = dt.timedelta(days=0.1)
-        else:
-            width = sorted_dates[-1] - sorted_dates[0]
-        rect = plt.Rectangle(
-            (sorted_dates[0], cand_summary["sigma"] - 0.5),
-            width,
-            1,
-            edgecolor="black",
-            alpha=0.7,
+    ax_time_sigma.hlines(
+        candidate.all_sigmas,
+        candidate.all_date_ranges[:, 0] - dt.timedelta(minutes=5),
+        candidate.all_date_ranges[:, 1] + dt.timedelta(minutes=5),
+    )
+
+    # Catch warning created by autodatelocator
+    with warnings.catch_warnings(action="ignore"):
+        ax_time_sigma.xaxis.set_major_formatter(
+            mdates.ConciseDateFormatter(ax_time_sigma.xaxis.get_major_locator())
         )
-
-        ax_time_sigma.add_patch(rect)
-
-    ax_time_sigma.xaxis.set_major_formatter(
-        mdates.ConciseDateFormatter(ax_time_sigma.xaxis.get_major_locator())
-    )
-    ax_time_sigma.xaxis.set_major_locator(
-        mdates.AutoDateLocator(minticks=3, maxticks=5)
-    )
-    ax_time_sigma.autoscale_view()
+        ax_time_sigma.xaxis.set_major_locator(
+            mdates.AutoDateLocator(minticks=3, maxticks=5)
+        )
+        ax_time_sigma.autoscale_view()
 
     # Label wil overlap with xticks otherwise
     # ax_time_sigma.set_xlabel("Date")

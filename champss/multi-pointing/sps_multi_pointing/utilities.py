@@ -98,7 +98,7 @@ def process_mp_candidate(
             "dec": cand.dec,
             "best_ra": cand.summary["ra"],
             "best_dec": cand.summary["dec"],
-            "ncands": len(cand.all_summaries),
+            "ncands": len(cand.all_dms),
             "std_ra": cand.position_features["std_ra"],
             "std_dec": cand.position_features["std_dec"],
             "delta_ra": cand.position_features["delta_ra"],
