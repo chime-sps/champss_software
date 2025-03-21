@@ -563,6 +563,16 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
     type=bool,
     help="To run the stacking part of the pipeline or not.",
 )
+@click.option(
+    "--known-source-threshold",
+    "--kst",
+    default=np.inf,
+    type=float,
+    help=(
+        "Threshold under which known sources are filtered based on the previously"
+        " strongest detection of that source in that pointing."
+    ),
+)
 def run_all_pipeline_processes(
     db_host,
     db_port,
@@ -582,6 +592,7 @@ def run_all_pipeline_processes(
     docker_image_name,
     docker_service_name_prefix,
     run_stacking,
+    known_source_threshold,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -595,14 +606,14 @@ def run_all_pipeline_processes(
             #    "status": 1,   For now grad all processes which are not
             #                   in stack and also not are considered RFI
             "$and": [{"is_in_stack": False}, {"quality_label": {"$ne": False}}],
-            "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
+            # "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
         }
     else:
         query = {
             "ra": {"$gte": min_ra, "$lte": max_ra},
             "dec": {"$gte": min_dec, "$lte": max_dec},
             "status": {"$ne": 2},
-            "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
+            #     "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
         }
     if date:
         query["datetime"] = {"$gte": date, "$lte": date + dt.timedelta(days=ndays)}
@@ -679,6 +690,10 @@ def run_all_pipeline_processes(
                         "using_pyroscope": False,
                         "using_docker": True,
                     }
+                    if known_source_threshold is not np.inf:
+                        workflow_params["known_source_threshold"] = (
+                            known_source_threshold,
+                        )
                     workflow_tags = [
                         "pipeline",
                         formatted_ra,
@@ -827,6 +842,16 @@ def run_all_pipeline_processes(
     type=bool,
     help="To run the stacking part of the pipeline or not.",
 )
+@click.option(
+    "--known-source-threshold",
+    "--kst",
+    default=np.inf,
+    type=float,
+    help=(
+        "Threshold under which known sources are filtered based on the previously"
+        " strongest detection of that source in that pointing."
+    ),
+)
 def start_processing_manager(
     db_host,
     db_port,
@@ -846,6 +871,7 @@ def start_processing_manager(
     run_multipointing,
     run_folding,
     run_stacking,
+    known_source_threshold,
 ):
     """Manager function containing the multiple processing steps."""
     atexit.register(remove_processing_services, None, None)
@@ -963,40 +989,45 @@ def start_processing_manager(
                     args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
-
+                pipeline_args = [
+                    "--db-host",
+                    db_host,
+                    "--db-port",
+                    db_port,
+                    "--db-name",
+                    db_name,
+                    "--date",
+                    date_to_process,
+                    "--min-ra",
+                    min_ra,
+                    "--max-ra",
+                    max_ra,
+                    "--min-dec",
+                    min_dec,
+                    "--max-dec",
+                    max_dec,
+                    "--basepath",
+                    basepath,
+                    "--stackpath",
+                    basepath,
+                    "--datpath",
+                    datpath,
+                    "--workflow-buckets-name",
+                    workflow_buckets_name,
+                    "--docker-image-name",
+                    docker_image_name,
+                    "--docker-service-name-prefix",
+                    docker_service_name_prefix,
+                    "--run-stacking",
+                    run_stacking,
+                ]
+                if known_source_threshold != np.inf:
+                    pipeline_args += [
+                        "--kst",
+                        known_source_threshold,
+                    ]
                 run_all_pipeline_processes.main(
-                    args=[
-                        "--db-host",
-                        db_host,
-                        "--db-port",
-                        db_port,
-                        "--db-name",
-                        db_name,
-                        "--date",
-                        date_to_process,
-                        "--min-ra",
-                        min_ra,
-                        "--max-ra",
-                        max_ra,
-                        "--min-dec",
-                        min_dec,
-                        "--max-dec",
-                        max_dec,
-                        "--basepath",
-                        basepath,
-                        "--stackpath",
-                        basepath,
-                        "--datpath",
-                        datpath,
-                        "--workflow-buckets-name",
-                        workflow_buckets_name,
-                        "--docker-image-name",
-                        docker_image_name,
-                        "--docker-service-name-prefix",
-                        docker_service_name_prefix,
-                        "--run-stacking",
-                        run_stacking,
-                    ],
+                    args=pipeline_args,
                     standalone_mode=False,
                 )
 
@@ -1123,7 +1154,7 @@ def start_processing_manager(
                     args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
-
+                mp_timeout = 60 * 60 * 6
                 work_id = schedule_workflow_job(
                     docker_image=docker_image_name,
                     docker_mounts=[
@@ -1131,7 +1162,7 @@ def start_processing_manager(
                         f"{basepath}:{basepath}",
                     ],
                     docker_name=f"{docker_service_name_prefix}-{date_string}",
-                    docker_memory_reservation=50,
+                    docker_memory_reservation=100,
                     workflow_buckets_name=workflow_buckets_name,
                     workflow_function="sps_multi_pointing.mp_pipeline.cli",
                     workflow_params={
@@ -1150,14 +1181,17 @@ def start_processing_manager(
                         "db_port": db_port,
                         "db_host": db_host,
                         "db_name": db_name,
-                        "num_threads": 32,
+                        "num_threads": 64,
                         "run_name": f"daily_{date_string}",
                     },
                     workflow_tags=["mp", date_string],
+                    timeout=mp_timeout,
                 )
 
                 wait_for_no_tasks_in_states(
-                    docker_swarm_running_states, docker_service_name_prefix
+                    docker_swarm_running_states,
+                    docker_service_name_prefix,
+                    timeout=mp_timeout,
                 )
 
                 # Need to wait a few seconds for results to propogate to Workflow
@@ -1353,6 +1387,16 @@ def start_processing_manager(
     type=bool,
     help="To run the stacking part of the pipeline or not.",
 )
+@click.option(
+    "--known-source-threshold",
+    "--kst",
+    default=np.inf,
+    type=float,
+    help=(
+        "Threshold under which known sources are filtered based on the previously"
+        " strongest detection of that source in that pointing."
+    ),
+)
 def start_processing_services(
     db_host,
     db_port,
@@ -1369,6 +1413,7 @@ def start_processing_services(
     run_multipointing,
     run_folding,
     run_stacking,
+    known_source_threshold,
 ):
     """Start the processing manager and the cleanup service."""
     # Please run "docker login" in your CLI to allow retrieval of the images
@@ -1409,6 +1454,8 @@ def start_processing_services(
         # also been manually added to this network
         "networks": ["pipeline-network"],
     }
+    if known_source_threshold != np.inf:
+        docker_service_manager["command"] += f" --kst {known_source_threshold}"
     docker_service_pipeline_image_clenaup = {
         "image": manager_docker_image_name,
         "name": "processing-cleanup",

@@ -365,7 +365,8 @@ def plot_candidate(
             panel["col_range"][0] : panel["col_range"][1],
         ]
         globals()[panel["type"]](fig, panel, grid_points, current_data_source)
-    fig.savefig(file_name)
+    with warnings.catch_warnings(action="ignore"):
+        fig.savefig(file_name)
     plt.close()
     return file_name
 

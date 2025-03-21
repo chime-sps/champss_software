@@ -12,10 +12,10 @@ from numpy.lib.recfunctions import (
     structured_to_unstructured,
     unstructured_to_structured,
 )
-from functools import partial
 from multiprocessing import Pool
 from sklearn.cluster import DBSCAN
 from sps_common.interfaces import MultiPointingCandidate, SinglePointingCandidate
+import tqdm
 
 log = logging.getLogger(__name__)
 
@@ -389,34 +389,58 @@ class SinglePointingCandidateGrouper:
 
         labels = dbres.labels_
         uniq_labels = set(labels)
-        core_samples_mask = np.zeros_like(labels, dtype=bool)
-        core_samples_mask[dbres.core_sample_indices_] = True
-        log.info(f"Finished DBSCAN. Found {len(uniq_labels)} clusters.")
+        np_unique_labels_output = np.unique(
+            dbres.labels_, return_index=True, return_counts=True
+        )
+        log.info(f"Finished DBSCAN. Found {len(np_unique_labels_output[0])} clusters.")
 
         # iterate over the unique labels to access which SinglePointingCandidates have
         # been clustered together
+
+        indices = np.arange(data.shape[0])
+        grouped_cands = []
+        log.info("Grouping candidates.")
+        for label, index, cluster_size in zip(*np_unique_labels_output):
+            if cluster_size == 1:
+                clustered_cands_idx = [index]
+            else:
+                cluster_member_mask = labels == label
+                clustered_cands_idx = indices[cluster_member_mask]
+            # for each cluster, create a SinglePointingCandidate object and add its
+            # MultiPointingCandidate representation to the list
+            grouped_cands.append([cands[idx] for idx in clustered_cands_idx])
+
+        log.info("Creating multi pointing candidates.")
         with Pool(num_threads) as p:
-            mp_cands = p.map(
-                partial(
-                    create_mp_candidate_from_label,
-                    labels,
-                    data,
-                    core_samples_mask,
-                    cands,
-                ),
-                uniq_labels,
+            mp_cands = list(
+                tqdm.tqdm(
+                    p.imap(
+                        create_mp_candidate_from_cand_group,
+                        grouped_cands,
+                    ),
+                    total=len(grouped_cands),
+                )
             )
+
+        # Could also get from data
+        #
+        # mp_cands = []
+        # for k in tqdm.tqdm(uniq_labels):
+        #     cluster_member_mask = labels == k
+        #     clustered_cands_idx = indices[cluster_member_mask]
+        #     # for each cluster, create a SinglePointingCandidate object and add its
+        #     # MultiPointingCandidate representation to the list
+        #     group = SinglePointingCandidateGroup(
+        #         [cands[idx] for idx in clustered_cands_idx]
+        #     )
+        #     mp_cands.append(group.as_candidate())
+
         log.info(f"Created {len(mp_cands)} multipointing candidates.")
 
         return mp_cands
 
 
-def create_mp_candidate_from_label(labels, data, core_samples_mask, cands, label):
-    cluster_member_mask = labels == label
-    clustered_cands = data[core_samples_mask & cluster_member_mask]
-    clustered_cands_idx = list(set(clustered_cands[:, 0].astype(int)))
-    # for each cluster, create a SinglePointingCandidate object and add its
-    # MultiPointingCandidate representation to the list
-    group = SinglePointingCandidateGroup([cands[idx] for idx in clustered_cands_idx])
+def create_mp_candidate_from_cand_group(cands_group):
+    group = SinglePointingCandidateGroup(cands_group)
     mp_cand = group.as_candidate()
     return mp_cand

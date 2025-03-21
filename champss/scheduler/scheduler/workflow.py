@@ -35,7 +35,7 @@ perpetual_processing_services = ["processing-manager", "processing-cleanup"]
 
 # Sometimes a Docker Swarm task gets stuck in pending/running state
 # indefinitely for unknown reasons...
-task_timeout_seconds = 60 * 40  # 40 minutes
+task_timeout_seconds = 60 * 120  # 120 minutes
 
 
 def message_slack(
@@ -43,7 +43,6 @@ def message_slack(
     slack_channel="#slow-pulsar-alerts",
     slack_token="xoxb-194910630096-6273790557189-FKbg9w1HwrJYqGmBRY8DF0te",
 ):
-
     log.setLevel(logging.INFO)
     log.info(f"Sending to Slack: \n{slack_message}")
     slack_client = WebClient(token=slack_token)
@@ -73,9 +72,9 @@ def save_container_logs(service):
 
     try:
         docker_client = docker.from_env()
-        
-        clean_pattern = re.compile(r'^\S+\s+')
-        
+
+        clean_pattern = re.compile(r"^\S+\s+")
+
         log_text = ""
         log_generator = service.logs(
             details=True,
@@ -85,22 +84,22 @@ def save_container_logs(service):
         )
         for log_chunk in log_generator:
             log_line = log_chunk.decode("utf-8").strip()
-            clean_line = clean_pattern.sub('', log_line)
+            clean_line = clean_pattern.sub("", log_line)
             log_text += clean_line + "\n"
 
         path = f"/data/chime/sps/logs/services/{service.name}.log"
-        
+
         with open(path, "w") as file:
             file.write(log_text)
-            
+
         for task in service.tasks():
             task_id = task["ID"]
             task_inspection = docker_client.api.inspect_task(task_id)
             task_inspection_json = json.dumps(task_inspection, indent=4)
-            
+
         with open(path, "a") as file:
             file.write(task_inspection_json)
-            
+
     except Exception as error:
         log.info(f"Error dumping logs at {path}: {error} (will skip gracefully).")
 
@@ -131,7 +130,9 @@ def get_service_created_at_datetime(service):
         return None
 
 
-def wait_for_no_tasks_in_states(states_to_wait_for_none, docker_service_name_prefix=""):
+def wait_for_no_tasks_in_states(
+    states_to_wait_for_none, docker_service_name_prefix="", timeout=task_timeout_seconds
+):
     """
     Waits for no tasks to be in the specified states within Docker Swarm services.
 
@@ -215,11 +216,11 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none, docker_service_name_pre
                             )
                     elif task_state in docker_swarm_running_states:
                         if (dt.datetime.now() - service_created_at).total_seconds() > (
-                            task_timeout_seconds * 2
+                            timeout * 2
                         ):
                             log.info(
                                 f"Service {service.name} has been ruuning for more than"
-                                f" {(task_timeout_seconds  * 2) / 60} minutes in state"
+                                f" {(timeout * 2) / 60} minutes in state"
                                 f" {task_state}, implying frozen task on 1st or 2nd"
                                 " final Workflow runner attempt. Will remove service."
                             )
@@ -239,11 +240,11 @@ def wait_for_no_tasks_in_states(states_to_wait_for_none, docker_service_name_pre
                             break
                     elif task_state in docker_swarm_pending_states:
                         if (dt.datetime.now() - service_created_at).total_seconds() > (
-                            task_timeout_seconds * 2
+                            timeout * 2
                         ):
                             log.info(
                                 f"Service {service.name} has been pending for more than"
-                                f" {(task_timeout_seconds  * 2) / 60} minutes in state"
+                                f" {(timeout * 2) / 60} minutes in state"
                                 f" {task_state}, implying failed Docker task"
                                 " scheduling. Will remove service."
                             )
@@ -281,6 +282,7 @@ def schedule_workflow_job(
     workflow_params,
     workflow_tags,
     workflow_user="CHAMPSS",
+    timeout=task_timeout_seconds,
 ):
     """
     Deposit Work and scale Docker Service, as node resources are free.
@@ -320,7 +322,7 @@ def schedule_workflow_job(
         work.config.archive.plots = "bypass"
         work.config.archive.products = "bypass"
         work.retries = 1
-        work.timeout = task_timeout_seconds
+        work.timeout = timeout
 
         wait_for_no_tasks_in_states(docker_swarm_pending_states)
 
@@ -485,7 +487,7 @@ def clear_workflow_results(workflow_results_name):
                 query={}, pipeline=workflow_results_name, limit=10, projection={"id": 1}
             )
         log.info(f"Final results entries: {results_list}")
-    except Exception as error:
+    except Exception:
         pass
 
 
