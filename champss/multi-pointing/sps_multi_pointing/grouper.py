@@ -57,6 +57,12 @@ class SinglePointingCandidateGroup:
     def __attrs_post_init__(self):
         # Broken for some reason, will check later. length of features is different
         # self.reduce_member_features()
+
+        # Sort group members by sigmas
+        all_sigmas = [cand.sigma for cand in self.group_members]
+        sort_indices = np.argsort(all_sigmas)[::-1]
+        self.group_members = [self.group_members[i] for i in sort_indices]
+
         self.extract_position_features()
         self.reduce_member_summaries()
 
