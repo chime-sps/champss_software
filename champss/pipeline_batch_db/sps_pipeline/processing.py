@@ -1236,8 +1236,6 @@ def start_processing_manager(
                         basepath,
                         "--foldpath",
                         foldpath,
-                        "--datpath",
-                        datpath,
                     ],
                     standalone_mode=False,
                 )
@@ -1274,6 +1272,8 @@ def start_processing_manager(
                         docker_image_name,
                         "--docker-service-name-prefix",
                         docker_service_name_prefix,
+                        "--datpath"
+                        datpath,
                     ],
                     standalone_mode=False,
                 )
