@@ -1272,7 +1272,7 @@ def start_processing_manager(
                         docker_image_name,
                         "--docker-service-name-prefix",
                         docker_service_name_prefix,
-                        "--datpath"
+                        "--datpath",
                         datpath,
                     ],
                     standalone_mode=False,
