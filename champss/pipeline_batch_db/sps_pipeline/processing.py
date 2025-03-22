@@ -1236,6 +1236,8 @@ def start_processing_manager(
                         basepath,
                         "--foldpath",
                         foldpath,
+                        "--datpath",
+                        datpath,
                     ],
                     standalone_mode=False,
                 )

@@ -57,7 +57,7 @@ def set_merge(data, out="bins"):
     Credit: alexis on stackoverflow https://stackoverflow.com/a/9453249/18740127
     """
     if not isinstance(data[0], set):
-        raise TypeError(f"data must be a list of sets")
+        raise TypeError("data must be a list of sets")
     bins = list(range(len(data)))  # Initialize each bin[n] == n
     nums = dict()
 
@@ -429,6 +429,8 @@ class Clusterer:
     grouped_freq_dm_scale: float = attribute(default=1)
     use_dbscan_filter: bool = attribute(default=True)
     dbscan_filter_filter_whole_freqs: bool = attribute(default=True)
+    dbscan_filter_filter_broad_dm: bool = attribute(default=False)
+    dbscan_filter_filter_broad_threshold: bool = attribute(default=100)
 
     @metric_method.validator
     def _validate_metric_method(self, attribute, value):
@@ -679,12 +681,14 @@ class Clusterer:
             bad_freqs = []
             filtered_labels = []
             for i in range(max(db_filter.labels_) + 1):
+                filtered = False
                 current_indices = np.arange(detections_filtered.shape[0])[
                     db_filter.labels_ == i
                 ]
                 det_sample = detections_filtered[current_indices]
                 det_max_sigma_pos = np.argmax(det_sample["sigma"])
                 det_max_sigma_dm = det_sample["dm"][det_max_sigma_pos]
+                det_dm_ptp = np.ptp(det_sample["dm"])
                 if det_max_sigma_dm <= self.cluster_dm_cut:
                     filtered_indices.extend(current_indices)
                     bad_freqs.append(
@@ -695,11 +699,25 @@ class Clusterer:
                         )
                     )
                     filtered_labels.append(i)
+                    filtered = True
+                if not filtered and self.dbscan_filter_filter_broad_dm:
+                    if self.dbscan_filter_filter_broad_dm < det_dm_ptp:
+                        filtered_indices.extend(current_indices)
+                        bad_freqs.append(
+                            (
+                                det_sample["freq"].mean(),
+                                det_sample["freq"].min(),
+                                det_sample["freq"].max(),
+                            )
+                        )
+                        filtered_labels.append(i)
+                        filtered = True
+
             bad_freqs = np.asarray(bad_freqs)
             bad_low_dm_freqs = len(filtered_indices)
             log.info(
                 f"Dbscan filter removed {bad_low_dm_freqs} detections in low DM"
-                " clusters."
+                " clusters and broad DM clusters."
             )
             if self.dbscan_filter_filter_whole_freqs:
                 for i in range(max(db_filter.labels_) + 1):
@@ -1169,7 +1187,7 @@ def plot_clusters(
     preamble = "Estimated"
     title = f"{preamble} number of clusters: {n_clusters_}"
     if labels_want is not None:
-        title += f" | clusters: " + ",".join([f"{lw}" for lw in labels_want])
+        title += " | clusters: " + ",".join([f"{lw}" for lw in labels_want])
     if parameters is not None:
         parameters_str = ", ".join(f"{k}={v}" for k, v in parameters.items())
         title += f"\n{parameters_str}"
