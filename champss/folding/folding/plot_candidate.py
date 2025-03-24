@@ -324,9 +324,12 @@ def plot_candidate_archive(
     cand_param_table.set_fontsize(10)
     cand_param_table.scale(10, 1.25)
 
-    if not known:
-        plotstring = f"cand_{round(dm, 2)}_{round(f0, 2)}_{T0.isot[:10]}.png"
-        plotstring_radec = f"cand_{round(ra, 2)}_{round(dec, 2)}_{round(dm, 2)}_{round(f0, 2)}_{T0.isot[:10]}.png"
+    print(known, len(known))
+    if not known.strip():
+        plotstring = f"cand_{dm:.02f}_{f0:.02f}_{T0.isot[:10]}.png"
+        plotstring_radec = (
+            f"cand_{ra:.02f}_{dec:.02f}_{dm:.02f}_{f0:.02f}_{T0.isot[:10]}.png"
+        )
     else:
         plotstring = f"{psr}_{T0.isot[:10]}.png"
         plotstring_radec = f"{psr}_{T0.isot[:10]}.png"
