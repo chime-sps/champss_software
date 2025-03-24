@@ -159,3 +159,10 @@ known_bad_frequencies:
     note: Derived from dynamic birdies. Filtered in 96.6% of observations between 20231022
       and 20241021.
     width: 0.01
+
+    b19:
+    frac_nharm: 0
+    frequency: 26.667
+    int_nharm: 4
+    note: Multi-pointing candidate from 20250215
+    width: 0.01

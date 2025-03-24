@@ -25,6 +25,7 @@ beamform:
   min_data_frac: 0.5
   beam_to_normalise: 1
   flatten_bandpass: True
+  max_mask_frac: 0.9
 dedisp:
   numdms: 40
   maxdm: 1700

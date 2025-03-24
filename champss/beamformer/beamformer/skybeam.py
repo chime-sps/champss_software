@@ -115,6 +115,7 @@ class SkyBeamFormer:
         ),
     )
     rfi_pipeline = attr.ib(init=False)
+    max_mask_frac = attr.ib(default=1.0, validator=instance_of(float))
 
     @extn.validator
     def _validate_extension(self, attribute, value):
@@ -130,9 +131,9 @@ class SkyBeamFormer:
 
     @masking_timescale.validator
     def _validate_timescale(self, attribute, value):
-        assert (
-            value % self.block_size == 0
-        ), f"masking timescale must be a multiple of block_size {self.block_size}"
+        assert value % self.block_size == 0, (
+            f"masking timescale must be a multiple of block_size {self.block_size}"
+        )
 
     @mask_channel_frac.validator
     def _validate_mask_channel_frac(self, attribute, value):
@@ -140,14 +141,14 @@ class SkyBeamFormer:
 
     @detrend_nsamp.validator
     def _validate_detrend_nsamp(self, attribute, value):
-        if not (value is None):
-            assert isinstance(
-                value, int
-            ), "detrend number of samples must be an integer or None"
+        if value is not None:
+            assert isinstance(value, int), (
+                "detrend number of samples must be an integer or None"
+            )
 
     @beam_to_normalise.validator
     def _validate_beam_to_normalise(self, attribute, value):
-        if not (value is None):
+        if value is not None:
             assert value in [
                 0,
                 1,
@@ -359,12 +360,19 @@ class SkyBeamFormer:
             "Fraction of completely masked channels:"
             f" {(completely_masked_channels / rfi_mask.shape[0]):.3f}"
         )
+        mask_fraction = rfi_mask.sum() / rfi_mask.size
 
         if self.update_db:
             log.info("Updating Database")
-            self.update_database(active_pointing.obs_id, rfi_mask, utc_start)
+            self.update_database(active_pointing.obs_id, mask_fraction, utc_start)
         pool.close()
         pool.join()
+
+        if self.max_mask_frac < mask_fraction:
+            mask_shared.close()
+            mask_shared.unlink()
+            log.error(f"Mask Fraction above {self.max_mask_frac}")
+            return None, spectra_shared
 
         skybeam = SkyBeam(
             spectra=spectra,
@@ -465,7 +473,7 @@ class SkyBeamFormer:
         shared_spectra.close()
         shared_mask.close()
 
-    def update_database(self, obs_id, rfi_mask, utc_start):
+    def update_database(self, obs_id, mask_fraction, utc_start):
         """
         Update the sps database with the mask fraction.
 
@@ -476,13 +484,12 @@ class SkyBeamFormer:
         obs_id: ObjectID or str
             The observation id of the sky beam.
 
-        rfi_mask: np.ndarray
-            A 2-D boolean array of the rfi mask.
+        mask_fraction: float
+            The fraction of masked values.
 
         utc_start: float
             The utc start time of the sky beam formed.
         """
-        mask_fraction = rfi_mask.mean()
         start_dt = datetime.datetime.utcfromtimestamp(utc_start)
         if mask_fraction > 0.0:
             log.info(f"Fraction of data masked : {mask_fraction:.3f}")

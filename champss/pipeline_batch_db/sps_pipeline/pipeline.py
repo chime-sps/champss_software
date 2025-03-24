@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 
 from beamformer import NoSuchPointingError
 from beamformer.strategist.strategist import PointingStrategist
-from beamformer.utilities.common import find_closest_pointing, get_data_list
+from beamformer.utilities.common import find_closest_pointing
 from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.ps_pipeline import PowerSpectraPipeline
 from scheduler.utils import convert_date_to_datetime
@@ -405,8 +405,8 @@ def main(
         log_path = basepath + f"/logs/{date.strftime('%Y/%m/%d')}/"
 
         log_name = (
-            f"run_pipeline_{date.strftime('%Y-%m-%d')}_{ra :.02f}_"
-            f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}"
+            f"run_pipeline_{date.strftime('%Y-%m-%d')}_{ra:.02f}_"
+            f"{dec:.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}"
         )
         if using_docker:
             # So that we can trace Grafana container metrics to a log file
@@ -434,14 +434,14 @@ def main(
         obs_folder = os.path.join(
             basepath,
             date.strftime("%Y/%m/%d"),
-            f"{closest_pointing.ra :.02f}_{closest_pointing.dec :.02f}",
+            f"{closest_pointing.ra:.02f}_{closest_pointing.dec:.02f}",
         )
         obs_id_files = sorted(
             glob(
                 os.path.join(
                     obs_folder,
                     (
-                        f"{closest_pointing.ra :.02f}_{closest_pointing.dec :.02f}_*_obs_id.txt"
+                        f"{closest_pointing.ra:.02f}_{closest_pointing.dec:.02f}_*_obs_id.txt"
                     ),
                 )
             )
@@ -488,9 +488,9 @@ def main(
                 obs_id_file = os.path.join(
                     basepath,
                     date.strftime("%Y/%m/%d"),
-                    f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}",
+                    f"{active_pointing.ra:.02f}_{active_pointing.dec:.02f}",
                     (
-                        f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}"
+                        f"{active_pointing.ra:.02f}_{active_pointing.dec:.02f}"
                         f"_{active_pointing.sub_pointing}_obs_id.txt"
                     ),
                 )
@@ -519,7 +519,7 @@ def main(
         padded_length = config.ps_creation.padded_length
 
         for i_ap, active_pointing in enumerate(active_pointings):
-            log.info(f"Processing active_pointing {i_ap+1} of {N_ap}")
+            log.info(f"Processing active_pointing {i_ap + 1} of {N_ap}")
             active_process = db_api.get_process_from_active_pointing(
                 active_pointings[0]
             )
@@ -540,7 +540,7 @@ def main(
             dedisp_ts = None
             ps_detections = None
             prefix = (
-                f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}"
+                f"{active_pointing.ra:.02f}_{active_pointing.dec:.02f}"
                 f"_{active_pointing.sub_pointing}"
             )
 
@@ -575,12 +575,12 @@ def main(
                     active_pointing, beamformer, fdmt, num_threads, basepath
                 )
                 if skybeam is not None:
-                    if (
-                        db_api.get_observation(active_pointing.obs_id).mask_fraction
-                        == 1.0
-                    ):
+                    mask_fraction = db_api.get_observation(
+                        active_pointing.obs_id
+                    ).mask_fraction
+                    if mask_fraction > beamformer.max_mask_frac:
                         log.warning(
-                            "Beamformed spectra are completely masked. Will proceed"
+                            f"Masc fraction of {masK - fraction} is above {beamformer.max_mask_frac}. Will proceed"
                             " with cleanup."
                         )
                         spectra_shared.close()
@@ -633,8 +633,8 @@ def main(
                 global power_spectra
                 log.info(
                     "Power Spectrum"
-                    f" ({active_pointing.ra :.2f} {active_pointing.dec :.2f}) @"
-                    f" { date :%Y-%m-%d}"
+                    f" ({active_pointing.ra:.2f} {active_pointing.dec:.2f}) @"
+                    f" {date:%Y-%m-%d}"
                 )
                 power_spectra = psc_pipeline.transform(dedisp_ts)
                 # remove dedispersed time series from memory
@@ -928,8 +928,8 @@ def stack_and_search(
     log_path = str(cand_path) + f"./stack_logs/{now.strftime('%Y/%m/%d')}/"
     if not file:
         log_name = (
-            f"run_stack_search_{ra :.02f}_"
-            f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
+            f"run_stack_search_{ra:.02f}_"
+            f"{dec:.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
         )
     else:
         log_name = (
