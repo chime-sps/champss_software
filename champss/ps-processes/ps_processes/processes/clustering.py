@@ -719,6 +719,7 @@ class Clusterer:
                 f"Dbscan filter removed {bad_low_dm_freqs} detections in low DM"
                 " clusters and broad DM clusters."
             )
+
             if self.dbscan_filter_filter_whole_freqs:
                 for i in range(max(db_filter.labels_) + 1):
                     if i not in filtered_labels:
