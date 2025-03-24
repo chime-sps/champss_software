@@ -334,7 +334,7 @@ def plot_candidate_archive(
         plotstring = f"{psr}_{T0.isot[:10]}.png"
         plotstring_radec = f"{psr}_{T0.isot[:10]}.png"
 
-    plt.savefig(coord_path + plotstring, dpi=fig.dpi, bbox_inches="tight")
+    plt.savefig(f'{coord_path}/{plotstring}', dpi=fig.dpi, bbox_inches="tight")
 
     img_path = f"{foldpath}/{T0.isot[:10]}-plots/"
     if not os.path.exists(img_path):
