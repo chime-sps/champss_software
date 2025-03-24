@@ -326,9 +326,9 @@ def plot_candidate_archive(
 
     print(known, len(known))
     if not known.strip():
-        plotstring = f"cand_{dm:.02f}_{f0:.02f}_{T0.isot[:10]}.png"
+        plotstring = f"cand_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
         plotstring_radec = (
-            f"cand_{ra:.02f}_{dec:.02f}_{dm:.02f}_{f0:.02f}_{T0.isot[:10]}.png"
+            f"cand_{ra:.02f}_{dec:.02f}_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
         )
     else:
         plotstring = f"{psr}_{T0.isot[:10]}.png"
