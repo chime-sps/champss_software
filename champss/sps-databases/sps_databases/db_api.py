@@ -396,8 +396,8 @@ def get_observations_before_observation(
             {
                 "pointing_id": {"$in": earlier_pointings},
                 "datetime": {
-                    "$gte": observation.datetime - dt.timedelta(hours=2.5 / 15),
-                    "$lte": observation.datetime + dt.timedelta(hours=2.5 / 15),
+                    "$gte": observation.datetime - dt.timedelta(hours=ra_range / 15),
+                    "$lte": observation.datetime + dt.timedelta(hours=ra_range / 15),
                 },
             }
         )

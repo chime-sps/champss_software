@@ -873,9 +873,7 @@ class PowerSpectraCreation:
         for left_obs, right_obs in zip(other_birdies_left, other_birdies_right):
             current_target_array = np.zeros(self.padded_length // 2)
             for left, right in zip(left_obs, right_obs):
-                current_target_array[
-                    np.where((index_array >= left) & (index_array <= right))[0]
-                ] = 1
+                current_target_array[left : right + 1] = 1
             target_array += current_target_array
 
         if no_width:
