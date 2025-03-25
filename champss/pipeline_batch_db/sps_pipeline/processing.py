@@ -564,14 +564,10 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
     help="To run the stacking part of the pipeline or not.",
 )
 @click.option(
-    "--known-source-threshold",
-    "--kst",
-    default=np.inf,
-    type=float,
-    help=(
-        "Threshold under which known sources are filtered based on the previously"
-        " strongest detection of that source in that pointing."
-    ),
+    "--pipeline-arguments",
+    default="",
+    type=str,
+    help=("Additional pipeline arguments."),
 )
 def run_all_pipeline_processes(
     db_host,
@@ -592,7 +588,7 @@ def run_all_pipeline_processes(
     docker_image_name,
     docker_service_name_prefix,
     run_stacking,
-    known_source_threshold,
+    pipeline_arguments,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -690,10 +686,12 @@ def run_all_pipeline_processes(
                         "using_pyroscope": False,
                         "using_docker": True,
                     }
-                    if known_source_threshold is not np.inf:
-                        workflow_params["known_source_threshold"] = (
-                            known_source_threshold,
-                        )
+                    if pipeline_arguments != "":
+                        split_args = pipeline_arguments.split("--")
+                        for arg_string in split_args:
+                            if arg_string != "":
+                                argument, value = arg_string.split(" ", 1)
+                                workflow_params[argument] = (value,)
                     workflow_tags = [
                         "pipeline",
                         formatted_ra,
@@ -843,14 +841,10 @@ def run_all_pipeline_processes(
     help="To run the stacking part of the pipeline or not.",
 )
 @click.option(
-    "--known-source-threshold",
-    "--kst",
-    default=np.inf,
-    type=float,
-    help=(
-        "Threshold under which known sources are filtered based on the previously"
-        " strongest detection of that source in that pointing."
-    ),
+    "--pipeline-arguments",
+    default="",
+    type=str,
+    help=("Additional pipeline arguments."),
 )
 def start_processing_manager(
     db_host,
@@ -871,7 +865,7 @@ def start_processing_manager(
     run_multipointing,
     run_folding,
     run_stacking,
-    known_source_threshold,
+    pipeline_arguments,
 ):
     """Manager function containing the multiple processing steps."""
     atexit.register(remove_processing_services, None, None)
@@ -1020,12 +1014,9 @@ def start_processing_manager(
                     docker_service_name_prefix,
                     "--run-stacking",
                     run_stacking,
+                    "--pipeline-arguments",
+                    pipeline_arguments,
                 ]
-                if known_source_threshold != np.inf:
-                    pipeline_args += [
-                        "--kst",
-                        known_source_threshold,
-                    ]
                 run_all_pipeline_processes.main(
                     args=pipeline_args,
                     standalone_mode=False,
@@ -1390,13 +1381,11 @@ def start_processing_manager(
     help="To run the stacking part of the pipeline or not.",
 )
 @click.option(
-    "--known-source-threshold",
-    "--kst",
-    default=np.inf,
-    type=float,
+    "--pipeline-arguments",
+    default="",
+    type=str,
     help=(
-        "Threshold under which known sources are filtered based on the previously"
-        " strongest detection of that source in that pointing."
+        "Additional pipeline arguments. Needs -- included in the argument name in order to split properly."
     ),
 )
 def start_processing_services(
@@ -1415,7 +1404,7 @@ def start_processing_services(
     run_multipointing,
     run_folding,
     run_stacking,
-    known_source_threshold,
+    pipeline_arguments,
 ):
     """Start the processing manager and the cleanup service."""
     # Please run "docker login" in your CLI to allow retrieval of the images
@@ -1435,6 +1424,7 @@ def start_processing_services(
             f" {pipeline_docker_image_name} --run-pipeline"
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
             f" {run_folding} --run-stacking {run_stacking} --datpath {datpath}"
+            f' --pipeline-arguments "{pipeline_arguments}"'
         ),
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
@@ -1456,8 +1446,6 @@ def start_processing_services(
         # also been manually added to this network
         "networks": ["pipeline-network"],
     }
-    if known_source_threshold != np.inf:
-        docker_service_manager["command"] += f" --kst {known_source_threshold}"
     docker_service_pipeline_image_clenaup = {
         "image": manager_docker_image_name,
         "name": "processing-cleanup",
