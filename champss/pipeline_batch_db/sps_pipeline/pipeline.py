@@ -11,6 +11,7 @@ import sys
 import time
 from contextlib import nullcontext
 from glob import glob
+import ast
 
 import click
 import numpy as np
@@ -51,7 +52,7 @@ from sps_pipeline import (  # ps,
 default_datpath = "/data/chime/sps/raw"
 
 
-def load_config(config_file="sps_config.yml"):
+def load_config(config_file="sps_config.yml", cli_config_string="{}"):
     """
     Combines default/user-specified config settings and applies them to loggers.
 
@@ -88,7 +89,8 @@ def load_config(config_file="sps_config.yml"):
         user_config = OmegaConf.load("./" + config_file)
     else:
         user_config = OmegaConf.create()
-    return OmegaConf.merge(base_config, user_config)
+    cli_config = ast.literal_eval(cli_config_string)
+    return OmegaConf.merge(base_config, user_config, cli_config)
 
 
 def apply_logging_config(config, log_file="./logs/default.log"):
@@ -307,6 +309,15 @@ def dbexcepthook(type, value, tb):
     type=str,
     help="Path to the raw data folder.",
 )
+@click.option(
+    "--config-options",
+    default="{}",
+    type=str,
+    help=(
+        "Additional options that overwrite the config options. Provide a string that would define a python dictionary"
+        """For example use --config-options '{"beamform": {"max_mask_frac": 0.1}}' """
+    ),
+)
 def main(
     date,
     stack,
@@ -333,6 +344,7 @@ def main(
     cutoff_frequency,
     scale_injections,
     datpath,
+    config_options,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -392,7 +404,8 @@ def main(
         global pipeline_start_time
         pipeline_start_time = time.time()
 
-        config = load_config(config_file)
+        config = load_config(config_file, config_options)
+        print(config)
         now = dt.datetime.utcnow()
         processing_failed = False
 
@@ -574,20 +587,7 @@ def main(
                 skybeam, spectra_shared = beamform.run(
                     active_pointing, beamformer, fdmt, num_threads, basepath
                 )
-                if skybeam is not None:
-                    mask_fraction = db_api.get_observation(
-                        active_pointing.obs_id
-                    ).mask_fraction
-                    if mask_fraction > beamformer.max_mask_frac:
-                        log.warning(
-                            f"Masc fraction of {masK - fraction} is above {beamformer.max_mask_frac}. Will proceed"
-                            " with cleanup."
-                        )
-                        spectra_shared.close()
-                        spectra_shared.unlink()
-                        components = ["cleanup"]
-                        processing_failed = True
-                else:
+                if skybeam is None:
                     spectra_shared.close()
                     spectra_shared.unlink()
                     components = ["cleanup"]
@@ -890,6 +890,18 @@ def main(
     default=False,
     help="Scale injection so that input sigma should be detected sigma.",
 )
+@click.option(
+    "--config-file",
+    default="sps_config.yml",
+    type=str,
+    help="Name of used config. Default: sps_config.yml",
+)
+@click.option(
+    "--config-options",
+    default="{}",
+    type=str,
+    help="Additional options that overwrite the config options. Provide a string that would define a python dictionary",
+)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -908,6 +920,8 @@ def stack_and_search(
     only_injections,
     cutoff_frequency,
     scale_injections,
+    config_file,
+    config_options,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -923,7 +937,7 @@ def stack_and_search(
     sys.excepthook = dbexcepthook
     global pipeline_start_time
     pipeline_start_time = time.time()
-    config = load_config()
+    config = load_config(config_file, config_options)
     now = dt.datetime.now()
     log_path = str(cand_path) + f"./stack_logs/{now.strftime('%Y/%m/%d')}/"
     if not file:

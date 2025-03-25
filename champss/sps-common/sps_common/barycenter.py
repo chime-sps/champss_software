@@ -7,7 +7,7 @@ import numpy as np
 from astropy.constants import c
 from astropy.coordinates import EarthLocation, SkyCoord, solar_system_ephemeris
 from astropy.time import Time
-from sps_common.constants import CHIME_ELEV, CHIME_LAT, CHIME_LON, SEC_PER_DAY, TSAMP
+from sps_common.constants import CHIME_ELEV, CHIME_LAT, CHIME_LON, SEC_PER_DAY
 
 # define CHIME's Earth location
 CHIME_LOCATION = EarthLocation(
@@ -24,7 +24,7 @@ logger = logging.getLogger()
 
 
 def get_barycentric_correction(
-    ra: str, dec: str, mjd: float, convention: str = "radio"
+    ra: str | float, dec: str | float, mjd: float, convention: str = "radio"
 ):
     """
     Compute the instantaneous barycentric velocity correction towards a given direction
@@ -32,10 +32,12 @@ def get_barycentric_correction(
 
     Parameters
     ----------
-    ra: str
-        Right ascension formatted as hh:mm:ss.ss
-    dec: str
-        Declination formatted as dd:mm:ss.ss
+    ra: str or float
+        If str: Right ascension formatted as hh:mm:ss.ss
+        If float: Right ascension in degrees
+    dec: str or float
+        If str: Declination formatted as dd:mm:ss.ss
+        If float: Declination in degrees
     mjd: float
         Time in MJD
     convention: str, optional
@@ -47,7 +49,10 @@ def get_barycentric_correction(
     float
         Barycentric velocity correction as a fraction of the speed of light
     """
-    coord = SkyCoord(ra, dec, frame="icrs", unit=(u.hourangle, u.deg))
+    if type(ra) is float:
+        coord = SkyCoord(ra, dec, frame="icrs", unit=(u.deg, u.deg))
+    else:
+        coord = SkyCoord(ra, dec, frame="icrs", unit=(u.hourangle, u.deg))
     t = Time(mjd, format="mjd", scale="utc")
 
     logger.info(f"RA (J2000) : {coord.ra.to_string(u.hour)}")
