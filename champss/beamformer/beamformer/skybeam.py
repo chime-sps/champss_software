@@ -239,7 +239,7 @@ class SkyBeamFormer:
             )
             for file in beam
         ]
-        pool.starmap(
+        raw_spec_slices = pool.starmap(
             partial(
                 self.read_to_shared_spectra,
                 spectra_shared.name,
@@ -251,6 +251,11 @@ class SkyBeamFormer:
             ),
             flattened_data_list,
         )
+        raw_spec_slices = [
+            slice
+            for raw_spec_slice_list in raw_spec_slices
+            for slice in raw_spec_slice_list
+        ]
         log.info("Finished loading.")
 
         # Here I use data fraction as the fraction of time steps which are present at the start.
@@ -274,33 +279,51 @@ class SkyBeamFormer:
             "Start RFI cleaning. Current Masking fraction ="
             f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
         )
-        if rfi_scale >= spectra_shape[1]:
-            self.rfi_pipeline.clean(
+
+        # For now always use actual file edges
+
+        # if rfi_scale >= spectra_shape[1]:
+        #     self.rfi_pipeline.clean(
+        #         spectra_shared.name,
+        #         mask_shared.name,
+        #         spectra_shape,
+        #         spec_dtype,
+        #         slice(0, spectra_shape[1]),
+        #     )
+        # else:
+        #     start_idxs = np.arange(0, spectra_shape[1], rfi_scale)
+        #     end_idxs = np.roll(start_idxs, -1)
+        #     end_idxs[-1] = spectra_shape[1]
+        #     slices = [
+        #         slice(start_idx, end_idx)
+        #         for start_idx, end_idx in zip(start_idxs, end_idxs)
+        #     ]
+        #     log.info(f"Spectra are split into {len(slices)} chunks for RFI cleaning.")
+        #     pool.map(
+        #         partial(
+        #             self.rfi_pipeline.clean,
+        #             spectra_shared.name,
+        #             mask_shared.name,
+        #             spectra_shape,
+        #             spec_dtype,
+        #         ),
+        #         slices,
+        #     )
+
+        log.info(
+            f"Spectra are split into {len(raw_spec_slices)} chunks for RFI cleaning."
+        )
+        pool.map(
+            partial(
+                self.rfi_pipeline.clean,
                 spectra_shared.name,
                 mask_shared.name,
                 spectra_shape,
                 spec_dtype,
-                slice(0, spectra_shape[1]),
-            )
-        else:
-            start_idxs = np.arange(0, spectra_shape[1], rfi_scale)
-            end_idxs = np.roll(start_idxs, -1)
-            end_idxs[-1] = spectra_shape[1]
-            slices = [
-                slice(start_idx, end_idx)
-                for start_idx, end_idx in zip(start_idxs, end_idxs)
-            ]
-            log.info(f"Spectra are split into {len(slices)} chunks for RFI cleaning.")
-            pool.map(
-                partial(
-                    self.rfi_pipeline.clean,
-                    spectra_shared.name,
-                    mask_shared.name,
-                    spectra_shape,
-                    spec_dtype,
-                ),
-                slices,
-            )
+            ),
+            raw_spec_slices,
+        )
+
         log.info(
             "RFI cleaning finished. New masking Fraction:"
             f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
@@ -373,7 +396,6 @@ class SkyBeamFormer:
             mask_shared.unlink()
             log.error(f"Mask Fraction above {self.max_mask_frac}")
             return None, spectra_shared
-
         skybeam = SkyBeam(
             spectra=spectra,
             ra=active_pointing.ra,
@@ -594,6 +616,8 @@ class SkyBeamFormer:
             last_fpga0 = chunk_header.fpga0
             last_nfreq = chunk_header.nfreq
 
+        spec_slices = []
+
         for subfile in subfiles:
             for i, chunk in enumerate(subfile):
                 current_time = Time(
@@ -632,8 +656,10 @@ class SkyBeamFormer:
                     zero_mask[~np.isfinite(chunk_intensity)] = True
                     full_mask = np.logical_or(zero_mask, ~chunk_mask)
                     rfi_mask[:, spec_slice] = full_mask
+                    spec_slices.append(spec_slice)
         shared_spectra.close()
         shared_mask.close()
+        return spec_slices
 
     def fill_and_norm_shared_spectra(
         self,

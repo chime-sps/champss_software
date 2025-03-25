@@ -405,7 +405,6 @@ def main(
         pipeline_start_time = time.time()
 
         config = load_config(config_file, config_options)
-        print(config)
         now = dt.datetime.utcnow()
         processing_failed = False
 
