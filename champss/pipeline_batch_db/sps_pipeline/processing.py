@@ -569,6 +569,14 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
     type=str,
     help=("Additional pipeline arguments."),
 )
+@click.option(
+    "--pipeline-config-options",
+    default="{}",
+    type=str,
+    help=(
+        "Options passed to --config-options of the pipeline. Use single quotes inside the string!"
+    ),
+)
 def run_all_pipeline_processes(
     db_host,
     db_port,
@@ -589,6 +597,7 @@ def run_all_pipeline_processes(
     docker_service_name_prefix,
     run_stacking,
     pipeline_arguments,
+    pipeline_config_options,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -685,6 +694,7 @@ def run_all_pipeline_processes(
                         # "using_pyroscope": True if process_index % 100 == 0 else False,
                         "using_pyroscope": False,
                         "using_docker": True,
+                        "config_options": pipeline_config_options,
                     }
                     if pipeline_arguments != "":
                         split_args = pipeline_arguments.split("--")
@@ -844,7 +854,15 @@ def run_all_pipeline_processes(
     "--pipeline-arguments",
     default="",
     type=str,
-    help=("Additional pipeline arguments."),
+    help=("Additional pipeline arguments. Not usable for --config-options."),
+)
+@click.option(
+    "--pipeline-config-options",
+    default="{}",
+    type=str,
+    help=(
+        "Options passed to --config-options of the pipeline. Use single quotes inside the string!"
+    ),
 )
 def start_processing_manager(
     db_host,
@@ -866,6 +884,7 @@ def start_processing_manager(
     run_folding,
     run_stacking,
     pipeline_arguments,
+    pipeline_config_options,
 ):
     """Manager function containing the multiple processing steps."""
     atexit.register(remove_processing_services, None, None)
@@ -1016,6 +1035,8 @@ def start_processing_manager(
                     run_stacking,
                     "--pipeline-arguments",
                     pipeline_arguments,
+                    "--pipeline-config-options",
+                    pipeline_config_options,
                 ]
                 run_all_pipeline_processes.main(
                     args=pipeline_args,
@@ -1385,7 +1406,15 @@ def start_processing_manager(
     default="",
     type=str,
     help=(
-        "Additional pipeline arguments. Needs -- included in the argument name in order to split properly."
+        "Additional pipeline arguments. Needs -- included in the argument name in order to split properly. Not usable for --config-options."
+    ),
+)
+@click.option(
+    "--pipeline-config-options",
+    default="{}",
+    type=str,
+    help=(
+        "Options passed to --config options of the pipeline. Use single quotes inside the string!"
     ),
 )
 def start_processing_services(
@@ -1405,6 +1434,7 @@ def start_processing_services(
     run_folding,
     run_stacking,
     pipeline_arguments,
+    pipeline_config_options,
 ):
     """Start the processing manager and the cleanup service."""
     # Please run "docker login" in your CLI to allow retrieval of the images
@@ -1425,6 +1455,7 @@ def start_processing_services(
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
             f" {run_folding} --run-stacking {run_stacking} --datpath {datpath}"
             f' --pipeline-arguments "{pipeline_arguments}"'
+            f' --pipeline-config-options "{pipeline_config_options}"'
         ),
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
