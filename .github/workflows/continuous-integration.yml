@@ -28,6 +28,6 @@ jobs:
     uses: chime-sps/champss_software/.github/workflows/image.yml@main
     secrets: inherit
     with:
-      # runs_on: self-hosted
+      runs_on: self-hosted
       image_tag: ${{ github.ref_name || 'test' }}
       build_locally: false
