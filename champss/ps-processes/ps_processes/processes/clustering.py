@@ -703,7 +703,7 @@ class Clusterer:
                     )
                     filtered = True
                 if self.dbscan_filter_broad_dm:
-                    if self.dbscan_filter_broad_dm < det_dm_ptp:
+                    if self.dbscan_filter_broad_threshold < det_dm_ptp:
                         filtered_indices_broad_dm.extend(current_indices)
                         filtered_labels_broad_dm.append(i)
                         if not filtered:
