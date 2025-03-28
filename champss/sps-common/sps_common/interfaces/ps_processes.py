@@ -365,12 +365,12 @@ class PowerSpectra:
             datetime.utcfromtimestamp(date).replace(tzinfo=pytz.UTC)
             for date in datetimes_unix
         ]
-        rn_medians = np.ones(h5f["rednoise medians"].shape)
-        h5f["rednoise medians"].read_direct(rn_medians)
-        rn_scales = np.ones(h5f["rednoise scales"].shape)
-        h5f["rednoise scales"].read_direct(rn_scales)
-        rn_dm_indices = np.ones(h5f["rednoise dm indices"].shape)
-        h5f["rednoise dm indices"].read_direct(rn_dm_indices)
+        rn_medians = np.ones(h5f["rn medians"].shape)
+        h5f["rn medians"].read_direct(rn_medians)
+        rn_scales = np.ones(h5f["rn scales"].shape)
+        h5f["rn scales"].read_direct(rn_scales)
+        rn_dm_indices = np.ones(h5f["rn dm indices"].shape)
+        h5f["rn dm indices"].read_direct(rn_dm_indices)
 
         ra = h5f.attrs["ra"]
         dec = h5f.attrs["dec"]
@@ -460,6 +460,7 @@ class PowerSpectra:
             h5f.attrs["dec"] = self.dec
             h5f.attrs["observation ids"] = self.obs_id
             h5f.attrs["number of days"] = self.num_days
+
             if self.beta is None:
                 # no barycentric correction set/required
                 log.warning(
