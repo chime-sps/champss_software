@@ -433,6 +433,10 @@ def main(
         log_file = log_path + log_name
         apply_logging_config(config, log_file)
 
+        log.info(f"Used config: {config_file}")
+        if config_options != "{}":
+            log.info(f"Additional config options {config_options}")
+
         date = date.replace(tzinfo=pytz.UTC)
         log.info(date.strftime("%Y-%m-%d"))
         # First just look up the pointing without having to create an Observation
