@@ -52,6 +52,8 @@ run-all-folding-processes = "sps_pipeline.processing:run_all_folding_processes"
 start-processing-services = "sps_pipeline.processing:start_processing_services"
 start-processing-manager = "sps_pipeline.processing:start_processing_manager"
 start-processing-cleanup = "sps_pipeline.processing:start_processing_cleanup"
+find-monthly-search-commands = "sps_pipeline.stack_scheduling:find_monthly_search_commands"
+execute-monthly-search-commands = "sps_pipeline.stack_scheduling:execute_monthly_search_commands"
 
 [build-system]
 requires = ["poetry-core"]

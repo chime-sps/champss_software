@@ -106,7 +106,8 @@ def save_container_logs(service):
 
 def get_service_created_at_datetime(service):
     """
-    Extracts and parses the 'CreatedAt' attribute from a service object to a datetime object.
+    Extracts and parses the 'CreatedAt' attribute from a service object to a datetime
+    object.
 
     Parameters:
         service: An object that contains a dictionary attribute 'attrs' with a key 'CreatedAt'.
