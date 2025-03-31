@@ -407,7 +407,9 @@ def find_all_pipeline_processes(
                     and process.quality_label is not False
                     and process.nchan < 20000
                 ):
-                    memory_needed = int(4 + ((process.maxdm / 100) * 4))
+                    memory_needed = int(4 + ((process.maxdm / 100) * 4)) * 2 ** (
+                        process.ntime // 2**20
+                    )
                     cores_needed = int(memory_needed / 3)
                     info.append(
                         {

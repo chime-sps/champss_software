@@ -1,16 +1,12 @@
 import json
+import os
 
 import click
 from scheduler.workflow import (
     clear_workflow_buckets,
-    docker_swarm_pending_states,
-    docker_swarm_running_states,
-    get_work_from_results,
-    message_slack,
     schedule_workflow_job,
-    wait_for_no_tasks_in_states,
 )
-from sps_databases import db_api, db_utils, models
+from sps_databases import db_utils, models
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -71,7 +67,13 @@ def find_monthly_search_commands(
             **options_dict,
         }
         all_commands.append(
-            {"arguments": arguments, "scheduled": False, "maxdm": pointing.maxdm}
+            {
+                "arguments": arguments,
+                "scheduled": False,
+                "maxdm": pointing.maxdm,
+                "stackpath": stack_obj.datapath_month,
+                "length": pointing.length,
+            }
         )
 
     with open(f"{run_name}.json", "w") as file:
@@ -81,18 +83,9 @@ def find_monthly_search_commands(
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--docker-image-name",
-    default="chimefrb/champss_software:latest",
+    default="sps-archiver1.chime:5000/champss_software:latest",
     type=str,
     help="Which Docker Image name to use.",
-)
-@click.option(
-    "--docker-password",
-    prompt=True,
-    confirmation_prompt=False,
-    hide_input=True,
-    required=True,
-    type=str,
-    help="Password to login to chimefrb DockerHub (hint: frbadmin's common password).",
 )
 @click.option(
     "--command-file",
@@ -101,28 +94,35 @@ def find_monthly_search_commands(
 )
 def execute_monthly_search_commands(
     docker_image_name,
-    docker_password,
     command_file,
 ):
     with open(command_file) as file:
         all_commands = json.load(file)
+    cand_path = all_commands[0]["arguments"]["cand_path"]
+    all_stack_folders = [
+        os.path.dirname(command["stackpath"]) for command in all_commands
+    ]
+    stack_folders = set(all_stack_folders)
 
     docker_mounts = [
-        "/data/chime/sps/raw:/data/chime/sps/raw",
-        "/data/chime/sps/sps_processing:/data/chime/sps/sps_processing",
+        f"{cand_path}:{cand_path}",
     ]
+    for folder in stack_folders:
+        docker_mounts.append(f"{folder}:{folder}")
     workflow_function = "sps_pipeline.pipeline.stack_and_search"
     workflow_buckets_name = "champss-stack-search"
-    clear_workflow_buckets(
-        ["--workflow-buckets-name", workflow_buckets_name], standalone_mode=False
+    clear_workflow_buckets.main(
+        args=["--workflow-buckets-name", workflow_buckets_name],
+        standalone_mode=False,
     )
-
     for command_dict in all_commands:
         if command_dict["scheduled"] is False:
-            formatted_ra = f'{command_dict["arguments"]["ra"]:.02f}'.replace(".", "_")
-            formatted_dec = f'{command_dict["arguments"]["dec"]:.02f}'.replace(".", "_")
+            formatted_ra = f"{command_dict['arguments']['ra']:.02f}"
+            formatted_dec = f"{command_dict['arguments']['dec']:.02f}"
             docker_name = f"stack_search_{formatted_ra}_{formatted_dec}"
-            docker_memory_reservation = 40 + ((command_dict["maxdm"] / 100) * 4)
+            docker_memory_reservation = 40 + (
+                (command_dict["maxdm"] / 100) * 4
+            ) * 2 ** (command_dict["length"] // 2**20)
             workflow_params = command_dict["arguments"]
             workflow_tags = [
                 "stack_search",
@@ -135,7 +135,6 @@ def execute_monthly_search_commands(
                 docker_mounts,
                 docker_name,
                 docker_memory_reservation,
-                docker_password,
                 workflow_buckets_name,
                 workflow_function,
                 workflow_params,
