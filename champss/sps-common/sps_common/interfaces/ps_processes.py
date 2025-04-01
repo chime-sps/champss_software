@@ -481,7 +481,7 @@ class PowerSpectra:
             Whether the file contains the expected fields
         """
         h5f = h5py.File(filename, "r")
-        file_ok = all(field in h5f_good.keys() for field in checked_fields)
+        file_ok = all(field in h5f.keys() for field in checked_fields)
         return file_ok
 
     def convert_to_nparray(self):
