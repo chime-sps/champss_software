@@ -818,7 +818,7 @@ class Process:
 
     @property
     def ram_requirement(self):
-        return 16 * (self.ntime / 300000.0) * self.nchan // 2048.0
+        return min(100, int(4 + ((self.maxdm / 100) * 4) * 2 ** (self.ntime // 2**20)))
 
     @classmethod
     def from_db(cls, doc):

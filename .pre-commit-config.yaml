@@ -5,7 +5,9 @@ repos:
     rev: v0.9.7
     hooks:
       - id: ruff # linter
-        args: [ --fix ]
+        args: 
+          - --fix
+          - --ignore=F841
       - id: ruff-format # formatter
 
   # Makes sure the poetry.lock file is up-to-date

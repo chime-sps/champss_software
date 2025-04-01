@@ -8,6 +8,7 @@ import signal
 import sys
 import time
 import traceback
+from bson.objectid import ObjectId
 from functools import partial
 from glob import glob
 from multiprocessing import Pool
@@ -322,8 +323,11 @@ def run_all_folding_processes(
     type=str,
     help="Path to the raw data folder.",
 )
+@click.option(
+    "--alert-slack/--no-slack-alert", default=False, help="Alert slack about results."
+)
 def find_all_pipeline_processes(
-    full_transit, db_port, db_host, db_name, complete, date, ndays, datpath
+    full_transit, db_port, db_host, db_name, complete, date, ndays, datpath, alert_slack
 ):
     """Find all available processes and add them to the database."""
     date = convert_date_to_datetime(date)
@@ -393,6 +397,8 @@ def find_all_pipeline_processes(
                     active_pointings[-1].ra,
                     active_pointings[-1].dec,
                 )
+
+            all_processes = []
             for ap in active_pointings:
                 existing_proc = proc_dict.get(ap.pointing_id, {})
                 if not existing_proc:
@@ -402,25 +408,8 @@ def find_all_pipeline_processes(
                 else:
                     process = models.Process.from_db(existing_proc)
                 total_processes_day += 1
-                if (
-                    process.is_in_stack is False
-                    and process.quality_label is not False
-                    and process.nchan < 20000
-                ):
-                    memory_needed = int(4 + ((process.maxdm / 100) * 4)) * 2 ** (
-                        process.ntime // 2**20
-                    )
-                    cores_needed = int(memory_needed / 3)
-                    info.append(
-                        {
-                            "ra": process.ra,
-                            "dec": process.dec,
-                            "maxdm": process.maxdm,
-                            "nchan": process.nchan,
-                            "memory_needed": memory_needed,
-                            "cores_needed": cores_needed,
-                        }
-                    )
+                all_processes.append(process)
+
             total_processes += total_processes_day
             log.info(f"{total_processes_day} available processes created for {day}.")
             log.info(f"First coordinates : {first_coordinates}")
@@ -428,7 +417,14 @@ def find_all_pipeline_processes(
         except Exception as error:
             log.error(error)
             log.info(f"Can't create processes for {day}")
-    log.info(f"{total_processes} available processes in total.")
+    finished_procs = [proc for proc in all_processes if proc.status.value == 2]
+    log.info(
+        f"{total_processes} available processes in total. {len(finished_procs)} have already finished."
+    )
+    if alert_slack:
+        message_slack(
+            f"For folders {all_days} found {total_processes} available processes in total. \n {len(finished_procs)} have already finished."
+        )
     return {"info": info}, [], []
 
 
@@ -579,6 +575,9 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
         "Options passed to --config-options of the pipeline. Use single quotes inside the string!"
     ),
 )
+@click.option(
+    "--alert-slack/--no-slack-alert", default=False, help="Alert slack about results."
+)
 def run_all_pipeline_processes(
     db_host,
     db_port,
@@ -600,6 +599,7 @@ def run_all_pipeline_processes(
     run_stacking,
     pipeline_arguments,
     pipeline_config_options,
+    slack_alert,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -620,7 +620,6 @@ def run_all_pipeline_processes(
             "ra": {"$gte": min_ra, "$lte": max_ra},
             "dec": {"$gte": min_dec, "$lte": max_dec},
             "status": {"$ne": 2},
-            #     "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
         }
     if date:
         query["datetime"] = {"$gte": date, "$lte": date + dt.timedelta(days=ndays)}
@@ -629,13 +628,28 @@ def run_all_pipeline_processes(
         log.info("Will only print out processes commands without running them.")
     log.info(f"{len(all_processes)} process found.")
 
+    if slack_alert:
+        time_passed = dt.datetime.now(dt.timezone.utc) - (date + dt.timedelta(days=1))
+        hours_passed = time_passed.total_seconds() / 3600
+        if len(all_processes):
+            message_slack(
+                "Starting processing for"
+                f" {date.strftime('%Y/%m/%d')}\n{len(all_processes)} processes will run."
+                f" \n{hours_passed:.2f} hours passed"
+                " since data recording was complete."
+            )
+        else:
+            message_slack(f"No process found that fit the query {query}")
+
     all_processes = sorted(
         all_processes,
         key=lambda process: (process["date"], process["ra"], process["dec"]),
     )
 
+    process_ids = []
     for process_index, process_dict in enumerate(all_processes):
         process = models.Process.from_db(process_dict)
+        process_ids.append(ObjectId(process._id))
         try:
             cmd_string_list = (
                 f"--date {process.date} --db-port {db_port} --db-host {db_host} --stack"
@@ -662,7 +676,7 @@ def run_all_pipeline_processes(
                     formatted_maxdm = f"{process.maxdm:.02f}"
                     formatted_date = process.date
 
-                    docker_memory_reservation = int(4 + ((process.maxdm / 100) * 4))
+                    docker_memory_reservation = process.ram_requirement
                     docker_threads_needed = int(docker_memory_reservation / 3)
                     docker_image = docker_image_name
                     docker_mounts = [
@@ -734,7 +748,8 @@ def run_all_pipeline_processes(
             log.error(error)
             if not dry_run:
                 db_api.update_process(process.id, {"status": 3})
-    log.info(f"{len(all_processes)} process found.")
+
+    return process_ids
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -954,25 +969,12 @@ def start_processing_manager(
                         date_to_process,
                         "--datpath",
                         datpath,
+                        "alert-slack",
                     ],
                     standalone_mode=False,
                 )
 
-                queued_processes = db["processes"].count_documents(
-                    {
-                        "date": date_string,
-                        "is_in_stack": False,
-                        "quality_label": {"$ne": False},
-                    }
-                )
-                all_processes = db["processes"].count_documents({"date": date_string})
-
-                log.info(
-                    f"Found {queued_processes} processes to run out of"
-                    f" {all_processes} for {date_string}"
-                )
-
-                if queued_processes == 0:
+                if len(processes) == 0:
                     message_slack(
                         f"No processes found for {date_string}. Will progress to"
                         " next day"
@@ -985,13 +987,6 @@ def start_processing_manager(
 
                 time_passed = present_date - (date_to_process + dt.timedelta(days=1))
                 hours_passed = time_passed.total_seconds() / 3600
-
-                message_slack(
-                    "Starting processing for"
-                    f" {date_string}\n{queued_processes} processes will run out of"
-                    f" {all_processes} for the day\n{hours_passed:.2f} hours passed"
-                    " since data recording was complete"
-                )
 
                 start_time_of_processing = time.time()
 
@@ -1039,8 +1034,9 @@ def start_processing_manager(
                     pipeline_arguments,
                     "--pipeline-config-options",
                     pipeline_config_options,
+                    "--slack_alert",
                 ]
-                run_all_pipeline_processes.main(
+                process_ids = run_all_pipeline_processes.main(
                     args=pipeline_args,
                     standalone_mode=False,
                 )
@@ -1050,68 +1046,34 @@ def start_processing_manager(
                 )
 
                 end_time_of_processing = time.time()
+                processed = list(db.processes.find({"_id": {"$in": process_ids}}))
 
                 overall_time_of_processing = (
                     end_time_of_processing - start_time_of_processing
                 ) / 60
                 average_time_of_processing = (
-                    overall_time_of_processing / queued_processes
+                    overall_time_of_processing / len(processed)
                 ) * 60
 
-                completed_processes = db["processes"].count_documents(
-                    {
-                        "date": date_string,
-                        "status": 2,
-                    }
-                )
-                rfi_processeses = db["processes"].count_documents(
+                completed_processes = [
+                    proc for proc in processed if proc["status"].value == 2
+                ]
+                rfi_processeses = [
+                    proc
+                    for proc in completed_processes
+                    if proc["quality_label"] is False
+                ]
+                db["processes"].count_documents(
                     {"date": date_string, "status": 2, "is_in_stack": False}
                 )
 
-                # Get the number of detections per observation for the day
-                observations = list(
-                    db["observations"].find(
-                        {
-                            "datetime": {
-                                "$gte": date_to_process,
-                                "$lte": date_to_process + dt.timedelta(days=1),
-                            }
-                        },
-                        {"num_detections": 1},  # Only get the num_detections field
-                    )
+                obs_ids = [proc["obs_id"] for proc in completed_processes]
+                observations = list(db.observations.find({"_id": {"$in": obs_ids}}))
+                mean_detections = np.nanmean(
+                    [obs["num_detections"] for obs in observations]
                 )
-                # Filter out None values from observations
-                observations = np.array(
-                    [
-                        obs["num_detections"]
-                        for obs in observations
-                        if obs["num_detections"] is not None
-                    ]
-                )
-
-                # Get the mean number of detections for the day,
-                # or just 0 if there are no None observations
-                if len(observations) > 0:
-                    mean_detections = round(np.mean(observations))
-                else:
-                    mean_detections = 0
 
                 # Get the execution time and nchan per process for the day
-                processes = list(
-                    db["processes"].find(
-                        {
-                            "datetime": {
-                                "$gte": date_to_process,
-                                "$lte": date_to_process + dt.timedelta(days=1),
-                            }
-                        },
-                        {
-                            "process_time": 1,
-                            "nchan": 1,
-                        },  # Only get the process_time and nchan fields
-                    )
-                )
-
                 time_per_nchan = {
                     1024: {"total": 0, "count": 0},
                     2048: {"total": 0, "count": 0},
@@ -1120,7 +1082,7 @@ def start_processing_manager(
                     16384: {"total": 0, "count": 0},
                 }
 
-                for process in processes:
+                for process in processed:
                     nchan = process["nchan"]
                     execution_time = process["process_time"]
 
@@ -1130,11 +1092,11 @@ def start_processing_manager(
 
                 slack_message = (
                     f"For {date_string}:\n{completed_processes} /"
-                    f" {all_processes} finished successfully for the day\nOf those,"
-                    f" {rfi_processeses} were rejected by quality metrics\nMean number"
+                    f" {len(completed_processes)} finished successfully for the day\nOf those,"
+                    f" {len(rfi_processeses)} were rejected by quality metrics\nMean number"
                     f" of detections: {mean_detections}\nOverall processing time for"
                     f" current run: {overall_time_of_processing:.2f} minutes\n(/"
-                    f" {queued_processes} jobs run ="
+                    f" {len(processed)} jobs run ="
                     f" {average_time_of_processing:.2f} seconds)"
                 )
 
