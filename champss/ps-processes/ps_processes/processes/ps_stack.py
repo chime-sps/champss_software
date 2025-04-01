@@ -130,7 +130,7 @@ class PowerSpectraStack:
 
         # qc test to know if we want to load the power spectra stack at all.
         if self.qc:
-            log.info(f"Running Quality Control on the power spectra stack")
+            log.info("Running Quality Control on the power spectra stack")
             quality_result, quality_metrics = self.quality_control(pspec)
             if self.mode == "month" and self.update_db:
                 self.update_obs_database(pspec, quality_result, quality_metrics)
@@ -187,10 +187,17 @@ class PowerSpectraStack:
             stack_file_path = self.get_stack_file_path(pspec)
             log.info(f"Writing new power spectra stack to {stack_file_path}.")
             if os.path.isfile(stack_file_path):
-                raise StackNotInDbError(
-                    f"Stack file {stack_file_path} aready exists on disk but not in"
-                    " database."
-                )
+                existing_file_ok = PowerSpectra.check_file_keys(stack_file_path)
+                if existing_file_ok:
+                    raise StackNotInDbError(
+                        f"Stack file {stack_file_path} aready exists on disk but not in"
+                        " database. File appears to be properly saved."
+                    )
+                else:
+                    log.error(
+                        "Stack file {stack_file_path} aready exists on disk but appears to be broken. \nWill delete old file."
+                    )
+                    os.remove(stack_file_path)
             pspec.write(stack_file_path, nbit=self.stack_nbit)
             if self.update_db:
                 log.info(
@@ -333,9 +340,9 @@ class PowerSpectraStack:
             # Make some check to ensure stacks are compatible with each other
             log.info("Checking for consistency between stacks")
             ps_shape = (len(pspec.power_spectra), len(pspec.power_spectra[0]))
-            assert (
-                ps_shape == h5f["power spectra"].shape
-            ), "The two power spectra stack do not have the same size."
+            assert ps_shape == h5f["power spectra"].shape, (
+                "The two power spectra stack do not have the same size."
+            )
             stack_freq_labels = np.ones(h5f["frequency labels"].shape)
             h5f["frequency labels"].read_direct(stack_freq_labels)
             np.testing.assert_array_equal(
@@ -346,9 +353,9 @@ class PowerSpectraStack:
             datetimes_stack = np.ones(h5f["datetimes"].shape)
             h5f["datetimes"].read_direct(datetimes_stack)
             for dt, dts in itertools.product(pspec.datetimes, datetimes_stack):
-                assert (
-                    np.abs(dt.timestamp() - dts) > 60
-                ), "The two power spectra stack came from the same day."
+                assert np.abs(dt.timestamp() - dts) > 60, (
+                    "The two power spectra stack came from the same day."
+                )
             log.info("Stacking the power spectra in chunks")
             h5f.attrs["number of days"] += pspec.num_days
             new_num_days = h5f.attrs["number of days"]
@@ -361,7 +368,7 @@ class PowerSpectraStack:
             start_idx = len(bad_freq_arrays)
             for i, indices in enumerate(pspec.bad_freq_indices):
                 h5f.create_dataset(
-                    f"bad frequency indices {start_idx+i}", data=indices, dtype="i"
+                    f"bad frequency indices {start_idx + i}", data=indices, dtype="i"
                 )
             datetimes_stack = np.append(
                 datetimes_stack, [date.timestamp() for date in pspec.datetimes]
@@ -421,9 +428,9 @@ class PowerSpectraStack:
             # Make some check to ensure stacks are compatible with each other
             log.info("Checking for consistency between stacks")
             ps_shape = (len(pspec.power_spectra), len(pspec.power_spectra[0]))
-            assert (
-                ps_shape == h5f["power spectra"].shape
-            ), "The two power spectra stack do not have the same size."
+            assert ps_shape == h5f["power spectra"].shape, (
+                "The two power spectra stack do not have the same size."
+            )
             stack_freq_labels = np.ones(h5f["frequency labels"].shape)
             h5f["frequency labels"].read_direct(stack_freq_labels)
             np.testing.assert_array_equal(
@@ -434,9 +441,9 @@ class PowerSpectraStack:
             datetimes_stack = np.ones(h5f["datetimes"].shape)
             h5f["datetimes"].read_direct(datetimes_stack)
             for dt, dts in itertools.product(pspec.datetimes, datetimes_stack):
-                assert (
-                    np.abs(dt.timestamp() - dts) > 60
-                ), "The two power spectra stack came from the same day."
+                assert np.abs(dt.timestamp() - dts) > 60, (
+                    "The two power spectra stack came from the same day."
+                )
             log.info(f"Stacking the {self.mode} power spectra into the current stack")
             for i in range(len(pspec.dms)):
                 pspec.power_spectra[i] += h5f["power spectra"][(i,)]
@@ -483,18 +490,18 @@ class PowerSpectraStack:
         """
         # Make some check to ensure stacks are compatible with each other
         ps_shape = (len(pspec.power_spectra), len(pspec.power_spectra[0]))
-        assert (
-            ps_shape == pspec_stack.power_spectra.shape
-        ), "The two power spectra stack do not have the same size."
+        assert ps_shape == pspec_stack.power_spectra.shape, (
+            "The two power spectra stack do not have the same size."
+        )
         np.testing.assert_array_equal(
             pspec.freq_labels,
             pspec_stack.freq_labels,
             "The two power spectra stack do not have the same frequency labels.",
         )
         for dt, dts in itertools.product(pspec.datetimes, pspec_stack.datetimes):
-            assert (
-                np.abs(dt.timestamp() - dts.timestamp()) > 60
-            ), "The two power spectra stack came from the same day."
+            assert np.abs(dt.timestamp() - dts.timestamp()) > 60, (
+                "The two power spectra stack came from the same day."
+            )
 
         stack_start = time.time()
         log.info("Stacking the two power spectra together")
@@ -927,9 +934,9 @@ class PowerSpectraStack:
             os.remove(stack_file_path)
         if self.update_db:
             payload = {
-                f"datapath_month": "",
-                f"datetimes_month": [],
-                f"num_days_month": 0,
+                "datapath_month": "",
+                "datetimes_month": [],
+                "num_days_month": 0,
             }
             db_api.update_ps_stack(pointing_id, payload)
 
@@ -954,7 +961,7 @@ class PowerSpectraStack:
                 return
 
         try:
-            log.info(f"Trying to acquire stack lock.")
+            log.info("Trying to acquire stack lock.")
             self.lock.acquire(poll_interval=1)
             log.info(f"Stack lock acquired at {self.lock.lock_file}")
         except Timeout:

@@ -423,7 +423,7 @@ def find_all_pipeline_processes(
     )
     if alert_slack:
         message_slack(
-            f"For folders {all_days} found {total_processes} available processes in total. \n {len(finished_procs)} have already finished."
+            f"For folders {all_days} found {total_processes} available processes in total. \n{len(finished_procs)} of those have already finished."
         )
     return {"info": info}, [], []
 
