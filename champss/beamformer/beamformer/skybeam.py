@@ -251,12 +251,6 @@ class SkyBeamFormer:
             ),
             flattened_data_list,
         )
-        raw_spec_slices = [
-            slice
-            for raw_spec_slice_list in raw_spec_slices
-            for slice in raw_spec_slice_list
-        ]
-        log.info("Finished loading.")
 
         # Here I use data fraction as the fraction of time steps which are present at the start.
         # This does not take into account values whether these values
@@ -269,6 +263,12 @@ class SkyBeamFormer:
             log.error(f"Data Fraction below {self.min_data_frac}")
             return None, spectra_shared
 
+        raw_spec_slices = [
+            slice
+            for raw_spec_slice_list in raw_spec_slices
+            for slice in raw_spec_slice_list
+        ]
+        log.info("Finished loading.")
         # For now separate the spectrum that each thread gets one part
         # Splitting it too small might increase memory usage
         # Can set minimal length here
@@ -580,7 +580,7 @@ class SkyBeamFormer:
                 sps_chunks = int_file.get_chunks()
         except IndexError:
             log.error(f"File {file_name} defect.")
-            return
+            return []
         last_fpga0 = 0
         last_nfreq = 0
         shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
@@ -590,7 +590,7 @@ class SkyBeamFormer:
 
         if spectra.shape[0] != sps_chunks[0].chunk_header.nfreq:
             log.error("Shape mismatch between spectra and file.")
-            return
+            return []
 
         utc_start_obj = Time(utc_start, format="unix", scale="utc")
         # sort the chunks by start time to loop through

@@ -986,7 +986,6 @@ def start_processing_manager(
                 present_date = dt.datetime.now(dt.timezone.utc)
 
                 time_passed = present_date - (date_to_process + dt.timedelta(days=1))
-                hours_passed = time_passed.total_seconds() / 3600
 
                 start_time_of_processing = time.time()
 
