@@ -715,9 +715,17 @@ def run_all_pipeline_processes(
                     if pipeline_arguments != "":
                         split_args = pipeline_arguments.split("--")
                         for arg_string in split_args:
+                            arg_string = arg_string.strip()
                             if arg_string != "":
-                                argument, value = arg_string.split(" ", 1)
-                                workflow_params[argument] = (value,)
+                                arg_count = len(arg_string.split(" "))
+                                if arg_count > 1:
+                                    argument, value = arg_string.split(" ", 1)
+                                    workflow_params[argument] = (value,)
+                                else:
+                                    log.error(
+                                        "Flags not implimented yet. Reformated your option to --option_python_name True"
+                                    )
+
                     workflow_tags = [
                         "pipeline",
                         formatted_ra,
@@ -969,7 +977,7 @@ def start_processing_manager(
                         date_to_process,
                         "--datpath",
                         datpath,
-                        "alert-slack",
+                        "--alert-slack",
                     ],
                     standalone_mode=False,
                 )
@@ -1033,7 +1041,7 @@ def start_processing_manager(
                     pipeline_arguments,
                     "--pipeline-config-options",
                     pipeline_config_options,
-                    "--slack_alert",
+                    "--alert-slack",
                 ]
                 process_ids = run_all_pipeline_processes.main(
                     args=pipeline_args,
