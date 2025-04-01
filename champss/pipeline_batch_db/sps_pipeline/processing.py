@@ -599,7 +599,7 @@ def run_all_pipeline_processes(
     run_stacking,
     pipeline_arguments,
     pipeline_config_options,
-    slack_alert,
+    alert_slack,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -628,7 +628,7 @@ def run_all_pipeline_processes(
         log.info("Will only print out processes commands without running them.")
     log.info(f"{len(all_processes)} process found.")
 
-    if slack_alert:
+    if alert_slack:
         time_passed = dt.datetime.now(dt.timezone.utc) - (date + dt.timedelta(days=1))
         hours_passed = time_passed.total_seconds() / 3600
         if len(all_processes):
