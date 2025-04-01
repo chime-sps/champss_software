@@ -195,7 +195,7 @@ class PowerSpectraStack:
                     )
                 else:
                     log.error(
-                        "Stack file {stack_file_path} aready exists on disk but appears to be broken. \nWill delete old file."
+                        f"Stack file {stack_file_path} aready exists on disk but appears to be broken. Will delete old file."
                     )
                     os.remove(stack_file_path)
             pspec.write(stack_file_path, nbit=self.stack_nbit)
