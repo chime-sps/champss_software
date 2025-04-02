@@ -294,6 +294,17 @@ class PowerSpectraCreation:
                 medians.extend(info[1])
                 scales.extend(info[2])
 
+            medians = np.asarray(medians)
+            median_dm_indices = np.asarray(median_dm_indices)
+            scales = np.asarray(scales)
+
+            rn_medians = np.ones((1, medians.shape[0], medians.shape[1]))
+            rn_medians[0] = medians
+            rn_dm_indices = np.ones((1, len(median_dm_indices)))
+            rn_dm_indices[0] = median_dm_indices
+            rn_scales = np.ones((1, len(scales)))
+            rn_scales[0] = scales
+
             # update the observation database
             if self.update_db:
                 self.update_database(
@@ -321,9 +332,9 @@ class PowerSpectraCreation:
             bad_freq_indices=[bad_freq_indices],
             obs_id=[dedisp_time_series.obs_id],
             power_spectra_shared=power_spectra_shared,
-            rn_medians=np.asarray(medians),
-            rn_scales=np.asarray(scales),
-            rn_dm_indices=np.asarray(median_dm_indices),
+            rn_medians=medians,
+            rn_scales=scales,
+            rn_dm_indices=median_dm_indices,
         )
 
     @staticmethod
