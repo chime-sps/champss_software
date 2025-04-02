@@ -1063,7 +1063,7 @@ def start_processing_manager(
                 ) * 60
 
                 completed_processes = [
-                    proc for proc in processed if proc["status"].value == 2
+                    proc for proc in processed if proc["status"] == 2
                 ]
                 rfi_processeses = [
                     proc
