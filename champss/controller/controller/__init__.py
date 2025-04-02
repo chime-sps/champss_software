@@ -46,10 +46,13 @@ async def announce_pointing_done(pointing_done_listen):
     """
     async with pointing_done_listen:
         async for beam_row, pointing_id in pointing_done_listen:
-            print(f"  Row { beam_row } / pointing { pointing_id } DONE")
+            print(f"  Row {beam_row} / pointing {pointing_id} DONE")
 
 
-async def entry_point(active_beams, basepath):
+async def entry_point(
+    active_beams,
+    basepath,
+):
     """
     Parent for the pointer and updater tasks.
 
@@ -68,7 +71,7 @@ async def entry_point(active_beams, basepath):
                 new_pointing_announce, new_pointing_listen = trio.open_memory_channel(
                     math.inf
                 )
-                log.debug(f"strat: spawning controller for beam { beam_id }...")
+                log.debug(f"strat: spawning controller for beam {beam_id}...")
                 nursery.start_soon(
                     pointing_beam_control,
                     new_pointing_listen,
@@ -76,11 +79,33 @@ async def entry_point(active_beams, basepath):
                     basepath,
                 )
                 beam_schedule_channels[beam_id] = new_pointing_announce
-            log.debug(f"strat: spawning pointer for { active_beams }...")
+
+            log.debug(f"strat: spawning pointer for {active_beams}...")
             nursery.start_soon(generate_pointings, active_beams, beam_schedule_channels)
     except BaseExceptionGroup:
         pass
         # When cancelling the batch acquisition this Exception will be thrown by trio.
+
+
+def start_beam(beam: int, basepath: str, channels: int, ntime: int):
+    """
+    Start beam acquisition with a fixed channelisation.
+
+    Args:
+        beam (int): Beam number
+    """
+    proc = subprocess.Popen(
+        [
+            f"rpc-client --spulsar-writer-params {beam} {channels} {ntime} 5"
+            f" {basepath} tcp://{get_beam_ip(beam)}:5555"
+        ],
+        shell=True,  # nosec
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        preexec_fn=os.setsid,
+    )
+    return proc
 
 
 def stop_beam(beam: int, basepath: str):
@@ -163,6 +188,18 @@ def stop_all_beams(active_beams, basepath, batchsize=100):
     default="",
     help="Additonal identifier to sepearte the log_files.",
 )
+@click.option(
+    "--channels",
+    type=int,
+    default=-1,
+    help="Number of recorded frequency channels. If -1 use the pointing map.",
+)
+@click.option(
+    "--ntime",
+    type=int,
+    default=1024,
+    help="Size of chunks. Only used in conjunction with --channels.",
+)
 def cli(
     host: Tuple[str],
     rows: Tuple[int],
@@ -171,6 +208,8 @@ def cli(
     basepath: str,
     nocleanup: bool,
     logid: str,
+    channels: int,
+    ntime: int,
 ):
     """
     L1 controller for Slow Pulsar Search.
@@ -187,7 +226,7 @@ def cli(
         else:
             log_append = ""
         log_filename = (
-            f'./logs/spsctl_{datetime.now().strftime("%Y_%m_%d")}{log_append}.log'
+            f"./logs/spsctl_{datetime.now().strftime('%Y_%m_%d')}{log_append}.log"
         )
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
         logging.basicConfig(
@@ -213,7 +252,14 @@ def cli(
     log.info("Controlling only beams: %s", sorted(list(active_beams)))
 
     try:
-        trio.run(entry_point, active_beams, basepath)
+        if channels == -1:
+            trio.run(entry_point, active_beams, basepath)
+        else:
+            for beam in active_beams:
+                proc = start_beam(beam, basepath, channels, ntime)
+            log.info("Started all beams.")
+            while True:
+                time.sleep(10)
     except KeyboardInterrupt:
         log.info("Keyboard interrupt received. Exiting...")
     except Exception as err:
