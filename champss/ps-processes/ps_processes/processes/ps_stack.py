@@ -373,17 +373,30 @@ class PowerSpectraStack:
             ).flatten()
             del h5f.attrs["observation ids"]
             h5f.attrs["observation ids"] = list(new_obs_ids)
-
-            if len(pspec.rn_medians) == 1:
-                h5f.attrs["rednoise medians"].append(pspec.rn_medians)
-                h5f.attrs["rednoise scales"].append(pspec.rn_scales)
-                h5f.attrs["rednoise dm indices"].append(pspec.rn_dm_indices)
-
-            elif pspec.rn_medians == None:
+            print("We are in the correct branch.")
+            
+            if pspec.rn_medians == None:
                 log.error("This power spectrum does not have rednoise info saved.")
 
             elif h5f["rednoise medians"] == None:
                 log.error("This h5f file does not have rednoise info saved.")
+
+            else:
+                #set guard value as -1 to pad
+                ndays = len(pspec.rn_medians) + len(h5f["rn medians"])
+                stacked_rn_medians = -1 * np.ones((ndays, len(pspec.rn_dm_indices),
+                        max(pspec.rn_medians.shape[2], h5f["rn medians"].shape[2])))
+                stacked_rn_medians[:len(pspec.rn_medians), :, 
+                            :pspec.rn_medians.shape[2]] = pspec.rn_medians
+                stacked_rn_medians[len(pspec.rn_medians):, :,
+                            :h5f["rn medians"].shape[2]] = h5f["rn medians"]
+                stacked_rn_scales = -1 * np.ones((ndays, max(pspec.rn_scales.shape[1],
+                            h5f["rn scales"].shape[1])))
+                stacked_rn_scales[:len(pspec.rn_scales)] = pspec.rn_scales
+                stacked_rn_scales[len(pspec.rn_scales):] = h5f["rn scales"]
+                
+                h5f["rn medians"] = stacked_rn_medians
+                h5f["rn scales"] = stacked_rn_scales
 
         log.info("Stacking completed")
         if self.update_db:
