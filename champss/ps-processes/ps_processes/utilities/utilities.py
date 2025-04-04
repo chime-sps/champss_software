@@ -52,8 +52,7 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000):
     old_median = 1
     normalised_power_spectrum = np.zeros(shape=np.shape(power_spectrum))
     medians = []
-    else:
-        log.info("Rednoise medians are not being stored to power spectrum.")
+    
     for bins in scale:
         mid_bin = int(start + bins / 2)
         new_median = np.nanmedian(power_spectrum[start : start + bins])

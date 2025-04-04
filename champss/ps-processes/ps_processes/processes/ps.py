@@ -302,7 +302,7 @@ class PowerSpectraCreation:
             rn_medians[0] = medians
             rn_dm_indices = np.ones((1, len(median_dm_indices)))
             rn_dm_indices[0] = median_dm_indices
-            rn_scales = np.ones((1, len(scales)))
+            rn_scales = np.ones((1, scales.shape[0], scales.shape[1]))
             rn_scales[0] = scales
 
             # update the observation database
