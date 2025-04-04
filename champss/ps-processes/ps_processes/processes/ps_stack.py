@@ -408,14 +408,11 @@ class PowerSpectraStack:
                 pspec.rn_scales = new_rn_scales
 
 
-            #need to figure out how to implement this without throwing array boolean errors
-            #if pspec.rn_medians == None:
-                #log.error("This power spectrum does not have rednoise info saved.")
+            if type(pspec.rn_medians) != np.ndarray:
+                log.error("This power spectrum does not have rednoise info saved.")
 
-            #elif h5f["rednoise medians"] == None:
-                #log.error("This h5f file does not have rednoise info saved.")
-            if False:
-                print('whoops!')
+            elif type(h5f["rednoise medians"]) != np.ndarray:
+                log.error("This h5f file does not have rednoise info saved.")
 
             else:
                 #set guard value as -1 to pad
