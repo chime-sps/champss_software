@@ -819,7 +819,12 @@ class Process:
     @property
     def ram_requirement(self):
         return min(
-            100, int(4 + ((self.maxdm / 100) * 4) * 2 ** (self.ntime // 2**20)) * 2
+            100,
+            int(
+                4
+                + (self.maxdm * 0.004 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20)
+            )
+            * 2,
         )
 
     @classmethod
