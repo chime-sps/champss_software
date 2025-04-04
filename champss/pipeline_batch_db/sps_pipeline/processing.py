@@ -881,7 +881,7 @@ def run_all_pipeline_processes(
     type=str,
     help=(
         "Additional pipeline arguments. Not usable for --config-options."
-        "Use -- to separate options but use the python names vor the variables instead of the cli names."
+        "Use -- to separate options but use the python names of the variables (with underscored instead of dashes) instead of the cli names."
         """For example: "--only_injections True --kst 10" """
     ),
 )
@@ -1381,7 +1381,9 @@ def start_processing_manager(
     default="",
     type=str,
     help=(
-        "Additional pipeline arguments. Needs -- included in the argument name in order to split properly. Not usable for --config-options."
+        "Additional pipeline arguments. Not usable for --config-options."
+        "Use -- to separate options but use the python names of the variables (with underscored instead of dashes) instead of the cli names."
+        """For example: "--only_injections True --kst 10" """
     ),
 )
 @click.option(
@@ -1389,7 +1391,7 @@ def start_processing_manager(
     default="{}",
     type=str,
     help=(
-        "Options passed to --config options of the pipeline. Use single quotes inside the string!"
+        """Options passed to --config-options of the pipeline. Example: "{'beamform': {'max_mask_frac': 0.9}}" """
     ),
 )
 def start_processing_services(
