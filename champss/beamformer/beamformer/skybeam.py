@@ -269,6 +269,28 @@ class SkyBeamFormer:
             for slice in raw_spec_slice_list
         ]
         log.info("Finished loading.")
+
+        ref_slice = raw_spec_slices[1]
+        ref_block = np.copy(spectra[:, ref_slice])
+        ref_block[rfi_mask[:, ref_slice]] = np.nan
+        bpass_ref = np.nanmean(ref_block, axis=1)
+        stdpass_ref = np.nanstd(ref_block, axis=1)
+
+        log.info("Renormalizing spectra in 1s blocks")
+        pool.map(
+            partial(
+                self.renorm_block,
+                spectra_shared.name,
+                mask_shared.name,
+                spectra_shape,
+                spec_dtype,
+                bpass_ref,
+                stdpass_ref,
+            ),
+            raw_spec_slices,
+        )
+        log.info("Finished renormalizing spectra in 1s blocks")
+
         # For now separate the spectrum that each thread gets one part
         # Splitting it too small might increase memory usage
         # Can set minimal length here
@@ -328,6 +350,7 @@ class SkyBeamFormer:
             "RFI cleaning finished. New masking Fraction:"
             f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
         )
+
         log.info("Start filling and normalization.")
         used_nsub = np.min([self.nsub, spectra_shape[0]])
         chan_per_nsub = spectra_shape[0] // used_nsub
@@ -862,3 +885,44 @@ class SkyBeamFormer:
                     current_medians = np.median(spectra[:, beam_slice])
                     if (norm_medians != 0) and (current_medians != 0):
                         spectra[:, beam_slice] *= norm_medians / current_medians
+
+    def renorm_block(
+        self,
+        spectra_shared_name,
+        mask_shared_name,
+        spectra_shape,
+        spec_dtype,
+        bpass_ref,
+        stdpass_ref,
+        trange,
+    ):
+        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        spectra = np.ndarray(spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf)
+
+        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
+
+        data_chunk = np.copy(spectra[:, trange])
+        chunk_mask = rfi_mask[:, trange]
+        data_chunk[chunk_mask] = np.nan
+
+        # Compute stats for this block
+        mn_i = np.nanmean(data_chunk, axis=1, keepdims=True)
+        bpass_i = np.nanmean(data_chunk, axis=1)
+        stdpass_i = np.nanstd(data_chunk, axis=1)
+
+        # Renormalize
+        mn_factor = np.nanmedian(bpass_i / bpass_ref)
+        std_factor = np.nanmedian(stdpass_i / stdpass_ref)
+        log.info(
+            f"Renormalizing block {trange} with factors {mn_factor} and {std_factor}"
+        )
+
+        data_chunk -= mn_i
+        data_chunk /= std_factor
+        data_chunk += mn_i / mn_factor
+
+        data_chunk[np.isnan(data_chunk)] = 0.0
+
+        # Write back to shared memory
+        spectra[:, trange] = data_chunk
