@@ -135,7 +135,7 @@ class PowerSpectraPipeline:
         prefix: str
             The prefix to save/load the data product. Default = ''
         """
-        filepath = f"{ basepath }/{ subdir }"
+        filepath = f"{basepath}/{subdir}"
         power_spectra_detection_clusters = None
         if not power_spectra:
             power_spectra = self.load_power_spectra(filepath, prefix)
@@ -176,7 +176,7 @@ class PowerSpectraPipeline:
             log.error(stacknotindb_e)
             log.error(
                 "Stack on disk not present in current database."
-                " It maybe be used by other databases."
+                " It might be used by other databases or the database update failed."
             )
             self._ps_stack.unlock_stack()
             if self.search_failed_spectra:
@@ -352,7 +352,7 @@ class StackSearchPipeline:
                     - sorted(ps_stack_db.datetimes_month)[0]
                 ).days < self.min_num_days:
                     log.error(
-                        f"There are less than { self.min_num_days } days of data in the"
+                        f"There are less than {self.min_num_days} days of data in the"
                         " current monthly stack. Skipping the process"
                     )
                     return None, None
@@ -365,7 +365,7 @@ class StackSearchPipeline:
                             )
                         log.info(
                             "loading the monthly power spectra stack"
-                            f" { ps_stack_db.datapath_month }"
+                            f" {ps_stack_db.datapath_month}"
                         )
                         monthly_power_spectra = PowerSpectra.read(
                             ps_stack_db.datapath_month, nbit=self.spectra_nbit
@@ -373,7 +373,7 @@ class StackSearchPipeline:
                     except (OSError, FileNotFoundError) as e:
                         log.error(
                             f"{e}: Monthly stack file for pointing id"
-                            f" { ps_stack_db.pointing_id } does not exist. Exiting"
+                            f" {ps_stack_db.pointing_id} does not exist. Exiting"
                         )
                         if self.update_db:
                             payload = {
@@ -386,7 +386,7 @@ class StackSearchPipeline:
                 else:
                     log.error(
                         "Monthly stack file for pointing id"
-                        f" { ps_stack_db.pointing_id } does not exist. Exiting"
+                        f" {ps_stack_db.pointing_id} does not exist. Exiting"
                     )
                     return
             elif file:
@@ -481,7 +481,7 @@ class StackSearchPipeline:
                 db_api.append_ps_stack(pointing_id, payload_qc)
                 log.info(
                     "Written quality metrics of cumulative stack of pointing id"
-                    f" { ps_stack_db.pointing_id } to database"
+                    f" {ps_stack_db.pointing_id} to database"
                 )
 
         except FailedChi2TestError as chi2_e:
@@ -507,7 +507,7 @@ class StackSearchPipeline:
             except (OSError, FileNotFoundError) as e:
                 log.error(
                     f"{e}: The cumulative power spectra stack at"
-                    f" { ps_stack_db.datapath_cumul } does not exist, will not continue"
+                    f" {ps_stack_db.datapath_cumul} does not exist, will not continue"
                     " with the searching process"
                 )
                 return None, None

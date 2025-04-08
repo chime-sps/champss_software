@@ -11,6 +11,7 @@ import sys
 import time
 from contextlib import nullcontext
 from glob import glob
+import ast
 
 import click
 import numpy as np
@@ -32,7 +33,7 @@ log = logging.getLogger(__name__)
 
 from beamformer import NoSuchPointingError
 from beamformer.strategist.strategist import PointingStrategist
-from beamformer.utilities.common import find_closest_pointing, get_data_list
+from beamformer.utilities.common import find_closest_pointing
 from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.ps_pipeline import PowerSpectraPipeline
 from scheduler.utils import convert_date_to_datetime
@@ -51,7 +52,7 @@ from sps_pipeline import (  # ps,
 default_datpath = "/data/chime/sps/raw"
 
 
-def load_config(config_file="sps_config.yml"):
+def load_config(config_file="sps_config.yml", cli_config_string="{}"):
     """
     Combines default/user-specified config settings and applies them to loggers.
 
@@ -88,7 +89,8 @@ def load_config(config_file="sps_config.yml"):
         user_config = OmegaConf.load("./" + config_file)
     else:
         user_config = OmegaConf.create()
-    return OmegaConf.merge(base_config, user_config)
+    cli_config = ast.literal_eval(cli_config_string)
+    return OmegaConf.merge(base_config, user_config, cli_config)
 
 
 def apply_logging_config(config, log_file="./logs/default.log"):
@@ -307,6 +309,15 @@ def dbexcepthook(type, value, tb):
     type=str,
     help="Path to the raw data folder.",
 )
+@click.option(
+    "--config-options",
+    default="{}",
+    type=str,
+    help=(
+        "Additional options that overwrite the config options. Provide a string that would define a python dictionary"
+        """For example use --config-options '{"beamform": {"max_mask_frac": 0.1}}' """
+    ),
+)
 def main(
     date,
     stack,
@@ -333,6 +344,7 @@ def main(
     cutoff_frequency,
     scale_injections,
     datpath,
+    config_options,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -392,7 +404,7 @@ def main(
         global pipeline_start_time
         pipeline_start_time = time.time()
 
-        config = load_config(config_file)
+        config = load_config(config_file, config_options)
         now = dt.datetime.utcnow()
         processing_failed = False
 
@@ -405,8 +417,8 @@ def main(
         log_path = basepath + f"/logs/{date.strftime('%Y/%m/%d')}/"
 
         log_name = (
-            f"run_pipeline_{date.strftime('%Y-%m-%d')}_{ra :.02f}_"
-            f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}"
+            f"run_pipeline_{date.strftime('%Y-%m-%d')}_{ra:.02f}_"
+            f"{dec:.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}"
         )
         if using_docker:
             # So that we can trace Grafana container metrics to a log file
@@ -421,6 +433,10 @@ def main(
         log_file = log_path + log_name
         apply_logging_config(config, log_file)
 
+        log.info(f"Used config: {config_file}")
+        if config_options != "{}":
+            log.info(f"Additional config options {config_options}")
+
         date = date.replace(tzinfo=pytz.UTC)
         log.info(date.strftime("%Y-%m-%d"))
         # First just look up the pointing without having to create an Observation
@@ -434,14 +450,14 @@ def main(
         obs_folder = os.path.join(
             basepath,
             date.strftime("%Y/%m/%d"),
-            f"{closest_pointing.ra :.02f}_{closest_pointing.dec :.02f}",
+            f"{closest_pointing.ra:.02f}_{closest_pointing.dec:.02f}",
         )
         obs_id_files = sorted(
             glob(
                 os.path.join(
                     obs_folder,
                     (
-                        f"{closest_pointing.ra :.02f}_{closest_pointing.dec :.02f}_*_obs_id.txt"
+                        f"{closest_pointing.ra:.02f}_{closest_pointing.dec:.02f}_*_obs_id.txt"
                     ),
                 )
             )
@@ -488,9 +504,9 @@ def main(
                 obs_id_file = os.path.join(
                     basepath,
                     date.strftime("%Y/%m/%d"),
-                    f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}",
+                    f"{active_pointing.ra:.02f}_{active_pointing.dec:.02f}",
                     (
-                        f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}"
+                        f"{active_pointing.ra:.02f}_{active_pointing.dec:.02f}"
                         f"_{active_pointing.sub_pointing}_obs_id.txt"
                     ),
                 )
@@ -519,7 +535,7 @@ def main(
         padded_length = config.ps_creation.padded_length
 
         for i_ap, active_pointing in enumerate(active_pointings):
-            log.info(f"Processing active_pointing {i_ap+1} of {N_ap}")
+            log.info(f"Processing active_pointing {i_ap + 1} of {N_ap}")
             active_process = db_api.get_process_from_active_pointing(
                 active_pointings[0]
             )
@@ -540,7 +556,7 @@ def main(
             dedisp_ts = None
             ps_detections = None
             prefix = (
-                f"{active_pointing.ra :.02f}_{active_pointing.dec :.02f}"
+                f"{active_pointing.ra:.02f}_{active_pointing.dec:.02f}"
                 f"_{active_pointing.sub_pointing}"
             )
 
@@ -574,20 +590,7 @@ def main(
                 skybeam, spectra_shared = beamform.run(
                     active_pointing, beamformer, fdmt, num_threads, basepath
                 )
-                if skybeam is not None:
-                    if (
-                        db_api.get_observation(active_pointing.obs_id).mask_fraction
-                        == 1.0
-                    ):
-                        log.warning(
-                            "Beamformed spectra are completely masked. Will proceed"
-                            " with cleanup."
-                        )
-                        spectra_shared.close()
-                        spectra_shared.unlink()
-                        components = ["cleanup"]
-                        processing_failed = True
-                else:
+                if skybeam is None:
                     spectra_shared.close()
                     spectra_shared.unlink()
                     components = ["cleanup"]
@@ -633,8 +636,8 @@ def main(
                 global power_spectra
                 log.info(
                     "Power Spectrum"
-                    f" ({active_pointing.ra :.2f} {active_pointing.dec :.2f}) @"
-                    f" { date :%Y-%m-%d}"
+                    f" ({active_pointing.ra:.2f} {active_pointing.dec:.2f}) @"
+                    f" {date:%Y-%m-%d}"
                 )
                 power_spectra = psc_pipeline.transform(dedisp_ts)
                 # remove dedispersed time series from memory
@@ -890,6 +893,18 @@ def main(
     default=False,
     help="Scale injection so that input sigma should be detected sigma.",
 )
+@click.option(
+    "--config-file",
+    default="sps_config.yml",
+    type=str,
+    help="Name of used config. Default: sps_config.yml",
+)
+@click.option(
+    "--config-options",
+    default="{}",
+    type=str,
+    help="Additional options that overwrite the config options. Provide a string that would define a python dictionary",
+)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -908,6 +923,8 @@ def stack_and_search(
     only_injections,
     cutoff_frequency,
     scale_injections,
+    config_file,
+    config_options,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -923,13 +940,13 @@ def stack_and_search(
     sys.excepthook = dbexcepthook
     global pipeline_start_time
     pipeline_start_time = time.time()
-    config = load_config()
+    config = load_config(config_file, config_options)
     now = dt.datetime.now()
     log_path = str(cand_path) + f"./stack_logs/{now.strftime('%Y/%m/%d')}/"
     if not file:
         log_name = (
-            f"run_stack_search_{ra :.02f}_"
-            f"{dec :.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
+            f"run_stack_search_{ra:.02f}_"
+            f"{dec:.02f}_{now.strftime('%Y-%m-%dT%H-%M-%S')}.log"
         )
     else:
         log_name = (

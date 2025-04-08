@@ -391,14 +391,24 @@ class MultiPointingCandidate:
         return len(self.all_dms)
 
     @property
-    def known_source_string(self):
-        """Returns a string describing the knonw sources."""
+    def known_source_string(self, short=True):
+        """Returns a string describing the known sources."""
         known_source_string = ""
         for source in self.known_source.matches:
             known_source_string += (
                 f"\n{source[0]} ({source[1]:.2f}, {source[2]:.2f}): {source[5]:.5f}"
             )
             known_source_string += f"\n F0: {1 / source[3]:.4f}, DM: {source[4]:.2f}"
+        return known_source_string
+
+    @property
+    def known_source_string_short(self):
+        """Returns a short string describing the known source name, F0 and Dec."""
+        known_source_string = ""
+        for source in self.known_source.matches:
+            known_source_string += (
+                f"{source[0]} ({1 / source[3]:.3f}, {source[4]:.1f}) "
+            )
         return known_source_string
 
     def single_candidate(self, index):

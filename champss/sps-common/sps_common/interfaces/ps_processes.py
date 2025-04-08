@@ -419,6 +419,10 @@ class PowerSpectra:
         nbit: int
             The number of bits to save the power spectra in. Default = 32
         """
+
+        # CAUTION: When changing this method, make sure to adapt .check_file_keys aswell
+        # Otherwise the pipeline may destroy perfectly fine stacks
+
         self.convert_to_nparray()
         with h5py.File(filename, "w") as h5f:
             h5f.create_dataset(
@@ -453,6 +457,32 @@ class PowerSpectra:
                 h5f.attrs.create("beta", data=None, dtype="f")
             else:
                 h5f.attrs["beta"] = self.beta
+
+    @classmethod
+    def check_file_keys(
+        cls,
+        filename,
+        checked_fields=["datetimes", "dms", "frequency labels", "power spectra"],
+    ):
+        """
+        Check if the file has been properly saved by testingt if expected fields are included.
+
+        Parameters
+        =======
+        filename: str
+            The filename of the hdf5 power spectra file
+
+        checked_fields: bool
+            The fields that are expected in the power spectra stack.
+
+        Returns
+        =======
+        file_ok: bool
+            Whether the file contains the expected fields
+        """
+        h5f = h5py.File(filename, "r")
+        file_ok = all(field in h5f.keys() for field in checked_fields)
+        return file_ok
 
     def convert_to_nparray(self):
         """Convert power_spectra attribute to single array if it is a list of arrays."""

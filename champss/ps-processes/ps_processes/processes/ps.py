@@ -147,9 +147,9 @@ class PowerSpectraCreation:
 
     @common_birdies_config.validator
     def _validate_common_birdies_config(self, attribute, value):
-        assert (
-            "ra_range" and "dec_range" in value
-        ), "The keys 'ra_range' and/or 'dec_range' are not in common_birdies_config"
+        assert "ra_range" and "dec_range" in value, (
+            "The keys 'ra_range' and/or 'dec_range' are not in common_birdies_config"
+        )
 
     @nbit.validator
     def _validate_nbit(self, attribute, value):
@@ -221,7 +221,7 @@ class PowerSpectraCreation:
                 nbins_flagged = len(bad_freq_indices)
                 log.info(
                     "Number of FFT bins flagged ="
-                    f" {nbins_flagged} ({nbins_flagged/len(freq_labels):.6f} of data)"
+                    f" {nbins_flagged} ({nbins_flagged / len(freq_labels):.6f} of data)"
                 )
             # Pool method to run parallel jobs on the FFT to form power spectra
             log.info(
@@ -598,7 +598,7 @@ class PowerSpectraCreation:
             )
         zeropad_end = time.time()
         log.debug(
-            f"Took {zeropad_end -  zeropad_start} seconds to zero-pad the time series"
+            f"Took {zeropad_end - zeropad_start} seconds to zero-pad the time series"
         )
         return dedisp_ts
 
@@ -873,9 +873,7 @@ class PowerSpectraCreation:
         for left_obs, right_obs in zip(other_birdies_left, other_birdies_right):
             current_target_array = np.zeros(self.padded_length // 2)
             for left, right in zip(left_obs, right_obs):
-                current_target_array[
-                    np.where((index_array >= left) & (index_array <= right))[0]
-                ] = 1
+                current_target_array[left : right + 1] = 1
             target_array += current_target_array
 
         if no_width:
@@ -942,7 +940,7 @@ class PowerSpectraCreation:
         #    self.common_birdies_config["dec_range"],
         # )
         surround_observations = db_api.get_observations_before_observation(
-            observation, 0, 2
+            observation, 0, 7, ra_range=1
         )
 
         compared_obs = []

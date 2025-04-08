@@ -25,6 +25,7 @@ beamform:
   min_data_frac: 0.5
   beam_to_normalise: 1
   flatten_bandpass: True
+  max_mask_frac: 0.9
 dedisp:
   numdms: 40
   maxdm: 1700
@@ -155,6 +156,10 @@ ps:
       use_sparse: True
       group_duplicate_freqs: True
       grouped_freq_dm_scale: 1
+      use_dbscan_filter: True
+      dbscan_filter_whole_freqs: True
+      dbscan_filter_broad_dm: True
+      dbscan_filter_broad_threshold: 100
 
 cands:
   harmonics: {}
