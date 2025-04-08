@@ -66,7 +66,7 @@ def process_mp_candidate(
     if cand.known_source.label == KnownSourceLabel.Known:
         log.info(
             "Candidate: %s -- (%.2f, %.2f) f=%.3f, DM=%.1f, sigma=%.3f",
-            ", ".join(cand.known_source.matches["source_name"]),
+            cand.known_source_string_short,
             cand.ra,
             cand.dec,
             cand.best_freq,

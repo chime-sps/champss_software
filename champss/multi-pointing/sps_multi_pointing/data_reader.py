@@ -54,7 +54,7 @@ def read_cands_summaries(file):
     """
     all_cands = []
     try:
-        spcc = SinglePointingCandidateCollection.read(file)
+        spcc = SinglePointingCandidateCollection.read(file, verbose=False)
 
         # datetimes may not be included in the candidates already
         datetimes = spcc.candidates[0].datetimes

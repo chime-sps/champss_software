@@ -4,7 +4,6 @@ import subprocess
 
 import click
 import numpy as np
-import sys
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 
@@ -19,6 +18,7 @@ from beamformer.utilities.common import find_closest_pointing, get_data_list
 from folding.plot_candidate import plot_candidate_archive
 from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
+from sps_pipeline.pipeline import default_datpath
 
 
 def update_folding_history(id, payload):
@@ -165,6 +165,12 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+@click.option(
     "--candpath",
     type=str,
     default="",
@@ -194,6 +200,7 @@ def main(
     db_host,
     db_name,
     foldpath,
+    datpath,
     candpath="",
     write_to_db=False,
     using_workflow=False,
@@ -305,10 +312,10 @@ def main(
     day = date.day
 
     if dir_suffix == "candidates":
-        log.info(f"Setting up pointing for {round(ra, 2)} {round(dec, 2)}...")
-        coord_path = f"{directory_path}/{round(ra, 2)}_{round(dec, 2)}"
+        log.info(f"Setting up pointing for {ra:.02f} {dec:.02f}...")
+        coord_path = f"{directory_path}/{ra:.02f}_{dec:.02f}"
         archive_fname = (
-            f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}"
+            f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}"
         )
         if not os.path.exists(coord_path):
             os.makedirs(coord_path)
@@ -316,7 +323,7 @@ def main(
             log.info(f"Directory '{coord_path}' already exists.")
         if not ephem_path:
             ephem_path = (
-                f"{coord_path}/cand_{round(dm, 2)}_{round(f0, 2)}_{year}-{month:02}-{day:02}.par"
+                f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.par"
             )
             create_ephemeris(name, ra, dec, dm, date, f0, ephem_path, fs_id)
     elif dir_suffix == "known_sources":
@@ -344,9 +351,7 @@ def main(
     data_list = []
     for active_pointing in ap:
         data_list.extend(
-            get_data_list(
-                active_pointing.max_beams, basepath="/data/chime/sps/raw/", extn="dat"
-            )
+            get_data_list(active_pointing.max_beams, basepath=datpath, extn="dat")
         )
     if not data_list:
         log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
@@ -372,12 +377,12 @@ def main(
         turns = 10
 
     if not os.path.isfile(fil):
-        log.info(f"Beamforming...")
+        log.info("Beamforming...")
         sbf = SkyBeamFormer(
             extn="dat",
             update_db=False,
             min_data_frac=0.5,
-            basepath="/data/chime/sps/raw/",
+            basepath=datpath,
             add_local_median=True,
             detrend_data=True,
             detrend_nsamp=32768,
@@ -398,7 +403,9 @@ def main(
         )
         skybeam, spectra_shared = sbf.form_skybeam(ap[0], num_threads=num_threads)
         if skybeam is None:
-            log.info("Insufficient unmasked data to form skybeam, exiting before filterbank creation")
+            log.info(
+                "Insufficient unmasked data to form skybeam, exiting before filterbank creation"
+            )
             spectra_shared.close()
             spectra_shared.unlink()
             return

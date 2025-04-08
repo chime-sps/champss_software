@@ -1,4 +1,5 @@
 """Simpe API to gather collection data using pymongo."""
+
 import datetime as dt
 
 import pymongo
@@ -323,7 +324,7 @@ def get_observations_around_observation(observation, ra_range, dec_range):
 
 
 def get_observations_before_observation(
-    observation, time_before, num_rows, row_offset=0
+    observation, time_before, num_rows, row_offset=0, ra_range=2.5
 ):
     """
     Returns `Observation` list at given seconds before the current observation.
@@ -354,14 +355,14 @@ def get_observations_before_observation(
     ra_before = pointing["ra"] - 360 * (time_before / SIDEREAL_S)
     if ra_before < 0:
         ra_before += 360
-    ra_min = ra_before - 2.5
+    ra_min = ra_before - ra_range
     ra_query = {}
     if ra_min < 0:
         ra_min += 360
         lower_edge = True
     else:
         lower_edge = False
-    ra_max = ra_before + 2.5
+    ra_max = ra_before + ra_range
     if ra_max > 360:
         ra_max -= 360
         upper_edge = True
@@ -395,8 +396,8 @@ def get_observations_before_observation(
             {
                 "pointing_id": {"$in": earlier_pointings},
                 "datetime": {
-                    "$gte": observation.datetime - dt.timedelta(hours=2.5 / 15),
-                    "$lte": observation.datetime + dt.timedelta(hours=2.5 / 15),
+                    "$gte": observation.datetime - dt.timedelta(hours=ra_range / 15),
+                    "$lte": observation.datetime + dt.timedelta(hours=ra_range / 15),
                 },
             }
         )

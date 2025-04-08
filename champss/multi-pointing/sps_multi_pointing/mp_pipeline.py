@@ -17,6 +17,7 @@ from sps_common.interfaces.multi_pointing import KnownSourceLabel
 from sps_databases import db_api, db_utils
 from sps_multi_pointing import classifier, data_reader, grouper, utilities
 from sps_multi_pointing.known_source_sifter.known_source_sifter import KnownSourceSifter
+import tqdm
 
 log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
@@ -106,7 +107,9 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 )
 @click.option(
     "--date",
-    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
+    type=click.DateTime(
+        ["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d", "%Y%m%d:%H", "%Y-%m-%d-%H", "%Y/%m/%d/%H"]
+    ),
     required=False,
     help="First date of candidates when grabbing from db. Default = All days.",
 )
@@ -239,7 +242,9 @@ def cli(
     if len(files) == 0:
         log.error("No files found. Will exit.")
         return
-    sp_cands = pool.map(data_reader.read_cands_summaries, files)
+    sp_cands = list(
+        tqdm.tqdm(pool.imap(data_reader.read_cands_summaries, files), total=len(files))
+    )
     # Filter out None
     sp_cands = [sp_cand_list for sp_cand_list in sp_cands if sp_cand_list is not None]
     # Get dates if not already done. Only needed for old candidates prior 2024/03
@@ -252,6 +257,8 @@ def cli(
     # Transform list of lists to list
     sp_cands = [sp_cand for sp_cand_list in sp_cands for sp_cand in sp_cand_list]
     log.info(f"Number of single-pointing candidates: {len(sp_cands)}")
+    # np.save("all_cands.npy", sp_cands)
+    # np.savez("all_cands.npz", sp_cands)
 
     # Run Grouper
     sp_grouper = grouper.SinglePointingCandidateGrouper(
@@ -271,24 +278,33 @@ def cli(
 
     # For now throw some diagnostic metrics into that dict, could be extended to use
     # a property of the candidate
-    proc_output = pool.map(
-        partial(
-            utilities.process_mp_candidate,
-            cand_classifier,
-            kss,
-            csv,
-            plot_cands,
-            plot_threshold,
-            plot_dm_threshold,
-            plot_all_pulsars,
-            out_folder,
-        ),
-        mp_cands,
+    log.info(
+        "Will now write out candidates, run known source sifter and create candidate plots."
+    )
+    proc_output = list(
+        tqdm.tqdm(
+            pool.imap(
+                partial(
+                    utilities.process_mp_candidate,
+                    cand_classifier,
+                    kss,
+                    csv,
+                    plot_cands,
+                    plot_threshold,
+                    plot_dm_threshold,
+                    plot_all_pulsars,
+                    out_folder,
+                ),
+                mp_cands,
+            ),
+            total=len(mp_cands),
+        )
     )
 
     mp_cands = [single_output[0] for single_output in proc_output]
     summary_dicts = [single_output[1] for single_output in proc_output]
 
+    log.info("Now running database updates.")
     # Run db operations which are tricky in multiprocessing calls
     detected_known_pulsars = 0
     for cand in mp_cands:
@@ -309,7 +325,7 @@ def cli(
                     "freq": cand.best_freq,
                     "dm": cand.best_dm,
                     "sigma": cand.best_sigma,
-                    "obs_id": cand.obs_id,
+                    "obs_id": cand.obs_id.tolist(),
                     "datetime": obs.datetime,
                 }
                 for c in cand.known_source.matches:
