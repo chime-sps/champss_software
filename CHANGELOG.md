@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.11.0](https://github.com/chime-sps/champss_software/compare/v0.10.0...v0.11.0) (2025-04-08)
+
+
+### Features
+
+* Add batch wrapper for spsctl ([#105](https://github.com/chime-sps/champss_software/issues/105)) ([494118a](https://github.com/chime-sps/champss_software/commit/494118a8e4979edfa7f5dd39c9914a2e28e92084))
+* add new candidate writing method ([#115](https://github.com/chime-sps/champss_software/issues/115)) ([1f80524](https://github.com/chime-sps/champss_software/commit/1f80524df35e523bc733d7656824e3681bcc8f15))
+* Enable finer control of processing and improve RFI ([#131](https://github.com/chime-sps/champss_software/issues/131)) ([f6fac7d](https://github.com/chime-sps/champss_software/commit/f6fac7d21bbae47958212e1577941f80ffb558c0))
+* **plot_candidate:** single day fold cand plot upgrade ([#109](https://github.com/chime-sps/champss_software/issues/109)) ([b835704](https://github.com/chime-sps/champss_software/commit/b835704608bce2e0675666a893a5fbae30fc4173))
+* Restructure multi-pointing candidate writing ([#117](https://github.com/chime-sps/champss_software/issues/117)) ([a6323d6](https://github.com/chime-sps/champss_software/commit/a6323d61cd0140fd3df6a595304554dd58523c5c))
+* Speedup process creation ([#111](https://github.com/chime-sps/champss_software/issues/111)) ([dc39604](https://github.com/chime-sps/champss_software/commit/dc3960483790856088eae7da7a0789d176364a18))
+
+
+### Bug Fixes
+
+* fixed stopping beams for high number of beams ([#113](https://github.com/chime-sps/champss_software/issues/113)) ([f3f112d](https://github.com/chime-sps/champss_software/commit/f3f112d2615244a64d696a77139aec41cf32bd3e))
+
 ## [0.10.0](https://github.com/chime-sps/champss_software/compare/v0.9.0...v0.10.0) (2025-01-31)
 
 
