@@ -373,7 +373,8 @@ class PowerSpectraStack:
             ).flatten()
             del h5f.attrs["observation ids"]
             h5f.attrs["observation ids"] = list(new_obs_ids)
-            
+           
+            print(pspec.rn_scales.shape)
             if len(h5f["rn medians"].shape) == 2:
 
                 new_rn_medians = np.ones((1, h5f["rn medians"].shape[0], h5f["rn medians"].shape[1]))
@@ -381,9 +382,9 @@ class PowerSpectraStack:
                 del h5f["rn medians"]
                 h5f["rn medians"] = new_rn_medians
 
-            if len(h5f["rn scales"].shape) == 2:
+            if len(h5f["rn scales"].shape) == 1:
 
-                new_rn_scales = np.ones((1, h5f["rn medians"].shape[1], h5f["rn scales"].shape[1]))
+                new_rn_scales = np.ones((1, len(h5f["rn medians"])))
                 new_rn_scales[0] = h5f["rn scales"]
                 del h5f["rn scales"]
                 h5f["rn scales"] = new_rn_scales
@@ -394,18 +395,18 @@ class PowerSpectraStack:
                 new_rn_medians[0] = pspec.rn_medians
                 pspec.rn_medians = new_rn_medians
 
-            if len(pspec.rn_scales.shape) == 2:
+            if len(pspec.rn_scales.shape) == 1:
 
-                new_rn_scales = np.ones((1, pspec.rn_scales.shape[0], pspec.rn_scales.shape[1]))
+                new_rn_scales = np.ones((1, len(pspec.rn_scales)))
                 new_rn_scales[0] = pspec.rn_scales
                 pspec.rn_scales = new_rn_scales
 
-
             if type(pspec.rn_medians) != np.ndarray:
                 log.error("This power spectrum does not have rednoise info saved.")
-
-            elif type(h5f["rednoise medians"]) != np.ndarray:
-                log.error("This h5f file does not have rednoise info saved.")
+            
+            #don't know how to check this exists...
+            #elif class(h5f["rn medians"]) != 'h5py._hl.dataset.Dataset':
+            #    log.error("This h5f file does not have rednoise info saved.")
 
             else:
                 #set guard value as -1 to pad
@@ -416,8 +417,8 @@ class PowerSpectraStack:
                             :pspec.rn_medians.shape[2]] = pspec.rn_medians
                 stacked_rn_medians[len(pspec.rn_medians):, :,
                             :h5f["rn medians"].shape[2]] = h5f["rn medians"]
-                stacked_rn_scales = -1 * np.ones((ndays, len(pspec.rn_dm_indices),
-                    max(pspec.rn_scales.shape[2], h5f["rn scales"].shape[2])))
+                stacked_rn_scales = -1 * np.ones((ndays,
+                    max(pspec.rn_scales.shape[1], h5f["rn scales"].shape[1])))
                 stacked_rn_scales[:len(pspec.rn_scales)] = pspec.rn_scales
                 stacked_rn_scales[len(pspec.rn_scales):] = h5f["rn scales"]
                 

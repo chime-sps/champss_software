@@ -365,6 +365,7 @@ class PowerSpectra:
             datetime.utcfromtimestamp(date).replace(tzinfo=pytz.UTC)
             for date in datetimes_unix
         ]
+
         rn_medians = np.ones(h5f["rn medians"].shape)
         h5f["rn medians"].read_direct(rn_medians)
         rn_scales = np.ones(h5f["rn scales"].shape)
@@ -455,7 +456,7 @@ class PowerSpectra:
             h5f.create_dataset("rn medians", data=self.rn_medians)
             h5f.create_dataset("rn scales", data=self.rn_scales)
             h5f.create_dataset("rn dm indices", data=self.rn_dm_indices)
-
+            print(f'in write: {self.rn_scales.shape}')
             h5f.attrs["ra"] = self.ra
             h5f.attrs["dec"] = self.dec
             h5f.attrs["observation ids"] = self.obs_id
