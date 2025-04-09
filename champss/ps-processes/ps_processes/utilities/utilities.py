@@ -62,7 +62,7 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000):
             i += 1
             new_median = np.nanmedian(
                 power_spectrum[start + (i * bins) : start + ((i + 1) * bins)]
-            )
+                )
             if not np.isnan(new_median):
                 if start == 0:
                     new_median = new_median * (2**i)
@@ -95,6 +95,7 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000):
         start += bins
         old_mid_bin = mid_bin
         old_median = new_median
+
     return normalised_power_spectrum, medians, scale
 
 
