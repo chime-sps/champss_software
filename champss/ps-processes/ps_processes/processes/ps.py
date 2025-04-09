@@ -306,7 +306,6 @@ class PowerSpectraCreation:
             #so we only need one row of scales
             rn_scales = np.ones((1, scales.shape[1]))
             rn_scales[0] = scales[0]
-            print(rn_scales.shape)
             # update the observation database
             if self.update_db:
                 self.update_database(
@@ -322,6 +321,7 @@ class PowerSpectraCreation:
         datetimes = Time(dedisp_time_series.start_mjd, format="mjd").datetime.replace(
             tzinfo=pytz.utc
         )
+
         return PowerSpectra(
             power_spectra=power_spectra,
             dms=dedisp_time_series.dms,
@@ -334,9 +334,9 @@ class PowerSpectraCreation:
             bad_freq_indices=[bad_freq_indices],
             obs_id=[dedisp_time_series.obs_id],
             power_spectra_shared=power_spectra_shared,
-            rn_medians=medians,
-            rn_scales=scales,
-            rn_dm_indices=median_dm_indices,
+            rn_medians=rn_medians,
+            rn_scales=rn_scales,
+            rn_dm_indices=rn_dm_indices,
         )
 
     @staticmethod
