@@ -496,17 +496,61 @@ class PowerSpectraStack:
                 pspec.power_spectra[i] += h5f["power spectra"][(i,)]
             log.info(f"Updating the new {self.mode} power spectra information")
             pspec.num_days += h5f.attrs["number of days"]
+            
+            if len(h5f["rn medians"].shape) == 2:
 
-            if len(pspec.rn_medians) == 1:
-                pspec.rn_medians.extend(h5f.attrs["rednoise medians"])
-                pspec.rn_scales.extend(h5f.attrs["rednoise scales"])
-                pspec.rn_dm_indices.extend(h5f.attrs["rednoise dm indices"])
+                h5f_rn_medians = np.ones((1, h5f["rn medians"].shape[0], h5f["rn medians"].shape[1]))
+                h5f_rn_medians[0] = h5f["rn medians"]
+            
+            else:
+                h5f_rn_medians = h5f["rn_medians"]
 
-            elif pspec.rn_medians == None:
-                log.error("This power spectrum does not have rednoise info saved.")
+            if len(h5f["rn scales"].shape) == 1:
 
-            elif h5f["rednoise medians"] == None:
-                log.error("This h5 file does not have rednoise info saved.")
+                h5f_rn_scales = np.ones((1, len(h5f["rn medians"])))
+                h5f_rn_scales[0] = h5f["rn scales"]
+
+            else:
+                h5f_rn_scales = h5f["rn scales"]
+            
+            if len(pspec.rn_medians.shape) == 2:
+
+                new_rn_medians = np.ones((1, pspec.rn_medians.shape[0], pspec.rn_medians.shape[1]))
+                new_rn_medians[0] = pspec.rn_medians
+                pspec.rn_medians = new_rn_medians
+
+            if len(pspec.rn_scales.shape) == 1:
+
+                new_rn_scales = np.ones((1, len(pspec.rn_scales)))
+                new_rn_scales[0] = pspec.rn_scales
+                pspec.rn_scales = new_rn_scales
+
+            if type(pspec.rn_medians) != np.ndarray:
+                    log.error("This power spectrum does not have rednoise info saved.")
+                
+            #don't know how to check this exists...
+            #elif class(h5f["rn medians"]) != 'h5py._hl.dataset.Dataset':
+            #    log.error("This h5f file does not have rednoise info saved.")
+
+            else:
+                print(len(pspec.rn_dm_indices))
+                #set guard value as -1 to pad
+                ndays = len(pspec.rn_medians) + len(h5f_rn_medians)
+                stacked_rn_medians = -1 * np.ones((ndays, len(pspec.rn_dm_indices),
+                        max(pspec.rn_medians.shape[2], h5f_rn_medians.shape[2])))
+                stacked_rn_medians[:len(pspec.rn_medians), :, 
+                            :pspec.rn_medians.shape[2]] = pspec.rn_medians
+                stacked_rn_medians[len(pspec.rn_medians):, :,
+                            :h5f_rn_medians.shape[2]] = h5f_rn_medians
+                stacked_rn_scales = -1 * np.ones((ndays,
+                    max(pspec.rn_scales.shape[1], h5f_rn_scales.shape[1])))
+                stacked_rn_scales[:len(pspec.rn_scales)] = pspec.rn_scales
+                stacked_rn_scales[len(pspec.rn_scales):] = h5f_rn_scales
+                
+                pspec.rn_medians = stacked_rn_medians
+                pspec.rn_scales = stacked_rn_scales
+        
+            log.info("Stacking completed.")
 
             bad_freq_arrays = [
                 key for key in h5f.keys() if "bad frequency indices" in key

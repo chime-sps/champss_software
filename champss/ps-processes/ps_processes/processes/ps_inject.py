@@ -326,13 +326,13 @@ class Injection:
             # get rid of 0th harmonic
             ps_shape = (ps_shape[0], ps_shape[1] - 1)
             # recall that the medians set the normalization of the power spectrum
-            print(rn_scales)
             # assign the medians to the correct bins
             normalizer = np.zeros(ps_shape)
-            
+
             for day in range(self.ndays):
 
-                rn_medians = rn_medians[day] / rn_medians[day, -1]
+                day_normalizer = np.ones(ps_shape) / np.log(2)
+                rn_medians[day] /= rn_medians[day, -1]
                 rn_scales = rn_scales[day]
                 start = 0
                 old_mid_bin = 0
@@ -344,25 +344,29 @@ class Injection:
                     mid_bin = int(start + bins / 2)
                     new_median = rn_medians[day, :, i]
                     if start == 0:
-                        normalizer[:, start : start + mid_bin] += 1/new_median
+                        log.info(f"normalizer: {normalizer.shape}")
+                        log.info(f"new_median: {new_median.shape}")
+                        day_normalizer[:, start : start + mid_bin] /= new_median[:, np.newaxis]
 
                     # make sure we don't overflow our array
-                    elif start + bins >= medians.shape[2]:
+                    elif start + bins >= ps_shape[1]:
                         median_slope = np.linspace(
-                            old_median, new_median, num=medians.shape[2] - old_mid_bin
+                            old_median, new_median, num=ps_shape[1] - old_mid_bin
                         )
-                        normalizer[:, old_mid_bin:] += 1/median_slope
+                        day_normalizer[:, old_mid_bin:] /= median_slope.T
 
                     else:
                         # compute slopes
                         median_slope = np.linspace(
                             old_median, new_median, num=mid_bin - old_mid_bin
                         )
-                        normalizer[:, old_mid_bin:mid_bin] += 1/median_slope
+                        day_normalizer[:, old_mid_bin:mid_bin] /= median_slope.T
                     start += bins
                     old_mid_bin = mid_bin
                     old_median = new_median
                     i += 1
+                    
+                    normalizer += day_normalizer
 
                 # normalize:
                 return normalizer[:, inj_bins]
@@ -475,7 +479,7 @@ class Injection:
         for i in range(len(dispersed_prof_fft)):
             bins, harm = self.harmonics(dispersed_prof_fft[i], df)
             harms.append(harm)
-        
+         
         harms = np.asarray(harms)
         normalized_harms = harms
         normalized_harms *= self.rednoise_normalize(
@@ -483,7 +487,7 @@ class Injection:
                 bins,
                 self.pspec_obj.rn_medians,
                 self.pspec_obj.rn_scales,
-            )
+            )[dm_indices]
 
         # estimate sigma
         (
