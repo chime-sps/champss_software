@@ -456,7 +456,6 @@ class PowerSpectra:
             h5f.create_dataset("rn medians", data=self.rn_medians)
             h5f.create_dataset("rn scales", data=self.rn_scales)
             h5f.create_dataset("rn dm indices", data=self.rn_dm_indices)
-            print(f'in write: {self.rn_scales.shape}')
             h5f.attrs["ra"] = self.ra
             h5f.attrs["dec"] = self.dec
             h5f.attrs["observation ids"] = self.obs_id

@@ -305,7 +305,7 @@ class Injection:
 
         return bins, harmonics
 
-    def rednoise_normalize(self, ps_shape, inj_bins, rn_medians, rn_scales):
+    def rednoise_normalize(self, ps_shape, inj_bins):
             """
             A scaled down version of the rednoise_normalize function from utilities.py for
             when we already know all the median information. Currently this is DM-secular
@@ -316,8 +316,6 @@ class Injection:
                 ps_len (int):     the length of the power spectrum
                 inj_harms (arr):  array containing injection harmonics
                 inj_bins (arr):   array containing bins into which to inject
-                rn_medians (arr): array containing rednoise medians
-                rn_scales (arr):  array containing rednoise scales
 
             Returns:
             -------
@@ -328,24 +326,23 @@ class Injection:
             # recall that the medians set the normalization of the power spectrum
             # assign the medians to the correct bins
             normalizer = np.zeros(ps_shape)
-
+            rn_scales = self.pspec_obj.rn_scales
+            rn_medians = self.pspec_obj.rn_medians
+            
             for day in range(self.ndays):
 
                 day_normalizer = np.ones(ps_shape) / np.log(2)
-                rn_medians[day] /= rn_medians[day, -1]
-                rn_scales = rn_scales[day]
+                day_medians = rn_medians[day] / rn_medians[day, -1]
+                day_scales = rn_scales[day]
                 start = 0
                 old_mid_bin = 0
                 old_median = 1
 
                 i = 0
-
                 for bins in rn_scales:
                     mid_bin = int(start + bins / 2)
                     new_median = rn_medians[day, :, i]
                     if start == 0:
-                        log.info(f"normalizer: {normalizer.shape}")
-                        log.info(f"new_median: {new_median.shape}")
                         day_normalizer[:, start : start + mid_bin] /= new_median[:, np.newaxis]
 
                     # make sure we don't overflow our array
@@ -365,11 +362,10 @@ class Injection:
                     old_mid_bin = mid_bin
                     old_median = new_median
                     i += 1
-                    
-                    normalizer += day_normalizer
+                normalizer += day_normalizer
 
-                # normalize:
-                return normalizer[:, inj_bins]
+            # normalize:
+            return normalizer[:, inj_bins]
 
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
@@ -479,7 +475,7 @@ class Injection:
         for i in range(len(dispersed_prof_fft)):
             bins, harm = self.harmonics(dispersed_prof_fft[i], df)
             harms.append(harm)
-         
+        
         harms = np.asarray(harms)
         normalized_harms = harms
         normalized_harms *= self.rednoise_normalize(
@@ -487,7 +483,7 @@ class Injection:
                 bins,
                 self.pspec_obj.rn_medians,
                 self.pspec_obj.rn_scales,
-            )[dm_indices]
+            )[dm_indices] / self.ndays
 
         # estimate sigma
         (
