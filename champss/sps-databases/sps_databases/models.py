@@ -818,11 +818,11 @@ class Process:
 
     @property
     def ram_requirement(self):
+        # test
         return min(
             100,
             int(
-                4
-                + (self.maxdm * 0.04 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20)
+                4 + (self.maxdm * 0.04 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20)
             )
             * 2,
         )
