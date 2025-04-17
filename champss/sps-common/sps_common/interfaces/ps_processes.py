@@ -480,8 +480,11 @@ class PowerSpectra:
         file_ok: bool
             Whether the file contains the expected fields
         """
-        h5f = h5py.File(filename, "r")
-        file_ok = all(field in h5f.keys() for field in checked_fields)
+        try:
+            h5f = h5py.File(filename, "r")
+            file_ok = all(field in h5f.keys() for field in checked_fields)
+        except:
+            file_ok = False
         return file_ok
 
     def convert_to_nparray(self):
