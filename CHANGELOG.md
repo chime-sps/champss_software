@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.3.0](https://github.com/chime-sps/champss_software/compare/v0.2.0...v0.3.0) (2025-04-17)
+
+
+### Features
+
+* Add batch wrapper for spsctl ([#105](https://github.com/chime-sps/champss_software/issues/105)) ([28ccd79](https://github.com/chime-sps/champss_software/commit/28ccd794fc55348580e6fae9b75133aa41317d93))
+* add new candidate writing method ([#115](https://github.com/chime-sps/champss_software/issues/115)) ([19587e4](https://github.com/chime-sps/champss_software/commit/19587e41f5505c05ebb0091a803dbe3d997c0fe3))
+* allow custom basepath, remove redundant search for files, move benchmark to site ([#67](https://github.com/chime-sps/champss_software/issues/67)) ([43d50a0](https://github.com/chime-sps/champss_software/commit/43d50a0dc47d53286165f347153359d3a6e4ee38))
+* Allow proper prediction of injection sigma ([#74](https://github.com/chime-sps/champss_software/issues/74)) ([0d763d9](https://github.com/chime-sps/champss_software/commit/0d763d98d9ff4a9d01d37c10eee0bbcc116361b8))
+* **continuous-integration.yml:** Adding new GitHub Actions ([3665af5](https://github.com/chime-sps/champss_software/commit/3665af506490530b1a24ad078e95a1b028d2ad36))
+* **continuous-integration.yml:** Plot candiate plots in benchmark and enable manual run ([435e561](https://github.com/chime-sps/champss_software/commit/435e561ff6169b08cdc76cde959cef639543a45b))
+* **controller:** Add basepath on L1 nodes as a Click CLI parameter ([48c3f21](https://github.com/chime-sps/champss_software/commit/48c3f211c22cff478c92646a71c1316a0dcb6100))
+* Enable finer control of processing and improve RFI ([#131](https://github.com/chime-sps/champss_software/issues/131)) ([9fbc944](https://github.com/chime-sps/champss_software/commit/9fbc944383b1d2209098b4d49a53987e9cd5b1ea))
+* Filter detections before clustering ([#80](https://github.com/chime-sps/champss_software/issues/80)) ([ba931ff](https://github.com/chime-sps/champss_software/commit/ba931ffb281d179aa4e6802b8c7f62198dad282d))
+* **image.yml:** Add support for new self-hosted Docker Image registry ([2a8e79e](https://github.com/chime-sps/champss_software/commit/2a8e79e8a573a2b316b3defdb122c9b359e7f943))
+* **known_source_sifter.py:** Add quick sanity check before running ks filter ([#23](https://github.com/chime-sps/champss_software/issues/23)) ([e736453](https://github.com/chime-sps/champss_software/commit/e7364538d5cc63c1d02cdb7137a90a0217f9e950))
+* **pipeline.py:** Allow alternate config name ([#10](https://github.com/chime-sps/champss_software/issues/10)) ([8e0f8b5](https://github.com/chime-sps/champss_software/commit/8e0f8b54b41ddb6bc01802bbf27bb58b0183dae1))
+* **plot_candidate:** single day fold cand plot upgrade ([#109](https://github.com/chime-sps/champss_software/issues/109)) ([b91ade4](https://github.com/chime-sps/champss_software/commit/b91ade484de6e7ebf4532381a02398242bc429ae))
+* Predict sigma of injection ([#58](https://github.com/chime-sps/champss_software/issues/58)) ([7519b8f](https://github.com/chime-sps/champss_software/commit/7519b8fb140bd34e331417e3ab7d65e9ffc8bff9))
+* Refine clustering ([#60](https://github.com/chime-sps/champss_software/issues/60)) ([f4946d1](https://github.com/chime-sps/champss_software/commit/f4946d1b8dbf85b340402870e426c3e6b7e78276))
+* Restructure multi-pointing candidate writing ([#117](https://github.com/chime-sps/champss_software/issues/117)) ([0183050](https://github.com/chime-sps/champss_software/commit/0183050a94a2f75840ebdc745a48f2e0481a7415))
+* Run monthly search without access to database ([#78](https://github.com/chime-sps/champss_software/issues/78)) ([8d19986](https://github.com/chime-sps/champss_software/commit/8d19986ea7936886728f503f4bcd194c194390f7))
+* **run-benchmark.sh:** Refine benchmark ([#15](https://github.com/chime-sps/champss_software/issues/15)) ([f21b640](https://github.com/chime-sps/champss_software/commit/f21b64051f4dcf84ac48b5e120fbd51ec304bb67))
+* Speedup process creation ([#111](https://github.com/chime-sps/champss_software/issues/111)) ([e3cc9d3](https://github.com/chime-sps/champss_software/commit/e3cc9d3ac0fd5e3696c3df4cd204350f349e2ea3))
+* **sps_multi_pointing:** Enable position filtering and setting of used metric in spsmp ([#26](https://github.com/chime-sps/champss_software/issues/26)) ([3cf2c68](https://github.com/chime-sps/champss_software/commit/3cf2c6886c6625d7879046d3552c643b31434585))
+* Update birdies.yaml, expand RFI filtering method and enable birdie report ([#83](https://github.com/chime-sps/champss_software/issues/83)) ([592cd50](https://github.com/chime-sps/champss_software/commit/592cd500734364a240bd170502880ff95ff695ef))
+* **workflow.py:** Adding improvements to scheduling ([a1d39e8](https://github.com/chime-sps/champss_software/commit/a1d39e8ea5fb021af43d796fa26963e0e3756a82))
+* **workflow.py:** Move workflow.py to its own module ([b87e36f](https://github.com/chime-sps/champss_software/commit/b87e36fd44065633d45934e1174aea8edaa7f3c6))
+
+
+### Bug Fixes
+
+* benchmark mount ([#99](https://github.com/chime-sps/champss_software/issues/99)) ([7ea3b96](https://github.com/chime-sps/champss_software/commit/7ea3b964ea8007a34278ebe5cddf62e95290bd82))
+* candidate writing during benchmark and datpath import ([ffc3175](https://github.com/chime-sps/champss_software/commit/ffc3175f2791f2752bdd9ee012756dbc78dfd084))
+* **common.py:** automatic loading of beam-model files ([#9](https://github.com/chime-sps/champss_software/issues/9)) ([7b5e6f9](https://github.com/chime-sps/champss_software/commit/7b5e6f9fdd0a5a68edb71600de976c1000d08979))
+* Enable exception for get_observation and update_observation when obs_id does not exist ([#103](https://github.com/chime-sps/champss_software/issues/103)) ([8f257e9](https://github.com/chime-sps/champss_software/commit/8f257e9ddb9a27bf8f78f6ca46548a3513a88807))
+* file reading when full path if given ([#84](https://github.com/chime-sps/champss_software/issues/84)) ([df48f50](https://github.com/chime-sps/champss_software/commit/df48f507e80fe0e26bb0bbb0b329581610e2dc2f))
+* Fix typo in .ram_requirement() ([#132](https://github.com/chime-sps/champss_software/issues/132)) ([a4df8b8](https://github.com/chime-sps/champss_software/commit/a4df8b80b776641ac19c0e866b72860d7554c189))
+* Fixed benchmark ([#64](https://github.com/chime-sps/champss_software/issues/64)) ([23b8309](https://github.com/chime-sps/champss_software/commit/23b83097a397d1c5231d1ea019c37fb5f79ea749))
+* fixed stopping beams for high number of beams ([#113](https://github.com/chime-sps/champss_software/issues/113)) ([fa53036](https://github.com/chime-sps/champss_software/commit/fa53036716517b1da01264d508661aa989b1bd3a))
+* **grouper.py:** Disallow delta_ra values above 180 ([#18](https://github.com/chime-sps/champss_software/issues/18)) ([11534b6](https://github.com/chime-sps/champss_software/commit/11534b673b4f46d178295ba759ab1bb8fdb053b8))
+* injection PR and precommit files ([e215ee6](https://github.com/chime-sps/champss_software/commit/e215ee67625a148f12cf885522d510ff4c921783))
+* ks filter for single day pipeline ([#59](https://github.com/chime-sps/champss_software/issues/59)) ([3f620b1](https://github.com/chime-sps/champss_software/commit/3f620b18a48f4321a411081de29ee5cf0224453a))
+* Plot refinements ([#100](https://github.com/chime-sps/champss_software/issues/100)) ([f29f36d](https://github.com/chime-sps/champss_software/commit/f29f36ddfa072b01201f81e06c8355b29e9310c0))
+* **processing.py:** Update all refrences of sps-archiver to sps-archiver1 ([9375231](https://github.com/chime-sps/champss_software/commit/93752312cb90d7cc368063748a27ecb4888910a1))
+* **pyproject.toml:** replace chime-frb-api with workflow-core package ([7a507bd](https://github.com/chime-sps/champss_software/commit/7a507bd495d40efeddbda7b3d122589839882953))
+* **pyproject.toml:** Try bumping version to 0.12.0 ([d4e4f55](https://github.com/chime-sps/champss_software/commit/d4e4f554e8bdb6381d77c6e358e736706f87fa36))
+* **release.yml:** Try non-deprecated release-please action ([55524c0](https://github.com/chime-sps/champss_software/commit/55524c08b0d2beafbe0c3dc27324aca4618e2c49))
+* reverting spshuff import order ([#50](https://github.com/chime-sps/champss_software/issues/50)) ([7d611cd](https://github.com/chime-sps/champss_software/commit/7d611cdd530a92be68132b9e871a8251f4452945))
+* Update astropy and minimum python version ([#87](https://github.com/chime-sps/champss_software/issues/87)) ([6b266a0](https://github.com/chime-sps/champss_software/commit/6b266a0b93e63e8d4acb2d66324f8f8eb53473bb))
+* **workflow.py:** Adding log dumping of multipointing containers before cleanup and password obfuscation ([fb42fe0](https://github.com/chime-sps/champss_software/commit/fb42fe00756edfaf09b33bb6edbc348ac9f08d47))
+* **workflow.py:** Constrain /data/ mounts to point directly to sps-archiver1.chime ([f5cb5a5](https://github.com/chime-sps/champss_software/commit/f5cb5a53a2788225af80c49475e1d21e59eb59c8))
+* **workflow.py:** Fix bug when microseconds is not defined in Docker Service CreatedAt field ([55366ca](https://github.com/chime-sps/champss_software/commit/55366caff70da5c8aeefdc8d758c13acec436ed3))
+* **workflow.py:** Read container log generator into file ([df97c46](https://github.com/chime-sps/champss_software/commit/df97c462a3e8da8419d33bef6150c96fb92f3e79))
+
+
+### Documentation
+
+* More explanations about setting up a database ([f80ca89](https://github.com/chime-sps/champss_software/commit/f80ca89ce325e6320960a9811164cdba11bcefb3))
+
 ## [0.2.0](https://github.com/chime-sps/champss_software/compare/v0.1.0...v0.2.0) (2025-04-17)
 
 
