@@ -821,10 +821,8 @@ class Process:
         return min(
             100,
             int(
-                4
-                + (self.maxdm * 0.04 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20)
-            )
-            * 2,
+                4 + (self.maxdm * 0.04 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20)
+            ),
         )
 
     @classmethod
