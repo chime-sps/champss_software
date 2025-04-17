@@ -535,6 +535,9 @@ class PowerSpectraStack:
             "/".join(stack_file_path.split("/")[:-1])
             + f"/{pspec.ra:.2f}_{pspec.dec:.2f}_{self.mode}_temp.hdf5"
         )
+        if os.path.isfile(temp_path):
+            log.info(f"Found old temp file {temp_path}. Will remove this file.")
+            os.remove(temp_path)
         pspec.write(temp_path, nbit=self.stack_nbit)
         log.info(
             f"Deleting the existing {self.mode} power spectra stack '{stack_file_path}'"
