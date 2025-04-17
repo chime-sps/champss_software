@@ -1102,8 +1102,8 @@ def start_processing_manager(
                         time_per_nchan[nchan]["count"] += 1
 
                 slack_message = (
-                    f"For {date_string}:\n{completed_processes} /"
-                    f" {len(completed_processes)} finished successfully for the day\nOf those,"
+                    f"For {date_string}:\n{len(completed_processes)} /"
+                    f" {len(processed)} finished successfully for the day\nOf those,"
                     f" {len(rfi_processeses)} were rejected by quality metrics\nMean number"
                     f" of detections: {mean_detections}\nOverall processing time for"
                     f" current run: {overall_time_of_processing:.2f} minutes\n(/"

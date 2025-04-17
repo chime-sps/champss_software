@@ -3,7 +3,9 @@ import math
 import numpy as np
 import pandas as pd
 from foldutils.database_utils import add_candidate_to_fsdb
-from sps_databases import db_api, db_utils
+from sps_databases import db_utils
+from pathlib import Path
+import click
 
 
 def get_indices_within_radius(lati, loni, latitude, longitude, rad_deg):
@@ -242,6 +244,7 @@ def Filter(
             )
 
     npz_filename = f"{foldpath}/candidates/filtered_cands/cands_{date_str}_filtered"
+    Path(f"{foldpath}/candidates/filtered_cands/").mkdir(parents=True, exist_ok=True)
     if save_candidates:
         print("Saving filtered data...")
         np.savez(
@@ -253,9 +256,6 @@ def Filter(
             f0s=f0s,
             known=known,
         )
-
-
-import click
 
 
 @click.command()
