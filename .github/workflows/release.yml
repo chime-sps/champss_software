@@ -19,7 +19,7 @@ jobs:
       - id: set-release
         # Note: will only create automated release PR if the sqaush commit message
         # of the merge contains a "fix" or "feat" Commitzen message
-        uses: google-github-actions/release-please-action@v4
+        uses: googleapis/release-please-action@v4
         with:
           release-type: python
           repo-url: chime-sps/champss_software
