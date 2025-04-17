@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.1](https://github.com/chime-sps/champss_software/compare/v0.12.0...v0.12.1) (2025-04-17)
+
+
+### Bug Fixes
+
+* bump version ([e3415a0](https://github.com/chime-sps/champss_software/commit/e3415a090324f3ab48f8929fb45b3d24313bc6ed))
+* **pyproject.toml:** Dummy commit to trigger new release from manually created tag ([4830942](https://github.com/chime-sps/champss_software/commit/4830942f46c78c5256da5a97d66e1d126a31e8d6))
+
 ## [0.2.0](https://github.com/chime-sps/champss_software/compare/v0.1.0...v0.2.0) (2025-04-17)
 
 
