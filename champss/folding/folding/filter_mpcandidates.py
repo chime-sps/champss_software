@@ -86,14 +86,14 @@ def Filter(
     DMthresh = min_dm
     F0cut = min_f0
 
-    i_SNcutabove = np.argwhere(df["sigma"] > SNthresh).squeeze()
-    i_DMcutabove = np.argwhere(df["mean_dm"] > DMthresh).squeeze()
+    i_SNcutabove = np.flatnonzero(df["sigma"] > SNthresh)
+    i_DMcutabove = np.flatnonzero(df["mean_dm"] > DMthresh)
 
     # Filter on known_sources
     ra = df["best_ra"]
     dec = df["best_dec"]
 
-    i_ks = np.argwhere(df["known_source_label"] > 0.5).squeeze()
+    i_ks = np.flatnonzero(df["known_source_label"] > 0.5)
     dDMtol = 0.1
     i_ksclusters = []
 
@@ -107,9 +107,7 @@ def Filter(
         source = df["known_source_name"][i_ks[j]]
         print(source, dm_ks, f0_ks)
 
-        i_dmmatch = np.argwhere(
-            np.abs(df["mean_dm"] - dm_ks) / dm_ks < dDMtol
-        ).squeeze()
+        i_dmmatch = np.flatnonzero(np.abs(df["mean_dm"] - dm_ks) / dm_ks < dDMtol)
         i_ksmatch = np.intersect1d(i_nearks, i_dmmatch)
         i_ksclusters = np.concatenate((i_ksclusters, i_ksmatch))
 
@@ -121,7 +119,7 @@ def Filter(
 
     # Arbitrary, but tested that only RFI and extremely bright known sources
     # (e.g. B0329+54, B2217+47) are above this threshold
-    i_posspread = np.argwhere(dra > 5).squeeze()
+    i_posspread = np.flatnonzero(dra > 5)
     i_posspread = np.intersect1d(i_posspread, i_SNcutabove)
     i_sndmposcut = np.intersect1d(i_posspread, i_DMcutabove)
     fsub = df["mean_freq"][i_sndmposcut].values
@@ -144,7 +142,7 @@ def Filter(
     histbins = hist_f0clusters[1]
     bincounts = hist_f0clusters[0]
 
-    i_f0cluster = np.argwhere(bincounts > 2).squeeze()
+    i_f0cluster = np.flatnonzero(bincounts > 2)
     birdie_cands = []
 
     # Flag narrow freq bins with large DM spread of candidates
@@ -154,7 +152,7 @@ def Filter(
         bcmid = (bchigh + bclow) / 2.0
         bcwidth = (bchigh - bclow) / 2.0
 
-        isub = np.argwhere(np.abs(fsub - bcmid) <= bcwidth).squeeze()
+        isub = np.flatnonzero(np.abs(fsub - bcmid) <= bcwidth)
         dDM = np.std(dmsub[isub]) / np.mean(dmsub[isub])
         if dDM > dDMtol:
             birdie = (bcmid, bcwidth)
@@ -168,26 +166,26 @@ def Filter(
             birdie = birdie_cands[i]
             f0 = birdie[0]
             fwidth = birdie[1]
-            i_birdie = np.argwhere(np.abs(df["mean_freq"] - f0) < fwidth).squeeze()
+            i_birdie = np.flatnonzero(np.abs(df["mean_freq"] - f0) < fwidth)
             i_birdies = np.concatenate((i_birdies, i_birdie))
         i_birdies = i_birdies.astype("int")
 
     # Combine all filters, indeces of candidates to remove
-    i_SNcutbelow = np.argwhere(df["sigma"] < SNthresh).squeeze()
-    i_DMcutbelow = np.argwhere(df["mean_dm"] < DMthresh).squeeze()
-    i_F0cut = np.argwhere(df["mean_freq"] < F0cut).squeeze()
+    i_SNcutbelow = np.flatnonzero(df["sigma"] < SNthresh)
+    i_DMcutbelow = np.flatnonzero(df["mean_dm"] < DMthresh)
+    i_F0cut = np.flatnonzero(df["mean_freq"] < F0cut)
 
-    i_bad = []
-    for i_cut in [
-        i_SNcutbelow,
-        i_DMcutbelow,
-        i_F0cut,
-        i_ksclusters,
-        i_ks,
-        i_birdies,
-        i_posspread,
-    ]:
-        i_bad = np.concatenate((i_bad, i_cut))
+    i_bad = np.concatenate(
+        [
+            i_SNcutbelow,
+            i_DMcutbelow,
+            i_F0cut,
+            i_ksclusters,
+            i_ks,
+            i_birdies,
+            i_posspread,
+        ]
+    )
 
     i_bad = np.unique(i_bad).astype("int")
     i_good = np.arange(len(df["mean_freq"].values))
@@ -204,15 +202,13 @@ def Filter(
     for i in range(len(cand_ra)):
         rai = cand_ra[i]
         deci = cand_dec[i]
-        i_match = np.argwhere((cand_ra == rai) & (cand_dec == deci))
-        if i_match.shape[0] > 1:
-            i_match = i_match.squeeze()
+        i_match = np.flatnonzero((cand_ra == rai) & (cand_dec == deci))
+        if len(i_match) > 1:
             sigma_sub = cand_sigma[i_match]
             isub_brightest = np.argmax(sigma_sub)
             i_matched.append(i_match[isub_brightest])
         else:
-            i_matched.append(int(i_match.squeeze()))
-
+            i_matched.append(i_match[0])
     i_matched = np.unique(i_matched)
 
     # Final dataframe
