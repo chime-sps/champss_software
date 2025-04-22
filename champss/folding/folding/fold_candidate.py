@@ -450,8 +450,8 @@ def main(
         ra,
         dec,
         coord_path,
-        known,
-        foldpath,
+        known=known,
+        foldpath=foldpath + "/plots/folded_candidate_plots/",
     )
 
     log.info(f"SN of folded profile: {SN_arr}")
