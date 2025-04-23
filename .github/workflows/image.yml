@@ -53,6 +53,7 @@ jobs:
           ssh: "github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}}"
           build-args: |
             SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }}
+            SLACK_APP_TOKEN=${{ secrets.SLACK_APP_TOKEN }}
           push: true
       - run: |
           docker builder prune -f
@@ -71,6 +72,6 @@ jobs:
         with:
           install: true
       - run: |
-          DOCKER_BUILDKIT=1 docker build -f Dockerfile -t local/${{ inputs.image_name }}:${{ inputs.image_tag }} --ssh github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}} --build-arg SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }} --load .
+          DOCKER_BUILDKIT=1 docker build -f Dockerfile -t local/${{ inputs.image_name }}:${{ inputs.image_tag }} --ssh github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}} --build-arg SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }} --build-arg SLACK_APP_TOKEN=${{ secrets.SLACK_APP_TOKEN }} --load .
           docker builder prune -f
 
