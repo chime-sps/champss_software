@@ -41,10 +41,14 @@ task_timeout_seconds = 60 * 120  # 120 minutes
 def message_slack(
     slack_message,
     slack_channel="#slow-pulsar-alerts",
-    slack_token="xoxb-194910630096-6273790557189-FKbg9w1HwrJYqGmBRY8DF0te",
+    slack_token="",
 ):
     log.setLevel(logging.INFO)
     log.info(f"Sending to Slack: \n{slack_message}")
+    
+    if not slack_token:
+        slack_token = os.getenv("SLACK_APP_TOKEN", "")
+    
     slack_client = WebClient(token=slack_token)
     try:
         slack_request = slack_client.chat_postMessage(
