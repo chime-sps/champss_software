@@ -301,66 +301,71 @@ class Injection:
         return bins, harmonics
 
     def rednoise_normalize(self, ps_shape, inj_bins):
-            """
-            A scaled down version of the rednoise_normalize function from utilities.py for
-            when we already know all the median information. Currently this is DM-secular
-            but can be implemented easily to not be.
+        """
+        A scaled down version of the rednoise_normalize function from utilities.py for
+        when we already know all the median information. Currently this is DM-secular
+        but can be implemented easily to not be.
 
-            Inputs:
-            -------
-                ps_len (int):     the length of the power spectrum
-                inj_harms (arr):  array containing injection harmonics
-                inj_bins (arr):   array containing bins into which to inject
+        Inputs:
+        -------
+            ps_len (int):     the length of the power spectrum
+            inj_harms (arr):  array containing injection harmonics
+            inj_bins (arr):   array containing bins into which to inject
 
-            Returns:
-            -------
-                rednoise-normalized harmonics
-            """
-            # get rid of 0th harmonic
-            ps_shape = (ps_shape[0], ps_shape[1] - 1)
-            # recall that the medians set the normalization of the power spectrum
-            # assign the medians to the correct bins
-            normalizer = np.zeros(ps_shape)
-            rn_scales = self.pspec_obj.rn_scales
-            rn_medians = self.pspec_obj.rn_medians
-            
-            for day in range(self.ndays):
+        Returns:
+        -------
+            rednoise-normalized harmonics
+        """
+        # get rid of 0th harmonic
+        ps_shape = (ps_shape[0], ps_shape[1] - 1)
+        normalizer = np.zeros(ps_shape)
+        rn_scales = self.pspec_obj.rn_scales
+        rn_medians = self.pspec_obj.rn_medians
+        
+        #need function that returns values at discrete locations for med(f1) = y + mdf 
+        #where y is the previous midpoint and m is the slope between the bracketing midpoints
 
-                day_normalizer = np.ones(ps_shape) / np.log(2)
-                day_medians = rn_medians[day] / rn_medians[day, -1]
-                day_scales = rn_scales[day]
-                start = 0
-                old_mid_bin = 0
-                old_median = 1
+        for day in range(self.ndays):
 
-                i = 0
-                for bins in rn_scales:
-                    mid_bin = int(start + bins / 2)
-                    new_median = rn_medians[day, :, i]
-                    if start == 0:
-                        day_normalizer[:, start : start + mid_bin] /= new_median[:, np.newaxis]
+            day_normalizer = np.ones(ps_shape) / self.ndays
+            #not sure i can do this division before the slope calculations...
+            #day_medians = rn_medians[day] / rn_medians[day, :, -1].reshape(-1, 1)
+            day_medians = rn_medians[day] / np.min(rn_medians[day], axis = 1)[:, np.newaxis]
+            day_scales = rn_scales[day]
+            start = 0
+            old_mid_bin = 0
+            old_median = 1
 
-                    # make sure we don't overflow our array
-                    elif start + bins >= ps_shape[1]:
-                        median_slope = np.linspace(
-                            old_median, new_median, num=ps_shape[1] - old_mid_bin
-                        )
-                        day_normalizer[:, old_mid_bin:] /= median_slope.T
+            i = 0
+            for bins in day_scales:
+                mid_bin = int(start + bins / 2)
+                new_median = day_medians[:, i]
+                if start == 0:
+                    day_normalizer[:, start : start + mid_bin] /= new_median[:, np.newaxis]
 
-                    else:
-                        # compute slopes
-                        median_slope = np.linspace(
-                            old_median, new_median, num=mid_bin - old_mid_bin
-                        )
-                        day_normalizer[:, old_mid_bin:mid_bin] /= median_slope.T
-                    start += bins
-                    old_mid_bin = mid_bin
-                    old_median = new_median
-                    i += 1
-                normalizer += day_normalizer
+                # make sure we don't overflow our array
+                elif start + bins >= ps_shape[1]:
+                    median_slope = np.linspace(
+                        old_median, new_median, num=ps_shape[1] - old_mid_bin
+                    )
+                    day_normalizer[:, old_mid_bin:] /= median_slope.T
 
-            # normalize:
-            return normalizer[:, inj_bins]
+                else:
+                    # compute slopes
+                    median_slope = np.linspace(
+                        old_median, new_median, num=mid_bin - old_mid_bin
+                    )
+                    day_normalizer[:, old_mid_bin:mid_bin] /= median_slope.T
+                start += bins
+                old_mid_bin = mid_bin
+                old_median = new_median
+                i += 1
+
+            normalizer += day_normalizer
+            print(f'day normalizer: {day_normalizer}')
+        # normalize:
+        print(f'normalizer: {normalizer}')
+        return normalizer[:, inj_bins]
 
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
@@ -476,10 +481,7 @@ class Injection:
         normalized_harms *= self.rednoise_normalize(
                 self.pspec_obj.power_spectra.shape,
                 bins,
-                self.pspec_obj.rn_medians,
-                self.pspec_obj.rn_scales,
-            )[dm_indices] / self.ndays
-
+            )[dm_indices]
         # estimate sigma
         (
             harms,
