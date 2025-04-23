@@ -1,6 +1,9 @@
 # Stage 1: Install dependencies
 FROM python:3.11-slim as base
 
+ARG SLACK_APP_TOKEN
+
+ENV SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
 ENV DEBIAN_FRONTEND=noninteractive
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
