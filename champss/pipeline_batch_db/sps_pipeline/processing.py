@@ -353,6 +353,7 @@ def find_all_pipeline_processes(
     log.info(f"Number of days: {len(all_days)}")
     total_processes = 0
 
+    all_processes = []
     for day in all_days:
         log.info(f"Creating processes for {day}.")
         beams = np.arange(0, 224)
@@ -397,7 +398,6 @@ def find_all_pipeline_processes(
                     active_pointings[-1].dec,
                 )
 
-            all_processes = []
             for ap in active_pointings:
                 existing_proc = proc_dict.get(ap.pointing_id, {})
                 if not existing_proc:
