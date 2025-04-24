@@ -993,7 +993,7 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
 
-                if processes["unfinished_processes"] == 0:
+                if len(processes["unfinished_processes"]) == 0:
                     message_slack(
                         f"No unfinished processes found for {date_string}. Will progress to"
                         " next day"
