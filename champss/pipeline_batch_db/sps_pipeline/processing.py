@@ -352,7 +352,6 @@ def find_all_pipeline_processes(
             )
     log.info(f"Number of days: {len(all_days)}")
     total_processes = 0
-    info = []
 
     for day in all_days:
         log.info(f"Creating processes for {day}.")
@@ -418,6 +417,7 @@ def find_all_pipeline_processes(
             log.error(error)
             log.info(f"Can't create processes for {day}")
     finished_procs = [proc for proc in all_processes if proc.status.value == 2]
+    unfinished_procs = [proc for proc in all_processes if proc.status.value != 2]
     log.info(
         f"{total_processes} available processes in total. {len(finished_procs)} have already finished."
     )
@@ -425,7 +425,14 @@ def find_all_pipeline_processes(
         message_slack(
             f"For folders {all_days} found {total_processes} available processes in total. \n{len(finished_procs)} of those have already finished."
         )
-    return {"info": info}, [], []
+    return (
+        {
+            "unfinished_processes": unfinished_procs,
+            "finished_processes": finished_procs,
+        },
+        [],
+        [],
+    )
 
 
 def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_port):
@@ -986,9 +993,9 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
 
-                if len(processes) == 0:
+                if len(processes["unfinished_processes"]) == 0:
                     message_slack(
-                        f"No processes found for {date_string}. Will progress to"
+                        f"No unfinished processes found for {date_string}. Will progress to"
                         " next day"
                     )
                     number_of_days_processed = number_of_days_processed + 1
@@ -1058,6 +1065,10 @@ def start_processing_manager(
 
                 end_time_of_processing = time.time()
                 processed = list(db.processes.find({"_id": {"$in": process_ids}}))
+                if not len(processed):
+                    number_of_days_processed = number_of_days_processed + 1
+                    date_to_process = date_to_process + dt.timedelta(days=1)
+                    continue
 
                 overall_time_of_processing = (
                     end_time_of_processing - start_time_of_processing
