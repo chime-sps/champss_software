@@ -539,7 +539,7 @@ def main(
     num_injections=1,
     remove_spectra=False,
     scale_injections=False,
-    only_predict=False,
+    only_predict=True,
 ):
     """
     This function runs the injection.
