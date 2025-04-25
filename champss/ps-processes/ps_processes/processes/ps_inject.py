@@ -4,16 +4,13 @@ import os
 
 import numpy as np
 import scipy.stats as stats
-from matplotlib import pyplot as plt
-from scipy.fft import fft, rfft
+from scipy.fft import rfft
 from scipy.special import chdtri
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP
 from sps_common.interfaces.utilities import sigma_sum_powers
-from sps_databases import db_api
 
 log = logging.getLogger(__name__)
 
-import numpy as np
 import numpy.random as rand
 
 phis = np.linspace(0, 1, 1024)
@@ -55,7 +52,7 @@ def generate_pulse(noise=False):
             noise: bool
                 whether or not the pulse should be distorted by white noise
     """
-    u = rand.choice(np.linspace(0.01, 0.99, 1000))
+    u = rand.uniform(0.01, 0.99, 1000)
     # inverse sampling theorem for an exponential distribution with lambda = 1/15
     gamma = -15 * np.log(1 - u) / 2 / 360
     prof = lorentzian(phis, gamma)
@@ -137,6 +134,11 @@ def x_to_chi2(x, df):
         # normalize to CHAMPSS power spectrum by dividing by 2
         return chi2 / 2
 
+def get_median(xlow, xhigh, ylow, yhigh, x):
+
+    m = (yhigh - ylow) / (xhigh - xlow)
+
+    return m * (x - xlow) + ylow
 
 class Injection:
     """This class allows pulse injection."""
@@ -171,12 +173,10 @@ class Injection:
         """Return the deltaDM where the dispersion smearing is one pulse period in
         duration.
         """
-        deltaDM = (
-            1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
-        )
+        deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
 
-    def sigma_to_power(self, n_harm):
+    def sigma_to_power(self, n_harm, df):
         """
         This function converts an input Gaussian sigma to an approximately equivalent
         power. In order to do so, we have to estimate the number of summed harmonics in
@@ -305,6 +305,62 @@ class Injection:
 
         return bins, harmonics
 
+    def rednoise_normalize(self, ps_shape, inj_bins):
+        """
+        A scaled down version of the rednoise_normalize function from utilities.py for
+        when we already know all the median information. Currently this is DM-secular
+        but can be implemented easily to not be.
+
+        Inputs:
+        -------
+            ps_len (int):     the length of the power spectrum
+            inj_harms (arr):  array containing injection harmonics
+            inj_bins (arr):   array containing bins into which to inject
+
+        Returns:
+        -------
+            rednoise-normalized harmonics
+        """
+        rn_scales = self.pspec_obj.rn_scales
+        rn_medians = self.pspec_obj.rn_medians
+        normalizer = np.zeros((rn_medians.shape[1], len(inj_bins)))
+        
+        
+        for day in range(self.ndays):
+
+            day_normalizer = np.ones((rn_medians.shape[1], len(inj_bins))) / self.ndays / np.log(2)
+            day_medians = rn_medians[day] / np.min(rn_medians[day], axis = 1)[:, np.newaxis]
+            day_scales = rn_scales[day]
+            
+            scale_sum = np.zeros(len(day_scales) + 1)
+            scale_sum[1:] = np.cumsum(day_scales)
+            scale_sum[0] = 0
+            mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype('int') 
+
+            diffs = (mid_bins[:, np.newaxis] - inj_bins[np.newaxis, :]).T
+            roof_idx = np.where(diffs > 0, diffs, np.inf).argmin(axis = 1)
+
+            xlows = mid_bins[roof_idx - 1]
+            xhighs = mid_bins[roof_idx]
+            ylows = day_medians[:, roof_idx - 1]
+            yhighs = day_medians[:, roof_idx]
+
+            inj_medians = get_median(xlows, xhighs, ylows, yhighs, inj_bins)
+            fix_early_idx = np.where(inj_bins < mid_bins[0])
+            fix_late_idx = np.where(inj_bins > mid_bins[-1])
+
+            if len(fix_early_idx[0]) != 0:
+                inj_medians[:, fix_early_idx[0][0]] = day_medians[:, 0]
+
+            if len(fix_late_idx[0]) != 0:
+                inj_medians[:, fix_late_idx[0][0]] = day_medians[:, -1]
+
+            day_normalizer /= inj_medians
+            normalizer += day_normalizer
+
+        # normalize:
+        return normalizer
+
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
@@ -319,6 +375,7 @@ class Injection:
                 dm_indices (ndarray) : dm bins of the injection
                 used_nharm (int) : Number of harmonics that will be injected
         """
+
         # estimate sigma
         true_dm_injection_index = self.true_dm_trial - dm_indices[0]
         bins_reshaped = bins.reshape(used_nharm, -1)
@@ -400,7 +457,7 @@ class Injection:
         df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
-        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm)
+        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm, df)
         used_nharm = len(scaled_prof_fft)
         log.info(f"Injecting {n_harm} harmonics.")
 
@@ -413,9 +470,13 @@ class Injection:
         for i in range(len(dispersed_prof_fft)):
             bins, harm = self.harmonics(dispersed_prof_fft[i], df)
             harms.append(harm)
-
+        
         harms = np.asarray(harms)
-
+        normalized_harms = harms
+        normalized_harms *= self.rednoise_normalize(
+                self.pspec_obj.power_spectra.shape,
+                bins,
+            )[dm_indices]
         # estimate sigma
         (
             harms,
@@ -593,13 +654,12 @@ def main(
         injection_dict["bins"] = injection_output_dict["freq_indices"]
         injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
         injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
-        injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
-        injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
-        injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
+        
         if isinstance(injection_dict["profile"], (np.ndarray, list)):
             injection_dict["profile"] = "custom_profile"
 
         if not only_predict:
+
             # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
             # not change the object
             injected_indices = np.ix_(

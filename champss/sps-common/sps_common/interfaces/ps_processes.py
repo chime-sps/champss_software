@@ -201,6 +201,9 @@ class PowerSpectra:
     beta = attrib(converter=float)
     bad_freq_indices = attrib(type=List[List[int]], on_setattr=validate)  # type: ignore
     obs_id = attrib(type=List[str], on_setattr=validate)  # type: ignore
+    rn_medians = attrib(type=np.ndarray)
+    rn_scales = attrib(type=np.ndarray)
+    rn_dm_indices = attrib(type=np.ndarray)
     power_spectra_shared = attrib(default=None)
 
     def __attrs_post_init__(self):
@@ -363,6 +366,13 @@ class PowerSpectra:
             for date in datetimes_unix
         ]
 
+        rn_medians = np.ones(h5f["rn medians"].shape)
+        h5f["rn medians"].read_direct(rn_medians)
+        rn_scales = np.ones(h5f["rn scales"].shape)
+        h5f["rn scales"].read_direct(rn_scales)
+        rn_dm_indices = np.ones(h5f["rn dm indices"].shape)
+        h5f["rn dm indices"].read_direct(rn_dm_indices)
+
         ra = h5f.attrs["ra"]
         dec = h5f.attrs["dec"]
         obs_id = h5f.attrs["observation ids"]
@@ -405,6 +415,9 @@ class PowerSpectra:
             bad_freq_indices=bad_freq_indices,
             obs_id=obs_id.astype(str).tolist(),
             power_spectra_shared=power_spectra_shared,
+            rn_medians=rn_medians,
+            rn_scales=rn_scales,
+            rn_dm_indices=rn_dm_indices,
         )
 
     def write(self, filename, nbit=32):
@@ -444,11 +457,14 @@ class PowerSpectra:
                     )
             datetimes_unix = np.asarray([date.timestamp() for date in self.datetimes])
             h5f.create_dataset("datetimes", data=datetimes_unix)
-
+            h5f.create_dataset("rn medians", data=self.rn_medians)
+            h5f.create_dataset("rn scales", data=self.rn_scales)
+            h5f.create_dataset("rn dm indices", data=self.rn_dm_indices)
             h5f.attrs["ra"] = self.ra
             h5f.attrs["dec"] = self.dec
             h5f.attrs["observation ids"] = self.obs_id
             h5f.attrs["number of days"] = self.num_days
+
             if self.beta is None:
                 # no barycentric correction set/required
                 log.warning(
