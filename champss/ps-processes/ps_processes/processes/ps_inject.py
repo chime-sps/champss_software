@@ -134,6 +134,11 @@ def x_to_chi2(x, df):
         # normalize to CHAMPSS power spectrum by dividing by 2
         return chi2 / 2
 
+def get_median(xlow, xhigh, ylow, yhigh, x):
+
+    m = (yhigh - ylow) / (xhigh - xlow)
+
+    return m * (x - xlow) + ylow
 
 class Injection:
     """This class allows pulse injection."""
@@ -316,56 +321,45 @@ class Injection:
         -------
             rednoise-normalized harmonics
         """
-        # get rid of 0th harmonic
-        ps_shape = (ps_shape[0], ps_shape[1] - 1)
-        normalizer = np.zeros(ps_shape)
         rn_scales = self.pspec_obj.rn_scales
         rn_medians = self.pspec_obj.rn_medians
+        normalizer = np.zeros((rn_medians.shape[1], len(inj_bins)))
         
-        #need function that returns values at discrete locations for med(f1) = y + mdf 
-        #where y is the previous midpoint and m is the slope between the bracketing midpoints
-
+        
         for day in range(self.ndays):
 
-            day_normalizer = np.ones(ps_shape) / self.ndays
-            #not sure i can do this division before the slope calculations...
-            #day_medians = rn_medians[day] / rn_medians[day, :, -1].reshape(-1, 1)
+            day_normalizer = np.ones((rn_medians.shape[1], len(inj_bins))) / self.ndays / np.log(2)
             day_medians = rn_medians[day] / np.min(rn_medians[day], axis = 1)[:, np.newaxis]
             day_scales = rn_scales[day]
-            start = 0
-            old_mid_bin = 0
-            old_median = 1
+            
+            scale_sum = np.zeros(len(day_scales) + 1)
+            scale_sum[1:] = np.cumsum(day_scales)
+            scale_sum[0] = 0
+            mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype('int') 
 
-            i = 0
-            for bins in day_scales:
-                mid_bin = int(start + bins / 2)
-                new_median = day_medians[:, i]
-                if start == 0:
-                    day_normalizer[:, start : start + mid_bin] /= new_median[:, np.newaxis]
+            diffs = (mid_bins[:, np.newaxis] - inj_bins[np.newaxis, :]).T
+            roof_idx = np.where(diffs > 0, diffs, np.inf).argmin(axis = 1)
 
-                # make sure we don't overflow our array
-                elif start + bins >= ps_shape[1]:
-                    median_slope = np.linspace(
-                        old_median, new_median, num=ps_shape[1] - old_mid_bin
-                    )
-                    day_normalizer[:, old_mid_bin:] /= median_slope.T
+            xlows = mid_bins[roof_idx - 1]
+            xhighs = mid_bins[roof_idx]
+            ylows = day_medians[:, roof_idx - 1]
+            yhighs = day_medians[:, roof_idx]
 
-                else:
-                    # compute slopes
-                    median_slope = np.linspace(
-                        old_median, new_median, num=mid_bin - old_mid_bin
-                    )
-                    day_normalizer[:, old_mid_bin:mid_bin] /= median_slope.T
-                start += bins
-                old_mid_bin = mid_bin
-                old_median = new_median
-                i += 1
+            inj_medians = get_median(xlows, xhighs, ylows, yhighs, inj_bins)
+            fix_early_idx = np.where(inj_bins < mid_bins[0])
+            fix_late_idx = np.where(inj_bins > mid_bins[-1])
 
+            if len(fix_early_idx[0]) != 0:
+                inj_medians[:, fix_early_idx[0][0]] = day_medians[:, 0]
+
+            if len(fix_late_idx[0]) != 0:
+                inj_medians[:, fix_late_idx[0][0]] = day_medians[:, -1]
+
+            day_normalizer /= inj_medians
             normalizer += day_normalizer
-            print(f'day normalizer: {day_normalizer}')
+
         # normalize:
-        print(f'normalizer: {normalizer}')
-        return normalizer[:, inj_bins]
+        return normalizer
 
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
@@ -381,6 +375,7 @@ class Injection:
                 dm_indices (ndarray) : dm bins of the injection
                 used_nharm (int) : Number of harmonics that will be injected
         """
+
         # estimate sigma
         true_dm_injection_index = self.true_dm_trial - dm_indices[0]
         bins_reshaped = bins.reshape(used_nharm, -1)
@@ -659,13 +654,12 @@ def main(
         injection_dict["bins"] = injection_output_dict["freq_indices"]
         injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
         injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
-        injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
-        injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
-        injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
+        
         if isinstance(injection_dict["profile"], (np.ndarray, list)):
             injection_dict["profile"] = "custom_profile"
 
         if not only_predict:
+
             # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
             # not change the object
             injected_indices = np.ix_(
