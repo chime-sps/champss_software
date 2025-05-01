@@ -4,6 +4,7 @@ import logging
 import time
 from functools import partial
 from multiprocessing import Pool, shared_memory
+import yaml
 
 import numpy as np
 import pandas as pd
@@ -139,6 +140,8 @@ class PowerSpectraSearch:
     use_nsum_per_bin: bool = attribute(default=False)
     mp_chunk_size: bool = attribute(default=10)
     skip_first_n_bins: int = attribute(default=2)
+    injection_overlap_threshold: bool = attribute(default=0.5)
+    injection_dm_threshold: int = attribute(default=10.0)
     # cluster_dm_cut: bool = attribute(default=-1)
     known_source_threshold: float = attribute(default=np.inf)
     filter_birdies: bool = attribute(default=False)
@@ -426,6 +429,8 @@ class PowerSpectraSearch:
                 injection_dicts,
                 cutoff_frequency,
                 self.skip_first_n_bins,
+                self.injection_overlap_threshold,
+                self.injection_dm_threshold,
             ),
             zip(dm_indices, dm_split),
         )
@@ -522,6 +527,8 @@ class PowerSpectraSearch:
         injection_dicts,
         cutoff_frequency,
         skip_n_bins,
+        injection_overlap_threshold,
+        injection_dm_threshold,
         dm_indices,
         dms,
     ):
@@ -672,7 +679,12 @@ class PowerSpectraSearch:
                             injection_overlap = np.intersect1d(
                                 sorted_harm_bins, injected_bins
                             )
-                            if injection_overlap.size != 0:
+                            if (
+                                injection_overlap.size / len(sorted_harm_bins)
+                                > injection_overlap_threshold
+                                and np.abs(injection_dict["DM"] - dm)
+                                < injection_dm_threshold
+                            ):
                                 injected_index = list_index
 
                     if replace_last:
