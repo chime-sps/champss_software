@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.12.2](https://github.com/chime-sps/champss_software/compare/v0.12.1...v0.12.2) (2025-05-01)
+
+
+### Bug Fixes
+
+* Add Slack token from GitHub secrets to Docker image build and use in scheduler module ([#145](https://github.com/chime-sps/champss_software/issues/145)) ([92e0ecb](https://github.com/chime-sps/champss_software/commit/92e0ecb52bacce3369f7940a5b6cf18760b27957))
+* continue to next day when no processes available ([#147](https://github.com/chime-sps/champss_software/issues/147)) ([39a3e16](https://github.com/chime-sps/champss_software/commit/39a3e1679e4d56065653e741e5f192fd4a9c39ef))
+* **Dockerfile:** version lock dspsr to working popular version ([#150](https://github.com/chime-sps/champss_software/issues/150)) ([af96f8a](https://github.com/chime-sps/champss_software/commit/af96f8a1c0a379bd0639e6f4a025d2ca29ddf1ea))
+* fix creation of all_processes list ([#148](https://github.com/chime-sps/champss_software/issues/148)) ([261b069](https://github.com/chime-sps/champss_software/commit/261b069cc8fd83f05cc66ed303d4fba97a92f3aa))
+* Fix file integrity check and delete remp files ([#141](https://github.com/chime-sps/champss_software/issues/141)) ([d1197bd](https://github.com/chime-sps/champss_software/commit/d1197bdab13cf9d3db75ab929fa988ff6d032daa))
+* Fix folding bugs ([#144](https://github.com/chime-sps/champss_software/issues/144)) ([238f89e](https://github.com/chime-sps/champss_software/commit/238f89e9f0a47ba5492b1da55a408302c903882a))
+* Fix slack and fold ([#139](https://github.com/chime-sps/champss_software/issues/139)) ([1c1c9d8](https://github.com/chime-sps/champss_software/commit/1c1c9d8fc428efcff6f18d281c876e9e7e91617d))
+
+
+### Documentation
+
+* removed old frb-api docs from rfi-mitigation ([#143](https://github.com/chime-sps/champss_software/issues/143)) ([5be2f74](https://github.com/chime-sps/champss_software/commit/5be2f748957a05eabdcb84c83dce6bcfb17feb54))
+
 ## [0.12.1](https://github.com/chime-sps/champss_software/compare/v0.12.0...v0.12.1) (2025-04-17)
 
 
