@@ -97,6 +97,7 @@ class SkyBeamFormer:
     nbits = attr.ib(default=32, validator=instance_of(int))
     nsub = attr.ib(default=16384, validator=instance_of(int))
     block_size = attr.ib(default=1024, validator=instance_of(int))
+    renorm_blocks = attr.ib(default=False, validator=instance_of(bool))
     masking_timescale = attr.ib(default=16384, validator=instance_of(int))
     mask_channel_frac = attr.ib(default=0.75, validator=instance_of(float))
     detrend_data = attr.ib(default=False, validator=instance_of(bool))
@@ -270,26 +271,27 @@ class SkyBeamFormer:
         ]
         log.info("Finished loading.")
 
-        ref_slice = raw_spec_slices[1]
-        ref_block = np.copy(spectra[:, ref_slice])
-        ref_block[rfi_mask[:, ref_slice]] = np.nan
-        bpass_ref = np.nanmean(ref_block, axis=1)
-        stdpass_ref = np.nanstd(ref_block, axis=1)
+        if self.renorm_blocks:
+            ref_slice = raw_spec_slices[1]
+            ref_block = np.copy(spectra[:, ref_slice])
+            ref_block[rfi_mask[:, ref_slice]] = np.nan
+            bpass_ref = np.nanmean(ref_block, axis=1)
+            stdpass_ref = np.nanstd(ref_block, axis=1)
 
-        log.info("Renormalizing spectra in 1s blocks")
-        pool.map(
-            partial(
-                self.renorm_block,
-                spectra_shared.name,
-                mask_shared.name,
-                spectra_shape,
-                spec_dtype,
-                bpass_ref,
-                stdpass_ref,
-            ),
-            raw_spec_slices,
-        )
-        log.info("Finished renormalizing spectra in 1s blocks")
+            log.info("Renormalizing spectra in 1s blocks")
+            pool.map(
+                partial(
+                    self.renorm_block,
+                    spectra_shared.name,
+                    mask_shared.name,
+                    spectra_shape,
+                    spec_dtype,
+                    bpass_ref,
+                    stdpass_ref,
+                ),
+                raw_spec_slices,
+            )
+            log.info("Finished renormalizing spectra in 1s blocks")
 
         # For now separate the spectrum that each thread gets one part
         # Splitting it too small might increase memory usage

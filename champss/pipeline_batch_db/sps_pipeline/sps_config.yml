@@ -26,6 +26,7 @@ beamform:
   beam_to_normalise: 1
   flatten_bandpass: True
   max_mask_frac: 0.9
+  renorm_blocks: False
 dedisp:
   numdms: 40
   maxdm: 1700
