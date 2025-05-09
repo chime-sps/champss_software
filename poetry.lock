@@ -809,7 +809,7 @@ tests = ["mypy", "pytest", "pytest-benchmark", "pytest-cov", "pytest-randomly", 
 
 [package.source]
 type = "git"
-url = "ssh://git@github.com/chime-sps/dmt"
+url = "https://github.com/chime-sps/dmt.git"
 reference = "HEAD"
 resolved_reference = "369575153a39a3348bbac5ea2898ce87e5b91592"
 
@@ -3774,4 +3774,4 @@ beam-model = ["beam-model"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "43fc22a1ba99cf2bf008dc8e8e3a04ba1c1b12156e1309c2b1bc1ee6f97def05"
+content-hash = "8feefc63c6c2191fedadf6367601c58f4f2776527b071134fe59977015c5ce21"
