@@ -13,7 +13,7 @@ exclude = [
 python = ">=3.10,<3.12"
 beamformer = {path = "../beamformer", develop=true}
 candidate-processor = {path = "../candidate-processor", develop=true}
-workflow-core = {git = "ssh://git@github.com/CHIMEFRB/workflow"}
+workflow-core = {git = "https://github.com/CHIMEFRB/workflow.git"}
 folding = {path = "../folding", develop=true}
 ps-processes = {path = "../ps-processes", develop=true}
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}

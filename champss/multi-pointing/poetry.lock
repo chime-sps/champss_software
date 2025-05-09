@@ -1344,7 +1344,7 @@ develop = false
 
 [package.source]
 type = "git"
-url = "ssh://git@github.com/dlakaplan/pulsarsurveyscraper"
+url = "https://github.com/dlakaplan/pulsarsurveyscraper.git"
 reference = "HEAD"
 resolved_reference = "4df132ed84dac8da4b959d9ffb71c4865574997a"
 
@@ -1983,4 +1983,4 @@ watchdog = ["watchdog (>=2.3)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "bda616881442cde4f837b74032045cefd8df43db50842571f538c732c5831970"
+content-hash = "87136e6d8b81617cd7c880195f65518f12f0bad82f57ea80ca8722a4d9b8c68f"

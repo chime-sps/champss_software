@@ -2137,7 +2137,7 @@ develop = true
 [package.dependencies]
 click = "^8.1.4"
 slack-sdk = "^3.26.1"
-workflow-core = {git = "ssh://git@github.com/CHIMEFRB/workflow"}
+workflow-core = {git = "https://github.com/CHIMEFRB/workflow.git"}
 
 [package.source]
 type = "directory"
@@ -2540,7 +2540,7 @@ toml = "^0.10"
 
 [package.source]
 type = "git"
-url = "ssh://git@github.com/CHIMEFRB/workflow"
+url = "https://github.com/CHIMEFRB/workflow.git"
 reference = "HEAD"
 resolved_reference = "9f403b901fb7aa1ec9e1930fcf89ad21450ea7db"
 
