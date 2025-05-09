@@ -11,7 +11,7 @@ exclude = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
-workflow-core = {git = "ssh://git@github.com/CHIMEFRB/workflow"}
+workflow-core = {git = "https://github.com/CHIMEFRB/workflow.git"}
 click = "^8.1.4"
 slack-sdk = "^3.26.1"
 
