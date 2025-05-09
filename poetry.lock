@@ -224,7 +224,7 @@ tests-no-zope = ["cloudpickle", "cloudpickle", "hypothesis", "hypothesis", "mypy
 name = "beam-model"
 version = "2020.6"
 description = "CHIME/FRB Beam Model"
-optional = false
+optional = true
 python-versions = "^3.8"
 files = []
 develop = false
@@ -256,7 +256,6 @@ develop = true
 [package.dependencies]
 astropy = "~6.1"
 attrs = "^22.2.0"
-beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 numpy = "^1.24.3"
 prometheus-client = "^0.17.1"
 pytz = "^2023.3"
@@ -522,7 +521,7 @@ files = [
 name = "chime-frb-constants"
 version = "2020.12"
 description = "CHIME/FRB Constants"
-optional = false
+optional = true
 python-versions = ">=3.6"
 files = [
     {file = "chime-frb-constants-2020.12.tar.gz", hash = "sha256:b4678b0f51726c5ce84b98a7c13dc31caf3044a730dfe19f3633cd94d52b44fc"},
@@ -699,7 +698,6 @@ develop = true
 
 [package.dependencies]
 async-exit-stack = "^1.0.1"
-beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 beamformer = {path = "../beamformer", develop = true}
 click = "^8.1.4"
 msgpack-python = "^0.5.6"
@@ -871,7 +869,7 @@ files = [
 name = "ephem"
 version = "4.2"
 description = "Compute positions of the planets and stars"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "ephem-4.2-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:4f42e6c7330b852b3cb94dedea805345d259b1bc4f3a715640a0c651c221ef47"},
@@ -1142,7 +1140,7 @@ numpy = ">=1.17.3"
 name = "healpy"
 version = "1.18.1"
 description = "Healpix tools package for Python"
-optional = false
+optional = true
 python-versions = ">=3.10"
 files = [
     {file = "healpy-1.18.1-cp310-cp310-macosx_13_0_x86_64.whl", hash = "sha256:4821fca8c6ce6b5db41958b873275f21a367c234c69df488312dcca918e24e09"},
@@ -3308,7 +3306,6 @@ develop = true
 
 [package.dependencies]
 astropy = "~6.1"
-beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 beamformer = {path = "../beamformer", develop = true}
 candidate-processor = {path = "../candidate-processor", develop = true}
 click = "^8.1.4"
@@ -3771,7 +3768,10 @@ files = [
     {file = "wrapt-1.17.2.tar.gz", hash = "sha256:41388e9d4d1522446fe79d3213196bd9e3b301a336965b9e27ca2788ebd122f3"},
 ]
 
+[extras]
+beam-model = ["beam-model"]
+
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "a6e036d05631e238d0a60b7c8ac1e056abdc9b51ee08a51f8ed62b980efebf1a"
+content-hash = "43fc22a1ba99cf2bf008dc8e8e3a04ba1c1b12156e1309c2b1bc1ee6f97def05"

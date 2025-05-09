@@ -20,6 +20,8 @@ for SUBREPO_NAME in "${SUBREPO_NAME[@]}"
 do
   cd "$MONOREPO_NAME/$SUBREPO_NAME"
 
+  echo $SUBREPO_NAME
+
   poetry lock
 
   cd ../..
