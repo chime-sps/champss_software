@@ -8,7 +8,7 @@ SUBREPO_NAME=(
     "controller"
     "folding"
     "multi-pointing"
-    "pipeline_batch_db"
+    "sps-pipeline"
     "ps-processes"
     "rfi-mitigation"
     "sps-common"

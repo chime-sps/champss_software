@@ -1,6 +1,6 @@
 # Slow Pulsar Search Pipeline
-[![Continuous Integration](https://github.com/chime-sps/pipeline_batch_db/actions/workflows/continuous-integration.yml/badge.svg?branch=main)](https://github.com/chime-sps/pipeline_batch_db/actions/workflows/continuous-integration.yml)
-[![Continuous Deployment](https://github.com/chime-sps/pipeline_batch_db/actions/workflows/continuous-deployment.yml/badge.svg?branch=main)](https://github.com/chime-sps/pipeline_batch_db/actions/workflows/continuous-deployment.yml)
+[![Continuous Integration](https://github.com/chime-sps/sps_pipeline/actions/workflows/continuous-integration.yml/badge.svg?branch=main)](https://github.com/chime-sps/sps_pipeline/actions/workflows/continuous-integration.yml)
+[![Continuous Deployment](https://github.com/chime-sps/sps_pipeline/actions/workflows/continuous-deployment.yml/badge.svg?branch=main)](https://github.com/chime-sps/sps_pipeline/actions/workflows/continuous-deployment.yml)
 
 ## Scripts
 
@@ -48,9 +48,9 @@ An in-depth tutorial to GitHub, Poetry, and all other tools that you need to kno
 To clone the repo, use
 ```
 # With https
-git clone https://github.com/chime-sps/pipeline_batch_db.git
+git clone https://github.com/chime-sps/sps_pipeline.git
 # With ssh
-git clone git@github.com:chime-sps/pipeline_batch_db.git
+git clone git@github.com:chime-sps/sps_pipeline.git
 ```
 
 First, install Poetry to manage all dependencies and their versions, as well as to use isolated virtual environments
@@ -95,11 +95,11 @@ pip install .
 ```
 
 ```
-pip install git+https://github.com/chime-sps/pipeline_batch_db.git
+pip install git+https://github.com/chime-sps/sps_pipeline.git
 ```
 
 ```
-pip install git+ssh://git@github.com:chime-sps/pipeline_batch_db.git
+pip install git+ssh://git@github.com:chime-sps/sps_pipeline.git
 ```
 
 ## Development
