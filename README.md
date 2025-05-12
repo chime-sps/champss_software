@@ -59,13 +59,6 @@ The individual packages are (ordered roughly by how they appear in the processin
 - folding: Fold interesting candidates and search through folds of multiple observations.
 
 
-### Running Workflow Scripts
-
-Before running any scripts that call `schedule_workflow_job` outside of a container, you'll need to run:
-```
-workflow workspace set champss.workspace.yml
-```
-
 ## Developer Notes
 
 ### Pre-Commit
