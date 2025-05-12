@@ -230,9 +230,9 @@ def periodogram_form(
 
     subints = []  
     if best_period_profile_bool:
-        bins = 200
+        bins = 256
         # try:
-        subints = ts.fold(folded_period, bins, subints=64)
+        subints = ts.fold(1, bins, subints=64)
         # except:
         #     print("Couldn't fold the profile at best period")
         #     pass
