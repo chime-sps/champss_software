@@ -24,7 +24,7 @@ sps-common = {path = "./champss/sps-common", develop=true}
 sps-databases = {path = "./champss/sps-databases", develop=true}
 sps-dedispersion = {path = "./champss/sps-dedispersion", develop=true}
 sps-multi-pointing = {path = "./champss/multi-pointing", develop=true}
-sps_pipeline = {path = "./champss/pipeline_batch_db", develop=true}
+sps_pipeline = {path = "./champss/sps-pipeline", develop=true}
 beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model", optional=true}
 
 [tool.poetry.extras]
