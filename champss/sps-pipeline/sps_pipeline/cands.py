@@ -1,4 +1,5 @@
 """Executes the pipeline component for single-pointing candidate processing."""
+
 import logging
 import os
 from os import path
@@ -72,8 +73,7 @@ def run(
     """
     date = utils.transit_time(pointing).date()
     log.info(
-        f"Candidate Processor ({pointing.ra :.2f} {pointing.dec :.2f}) @"
-        f" { date :%Y-%m-%d}"
+        f"Candidate Processor ({pointing.ra:.2f} {pointing.dec:.2f}) @ {date:%Y-%m-%d}"
     )
     if only_injections:
         file_path = path.join(
@@ -88,22 +88,18 @@ def run(
         file_path = path.join(
             basepath,
             date.strftime("%Y/%m/%d"),
-            f"{ pointing.ra :.02f}_{ pointing.dec :.02f}",
+            f"{pointing.ra:.02f}_{pointing.dec:.02f}",
         )
     if not psdc:
-        ps_detection_clusters = (
-            f"{ file_path }/{ pointing.ra :.02f}_{ pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_detection_clusters.hdf5"
-        )
+        ps_detection_clusters = f"{file_path}/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra_detection_clusters.hdf5"
         psdc = PowerSpectraDetectionClusters.read(ps_detection_clusters)
     if only_injections:
         ps_candidates = (
-            f"{file_path}/candidates/{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_"
+            f"{file_path}/candidates/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_"
             f"{injection_path.split('/')[-1]}_{str(injection_idx).replace(' ', '')}_power_spectra_candidates.npz"
         )
     else:
-        ps_candidates = (
-            f"{file_path}/{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.npz"
-        )
+        ps_candidates = f"{file_path}/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra_candidates.npz"
     with cand_ps_processing_time.labels(pointing.pointing_id, pointing.beam_row).time():
         spcc = cands_processor.fg.make_single_pointing_candidate_collection(
             psdc, power_spectra
@@ -116,9 +112,9 @@ def run(
         if plot:
             log.info("Creating candidates plots.")
             if only_injections:
-                plot_folder = f"{ file_path }/plots_injections/"
+                plot_folder = f"{file_path}/plots_injections/"
             else:
-                plot_folder = f"{ file_path }/plots/"
+                plot_folder = f"{file_path}/plots/"
             candidate_plots = spcc.plot_candidates(
                 sigma_threshold=plot_threshold, folder=plot_folder
             )
@@ -182,7 +178,7 @@ def run_interface(
 
     log.info(
         "Candidate Processor of stack"
-        f" ({ps_detection_clusters.ra :.2f} {ps_detection_clusters.dec :.2f})"
+        f" ({ps_detection_clusters.ra:.2f} {ps_detection_clusters.dec:.2f})"
     )
     if "/stack/" in stack_path:
         stack_root_folder = stack_path.rsplit("/stack/")[0]

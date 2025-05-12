@@ -1,4 +1,5 @@
 """Executes the quantization and down-sampling pipeline component."""
+
 import datetime
 import logging
 import os
@@ -12,7 +13,6 @@ from prometheus_client import Summary
 from sps_common.conversion import subband
 from spshuff import l1_io
 
-from champss.pipeline_batch_db.sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 
@@ -58,7 +58,7 @@ def run(utc_start, utc_end, beam_row, nchan):
         The number of channels to be downsampled to by the quantisation process.
     """
     log.info(
-        f"row: { beam_row }, nchan: { nchan }",
+        f"row: {beam_row}, nchan: {nchan}",
         utc_start,
         utc_end,
     )
@@ -74,7 +74,7 @@ def run(utc_start, utc_end, beam_row, nchan):
     for date in dates:
         file_path = path.join(archive_root, date.strftime("/intensity/raw/%Y/%m/%d"))
         for beam_id in [beam_row + 1000 * i for i in range(4)]:
-            msgpack_list = sorted(glob(f"{ file_path }/{ beam_id :04d}/chunk*.msg"))
+            msgpack_list = sorted(glob(f"{file_path}/{beam_id:04d}/chunk*.msg"))
             log.debug("Quantize", len(msgpack_list), "data chunks for beam", beam_id)
             for filename in filter(
                 lambda mf: _overlap(mf, utc_start, utc_end) > 0, msgpack_list
@@ -116,7 +116,7 @@ def convert_msgpack_to_huff(filename, nsub=16384, root=archive_root + "/sps/raw"
     unix_start = chunk.frame0_nano * 1e-9 + (chunk.fpga0 * 2.56e-6)
     unix_end = unix_start + (chunk.fpgaN * 2.56e-6)
     dt = datetime.datetime.fromtimestamp(unix_start)
-    new_filename = path.join(root, dt.strftime("%Y/%m/%d"), f"{ beam :04d}")
+    new_filename = path.join(root, dt.strftime("%Y/%m/%d"), f"{beam:04d}")
     os.makedirs(new_filename, exist_ok=True)
     new_filename += "/{:.0f}_{:.0f}.dat".format(
         unix_start,

@@ -15,7 +15,7 @@ def delete_raw_data_folder(date, raw_data_path, dry_run):
     print(f"\tAttempting to delete {raw_data_folder}...")
 
     if os.path.isdir(raw_data_folder) == False:
-        print(f"\tRaw data folder is already deleted.")
+        print("\tRaw data folder is already deleted.")
         return
 
     slack_token = "xoxb-194910630096-6273790557189-FKbg9w1HwrJYqGmBRY8DF0te"
@@ -52,7 +52,7 @@ def delete_raw_data_folder(date, raw_data_path, dry_run):
     try:
         if not dry_run:
             shutil.rmtree(raw_data_folder, ignore_errors=True)
-        print(f"\tRaw data folder is now deleted.")
+        print("\tRaw data folder is now deleted.")
     except Exception as error:
         print(f"\tRaw data folder could not be deleted: {error}")
 

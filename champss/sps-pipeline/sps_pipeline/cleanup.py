@@ -8,8 +8,6 @@ import pytz
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
-from omegaconf import OmegaConf
-from sps_common.interfaces import ActivePointing
 from sps_pipeline import utils
 
 log = logging.getLogger(__package__)
@@ -30,7 +28,7 @@ def cleanup_rfi(beams_start_end):
         )
         dates = list({date_start, date_end})
         for date in dates:
-            beam_path = path.join(date.strftime("%Y/%m/%d"), f"{beam_id :04d}")
+            beam_path = path.join(date.strftime("%Y/%m/%d"), f"{beam_id:04d}")
             if path.exists(beam_path):
                 shutil.rmtree(beam_path)
 
@@ -66,17 +64,17 @@ class CleanUp:
 
     def remove_files(self, pointing):
         date = utils.transit_time(pointing).date()
-        log.info(f"Cleanup ({pointing.ra :.2f} {pointing.dec :.2f}) @ {date :%Y-%m-%d}")
+        log.info(f"Cleanup ({pointing.ra:.2f} {pointing.dec:.2f}) @ {date:%Y-%m-%d}")
         file_path = path.join(
             date.strftime("%Y/%m/%d"),
-            f"{pointing.ra :.02f}_{pointing.dec :.02f}",
+            f"{pointing.ra:.02f}_{pointing.dec:.02f}",
         )
         if self.beamform:
             if path.exists(
                 path.join(
                     file_path,
                     (
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}.fil"
+                        f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}.fil"
                     ),
                 )
             ):
@@ -84,7 +82,7 @@ class CleanUp:
                     path.join(
                         file_path,
                         (
-                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}.fil"
+                            f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}.fil"
                         ),
                     )
                 )
@@ -93,7 +91,7 @@ class CleanUp:
                 path.join(
                     file_path,
                     (
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}*.dat"
+                        f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}*.dat"
                     ),
                 )
             )
@@ -102,7 +100,7 @@ class CleanUp:
                     path.join(
                         file_path,
                         (
-                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}*.inf"
+                            f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}*.inf"
                         ),
                     )
                 )
@@ -114,7 +112,7 @@ class CleanUp:
                 path.join(
                     file_path,
                     (
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra.hdf5"
+                        f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra.hdf5"
                     ),
                 )
             ):
@@ -122,7 +120,7 @@ class CleanUp:
                     path.join(
                         file_path,
                         (
-                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra.hdf5"
+                            f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra.hdf5"
                         ),
                     )
                 )
@@ -131,7 +129,7 @@ class CleanUp:
                 path.join(
                     file_path,
                     (
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_detections.hdf5"
+                        f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra_detections.hdf5"
                     ),
                 )
             ):
@@ -139,7 +137,7 @@ class CleanUp:
                     path.join(
                         file_path,
                         (
-                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_detections.hdf5"
+                            f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra_detections.hdf5"
                         ),
                     )
                 )
@@ -148,7 +146,7 @@ class CleanUp:
                 path.join(
                     file_path,
                     (
-                        f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.hdf5"
+                        f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra_candidates.hdf5"
                     ),
                 )
             ):
@@ -156,7 +154,7 @@ class CleanUp:
                     path.join(
                         file_path,
                         (
-                            f"{pointing.ra :.02f}_{pointing.dec :.02f}_{pointing.sub_pointing}_power_spectra_candidates.hdf5"
+                            f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra_candidates.hdf5"
                         ),
                     )
                 )

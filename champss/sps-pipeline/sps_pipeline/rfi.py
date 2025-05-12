@@ -1,4 +1,5 @@
 """Executes the RFI mitigation pipeline component."""
+
 import datetime as dt
 import logging
 import os
@@ -12,7 +13,6 @@ from rfi_mitigation.pipeline import RFIPipeline
 from rfi_mitigation.reader import DataReader
 from spshuff import l1_io
 
-from champss.pipeline_batch_db.sps_pipeline import utils
 
 log = logging.getLogger(__package__)
 
@@ -100,8 +100,8 @@ def run(beams_start_end, config, basepath="./"):
             .replace(tzinfo=pytz.utc)
             .date()
         )
-        beam_path_start = path.join(date_start.strftime("%Y/%m/%d"), f"{ beam_id :04d}")
-        beam_path_end = path.join(date_end.strftime("%Y/%m/%d"), f"{beam_id :04d}")
+        beam_path_start = path.join(date_start.strftime("%Y/%m/%d"), f"{beam_id:04d}")
+        beam_path_end = path.join(date_end.strftime("%Y/%m/%d"), f"{beam_id:04d}")
         os.makedirs(path.join(basepath, beam_path_start), exist_ok=True)
         os.makedirs(path.join(basepath, beam_path_end), exist_ok=True)
         beam_paths = list({beam_path_start, beam_path_end})

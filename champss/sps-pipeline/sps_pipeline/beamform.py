@@ -1,4 +1,5 @@
 """Executes the beamforming pipeline component."""
+
 import logging
 import os
 from os import path
@@ -36,7 +37,7 @@ def run(pointing, beamformer, fdmt, num_threads, basepath):
     """
     tt = utils.transit_time(pointing)
     date = tt.date()
-    log.info(f"Beamform ({pointing.ra :.2f} {pointing.dec :.2f}) @ { date :%Y-%m-%d}")
+    log.info(f"Beamform ({pointing.ra:.2f} {pointing.dec:.2f}) @ {date:%Y-%m-%d}")
     log.info("Transit at: %s", tt.strftime("%Y-%m-%d %H:%M:%S %Z"))
 
     with beamform_processing_time.labels(
@@ -49,12 +50,12 @@ def run(pointing, beamformer, fdmt, num_threads, basepath):
         file_path = path.join(
             basepath,
             date.strftime("%Y/%m/%d"),
-            f"{ pointing.ra :.02f}_{ pointing.dec :.02f}",
+            f"{pointing.ra:.02f}_{pointing.dec:.02f}",
         )
         os.makedirs(file_path, exist_ok=True)
         spectra_file = path.join(
             file_path,
-            f"{ pointing.ra :.02f}_{ pointing.dec :.02f}_{ pointing.sub_pointing}.fil",
+            f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}.fil",
         )
         if fdmt:
             return skybeam

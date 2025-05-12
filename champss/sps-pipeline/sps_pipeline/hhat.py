@@ -1,4 +1,5 @@
 """Executes the Hhat pipeline component."""
+
 import logging
 import os
 from os import path
@@ -26,16 +27,16 @@ def run(pointing):
         Sky pointing to process.
     """
     date = utils.transit_time(pointing).date()
-    log.info(f"Hhat ({pointing.ra :.2f} {pointing.dec :.2f}) @ { date :%Y-%m-%d}")
+    log.info(f"Hhat ({pointing.ra:.2f} {pointing.dec:.2f}) @ {date:%Y-%m-%d}")
 
     client = docker.from_env()
 
     file_path = path.join(
         "/data",
         date.strftime("%Y/%m/%d"),
-        f"{ pointing.beam_row :03d}",
+        f"{pointing.beam_row:03d}",
     )
-    out_path = path.join(file_path, f"{ pointing.ra :.02f}_{ pointing.dec :.02f}")
+    out_path = path.join(file_path, f"{pointing.ra:.02f}_{pointing.dec:.02f}")
 
     with hhat_processing_time.labels(pointing.pointing_id, pointing.beam_row).time():
         output = client.containers.run(

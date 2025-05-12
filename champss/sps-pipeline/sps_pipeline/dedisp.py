@@ -1,4 +1,5 @@
 """Executes the dedispersion pipeline component."""
+
 import logging
 import os
 
@@ -35,8 +36,7 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
     """
     date = utils.transit_time(pointing).date()
     log.info(
-        f"FDMT Dedispersion ({pointing.ra :.2f} {pointing.dec :.2f}) @"
-        f" { date :%Y-%m-%d}"
+        f"FDMT Dedispersion ({pointing.ra:.2f} {pointing.dec:.2f}) @ {date:%Y-%m-%d}"
     )
     fdmt_config = config.dedisp.fdmt
     num_dms_fac = fdmt_config.num_dms_fac
@@ -95,8 +95,8 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
     )
 
     log.info(
-        f"FDMT Dedispersion ({pointing.ra :.2f} {pointing.dec :.2f}) completed with"
-        f" { len(dts.dedisp_ts) } DM steps"
+        f"FDMT Dedispersion ({pointing.ra:.2f} {pointing.dec:.2f}) completed with"
+        f" {len(dts.dedisp_ts)} DM steps"
     )
     return dts
 
@@ -114,16 +114,15 @@ def run(pointing, config, basepath):
     """
     date = utils.transit_time(pointing).date()
     log.info(
-        f"Presto Dedispersion ({pointing.ra :.2f} {pointing.dec :.2f}) @"
-        f" { date :%Y-%m-%d}"
+        f"Presto Dedispersion ({pointing.ra:.2f} {pointing.dec:.2f}) @ {date:%Y-%m-%d}"
     )
 
     file_path = os.path.join(
         "/data",
         basepath,
         date.strftime("%Y/%m/%d"),
-        f"{ pointing.ra :.02f}_{ pointing.dec :.02f}",
-        f"{ pointing.ra :.02f}_{ pointing.dec :.02f}_{ pointing.sub_pointing}",
+        f"{pointing.ra:.02f}_{pointing.dec:.02f}",
+        f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}",
     )
     outfile_base = file_path + "_timeseries"
     infile = file_path + ".fil"
@@ -153,7 +152,7 @@ def presto_dedisperse(
     infile="/frb-archiver/SPS/presto_test/test.fil",
 ):
     client = docker.from_env()
-    log.info(f"Starting Presto: { infile }")
+    log.info(f"Starting Presto: {infile}")
     output = client.containers.run(
         "chimefrb/presto",
         remove=True,
