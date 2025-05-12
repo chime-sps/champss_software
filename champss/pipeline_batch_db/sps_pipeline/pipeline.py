@@ -655,7 +655,7 @@ def main(
             if "ffa" in components:
                 FFA_search(
                     dedisp_ts,
-                    active_pointing.obs_id,
+                    "",
                     date,
                     ra, 
                     dec,
