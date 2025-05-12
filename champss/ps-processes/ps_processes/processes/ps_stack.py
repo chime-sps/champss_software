@@ -408,29 +408,27 @@ class PowerSpectraStack:
                 new_rn_scales = np.ones((1, len(pspec.rn_scales)))
                 new_rn_scales[0] = pspec.rn_scales
                 pspec.rn_scales = new_rn_scales
-
+            print('updated')
             if type(pspec.rn_medians) != np.ndarray:
                     log.error("This power spectrum does not have rednoise info saved.")
 
-            #don't know how to check this exists...
-            #elif class(h5f["rn medians"]) != 'h5py._hl.dataset.Dataset':
-            #    log.error("This h5f file does not have rednoise info saved.")
+            elif "rn_medians" not in h5f.keys():
+                log.error("This h5f file does not have rednoise info saved.")
+            
             else:
                 #set guard value as -1 to pad
                 ndays = len(pspec.rn_medians) + len(h5f_rn_medians)
                 stacked_rn_medians = -1 * np.ones((ndays, pspec.rn_dm_indices.shape[1],
                         max(pspec.rn_medians.shape[2], h5f_rn_medians.shape[2])))
-                stacked_rn_medians[:len(pspec.rn_medians), :,
-                            :pspec.rn_medians.shape[2]] = pspec.rn_medians
-                stacked_rn_medians[len(pspec.rn_medians):, :,
+                stacked_rn_medians[:len(h5f_rn_medians), :,
                             :h5f_rn_medians.shape[2]] = h5f_rn_medians
+                stacked_rn_medians[len(h5f_rn_medians):, :,
+                            :pspec.rn_medians.shape[2]] = pspec.rn_medians
                 stacked_rn_scales = -1 * np.ones((ndays,
                     max(pspec.rn_scales.shape[1], h5f_rn_scales.shape[1])))
                 #only need one DM value per day of scales
-                stacked_rn_scales[:len(pspec.rn_scales)] = pspec.rn_scales
-                stacked_rn_scales[len(pspec.rn_scales):] = h5f_rn_scales
-                #pspec.rn_medians = stacked_rn_medians
-                #pspec.rn_scales = stacked_rn_scales
+                stacked_rn_scales[:len(h5f_rn_scales)] = h5f_rn_scales
+                stacked_rn_scales[len(h5f_rn_scales):] = pspec.rn_scales
              
                 del h5f["rn medians"]
                 del h5f["rn scales"]
@@ -539,27 +537,28 @@ class PowerSpectraStack:
             
             if type(pspec.rn_medians) != np.ndarray:
                     log.error("This power spectrum does not have rednoise info saved.")
-             
-            #don't know how to check this exists...
-            #elif class(h5f["rn medians"]) != 'h5py._hl.dataset.Dataset':
-            #    log.error("This h5f file does not have rednoise info saved.")
+              
+            elif "rn_medians" not in h5f.keys():
+                log.error("This h5f file does not have rednoise info saved.")
+
             else:
                 #set guard value as -1 to pad
                 ndays = len(pspec.rn_medians) + len(h5f_rn_medians)
                 stacked_rn_medians = -1 * np.ones((ndays, pspec.rn_dm_indices.shape[1],
                         max(pspec.rn_medians.shape[2], h5f_rn_medians.shape[2])))
-                stacked_rn_medians[:len(pspec.rn_medians), :, 
-                            :pspec.rn_medians.shape[2]] = pspec.rn_medians
-                stacked_rn_medians[len(pspec.rn_medians):, :,
+                stacked_rn_medians[:len(h5f_rn_medians), :,
                             :h5f_rn_medians.shape[2]] = h5f_rn_medians
+                stacked_rn_medians[len(h5f_rn_medians):, :,
+                            :pspec.rn_medians.shape[2]] = pspec.rn_medians
                 stacked_rn_scales = -1 * np.ones((ndays,
                     max(pspec.rn_scales.shape[1], h5f_rn_scales.shape[1])))
                 #only need one DM value per day of scales
-                stacked_rn_scales[:len(pspec.rn_scales)] = pspec.rn_scales
-                stacked_rn_scales[len(pspec.rn_scales):] = h5f_rn_scales 
+                stacked_rn_scales[:len(h5f_rn_scales)] = h5f_rn_scales
+                stacked_rn_scales[len(h5f_rn_scales):] = pspec.rn_scales
+
                 pspec.rn_medians = stacked_rn_medians
                 pspec.rn_scales = stacked_rn_scales
-            
+
             log.info("Stacking completed.")
 
             bad_freq_arrays = [
