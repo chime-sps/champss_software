@@ -14,7 +14,7 @@ concurrency:
 jobs:
   update-image:
    # Create an image of your branch with the branch name as tag, and save it locally on the testbed since it'll only run there
-    uses: chime-sps/champss_software/.github/workflows/image.yml@main
+    uses: ./.github/workflows/image.yml
     secrets: inherit
     with:
       image_tag: ${{ inputs.branch_name || 'none' }}

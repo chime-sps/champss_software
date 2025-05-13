@@ -14,18 +14,18 @@ jobs:
   # precommit:
   #   Avoid double checks from bot's automated release PR
   #   if: ${{ github.actor != 'github-actions' && github.event_name == 'pull_request' }}
-  #   uses: chime-sps/champss_software/.github/workflows/precommit.yml@main
+  #   uses: ./.github/workflows/precommit.yml
   #   secrets: inherit
   benchmark:
     if: ${{ github.actor != 'github-actions' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
-    uses: chime-sps/champss_software/.github/workflows/benchmark.yml@main
+    uses: ./.github/workflows/benchmark.yml
     secrets: inherit
     with:
       branch_name: ${{ github.head_ref || 'benchmark' }}
   test:
     # Last check makes sure we're not building a test image if pushing to main, as that will already trigger a build in continuous-deployment.yml
     if: ${{ github.actor != 'github-actions' && (contains(github.event.head_commit.message, '[test]') == true) && github.event_name == 'push' && github.ref_name != 'main' }}
-    uses: chime-sps/champss_software/.github/workflows/image.yml@main
+    uses: ./.github/workflows/image.yml
     secrets: inherit
     with:
       runs_on: self-hosted
