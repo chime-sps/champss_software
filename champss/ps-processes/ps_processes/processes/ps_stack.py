@@ -388,7 +388,7 @@ class PowerSpectraStack:
 
             else:
                 h5f_rn_medians = h5f["rn medians"][:]
-
+            
             if len(h5f["rn scales"].shape) == 1:
 
                 h5f_rn_scales = np.ones((1, len(h5f["rn medians"])))
@@ -408,11 +408,11 @@ class PowerSpectraStack:
                 new_rn_scales = np.ones((1, len(pspec.rn_scales)))
                 new_rn_scales[0] = pspec.rn_scales
                 pspec.rn_scales = new_rn_scales
-            print('updated')
+            
             if type(pspec.rn_medians) != np.ndarray:
                     log.error("This power spectrum does not have rednoise info saved.")
 
-            elif "rn_medians" not in h5f.keys():
+            elif "rn medians" not in h5f.keys():
                 log.error("This h5f file does not have rednoise info saved.")
             
             else:
@@ -506,7 +506,6 @@ class PowerSpectraStack:
             log.info(f"Updating the new {self.mode} power spectra information")
             pspec.num_days += h5f.attrs["number of days"]
            
-
             if len(h5f["rn medians"].shape) == 2:
 
                 h5f_rn_medians = np.ones((1, h5f["rn medians"].shape[0], h5f["rn medians"].shape[1]))
@@ -538,7 +537,7 @@ class PowerSpectraStack:
             if type(pspec.rn_medians) != np.ndarray:
                     log.error("This power spectrum does not have rednoise info saved.")
               
-            elif "rn_medians" not in h5f.keys():
+            elif "rn medians" not in h5f.keys():
                 log.error("This h5f file does not have rednoise info saved.")
 
             else:
