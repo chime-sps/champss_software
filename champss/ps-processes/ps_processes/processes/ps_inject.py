@@ -305,7 +305,7 @@ class Injection:
 
         return bins, harmonics
 
-    def rednoise_normalize(self, ps_shape, inj_bins):
+    def apply_rednoise(self, ps_shape, inj_bins):
         """
         A scaled down version of the rednoise_normalize function from utilities.py for
         when we already know all the median information. Currently this is DM-secular
@@ -336,7 +336,6 @@ class Injection:
             scale_sum[1:] = np.cumsum(day_scales)
             scale_sum[0] = 0
             mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype('int') 
-
             diffs = (mid_bins[:, np.newaxis] - inj_bins[np.newaxis, :]).T
             roof_idx = np.where(diffs > 0, diffs, np.inf).argmin(axis = 1)
 
@@ -348,16 +347,14 @@ class Injection:
             inj_medians = get_median(xlows, xhighs, ylows, yhighs, inj_bins)
             fix_early_idx = np.where(inj_bins < mid_bins[0])
             fix_late_idx = np.where(inj_bins > mid_bins[-1])
-
             if len(fix_early_idx[0]) != 0:
                 inj_medians[:, fix_early_idx[0][0]] = day_medians[:, 0]
 
             if len(fix_late_idx[0]) != 0:
                 inj_medians[:, fix_late_idx[0][0]] = day_medians[:, -1]
-
             day_normalizer /= inj_medians
             normalizer += day_normalizer
-
+            
         # normalize:
         return normalizer
 
@@ -473,7 +470,7 @@ class Injection:
         
         harms = np.asarray(harms)
         normalized_harms = harms
-        normalized_harms *= self.rednoise_normalize(
+        normalized_harms *= self.apply_rednoise(
                 self.pspec_obj.power_spectra.shape,
                 bins,
             )[dm_indices]
@@ -654,7 +651,8 @@ def main(
         injection_dict["bins"] = injection_output_dict["freq_indices"]
         injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
         injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
-        
+        injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
+
         if isinstance(injection_dict["profile"], (np.ndarray, list)):
             injection_dict["profile"] = "custom_profile"
 

@@ -115,6 +115,15 @@ class PowerSpectraCreation:
 
     num_threads: int
         The number of threads to run the parallel processing of the FFT process. Default = 8
+    
+    save_medians: bool
+        Whether to save the rednoise information to the power spectrum.
+
+    write_medians: bool
+        Whether to write the rednoise information to a separate npz file.
+
+    write_zero_dm_medians: bool
+        Whether to write the zero DM rednoise information to an npz file.
     """
 
     tsamp = attribute(validator=instance_of(float), default=TSAMP)
@@ -141,7 +150,10 @@ class PowerSpectraCreation:
     update_db = attribute(validator=instance_of(bool), default=True)
     nbit = attribute(validator=instance_of(int), default=32)
     num_threads = attribute(validator=instance_of(int), default=8)
-    mp_chunk_size: bool = attribute(default=10)
+    mp_chunk_size: bool = attribute(default=10) 
+    save_medians: bool = attribute(default=True)
+    write_medians: bool = attribute(default=False)
+    write_zero_dm_medians: bool = attribute(default=False)
     static_filter = attribute(init=False)
     dynamic_filter = attribute(init=False)
 
@@ -180,7 +192,7 @@ class PowerSpectraCreation:
         if self.barycentring_mode == "Topocentric" and self.barycentric_cleaning:
             self.barycentric_cleaning = False
 
-    def transform(self, dedisp_time_series, save_medians=True):
+    def transform(self, dedisp_time_series, write_medians=False):
         """
         Function to perform the FFT and creating the normalised power spectrum.
 
@@ -189,6 +201,8 @@ class PowerSpectraCreation:
         dedisp_time_series: DedispersedTimeSeries
             The input DedispersedTimeSeries class which have the data and
             the metadata to process
+        write_medians: bool
+            Whether to write the rednoise information to a npz file.
 
         Returns
         -------
@@ -220,7 +234,7 @@ class PowerSpectraCreation:
                 )
                 nbins_flagged = len(bad_freq_indices)
                 log.info(
-                    "Number of FFT bins flagged ="
+                   "Number of FFT bins flagged ="
                     f" {nbins_flagged} ({nbins_flagged / len(freq_labels):.6f} of data)"
                 )
             # Pool method to run parallel jobs on the FFT to form power spectra
@@ -284,28 +298,41 @@ class PowerSpectraCreation:
             pool.close()
             pool.join()
             log.info("Power spectra creation successful.")
+            
+            if self.save_medians:
 
-            median_dm_indices = []
-            medians = []
-            scales = []
+                median_dm_indices = []
+                medians = []
+                scales = []
 
-            for info in median_info:
-                median_dm_indices.extend(info[0])
-                medians.extend(info[1])
-                scales.extend(info[2])
+                for info in median_info:
+                    median_dm_indices.extend(info[0])
+                    medians.extend(info[1])
+                    scales.extend(info[2])
 
-            medians = np.asarray(medians)
-            median_dm_indices = np.asarray(median_dm_indices)
-            scales = np.asarray(scales)
+                medians = np.asarray(medians)
+                median_dm_indices = np.asarray(median_dm_indices)
+                scales = np.asarray(scales)
 
-            rn_medians = np.ones((1, medians.shape[0], medians.shape[1]))
-            rn_medians[0] = medians
-            rn_dm_indices = np.ones((1, len(median_dm_indices)))
-            rn_dm_indices[0] = median_dm_indices
-            #note that scales are saved iteratively over DM but are identical at each DM
-            #so we only need one row of scales
-            rn_scales = np.ones((1, scales.shape[1]))
-            rn_scales[0] = scales[0]
+                rn_medians = np.ones((1, medians.shape[0], medians.shape[1]))
+                rn_medians[0] = medians
+                rn_dm_indices = np.ones((1, len(median_dm_indices)))
+                rn_dm_indices[0] = median_dm_indices
+                #note that scales are saved iteratively over DM but are identical at each DM
+                #so we only need one row of scales
+                rn_scales = np.ones((1, scales.shape[1]))
+                rn_scales[0] = scales[0]
+
+            if self.write_medians:
+                medians_path = (
+                        f"{os.path.abspath(observation.datapath)}/medians.npy"
+                )
+                log.info(f"Saving rednoise information to {medians_path}.")
+                np.savez(
+                    medians_path,
+                    medians=medians,
+                    scales=scales,
+                )
             # update the observation database
             if self.update_db:
                 self.update_database(
@@ -322,22 +349,40 @@ class PowerSpectraCreation:
             tzinfo=pytz.utc
         )
 
-        return PowerSpectra(
-            power_spectra=power_spectra,
-            dms=dedisp_time_series.dms,
-            freq_labels=freq_labels,
-            ra=dedisp_time_series.ra,
-            dec=dedisp_time_series.dec,
-            datetimes=[datetimes],
-            num_days=1,
-            beta=beta,
-            bad_freq_indices=[bad_freq_indices],
-            obs_id=[dedisp_time_series.obs_id],
-            power_spectra_shared=power_spectra_shared,
-            rn_medians=rn_medians,
-            rn_scales=rn_scales,
-            rn_dm_indices=rn_dm_indices,
-        )
+        if self.save_medians:
+
+            return PowerSpectra(
+                power_spectra=power_spectra,
+                dms=dedisp_time_series.dms,
+                freq_labels=freq_labels,
+                ra=dedisp_time_series.ra,
+                dec=dedisp_time_series.dec,
+                datetimes=[datetimes],
+                num_days=1,
+                beta=beta,
+                bad_freq_indices=[bad_freq_indices],
+                obs_id=[dedisp_time_series.obs_id],
+                power_spectra_shared=power_spectra_shared,
+                rn_medians=rn_medians,
+                rn_scales=rn_scales,
+                rn_dm_indices=rn_dm_indices,
+            )
+
+        else:
+
+            return PowerSpectra(
+                power_spectra=power_spectra,
+                dms=dedisp_time_series.dms,
+                freq_labels=freq_labels,
+                ra=dedisp_time_series.ra,
+                dec=dedisp_time_series.dec,
+                datetimes=[datetimes],
+                num_days=1,
+                beta=beta,
+                bad_freq_indices=[bad_freq_indices],
+                obs_id=[dedisp_time_series.obs_id],
+                power_spectra_shared=power_spectra_shared,
+            )
 
     @staticmethod
     def transform_data(
@@ -350,13 +395,12 @@ class PowerSpectraCreation:
         nbit=32,
         remove_rednoise=True,
         clean_rfi=True,
-        rednoise_config=dict(b0=10, bmax=100000, get_medians=True),
+        rednoise_config=dict(b0=10, bmax=100000),
         zero_replace=True,
         bad_freq_indices=[],
         shared_target_name=None,
         target_shape=None,
         observation=None,
-        save_medians=True,
     ):
         """
         Create the power spectrum from a dedispersed time series.
@@ -483,7 +527,7 @@ class PowerSpectraCreation:
         shared_spectra.close()
 
         return [dm_indices, all_medians, all_scales]
-
+        
     def get_pointing_id_from_observation_id(self, obs_id):
         """Get the corresponding pointing ID from the observation ID."""
         try:
@@ -731,7 +775,7 @@ class PowerSpectraCreation:
         return freq_labels[:-1]
 
     def flag_periodic_rfi(
-        self, dedisp_time_series, freq_labels, beta, observation, save_medians=True
+        self, dedisp_time_series, freq_labels, beta, observation
     ):
         """
         Flag periodic RFI by comparing birdies with adjacent observations.
@@ -747,7 +791,7 @@ class PowerSpectraCreation:
 
         beta: float
             The barycentric correction factor.
-
+        
         Returns:
         =======
         bad_freq_indices: list
@@ -798,7 +842,7 @@ class PowerSpectraCreation:
                 barycentric_cleaning=self.barycentric_cleaning,
                 beta=beta,
             )
-            if save_medians:
+            if self.write_zero_dm_medians:
                 medians_path = (
                     f"{os.path.abspath(observation.datapath)}/zero_dm_medians.npy"
                 )
