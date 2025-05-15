@@ -409,7 +409,7 @@ class PowerSpectraStack:
                 new_rn_scales[0] = pspec.rn_scales
                 pspec.rn_scales = new_rn_scales
 
-            if type(pspec.rn_medians) is np.ndarray:
+            if type(pspec.rn_medians) is not np.ndarray:
                 log.error("This power spectrum does not have rednoise info saved.")
 
             elif "rn medians" not in h5f.keys():
@@ -542,7 +542,7 @@ class PowerSpectraStack:
                 new_rn_scales[0] = pspec.rn_scales
                 pspec.rn_scales = new_rn_scales
 
-            if type(pspec.rn_medians) is np.ndarray:
+            if type(pspec.rn_medians) is not np.ndarray:
                 log.error("This power spectrum does not have rednoise info saved.")
 
             elif "rn medians" not in h5f.keys():
