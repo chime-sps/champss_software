@@ -57,7 +57,7 @@ ENV PYTHONUNBUFFERED=1 \
 COPY . .
 
 RUN --mount=type=ssh,id=github_ssh_id set -ex \
-    && python3 -m pip install . \
+    && python3 -m pip install .[beam-model] \
     && get-data \
     && workflow workspace set champss.workspace.yml \
     && python3 download_files.py 
