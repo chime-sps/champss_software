@@ -9,7 +9,7 @@ import numpy as np
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import get_data_list
 from scheduler.workflow import schedule_workflow_job
-from sps_databases import db_api, db_utils, models
+from sps_databases import db_api, db_utils
 
 log = logging.getLogger()
 
@@ -152,6 +152,7 @@ def main(
                 "db_name": db_name,
                 "write_to_db": True,
                 "using_workflow": True,
+                "foldpath": foldpath,
             }
             workflow_tags = [
                 "fold",
