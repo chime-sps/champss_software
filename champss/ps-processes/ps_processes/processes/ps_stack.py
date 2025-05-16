@@ -429,7 +429,7 @@ class PowerSpectraStack:
                     : len(h5f_rn_medians), :, : h5f_rn_medians.shape[2]
                 ] = h5f_rn_medians
                 stacked_rn_medians[
-                    len(h5f_rn_medians) :, :, : h5f_rn_medians.shape[2]
+                    len(h5f_rn_medians) :, :, : pspec.rn_medians.shape[2]
                 ] = pspec.rn_medians
                 stacked_rn_scales = -1 * np.ones(
                     (ndays, max(pspec.rn_scales.shape[1], h5f_rn_scales.shape[1]))
@@ -562,7 +562,7 @@ class PowerSpectraStack:
                     : len(h5f_rn_medians), :, : h5f_rn_medians.shape[2]
                 ] = h5f_rn_medians
                 stacked_rn_medians[
-                    len(h5f_rn_medians) :, :, : h5f_rn_medians.shape[2]
+                    len(h5f_rn_medians) :, :, : pspec.rn_medians.shape[2]
                 ] = pspec.rn_medians
                 stacked_rn_scales = -1 * np.ones(
                     (ndays, max(pspec.rn_scales.shape[1], h5f_rn_scales.shape[1]))
