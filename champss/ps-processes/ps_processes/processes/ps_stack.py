@@ -389,22 +389,30 @@ class PowerSpectraStack:
 
             elif "rn medians" not in h5f.keys():
                 log.error("This h5f file does not have rednoise info saved.")
-            
+
             else:
-                #set guard value as -1 to pad
+                # set guard value as -1 to pad
                 ndays = len(pspec.rn_medians) + len(h5f_rn_medians)
-                stacked_rn_medians = -1 * np.ones((ndays, pspec.rn_dm_indices.shape[1],
-                        max(pspec.rn_medians.shape[2], h5f_rn_medians.shape[2])))
-                stacked_rn_medians[:len(h5f_rn_medians), :,
-                            :h5f_rn_medians.shape[2]] = h5f_rn_medians
-                stacked_rn_medians[len(h5f_rn_medians):, :,
-                            :pspec.rn_medians.shape[2]] = pspec.rn_medians
-                stacked_rn_scales = -1 * np.ones((ndays,
-                    max(pspec.rn_scales.shape[1], h5f_rn_scales.shape[1])))
-                #only need one DM value per day of scales
-                stacked_rn_scales[:len(h5f_rn_scales)] = h5f_rn_scales
-                stacked_rn_scales[len(h5f_rn_scales):] = pspec.rn_scales
-             
+                stacked_rn_medians = -1 * np.ones(
+                    (
+                        ndays,
+                        pspec.rn_dm_indices.shape[1],
+                        max(pspec.rn_medians.shape[2], h5f_rn_medians.shape[2]),
+                    )
+                )
+                stacked_rn_medians[
+                    : len(h5f_rn_medians), :, : h5f_rn_medians.shape[2]
+                ] = h5f_rn_medians
+                stacked_rn_medians[
+                    len(h5f_rn_medians) :, :, : pspec.rn_medians.shape[2]
+                ] = pspec.rn_medians
+                stacked_rn_scales = -1 * np.ones(
+                    (ndays, max(pspec.rn_scales.shape[1], h5f_rn_scales.shape[1]))
+                )
+                # only need one DM value per day of scales
+                stacked_rn_scales[: len(h5f_rn_scales)] = h5f_rn_scales
+                stacked_rn_scales[len(h5f_rn_scales) :] = pspec.rn_scales
+
                 del h5f["rn medians"]
                 del h5f["rn scales"]
                 h5f["rn medians"] = stacked_rn_medians
@@ -491,19 +499,27 @@ class PowerSpectraStack:
                 log.error("This h5f file does not have rednoise info saved.")
 
             else:
-                #set guard value as -1 to pad
+                # set guard value as -1 to pad
                 ndays = len(pspec.rn_medians) + len(h5f_rn_medians)
-                stacked_rn_medians = -1 * np.ones((ndays, pspec.rn_dm_indices.shape[1],
-                        max(pspec.rn_medians.shape[2], h5f_rn_medians.shape[2])))
-                stacked_rn_medians[:len(h5f_rn_medians), :,
-                            :h5f_rn_medians.shape[2]] = h5f_rn_medians
-                stacked_rn_medians[len(h5f_rn_medians):, :,
-                            :pspec.rn_medians.shape[2]] = pspec.rn_medians
-                stacked_rn_scales = -1 * np.ones((ndays,
-                    max(pspec.rn_scales.shape[1], h5f_rn_scales.shape[1])))
-                #only need one DM value per day of scales
-                stacked_rn_scales[:len(h5f_rn_scales)] = h5f_rn_scales
-                stacked_rn_scales[len(h5f_rn_scales):] = pspec.rn_scales
+                stacked_rn_medians = -1 * np.ones(
+                    (
+                        ndays,
+                        pspec.rn_dm_indices.shape[1],
+                        max(pspec.rn_medians.shape[2], h5f_rn_medians.shape[2]),
+                    )
+                )
+                stacked_rn_medians[
+                    : len(h5f_rn_medians), :, : h5f_rn_medians.shape[2]
+                ] = h5f_rn_medians
+                stacked_rn_medians[
+                    len(h5f_rn_medians) :, :, : pspec.rn_medians.shape[2]
+                ] = pspec.rn_medians
+                stacked_rn_scales = -1 * np.ones(
+                    (ndays, max(pspec.rn_scales.shape[1], h5f_rn_scales.shape[1]))
+                )
+                # only need one DM value per day of scales
+                stacked_rn_scales[: len(h5f_rn_scales)] = h5f_rn_scales
+                stacked_rn_scales[len(h5f_rn_scales) :] = pspec.rn_scales
 
                 pspec.rn_medians = stacked_rn_medians
                 pspec.rn_scales = stacked_rn_scales
@@ -579,9 +595,9 @@ class PowerSpectraStack:
             pspec_stack.rn_dm_indices.extend(pspec.rn_scales)
 
         except:
-            if pspec.rn_medians == None:
+            if pspec.rn_medians is None:
                 log.error("The daily power spectrum does not have rednoise info saved.")
-            if pspec_stack.rn_medians == None:
+            if pspec_stack.rn_medians is None:
                 log.error("The power spectra stack does not have rednoise info saved.")
 
         stack_end = time.time()
