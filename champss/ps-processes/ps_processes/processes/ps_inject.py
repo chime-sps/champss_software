@@ -134,11 +134,12 @@ def x_to_chi2(x, df):
         # normalize to CHAMPSS power spectrum by dividing by 2
         return chi2 / 2
 
-def get_median(xlow, xhigh, ylow, yhigh, x):
 
+def get_median(xlow, xhigh, ylow, yhigh, x):
     m = (yhigh - ylow) / (xhigh - xlow)
 
     return m * (x - xlow) + ylow
+
 
 class Injection:
     """This class allows pulse injection."""
@@ -324,20 +325,22 @@ class Injection:
         rn_scales = self.pspec_obj.rn_scales
         rn_medians = self.pspec_obj.rn_medians
         normalizer = np.zeros((rn_medians.shape[1], len(inj_bins)))
-        
-        
-        for day in range(self.ndays):
 
-            day_normalizer = np.ones((rn_medians.shape[1], len(inj_bins))) / self.ndays / np.log(2)
-            day_medians = rn_medians[day] / np.min(rn_medians[day], axis = 1)[:, np.newaxis]
+        for day in range(self.ndays):
+            day_normalizer = (
+                np.ones((rn_medians.shape[1], len(inj_bins))) / self.ndays / np.log(2)
+            )
+            day_medians = (
+                rn_medians[day] / np.min(rn_medians[day], axis=1)[:, np.newaxis]
+            )
             day_scales = rn_scales[day]
-            
+
             scale_sum = np.zeros(len(day_scales) + 1)
             scale_sum[1:] = np.cumsum(day_scales)
             scale_sum[0] = 0
-            mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype('int') 
+            mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype("int")
             diffs = (mid_bins[:, np.newaxis] - inj_bins[np.newaxis, :]).T
-            roof_idx = np.where(diffs > 0, diffs, np.inf).argmin(axis = 1)
+            roof_idx = np.where(diffs > 0, diffs, np.inf).argmin(axis=1)
 
             xlows = mid_bins[roof_idx - 1]
             xhighs = mid_bins[roof_idx]
@@ -354,7 +357,7 @@ class Injection:
                 inj_medians[:, fix_late_idx[0][0]] = day_medians[:, -1]
             day_normalizer /= inj_medians
             normalizer += day_normalizer
-            
+
         # normalize:
         return normalizer
 
@@ -467,13 +470,13 @@ class Injection:
         for i in range(len(dispersed_prof_fft)):
             bins, harm = self.harmonics(dispersed_prof_fft[i], df)
             harms.append(harm)
-        
+
         harms = np.asarray(harms)
         normalized_harms = harms
         normalized_harms *= self.apply_rednoise(
-                self.pspec_obj.power_spectra.shape,
-                bins,
-            )[dm_indices]
+            self.pspec_obj.power_spectra.shape,
+            bins,
+        )[dm_indices]
         # estimate sigma
         (
             harms,
@@ -652,12 +655,13 @@ def main(
         injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
         injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
         injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
+        injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
+        injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
 
         if isinstance(injection_dict["profile"], (np.ndarray, list)):
             injection_dict["profile"] = "custom_profile"
 
         if not only_predict:
-
             # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
             # not change the object
             injected_indices = np.ix_(

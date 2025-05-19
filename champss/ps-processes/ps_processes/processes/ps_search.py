@@ -659,7 +659,6 @@ class PowerSpectraSearch:
 
                     sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
                     injected_index = -1
-
                     for list_index, injection_dict in enumerate(injection_dicts):
                         injected_bins = injection_dict["bins"]
                         injected_dms = injection_dict["dms"]
