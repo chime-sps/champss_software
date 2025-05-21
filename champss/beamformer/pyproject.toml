@@ -11,6 +11,7 @@ exclude = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
+beam-model = {git = "ssh://git@github.com/CHIMEFRB/beam-model"}
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}
 spshuff = {path = "../spshuff", develop=true}
 sps-common = {path = "../sps-common", develop=true}

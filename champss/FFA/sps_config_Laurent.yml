@@ -1,0 +1,316 @@
+---
+logging:
+  format: "%(asctime)s %(levelname)s >> %(message)s"
+  level: INFO
+  file_logging: True
+threads:
+  thread_per_1024_chan: 8
+rfi:
+  weights: True      # apply msgpack weights
+  l1: True           # apply L1 RFI mask
+  badchan: True      # apply known bad channel mask
+  kurtosis: False    # do NOT run temporal kurtosis filter
+  mad: False         # do NOT run median absolute deviation outlier filter
+  sk: True           # run spectral kurtosis filter
+  powspec: False     # run power spectrum cleaner
+  dummy: False       # run a dummy filter that does nothing
+beamform:
+  nbits: 32
+  nsub: 16384
+  add_local_median: True
+  masking_timescale: 512000
+  detrend_data: True
+  detrend_nsamp: 32768
+  update_db: True
+  min_data_frac: 0.5
+  beam_to_normalise: 1
+  flatten_bandpass: True
+dedisp:
+  numdms: 40
+  maxdm: 1700
+  nsub: 64
+  fdmt:
+    dm_step: 2
+    num_dms_fac: 1
+    chunk_size: 40960
+    cpp: True
+ps_creation:
+  normalise: False
+  barycentring_mode: Fourier   # "Topocentric", "Time" and "Fourier" possible
+  padded_length: 1048576 # 2**20
+  clean_rfi: True
+  run_static_filter: True
+  run_dynamic_filter: True
+  dynamic_filter_config:
+    peak_find_height: 2
+    peak_find_distance: 1.0
+    peak_find_width: 0.01
+    peak_find_rel_height: 0.5
+    red_noise_fit_start_freq: 0.0048
+    red_noise_fit_upper_freq: 3.0048
+    strong_birdie_threshold: 5.0
+  barycentric_cleaning: False
+  find_common_birdies: True
+  common_birdie_fraction: 0.5
+  zero_replace: True
+  remove_rednoise: True
+  nbit: 32
+ps:
+  run_ps_search: True
+  write_ps_detections: False
+  write_ps_raw_detections: False
+  search_failed_spectra: True
+  ps_stack_config:
+    basepath: "./"
+    qc: True
+    qc_config:
+      red_noise_nbins: 2048 # This value can be overwritten in the individual metrics
+      dynamic_max_obs: 100 # How many observations are used at most for the dynamic threshold
+      dynamic_min_obs: 5 # How many observations are used at least for the dynamic threshold
+      qc_metrics:
+        ks_test:
+          type: kstest
+          parameters:
+            lower_percentile_cut: null
+            upper_percentile_cut: null
+          qc_tests:
+            - metric: ksdist # This defined which value in the output of the qc_test is used
+              upper_limit: 0.0049 # Based on March 2024 data this would exclude 5 percent
+              upper_limit_dynamic: 3 # This defines how many median absolute deviations above the median the limit is
+# The final limits are max(upper_limit, upper_limit_dynamic) and min(lower_limit, lower_limit_dynamic)
+        ks_test_chan10:
+          type: kstest
+          channels: [10,20,30,40,50] # By default the DM 0 series is used
+          parameters:
+            lower_percentile_cut: null
+            upper_percentile_cut: null
+        ks_test_09_10:
+          type: kstest
+          parameters:
+            lower_percentile_cut: 0.9
+            upper_percentile_cut: null
+        ks_test_099_10:
+          type: kstest
+          parameters:
+            lower_percentile_cut: 0.99
+            upper_percentile_cut: null
+        ks_test_fit:
+           type: kstest_chi2_fit
+           range: 0.025
+           count: 11
+           parameters:
+             lower_percentile_cut: null
+             upper_percentile_cut: null
+        outlier_200_2000:
+          type: outlier
+          parameters:
+            min_count: 100
+            max_count: 2000
+          qc_tests:
+            - metric: fraction
+        masked_bins:
+          type: masked_bins
+          red_noise_nbins: 0
+          qc_tests:
+            - metric: mask_fraction
+        std:
+          type: np.std # Any imported function can be used
+          red_noise_nbins: 0
+        quantiles:
+          type: np.quantile
+          red_noise_nbins: 0
+          parameters:
+            q: [0. , 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+        obs_properties:
+          type: obs_properties
+          properties:
+            - num_detections
+            - num_clusters
+          qc_tests:
+            - metric: num_detections
+              upper_limit: 30000 # In March 2024 data this would exclude 4%
+              upper_limit_dynamic: 3
+            - metric: num_clusters
+    stack_nbit: 16
+    infile_overwrite: False
+    readout_stack: True
+  ps_search_config:
+    num_harm: 32
+    sigma_min: 5.0
+    precompute_harms: True
+    use_nsum_per_bin: True
+    dbscan_eps: 1
+    cluster_scale_factor: 10
+    dbscan_min_samples: 5
+    filter_by_nharm: False
+    cluster_dm_cut: 2
+    clustering_max_ndetect: 50000
+
+ffa:
+  run_ffa_search: True
+  create_periodogram_plots: False
+  create_profile_plots: False
+  write_ffa_detections: True
+  write_ffa_candidates: True
+  write_ffa_stack: True
+  dm_downsample: 8
+  dm_min: 0
+  dm_max: null
+  min_rfi_sigma: 5
+  min_detection_sigma: 7
+  birdie_tolerance: 0.005
+  
+
+cands:
+  harmonics: {}
+  features:
+    Property:
+      - num_unique_dms
+      - num_unique_freqs
+      - ndetections
+      - nharm
+      - log_p_dm
+    dm_sigma:
+      - feature: FitGaussWidth
+        flags:
+          - rel_err
+          - ndof
+          - rms_err
+      - feature: FitGauss
+        flags:
+          - rel_err
+          - ndof
+          - rms_err
+          - diff_from_detection
+    freq_sigma:
+      - feature: FitGaussWidth
+        flags:
+          - rel_err
+          - ndof
+          - rms_err
+      - feature: FitGauss
+        flags:
+          - rel_err
+          - ndof
+          - rms_err
+          - diff_from_detection
+  arrays:
+    pool_bins: 0
+    period_factors: 1
+    max_nharm: 32
+    array_ranges:
+      dm_in_raw: 20
+      dm_in_dm_freq: 150
+      freq_in_dm_freq: 40
+      dm_in_dm_1d: 500
+
+cleanup:
+  beamform: True
+  dedisp: False
+  ps: False
+  ps_detections: False
+  candidates: False
+cleanup_rfi: True
+ps_cumul_stack:
+  min_num_days: 0
+  write_ps_detections: False
+  write_ps_raw_detections: False
+  ps_stack_config:
+    basepath: "./"
+    qc: True
+    qc_config:
+      red_noise_nbins: 2048
+      qc_metrics:
+        ks_test:
+          type: kstest
+          parameters:
+            lower_percentile_cut: null
+            upper_percentile_cut: null
+          qc_tests:
+            - metric: ksdist
+              upper_limit: null
+        ks_test_bin_09:
+          type: kstest
+          parameters:
+            lower_percentile_cut: null
+            upper_percentile_cut: null
+          minimum_bin_weight: 0.9 # This parameter an be provided in all metrics
+          qc_tests:
+            - metric: ksdist
+              upper_limit: null
+        ks_test_bin_1:
+          type: kstest
+          parameters:
+            lower_percentile_cut: null
+            upper_percentile_cut: null
+          minimum_bin_weight: 1
+          qc_tests:
+            - metric: ksdist
+              upper_limit: null
+        ks_test_fit_bin_1:
+           type: kstest_chi2_fit
+           range: 0.025
+           count: 11
+           parameters:
+             lower_percentile_cut: null
+             upper_percentile_cut: null
+           minimum_bin_weight: 1
+        ks_test_fit_bin_09:
+           type: kstest_chi2_fit
+           range: 0.025
+           count: 11
+           parameters:
+             lower_percentile_cut: null
+             upper_percentile_cut: null
+           minimum_bin_weight: 0.9
+           qc_tests:
+             - metric: min_ksdist
+               upper_limit: null
+             - metric: fraction
+               upper_limit: null
+        ks_test_09_10:
+          type: kstest
+          parameters:
+            lower_percentile_cut: 0.9
+            upper_percentile_cut: null
+        ks_test_099_10:
+          type: kstest
+          parameters:
+            lower_percentile_cut: 0.99
+            upper_percentile_cut: null
+        outlier_default:
+          type: outlier
+        outlier_200_2000:
+          type: outlier
+          parameters:
+            min_count: 100
+            max_count: 2000
+        masked_bins:
+          type: masked_bins
+          red_noise_nbins: 0
+        quantiles:
+          type: np.quantile
+          red_noise_nbins: 0
+          parameters:
+            q: [0. , 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+        ks_test_chan10_bin_1:
+          type: kstest
+          channels: [10,20,30,40,50]
+          parameters:
+            lower_percentile_cut: null
+            upper_percentile_cut: null
+          minimum_bin_weight: 1
+    stack_nbit: 16
+    spectra_nbit: 32
+    delete_monthly_stack: True
+  ps_search_config:
+    num_harm: 32
+    sigma_min: 6.0
+    precompute_harms: True
+    use_nsum_per_bin: True
+    dbscan_eps: 1
+    cluster_scale_factor: 10
+    dbscan_min_samples: 5
+    filter_by_nharm: False
+    cluster_dm_cut: 2
+    clustering_max_ndetect: 100000

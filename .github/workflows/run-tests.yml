@@ -1,0 +1,33 @@
+name: Run Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update-image:
+   # Update the "benchmark" pipeline image tag with the latest dependencies
+    uses: chime-sps/sps-ops/.github/workflows/image.yml@main
+    secrets: inherit
+    with:
+      event_name: "push"
+      event_repository: "pipeline_batch_db"
+      ref_name: "benchmark"
+  run-tests-on-pipeline:
+    needs: update-image
+    runs-on: testbed # Needs to run on testbed to not interfere with processing
+    steps:
+      - uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      - uses: addnab/docker-run-action@v3
+        with:
+            image: chimefrb/pipeline_batch_db:benchmark
+            options: --rm --name pipeline-benchmark --network bridge -v /data/chime/sps/raw:/data/chime/sps/raw -v /data/chime/sps/benchmark:/data/chime/sps/benchmark -v /dev/shm:/dev/shm
+            # The following is only needed if running inside a Docker container
+            run: |
+              export NODE_NAME=ss1
+              export CONTAINER_NAME=pipeline-benchmark
+              chmod +x /module/pipeline-scripts/run-benchmark.sh
+              ./pipeline-scripts/run-benchmark.sh '--using-docker'
+
