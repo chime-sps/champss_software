@@ -305,31 +305,30 @@ class Injection:
             harmonics[i * N : (i + 1) * N] = np.abs(amplitude) ** 2
 
         return bins, harmonics
-
-    def apply_rednoise(self, ps_shape, inj_bins):
+    
+    def get_rednoise_normalisation(self, inj_bins, inj_dms):
         """
-        A scaled down version of the rednoise_normalize function from utilities.py for
-        when we already know all the median information. Currently this is DM-secular
-        but can be implemented easily to not be.
+        This function retrieves the rednoise information from the power spectrum and
+        scales the injections by the median power at each frequency location.
 
         Inputs:
         -------
-            ps_len (int):     the length of the power spectrum
-            inj_harms (arr):  array containing injection harmonics
-            inj_bins (arr):   array containing bins into which to inject
+            inj_bins (arr): the frequency bins at which the injections occur
+            inj_dms (arr) : the dm bins at which the injections occur
 
         Returns:
-        -------
-            rednoise-normalized harmonics
+        --------
+            normalizer (arr): the scaling factor for each injection bin
         """
         rn_scales = self.pspec_obj.rn_scales
         rn_medians = self.pspec_obj.rn_medians
-        normalizer = np.zeros((rn_medians.shape[1], len(inj_bins)))
+        normalizer = np.zeros((len(inj_dms), len(inj_bins)))
 
-        for day in range(self.ndays):
+        for day in range(self.pspec_obj.num_days):
             day_normalizer = (
-                np.ones((rn_medians.shape[1], len(inj_bins))) / self.ndays / np.log(2)
+                np.ones((len(inj_dms), len(inj_bins))) / self.pspec_obj.num_days / np.log(2)
             )
+            # day_medians = rn_medians[day]
             day_medians = (
                 rn_medians[day] / np.min(rn_medians[day], axis=1)[:, np.newaxis]
             )
@@ -339,28 +338,12 @@ class Injection:
             scale_sum[1:] = np.cumsum(day_scales)
             scale_sum[0] = 0
             mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype("int")
-            diffs = (mid_bins[:, np.newaxis] - inj_bins[np.newaxis, :]).T
-            roof_idx = np.where(diffs > 0, diffs, np.inf).argmin(axis=1)
-
-            xlows = mid_bins[roof_idx - 1]
-            xhighs = mid_bins[roof_idx]
-            ylows = day_medians[:, roof_idx - 1]
-            yhighs = day_medians[:, roof_idx]
-
-            inj_medians = get_median(xlows, xhighs, ylows, yhighs, inj_bins)
-            fix_early_idx = np.where(inj_bins < mid_bins[0])
-            fix_late_idx = np.where(inj_bins > mid_bins[-1])
-            if len(fix_early_idx[0]) != 0:
-                inj_medians[:, fix_early_idx[0][0]] = day_medians[:, 0]
-
-            if len(fix_late_idx[0]) != 0:
-                inj_medians[:, fix_late_idx[0][0]] = day_medians[:, -1]
-            day_normalizer /= inj_medians
+            for i, inj_dm in enumerate(inj_dms):
+                rn_interpolated = np.interp(inj_bins, mid_bins, day_medians[inj_dm])
+                day_normalizer[i] /= rn_interpolated
             normalizer += day_normalizer
-
-        # normalize:
         return normalizer
-
+    
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
@@ -472,11 +455,10 @@ class Injection:
             harms.append(harm)
 
         harms = np.asarray(harms)
-        normalized_harms = harms
-        normalized_harms *= self.apply_rednoise(
-            self.pspec_obj.power_spectra.shape,
+        harms *= self.get_rednoise_normalisation(
             bins,
-        )[dm_indices]
+            dm_indices,
+        )
         # estimate sigma
         (
             harms,

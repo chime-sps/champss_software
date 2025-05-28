@@ -366,12 +366,6 @@ class PowerSpectra:
             for date in datetimes_unix
         ]
 
-        rn_medians = np.ones(h5f["rn medians"].shape)
-        h5f["rn medians"].read_direct(rn_medians)
-        rn_scales = np.ones(h5f["rn scales"].shape)
-        h5f["rn scales"].read_direct(rn_scales)
-        rn_dm_indices = np.ones(h5f["rn dm indices"].shape)
-        h5f["rn dm indices"].read_direct(rn_dm_indices)
 
         ra = h5f.attrs["ra"]
         dec = h5f.attrs["dec"]
@@ -403,22 +397,46 @@ class PowerSpectra:
         else:
             beta = h5f.attrs["beta"]
 
-        return cls(
-            power_spectra=power_spectra,
-            dms=dms,
-            freq_labels=freq_labels,
-            ra=ra,
-            dec=dec,
-            datetimes=datetimes,
-            num_days=num_days,
-            beta=beta,
-            bad_freq_indices=bad_freq_indices,
-            obs_id=obs_id.astype(str).tolist(),
-            power_spectra_shared=power_spectra_shared,
-            rn_medians=rn_medians,
-            rn_scales=rn_scales,
-            rn_dm_indices=rn_dm_indices,
-        )
+        if "rn medians" in h5f.keys():
+            rn_medians = np.ones(h5f["rn medians"].shape)
+            h5f["rn medians"].read_direct(rn_medians)
+            rn_scales = np.ones(h5f["rn scales"].shape)
+            h5f["rn scales"].read_direct(rn_scales)
+            rn_dm_indices = np.ones(h5f["rn dm indices"].shape)
+            h5f["rn dm indices"].read_direct(rn_dm_indices)
+        
+            return cls(
+                power_spectra=power_spectra,
+                dms=dms,
+                freq_labels=freq_labels,
+                ra=ra,
+                dec=dec,
+                datetimes=datetimes,
+                num_days=num_days,
+                beta=beta,
+                bad_freq_indices=bad_freq_indices,
+                obs_id=obs_id.astype(str).tolist(),
+                power_spectra_shared=power_spectra_shared,
+                rn_medians=rn_medians,
+                rn_scales=rn_scales,
+                rn_dm_indices=rn_dm_indices,
+            )
+
+        else:
+
+            return cls(
+                power_spectra=power_spectra,
+                dms=dms,
+                freq_labels=freq_labels,
+                ra=ra,
+                dec=dec,
+                datetimes=datetimes,
+                num_days=num_days,
+                beta=beta,
+                bad_freq_indices=bad_freq_indices,
+                obs_id=obs_id.astype(str).tolist(),
+                power_spectra_shared=power_spectra_shared,
+            )
 
     def write(self, filename, nbit=32):
         """
@@ -457,9 +475,12 @@ class PowerSpectra:
                     )
             datetimes_unix = np.asarray([date.timestamp() for date in self.datetimes])
             h5f.create_dataset("datetimes", data=datetimes_unix)
-            h5f.create_dataset("rn medians", data=self.rn_medians)
-            h5f.create_dataset("rn scales", data=self.rn_scales)
-            h5f.create_dataset("rn dm indices", data=self.rn_dm_indices)
+        
+            if self.rn_medians is not None:
+                h5f.create_dataset("rn medians", data=self.rn_medians, dtype=f"f{int(nbit/ 8)}")
+                h5f.create_dataset("rn scales", data=self.rn_scales)
+                h5f.create_dataset("rn dm indices", data=self.rn_dm_indices)
+            
             h5f.attrs["ra"] = self.ra
             h5f.attrs["dec"] = self.dec
             h5f.attrs["observation ids"] = self.obs_id
