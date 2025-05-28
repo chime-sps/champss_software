@@ -138,6 +138,7 @@ class PowerSpectraCreation:
     rednoise_config = attribute(
         validator=instance_of(dict), default=dict(b0=10, bmax=100000)
     )
+    use_db = attribute(validator=instance_of(bool), default=True)
     update_db = attribute(validator=instance_of(bool), default=True)
     nbit = attribute(validator=instance_of(int), default=32)
     num_threads = attribute(validator=instance_of(int), default=8)
@@ -196,10 +197,14 @@ class PowerSpectraCreation:
             The PowerSpectra class as defined in the interface
         """
         pool = Pool(self.num_threads)
-        observation = db_api.get_observation(dedisp_time_series.obs_id)
-        pointing_id = self.get_pointing_id_from_observation_id(
-            dedisp_time_series.obs_id
-        )
+        if self.use_db:
+            observation = db_api.get_observation(dedisp_time_series.obs_id)
+            pointing_id = self.get_pointing_id_from_observation_id(
+                dedisp_time_series.obs_id
+            )
+        else:
+            observation = {}
+            pointing_id = None
 
         with ps_processing_time.labels(pointing_id).time():
             dedisp_ts_len = dedisp_time_series.dedisp_ts.shape[-1]
@@ -818,6 +823,9 @@ class PowerSpectraCreation:
                 )
             bad_freq_indices = sorted(set(bad_freq_indices).union(strong_periodic_rfi))
             bad_freq_indices = sorted(set(bad_freq_indices).union(common_birdies))
+        else:
+            compared_obs = []
+            birdies = []
 
         return bad_freq_indices, compared_obs, birdies
 

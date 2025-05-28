@@ -546,6 +546,7 @@ class Clusterer:
         Returns:
             out_metric (np.ndarray): (1 - power_overlap). Will be 0 for complete overlap and 1
         """
+        print(len(idxs0), len(idxs1), idxs0, idxs1)
         intersect_bins, intersect_idx0, intersect_idx1 = intersect2d_ind_filter0(
             detections["harm_idx"][idxs0],
             detections["harm_idx"][idxs1],
