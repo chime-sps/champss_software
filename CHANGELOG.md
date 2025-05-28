@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/chime-sps/champss_software/compare/v0.13.0...v0.14.0) (2025-05-28)
+
+
+### Features
+
+* Enable saving rednoise ([#149](https://github.com/chime-sps/champss_software/issues/149)) ([e62f672](https://github.com/chime-sps/champss_software/commit/e62f672a6c6956b1253102dbc1a4a984a34fa00e))
+
 ## [0.13.0](https://github.com/chime-sps/champss_software/compare/v0.12.1...v0.13.0) (2025-05-16)
 
 
