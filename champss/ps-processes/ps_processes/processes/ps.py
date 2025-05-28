@@ -151,7 +151,7 @@ class PowerSpectraCreation:
     nbit = attribute(validator=instance_of(int), default=32)
     num_threads = attribute(validator=instance_of(int), default=8)
     mp_chunk_size: bool = attribute(default=10)
-    save_medians: bool = attribute(default=True)
+    save_medians: bool = attribute(default=False)
     write_medians: bool = attribute(default=False)
     write_zero_dm_medians: bool = attribute(default=False)
     static_filter = attribute(init=False)
