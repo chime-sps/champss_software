@@ -380,16 +380,14 @@ class PowerSpectraStack:
             ).flatten()
             del h5f.attrs["observation ids"]
             h5f.attrs["observation ids"] = list(new_obs_ids)
-            
 
             if type(pspec.rn_medians) != np.ndarray:
-                    log.error("This power spectrum does not have rednoise info saved.")
+                log.error("This power spectrum does not have rednoise info saved.")
 
             elif "rn medians" not in h5f.keys():
                 log.error("This h5f file does not have rednoise info saved.")
 
             else:
-
                 h5f_rn_medians = h5f["rn medians"]
                 h5f_rn_scales = h5f["rn scales"]
                 # set guard value as -1 to pad
@@ -489,17 +487,17 @@ class PowerSpectraStack:
                 pspec.power_spectra[i] += h5f["power spectra"][(i,)]
             log.info(f"Updating the new {self.mode} power spectra information")
             pspec.num_days += h5f.attrs["number of days"]
-           
-            h5f_rn_medians = h5f["rn medians"]
-            h5f_rn_scales = h5f["rn scales"]
 
             if type(pspec.rn_medians) != np.ndarray:
-                    log.error("This power spectrum does not have rednoise info saved.")
-              
+                log.error("This power spectrum does not have rednoise info saved.")
+
             elif "rn medians" not in h5f.keys():
                 log.error("This h5f file does not have rednoise info saved.")
 
             else:
+                h5f_rn_medians = h5f["rn medians"]
+                h5f_rn_scales = h5f["rn scales"]
+
                 # set guard value as -1 to pad
                 ndays = len(pspec.rn_medians) + len(h5f_rn_medians)
                 stacked_rn_medians = -1 * np.ones(
