@@ -20,7 +20,7 @@ SUBREPO_URLS=(
     "https://github.com/chime-sps/fdmt.git#main"
     "https://github.com/chime-sps/folding.git#main"
     "https://github.com/chime-sps/multi-pointing.git#main"
-    "https://github.com/chime-sps/pipeline_batch_db.git#main"
+    "https://github.com/chime-sps/sps_pipeline.git#main"
     "https://github.com/chime-sps/ps-processes.git#main"
     "https://github.com/chime-sps/rfi-mitigation.git#main"
     "https://github.com/chime-sps/spshuff.git#apr_slow_pulsar"

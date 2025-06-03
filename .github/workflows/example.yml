@@ -1,13 +1,22 @@
 name: Example
 
 on:
+  # Trigger this workflow when a commit is pushed to <your_branch_name>
   # push:
   #  branches:
   #    - <your_branch_name>
 
+  # Trigger this workflow when a pull request is opened/updated and targeting the main branch
   # pull_request:
   #   branches:
   #     - main
+
+  # This allows you to run this GitHub Actions Workflow after another specified workflow is completed, based on the Name attribute:
+  # workflow_run:
+  #   workflows:
+  #     - Continuous Integration
+  #   types:
+  #     - completed
 
   # This allows manual dispatch, through the "Actions" tab in your GitHub repository, or through the CLI:
   # gh workflow run .github/workflows/example.yml --ref <your_branch> --field run_job_1=true --field run_job_2=true
@@ -20,15 +29,7 @@ on:
         type: boolean
         default: false
 
-  # This allows use to re-use this GitHub Actions Workflow in other workflows:
-  # name: EXAMPLE
-  # jobs:
-  #   my_job_testing_reuse:
-  #     runs-on: sps-archiver1
-  #     uses: chime-sps/champss-software/.github/workflows/example.yml@main
-  #     with:
-  #       run_job_1: true
-  #       run_job_2: true
+  # This allows you to re-use this GitHub Actions Workflow in other workflows:
   workflow_call:
     inputs:
       run_job_1:
@@ -38,12 +39,16 @@ on:
         type: boolean
         default: false
 
-  # This allows you to run this GitHub Actions Workflow when another specified workflow is completed:
-  # workflow_run:
-  #   workflows:
-  #     - Continuous Integration
-  #   types:
-  #     - completed
+  # name: EXAMPLE
+  # jobs:
+  #   my_job_testing_reuse:
+  #     runs-on: sps-archiver1
+  #     uses: ./.github/workflows/example.yml@main -> if on this repository
+  #     uses: champss_software/.github/workflows/example.yml@main -> if on another repository
+  #     secrets: inherit
+  #     with:
+  #       run_job_1: true
+  #       run_job_2: true
 
 jobs:
   job1:

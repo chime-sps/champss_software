@@ -115,6 +115,15 @@ class PowerSpectraCreation:
 
     num_threads: int
         The number of threads to run the parallel processing of the FFT process. Default = 8
+
+    save_medians: bool
+        Whether to save the rednoise information to the power spectrum.
+
+    write_medians: bool
+        Whether to write the rednoise information to a separate npz file.
+
+    write_zero_dm_medians: bool
+        Whether to write the zero DM rednoise information to an npz file.
     """
 
     tsamp = attribute(validator=instance_of(float), default=TSAMP)
@@ -142,6 +151,9 @@ class PowerSpectraCreation:
     nbit = attribute(validator=instance_of(int), default=32)
     num_threads = attribute(validator=instance_of(int), default=8)
     mp_chunk_size: bool = attribute(default=10)
+    save_medians: bool = attribute(default=False)
+    write_medians: bool = attribute(default=False)
+    write_zero_dm_medians: bool = attribute(default=False)
     static_filter = attribute(init=False)
     dynamic_filter = attribute(init=False)
 
@@ -180,7 +192,7 @@ class PowerSpectraCreation:
         if self.barycentring_mode == "Topocentric" and self.barycentric_cleaning:
             self.barycentric_cleaning = False
 
-    def transform(self, dedisp_time_series):
+    def transform(self, dedisp_time_series, write_medians=False):
         """
         Function to perform the FFT and creating the normalised power spectrum.
 
@@ -189,6 +201,8 @@ class PowerSpectraCreation:
         dedisp_time_series: DedispersedTimeSeries
             The input DedispersedTimeSeries class which have the data and
             the metadata to process
+        write_medians: bool
+            Whether to write the rednoise information to a npz file.
 
         Returns
         -------
@@ -262,7 +276,7 @@ class PowerSpectraCreation:
                 )
             ]
 
-            pool.starmap(
+            median_info = pool.starmap(
                 partial(
                     self.transform_data,
                     normalise=self.normalise,
@@ -283,6 +297,38 @@ class PowerSpectraCreation:
             pool.close()
             pool.join()
             log.info("Power spectra creation successful.")
+
+            if self.save_medians:
+                median_dm_indices = []
+                medians = []
+                scales = []
+
+                for info in median_info:
+                    median_dm_indices.extend(info[0])
+                    medians.extend(info[1])
+                    scales.extend(info[2])
+
+                medians = np.asarray(medians)
+                median_dm_indices = np.asarray(median_dm_indices)
+                scales = np.asarray(scales)
+
+                rn_medians = np.ones((1, medians.shape[0], medians.shape[1]))
+                rn_medians[0] = medians
+                rn_dm_indices = np.ones((1, len(median_dm_indices)))
+                rn_dm_indices[0] = median_dm_indices
+                # note that scales are saved iteratively over DM but are identical at each DM
+                # so we only need one row of scales
+                rn_scales = np.ones((1, scales.shape[1]))
+                rn_scales[0] = scales[0]
+
+            if self.write_medians:
+                medians_path = f"{os.path.abspath(observation.datapath)}/medians.npz"
+                log.info(f"Saving rednoise information to {medians_path}.")
+                np.savez(
+                    medians_path,
+                    medians=medians,
+                    scales=scales,
+                )
             # update the observation database
             if self.update_db:
                 self.update_database(
@@ -298,19 +344,39 @@ class PowerSpectraCreation:
         datetimes = Time(dedisp_time_series.start_mjd, format="mjd").datetime.replace(
             tzinfo=pytz.utc
         )
-        return PowerSpectra(
-            power_spectra=power_spectra,
-            dms=dedisp_time_series.dms,
-            freq_labels=freq_labels,
-            ra=dedisp_time_series.ra,
-            dec=dedisp_time_series.dec,
-            datetimes=[datetimes],
-            num_days=1,
-            beta=beta,
-            bad_freq_indices=[bad_freq_indices],
-            obs_id=[dedisp_time_series.obs_id],
-            power_spectra_shared=power_spectra_shared,
-        )
+
+        if self.save_medians:
+            return PowerSpectra(
+                power_spectra=power_spectra,
+                dms=dedisp_time_series.dms,
+                freq_labels=freq_labels,
+                ra=dedisp_time_series.ra,
+                dec=dedisp_time_series.dec,
+                datetimes=[datetimes],
+                num_days=1,
+                beta=beta,
+                bad_freq_indices=[bad_freq_indices],
+                obs_id=[dedisp_time_series.obs_id],
+                power_spectra_shared=power_spectra_shared,
+                rn_medians=rn_medians,
+                rn_scales=rn_scales,
+                rn_dm_indices=rn_dm_indices,
+            )
+
+        else:
+            return PowerSpectra(
+                power_spectra=power_spectra,
+                dms=dedisp_time_series.dms,
+                freq_labels=freq_labels,
+                ra=dedisp_time_series.ra,
+                dec=dedisp_time_series.dec,
+                datetimes=[datetimes],
+                num_days=1,
+                beta=beta,
+                bad_freq_indices=[bad_freq_indices],
+                obs_id=[dedisp_time_series.obs_id],
+                power_spectra_shared=power_spectra_shared,
+            )
 
     @staticmethod
     def transform_data(
@@ -387,6 +453,10 @@ class PowerSpectraCreation:
         power_spectra = np.ndarray(
             target_shape, dtype=f"float{nbit}", buffer=shared_spectra.buf
         )
+
+        all_medians = []
+        all_scales = []
+
         for dm_index, dts in zip(dm_indices, dm_series_list):
             if normalise:
                 ts_mean = np.mean(dts)
@@ -427,9 +497,12 @@ class PowerSpectraCreation:
                 power_spectrum[bad_freq_indices] = np.nan
             if remove_rednoise:
                 log.debug("Normalising power spectrum with rednoise removal")
-                power_spectrum[1:] = rednoise_normalise(
+                power_spectrum[1:], medians, scale = rednoise_normalise(
                     power_spectrum[1:], **rednoise_config
                 )
+                all_medians.append(medians)
+                all_scales.append(scale)
+
             else:
                 log.debug("Normalising power spectrum")
                 power_spectrum[1:] = power_spectrum[1:] / (
@@ -445,6 +518,8 @@ class PowerSpectraCreation:
 
             power_spectra[dm_index, :] = power_spectrum
         shared_spectra.close()
+
+        return [dm_indices, all_medians, all_scales]
 
     def get_pointing_id_from_observation_id(self, obs_id):
         """Get the corresponding pointing ID from the observation ID."""
@@ -737,7 +812,7 @@ class PowerSpectraCreation:
             zero_dm_ts = self.zeropad_ts(zero_dm_ts, self.padded_length, self.normalise)
             zero_dm_spectrum = self.run_rfft(zero_dm_ts)
             zero_dm_power_spectrum = np.abs(zero_dm_spectrum) ** 2
-            zero_dm_power_spectrum[1:] = rednoise_normalise(
+            zero_dm_power_spectrum[1:], medians, scales = rednoise_normalise(
                 zero_dm_power_spectrum[1:], **self.rednoise_config
             )
             if self.barycentring_mode == "Fourier" and self.barycentric_cleaning:
@@ -758,7 +833,16 @@ class PowerSpectraCreation:
                 barycentric_cleaning=self.barycentric_cleaning,
                 beta=beta,
             )
-
+            if self.write_zero_dm_medians:
+                medians_path = (
+                    f"{os.path.abspath(observation.datapath)}/zero_dm_medians.npy"
+                )
+                log.info(f"Saving zero-DM medians to {medians_path}.")
+                np.savez(
+                    medians_path,
+                    medians=medians,
+                    scales=scales,
+                )
             # if self.update_db == False, birdies are not recorded into database
             if self.find_common_birdies and self.update_db:
                 log.info(

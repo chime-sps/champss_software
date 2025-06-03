@@ -4,16 +4,13 @@ import os
 
 import numpy as np
 import scipy.stats as stats
-from matplotlib import pyplot as plt
-from scipy.fft import fft, rfft
+from scipy.fft import rfft
 from scipy.special import chdtri
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP
 from sps_common.interfaces.utilities import sigma_sum_powers
-from sps_databases import db_api
 
 log = logging.getLogger(__name__)
 
-import numpy as np
 import numpy.random as rand
 
 phis = np.linspace(0, 1, 1024)
@@ -55,7 +52,7 @@ def generate_pulse(noise=False):
             noise: bool
                 whether or not the pulse should be distorted by white noise
     """
-    u = rand.choice(np.linspace(0.01, 0.99, 1000))
+    u = rand.uniform(0.01, 0.99, 1000)
     # inverse sampling theorem for an exponential distribution with lambda = 1/15
     gamma = -15 * np.log(1 - u) / 2 / 360
     prof = lorentzian(phis, gamma)
@@ -138,6 +135,12 @@ def x_to_chi2(x, df):
         return chi2 / 2
 
 
+def get_median(xlow, xhigh, ylow, yhigh, x):
+    m = (yhigh - ylow) / (xhigh - xlow)
+
+    return m * (x - xlow) + ylow
+
+
 class Injection:
     """This class allows pulse injection."""
 
@@ -171,12 +174,10 @@ class Injection:
         """Return the deltaDM where the dispersion smearing is one pulse period in
         duration.
         """
-        deltaDM = (
-            1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
-        )
+        deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
 
-    def sigma_to_power(self, n_harm):
+    def sigma_to_power(self, n_harm, df):
         """
         This function converts an input Gaussian sigma to an approximately equivalent
         power. In order to do so, we have to estimate the number of summed harmonics in
@@ -304,7 +305,45 @@ class Injection:
             harmonics[i * N : (i + 1) * N] = np.abs(amplitude) ** 2
 
         return bins, harmonics
+    
+    def get_rednoise_normalisation(self, inj_bins, inj_dms):
+        """
+        This function retrieves the rednoise information from the power spectrum and
+        scales the injections by the median power at each frequency location.
 
+        Inputs:
+        -------
+            inj_bins (arr): the frequency bins at which the injections occur
+            inj_dms (arr) : the dm bins at which the injections occur
+
+        Returns:
+        --------
+            normalizer (arr): the scaling factor for each injection bin
+        """
+        rn_scales = self.pspec_obj.rn_scales
+        rn_medians = self.pspec_obj.rn_medians
+        normalizer = np.zeros((len(inj_dms), len(inj_bins)))
+
+        for day in range(self.pspec_obj.num_days):
+            day_normalizer = (
+                np.ones((len(inj_dms), len(inj_bins))) / self.pspec_obj.num_days / np.log(2)
+            )
+            # day_medians = rn_medians[day]
+            day_medians = (
+                rn_medians[day] / np.min(rn_medians[day], axis=1)[:, np.newaxis]
+            )
+            day_scales = rn_scales[day]
+
+            scale_sum = np.zeros(len(day_scales) + 1)
+            scale_sum[1:] = np.cumsum(day_scales)
+            scale_sum[0] = 0
+            mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype("int")
+            for i, inj_dm in enumerate(inj_dms):
+                rn_interpolated = np.interp(inj_bins, mid_bins, day_medians[inj_dm])
+                day_normalizer[i] /= rn_interpolated
+            normalizer += day_normalizer
+        return normalizer
+    
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
@@ -319,6 +358,7 @@ class Injection:
                 dm_indices (ndarray) : dm bins of the injection
                 used_nharm (int) : Number of harmonics that will be injected
         """
+
         # estimate sigma
         true_dm_injection_index = self.true_dm_trial - dm_indices[0]
         bins_reshaped = bins.reshape(used_nharm, -1)
@@ -400,7 +440,7 @@ class Injection:
         df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
-        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm)
+        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm, df)
         used_nharm = len(scaled_prof_fft)
         log.info(f"Injecting {n_harm} harmonics.")
 
@@ -415,7 +455,10 @@ class Injection:
             harms.append(harm)
 
         harms = np.asarray(harms)
-
+        harms *= self.get_rednoise_normalisation(
+            bins,
+            dm_indices,
+        )
         # estimate sigma
         (
             harms,
@@ -596,6 +639,7 @@ def main(
         injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
         injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
         injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
+
         if isinstance(injection_dict["profile"], (np.ndarray, list)):
             injection_dict["profile"] = "custom_profile"
 
