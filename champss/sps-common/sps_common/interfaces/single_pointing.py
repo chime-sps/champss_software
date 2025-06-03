@@ -13,17 +13,10 @@ import numpy as np
 import yaml
 from attr import attrib, attrs, converters
 from attr.validators import deep_iterable, instance_of
-from sps_common.constants import (
-    MAX_SEARCH_DM,
-    MAX_SEARCH_FREQ,
-    MIN_SEARCH_DM,
-    MIN_SEARCH_FREQ,
-)
 from sps_common.conversion import convert_ra_dec
 from sps_common.interfaces.utilities import (
     filter_class_dict,
     sigma_sum_powers,
-    within_range,
 )
 from sps_common.plotting import plot_candidate
 
@@ -192,21 +185,21 @@ class SinglePointingCandidate:
     # they are attributes here too because multi-pointing then uses the
     # `SinglePointingCandidate`s outside of the collection
 
-    @freq.validator
-    def _check_freq(self, attribute, value):
-        if not within_range(value, MIN_SEARCH_FREQ, MAX_SEARCH_FREQ):
-            raise ValueError(
-                f"Frequency attribute ({attribute.name}={value}) outside range "
-                f"({MIN_SEARCH_FREQ}, {MAX_SEARCH_FREQ}] Hz"
-            )
+    # @freq.validator
+    # def _check_freq(self, attribute, value):
+    #     if not within_range(value, MIN_SEARCH_FREQ, MAX_SEARCH_FREQ):
+    #         raise ValueError(
+    #             f"Frequency attribute ({attribute.name}={value}) outside range "
+    #             f"({MIN_SEARCH_FREQ}, {MAX_SEARCH_FREQ}] Hz"
+    #         )
 
-    @dm.validator
-    def _check_dm(self, attribute, value):
-        if not within_range(value, MIN_SEARCH_DM, MAX_SEARCH_DM):
-            raise ValueError(
-                f"DM attribute ({attribute.name}={value}) outside range "
-                f"[{MIN_SEARCH_DM}, {MAX_SEARCH_DM}] pc/cc"
-            )
+    # @dm.validator
+    # def _check_dm(self, attribute, value):
+    #     if not within_range(value, MIN_SEARCH_DM, MAX_SEARCH_DM):
+    #         raise ValueError(
+    #             f"DM attribute ({attribute.name}={value}) outside range "
+    #             f"[{MIN_SEARCH_DM}, {MAX_SEARCH_DM}] pc/cc"
+    #         )
 
     @sigma.validator
     def _check_sigma(self, attribute, value):

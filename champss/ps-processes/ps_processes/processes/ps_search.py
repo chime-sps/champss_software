@@ -13,7 +13,7 @@ from attr.validators import instance_of
 from ps_processes.processes import ps_inject
 from ps_processes.processes.clustering import Clusterer
 from rfi_mitigation.cleaners.periodic import StaticPeriodicFilter
-from sps_common.constants import MIN_SEARCH_FREQ, TSAMP
+from sps_common.constants import MIN_SEARCH_FREQ
 from sps_common.interfaces import PowerSpectraDetectionClusters, SearchAlgorithm
 from sps_common.interfaces.utilities import (
     harmonic_sum,
@@ -621,7 +621,7 @@ class PowerSpectraSearch:
                     # skipping candidates with period less than 10 time samples
 
                     if (
-                        detection_freq <= skip_n_bins * MIN_SEARCH_FREQ
+                        detection_freq <= freq_labels[skip_n_bins]
                         or detection_freq > cutoff_frequency
                     ):
                         continue

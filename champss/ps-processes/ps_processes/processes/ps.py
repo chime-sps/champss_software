@@ -5,6 +5,7 @@ import os
 import time
 from functools import partial
 from multiprocessing import Pool, shared_memory
+import multiprocessing
 
 import numpy as np
 import pyfftw
@@ -196,6 +197,7 @@ class PowerSpectraCreation:
         pspec: PowerSpectra
             The PowerSpectra class as defined in the interface
         """
+        multiprocessing.set_start_method("forkserver", force=True)
         pool = Pool(self.num_threads)
         if self.use_db:
             observation = db_api.get_observation(dedisp_time_series.obs_id)
