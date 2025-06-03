@@ -509,8 +509,8 @@ class SinglePointingCandidateCollection:
         # Test if split_cands argument was used when writing the file
         # Reading the full file will be slower with that argument but much faster
         # when retrieving individual candidates
-        cand_count_entry = data.get("cand_count", 0)
-        if cand_count_entry:
+        cand_count_entry = data.get("cand_count", None)
+        if cand_count_entry is not None:
             cand_list = []
             for index in range(cand_count_entry):
                 cand_dict = data[f"candidate_{index}"].item()
