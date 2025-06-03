@@ -4,6 +4,7 @@ import click
 import numpy as np
 import pandas as pd
 from ps_processes.processes import ps_inject
+import yaml
 
 
 @click.command()
@@ -92,10 +93,12 @@ def main(n_injections, file_name, file_type, injection_path, focus):
     file_name = os.getcwd() + "/" + file_name
     if file_type == "pickle":
         df = pd.DataFrame(data)
-        # move profile to last pos, for easier reading of csv
-        cols = df.columns
-        cols = cols[cols != "profile"].append(pd.Index(["profile"]))
-        df = df[cols]
+        # Previously profile was moved to the last column because the output was written to csv
+        # But that also had loading issues, so it is not done currently
+        # # move profile to last pos, for easier reading of csv
+        # cols = df.columns
+        # cols = cols[cols != "profile"].append(pd.Index(["profile"]))
+        # df = df[cols]
         df.to_pickle(file_name)
     else:
         stream = open(file_name, "w")
