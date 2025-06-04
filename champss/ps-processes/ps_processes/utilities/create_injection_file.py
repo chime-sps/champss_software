@@ -66,7 +66,7 @@ def main(n_injections, file_name, file_type, injection_path, focus):
     else:
         sigmas = np.random.uniform(6, 20, n_injections)
         frequencies = np.random.uniform(0.1, 10, n_injections)
-        dms = np.random.uniform(3, 500, n_injections)
+        dms = np.random.uniform(3, 200, n_injections)
 
     data = []
     print(f"Creating {n_injections} fake pulsars into {injection_path}")
