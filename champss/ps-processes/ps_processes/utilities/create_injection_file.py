@@ -2,9 +2,9 @@ import os
 
 import click
 import numpy as np
-import numpy.random as rand
-import yaml
+import pandas as pd
 from ps_processes.processes import ps_inject
+import yaml
 
 
 @click.command()
@@ -12,9 +12,19 @@ from ps_processes.processes import ps_inject
 @click.option(
     "--file-name",
     "--fn",
-    default="test_injections.yml",
+    default="test_injections.pickle",
     type=str,
     help="Name of target file",
+)
+@click.option(
+    "--file-type",
+    "--ft",
+    type=click.Choice(["pickle", "yaml"], case_sensitive=False),
+    default="pickle",
+    help=(
+        "Output type. Possible: pickle, yaml. Pickle is a pickled pd.DataFrame. yaml"
+        " has bad performance due to the profile array"
+    ),
 )
 @click.option(
     "--injection-path",
@@ -27,10 +37,10 @@ from ps_processes.processes import ps_inject
     default=None,
     help="Iterates over selected field (sigma, frequency, or DM).",
 )
-def main(n_injections, file_name, injection_path, focus):
+def main(n_injections, file_name, file_type, injection_path, focus):
     if injection_path != "random":
         load_profs = np.load(injection_path)
-        n_injections = len(load_profs)
+        # n_injections = len(load_profs)
 
     if focus == "frequency" or focus == "freq":
         # frequencies = np.logspace(1.8, 2.3, n_injections)
@@ -54,8 +64,8 @@ def main(n_injections, file_name, injection_path, focus):
         sigmas = 11.28372911 * np.ones(n_injections)
 
     else:
-        sigmas = np.random.uniform(10, 20, n_injections)
-        frequencies = np.random.uniform(0.1, 50, n_injections)
+        sigmas = np.random.uniform(6, 20, n_injections)
+        frequencies = np.random.uniform(0.1, 10, n_injections)
         dms = np.random.uniform(3, 200, n_injections)
 
     data = []
@@ -75,13 +85,24 @@ def main(n_injections, file_name, injection_path, focus):
             n_dict["profile"] = ps_inject.generate_pulse().tolist()
 
         else:
-            n_dict["profile"] = load_profs[i].tolist()
+            chosen_profile = np.random.choice(load_profs.shape[0])
+            n_dict["profile"] = load_profs[chosen_profile].tolist()
 
         data.append(n_dict)
 
     file_name = os.getcwd() + "/" + file_name
-    stream = open(file_name, "w")
-    yaml.dump(data, stream)
+    if file_type == "pickle":
+        df = pd.DataFrame(data)
+        # Previously profile was moved to the last column because the output was written to csv
+        # But that also had loading issues, so it is not done currently
+        # # move profile to last pos, for easier reading of csv
+        # cols = df.columns
+        # cols = cols[cols != "profile"].append(pd.Index(["profile"]))
+        # df = df[cols]
+        df.to_pickle(file_name)
+    else:
+        stream = open(file_name, "w")
+        yaml.dump(data, stream)
 
 
 if __name__ == "__main__":
