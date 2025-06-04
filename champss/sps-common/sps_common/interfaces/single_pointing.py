@@ -216,10 +216,10 @@ class SinglePointingCandidate:
 
     @dec.validator
     def _check_dec(self, attribute, value):
-        if not -30.0 <= value < 90.0:
+        if not -90.0 <= value < 90.0:
             raise ValueError(
                 f"Declination attribute ({attribute.name}={value}) outside range "
-                "[-30, 90) degrees"
+                "[-90, 90) degrees"
             )
 
     @pspec_freq_resolution.validator
