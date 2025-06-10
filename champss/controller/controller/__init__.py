@@ -290,9 +290,14 @@ def cli(
 @click.option("--logtofile", is_flag=True, help="Enable file logging.")
 @click.option(
     "--basepath",
-    type=str,
-    default="/sps-archiver2/raw/",
+    default=[
+        "/sps-archiver2/raw/",
+        "/sps-archiver3/raw/",
+        "/sps-archiver4/raw/",
+        "/sps-archiver5/raw/",
+    ],
     help="Path on L1 cf nodes to a CHAMPSS mount.",
+    multiple=True,
 )
 @click.option(
     "--batchsize",
@@ -324,11 +329,12 @@ def cli_batched(
     try:
         for count, batch in enumerate(batched_rows):
             batch_str = [str(i) for i in batch]
+            current_basepath = basepath[count % len(basepath)]
             command_list = [
                 "spsctl",
                 *batch_str,
                 "--basepath",
-                basepath,
+                current_basepath,
                 "--loglevel",
                 loglevel,
                 "--nocleanup",  # Disabling cleanup makes it easier for wrapper to cleanup
