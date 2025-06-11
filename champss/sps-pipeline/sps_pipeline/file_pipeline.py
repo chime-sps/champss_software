@@ -6,6 +6,8 @@ import multiprocessing
 import click
 import logging
 import os
+from astropy.coordinates import EarthLocation
+import astropy.units as u
 
 
 log_stream = logging.StreamHandler()
@@ -100,6 +102,12 @@ def run_file_pipeline(
     observation = your.Your(obs_file)
     obs_header = observation.your_header
     log.info(obs_header)
+
+    telescope_location = EarthLocation(
+        x=float(observation.header["ANT_X"]) * u.m,
+        y=float(observation.header["ANT_Y"]) * u.m,
+        z=float(observation.header["ANT_Z"]) * u.m,
+    )
     obs_length = obs_header.nspectra
     obs_spectrum = observation.get_data(0, obs_length).T
 
@@ -181,6 +189,7 @@ def run_file_pipeline(
         run_static_filter=False,
         run_dynamic_filter=False,
         nbit=spectra_nbit,
+        telescope_location=telescope_location,
     )
 
     power_spectra = psc_pipeline.transform(dts)

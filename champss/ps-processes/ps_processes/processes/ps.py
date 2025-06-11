@@ -22,6 +22,7 @@ from sps_common.barycenter import (
     bary_from_topo_freq,
     barycenter_timeseries,
     get_barycentric_correction,
+    CHIME_LOCATION,
 )
 from sps_common.constants import SEC_PER_DAY, TSAMP
 from sps_common.conversion import convert_ra_dec
@@ -144,6 +145,7 @@ class PowerSpectraCreation:
     nbit = attribute(validator=instance_of(int), default=32)
     num_threads = attribute(validator=instance_of(int), default=8)
     mp_chunk_size: bool = attribute(default=10)
+    telescope_location = attribute(default=CHIME_LOCATION)
     static_filter = attribute(init=False)
     dynamic_filter = attribute(init=False)
 
@@ -511,6 +513,7 @@ class PowerSpectraCreation:
             ras,
             decs,
             start_mjd + (float(dedisp_ts_len * self.tsamp / 2) / SEC_PER_DAY),
+            location=self.telescope_location,
         )
         bary_corr_end = time.time()
         log.debug(
