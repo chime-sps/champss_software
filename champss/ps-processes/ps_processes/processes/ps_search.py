@@ -3,10 +3,11 @@
 import logging
 import time
 from functools import partial
+import yaml
 from multiprocessing import Pool, shared_memory, set_start_method
 
 import numpy as np
-import yaml
+import pandas as pd
 from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
@@ -139,6 +140,8 @@ class PowerSpectraSearch:
     use_nsum_per_bin: bool = attribute(default=False)
     mp_chunk_size: bool = attribute(default=10)
     skip_first_n_bins: int = attribute(default=2)
+    injection_overlap_threshold: bool = attribute(default=0.5)
+    injection_dm_threshold: int = attribute(default=10.0)
     # cluster_dm_cut: bool = attribute(default=-1)
     known_source_threshold: float = attribute(default=np.inf)
     filter_birdies: bool = attribute(default=False)
@@ -247,29 +250,35 @@ class PowerSpectraSearch:
                 injection_dicts = injection_dict
             else:
                 injection_dicts = []
-                with open(injection_path) as file:
-                    injection_list = yaml.load(file, Loader=yaml.Loader)
-                    # injection_list are the initial injection parameters
-                    # injection_dicts are final injection parameters
-                    # Some entries from injection_list may create multiple injection or none
-                    if len(injection_indices) == 0:
-                        injection_indices = np.arange(len(injection_list))
-                    for injection_index in injection_indices:
-                        log.info(f"DM: {injection_list[injection_index]['DM']}")
-                        log.info(f"sigma: {injection_list[injection_index]['sigma']}")
-                        log.info(
-                            f"frequency: {injection_list[injection_index]['frequency']}"
-                        )
+                try:
+                    with open(injection_path) as file:
+                        injection_list = yaml.safe_load(file)
+                    injection_df = pd.DataFrame(injection_list)
+                    print("zo")
+                except:
+                    injection_df = pd.read_pickle(injection_path)
+                # injection_df are the initial injection parameters
+                # injection_dicts are final injection parameters
+                # Some entries from injection_list may create multiple injection or none
+                if len(injection_indices) == 0:
+                    injection_indices = np.arange(len(injection_df))
+                for injection_index in injection_indices:
+                    log.info(f"DM: {injection_df.iloc[injection_index]['DM']}")
+                    log.info(f"sigma: {injection_df.iloc[injection_index]['sigma']}")
+                    log.info(
+                        f"frequency: {injection_df.iloc[injection_index]['frequency']}"
+                    )
 
-                        injection_dict = injection_list[injection_index]
+                    # injection_dict = injection_list[injection_index]
+                    injection_dict = injection_df.iloc[injection_index].to_dict()
 
-                        injection_dict = ps_inject.main(
-                            pspec,
-                            self.full_harm_bins,
-                            injection_dict,
-                            scale_injections=scale_injections,
-                        )
-                        injection_dicts.extend(injection_dict)
+                    injection_dict = ps_inject.main(
+                        pspec,
+                        self.full_harm_bins,
+                        injection_dict,
+                        scale_injections=scale_injections,
+                    )
+                    injection_dicts.extend(injection_dict)
             for injection_index, injection_dict in enumerate(injection_dicts):
                 injection_dict["injection_index"] = injection_index
         else:
@@ -423,6 +432,8 @@ class PowerSpectraSearch:
                 injection_dicts,
                 cutoff_frequency,
                 self.skip_first_n_bins,
+                self.injection_overlap_threshold,
+                self.injection_dm_threshold,
             ),
             zip(dm_indices, dm_split),
         )
@@ -519,6 +530,8 @@ class PowerSpectraSearch:
         injection_dicts,
         cutoff_frequency,
         skip_n_bins,
+        injection_overlap_threshold,
+        injection_dm_threshold,
         dm_indices,
         dms,
     ):
@@ -667,7 +680,12 @@ class PowerSpectraSearch:
                             injection_overlap = np.intersect1d(
                                 sorted_harm_bins, injected_bins
                             )
-                            if injection_overlap.size != 0:
+                            if (
+                                injection_overlap.size / len(sorted_harm_bins)
+                                > injection_overlap_threshold
+                                and np.abs(injection_dict["DM"] - dm)
+                                < injection_dm_threshold
+                            ):
                                 injected_index = list_index
 
                     if replace_last:
