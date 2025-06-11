@@ -203,6 +203,32 @@ class Observation:
         ),
         on_setattr=validate,  # type: ignore
     )
+    dm0_rn_file = attrib(
+        default=None,
+        converter=converters.optional(str),
+        on_setattr=convert,  # type: ignore
+    )
+    dm0_rn_medians = attrib(
+        default=None,
+        converter=converters.optional(np.asarray),
+    )
+    dm0_rn_scales = attrib(
+        default=None,
+        converter=converters.optional(np.asarray),
+    )
+    rn_file = attrib(
+        default=None,
+        converter=converters.optional(str),
+        on_setattr=convert,  # type: ignore
+    )
+    rn_medians = attrib(
+        default=None,
+        converter=converters.optional(np.asarray),
+    )
+    rn_scales = attrib(
+        default=None,
+        converter=converters.optional(np.asarray),
+    )
     mean_power = attrib(
         default=None,
         converter=converters.optional(float),
@@ -287,17 +313,35 @@ class Observation:
         return self._id
 
     @classmethod
-    def from_db(cls, doc):
+    def from_db(cls, doc, load_birdies=True, load_rn=True):
         """Create an `Observation` instance from a MongoDB document."""
         try:
             doc["status"] = ObservationStatus(doc["status"])
             birdie_file = doc.get("birdie_file", None)
-            if birdie_file is not None:
+            if birdie_file is not None and load_birdies:
                 try:
                     birdie_info = np.load(birdie_file)
                     doc.update(birdie_info.items())
                 except FileNotFoundError as e:
                     log.warning(f"Could not load birdie_file at {birdie_file}.")
+                    log.warning(e)
+            rn_file = doc.get("rn_file", None)
+            if rn_file is not None and load_rn:
+                try:
+                    rn_arrays = np.load(rn_file)
+                    doc["rn_medians"] = rn_arrays["medians"]
+                    doc["rn_scales"] = rn_arrays["scales"]
+                except FileNotFoundError as e:
+                    log.warning(f"Could not load dm0 red noise file at {rn_file}.")
+                    log.warning(e)
+            dm0_rn_file = doc.get("dm0_rn_file", None)
+            if dm0_rn_file is not None and load_rn:
+                try:
+                    dm0_rn_arrays = np.load(dm0_rn_file)
+                    doc["dm0_rn_medians"] = dm0_rn_arrays["medians"]
+                    doc["dm0_rn_scales"] = dm0_rn_arrays["scales"]
+                except FileNotFoundError as e:
+                    log.warning(f"Could not load dm0 red noise file at {dm0_rn_file}.")
                     log.warning(e)
             filtered_doc = filter_class_dict(cls, doc)
 
