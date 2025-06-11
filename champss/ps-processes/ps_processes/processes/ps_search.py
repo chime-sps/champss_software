@@ -3,8 +3,8 @@
 import logging
 import time
 from functools import partial
-from multiprocessing import Pool, shared_memory
 import yaml
+from multiprocessing import Pool, shared_memory, set_start_method
 
 import numpy as np
 import pandas as pd
@@ -174,10 +174,10 @@ class PowerSpectraSearch:
     def search(
         self,
         pspec,
-        injection_path,
-        injection_indices,
-        only_injections,
-        cutoff_frequency,
+        injection_path=None,
+        injection_indices=[],
+        only_injections=False,
+        cutoff_frequency=100,
         scale_injections=False,
     ):
         """
@@ -216,6 +216,8 @@ class PowerSpectraSearch:
             PowerSpectraDetectionClusters object with the properties of all the
             detections clusters from the pointing.
         """
+        # Spawn multiprocessing method does not work nicely with shared arrays
+        set_start_method("forkserver", force=True)
 
         ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         # compute harmonic bins based on power spectra properties
@@ -633,12 +635,10 @@ class PowerSpectraSearch:
                     replace_last = False
                     detection_freq = freq_labels[idx] / harm
                     # skipping candidates with period less than 10 time samples
-
-                    if (
-                        detection_freq <= skip_n_bins * MIN_SEARCH_FREQ
-                        or detection_freq > cutoff_frequency
-                    ):
+                    if detection_freq <= freq_labels[skip_n_bins]:
                         continue
+                    if detection_freq > cutoff_frequency:
+                        break
 
                     if sigmas is None:
                         if type(used_nsum) == np.ndarray:

@@ -260,7 +260,14 @@ class PowerSpectra:
                 f" {type(value)}"
             )
         for val in value:
-            if len(val) > 0:
+            # try:
+            #     length = len(val)
+            # except TypeError:
+            #     # h5py empty has no len
+            #     length = val.size
+
+            # if length:
+            if len(val):
                 if type(val) == list:
                     if type(val[0]) != int:
                         raise AttributeError(
@@ -912,10 +919,10 @@ class PowerSpectraDetectionClusters:
 
     @dec.validator
     def _check_dec(self, attribute, value):
-        if not -30.0 <= value < 90.0:
+        if not -90.0 <= value < 90.0:
             raise ValueError(
                 f"Declination attribute ({attribute.name}={value}) outside range "
-                "[-30, 90) degrees"
+                "[-90, 90) degrees"
             )
 
     @threshold.validator

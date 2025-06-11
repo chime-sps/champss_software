@@ -530,7 +530,11 @@ class PowerSpectraStack:
             ]
             bad_freq_indices = []
             for key in bad_freq_arrays:
-                bad_freq_indices.append(h5f[key][()])
+                bad_freq_entry = h5f[key][()]
+                if isinstance(bad_freq_entry, h5py._hl.base.Empty):
+                    # Convert h5py empty to empty list
+                    bad_freq_entry = []
+                bad_freq_indices.append(bad_freq_entry)
             bad_freq_indices.extend(pspec.bad_freq_indices)
             pspec.bad_freq_indices = bad_freq_indices
             new_datetimes = [

@@ -5,6 +5,7 @@ import os
 import time
 from functools import partial
 from multiprocessing import Pool, shared_memory
+import multiprocessing
 
 import numpy as np
 import pyfftw
@@ -21,6 +22,7 @@ from sps_common.barycenter import (
     bary_from_topo_freq,
     barycenter_timeseries,
     get_barycentric_correction,
+    CHIME_LOCATION,
 )
 from sps_common.constants import SEC_PER_DAY, TSAMP
 from sps_common.conversion import convert_ra_dec
@@ -147,6 +149,7 @@ class PowerSpectraCreation:
     rednoise_config = attribute(
         validator=instance_of(dict), default=dict(b0=10, bmax=100000)
     )
+    use_db = attribute(validator=instance_of(bool), default=True)
     update_db = attribute(validator=instance_of(bool), default=True)
     nbit = attribute(validator=instance_of(int), default=32)
     num_threads = attribute(validator=instance_of(int), default=8)
@@ -154,6 +157,7 @@ class PowerSpectraCreation:
     save_medians: bool = attribute(default=False)
     write_medians: bool = attribute(default=False)
     write_zero_dm_medians: bool = attribute(default=False)
+    telescope_location = attribute(default=CHIME_LOCATION)
     static_filter = attribute(init=False)
     dynamic_filter = attribute(init=False)
 
@@ -209,11 +213,16 @@ class PowerSpectraCreation:
         pspec: PowerSpectra
             The PowerSpectra class as defined in the interface
         """
+        multiprocessing.set_start_method("forkserver", force=True)
         pool = Pool(self.num_threads)
-        observation = db_api.get_observation(dedisp_time_series.obs_id)
-        pointing_id = self.get_pointing_id_from_observation_id(
-            dedisp_time_series.obs_id
-        )
+        if self.use_db:
+            observation = db_api.get_observation(dedisp_time_series.obs_id)
+            pointing_id = self.get_pointing_id_from_observation_id(
+                dedisp_time_series.obs_id
+            )
+        else:
+            observation = {}
+            pointing_id = None
 
         with ps_processing_time.labels(pointing_id).time():
             dedisp_ts_len = dedisp_time_series.dedisp_ts.shape[-1]
@@ -579,6 +588,7 @@ class PowerSpectraCreation:
             ras,
             decs,
             start_mjd + (float(dedisp_ts_len * self.tsamp / 2) / SEC_PER_DAY),
+            location=self.telescope_location,
         )
         bary_corr_end = time.time()
         log.debug(
@@ -902,6 +912,9 @@ class PowerSpectraCreation:
                 )
             bad_freq_indices = sorted(set(bad_freq_indices).union(strong_periodic_rfi))
             bad_freq_indices = sorted(set(bad_freq_indices).union(common_birdies))
+        else:
+            compared_obs = []
+            birdies = []
 
         return bad_freq_indices, compared_obs, birdies
 

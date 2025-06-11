@@ -73,7 +73,7 @@ class Pointing:
     def __attrs_post_init__(self):
         if self.maxdm <= np.max([self.ne2001dm, self.ymw16dm]):
             raise ValueError(
-                f"The attribute maxdm must be larger than both ne2001dm and ymw16dm."
+                "The attribute maxdm must be larger than both ne2001dm and ymw16dm."
             )
 
     @beam_row.validator
@@ -272,19 +272,10 @@ class SkyBeam:
     dec = attrib(converter=float)
     nchan = attrib(
         converter=int,
-        validator=in_(
-            [
-                1024,
-                2048,
-                4096,
-                8192,
-                16384,
-            ]
-        ),
     )
     ntime = attrib(converter=int)
     maxdm = attrib(converter=float)
-    beam_row = attrib(converter=int)
+    beam_row = attrib(converter=optional(int))
     utc_start = attrib(converter=float)
     obs_id = attrib(default=None, converter=optional(str), on_setattr=convert)
     pointing_id = attrib(default=None, converter=optional(str), on_setattr=convert)
@@ -293,8 +284,8 @@ class SkyBeam:
     def __attrs_post_init__(self):
         if self.spectra.shape != (self.nchan, self.ntime):
             raise ValueError(
-                f"The attribute spectra does not have the right number of channels and"
-                f" number of time samples."
+                "The attribute spectra does not have the right number of channels and"
+                " number of time samples."
             )
 
     @spectra.validator

@@ -24,7 +24,11 @@ logger = logging.getLogger()
 
 
 def get_barycentric_correction(
-    ra: str | float, dec: str | float, mjd: float, convention: str = "radio"
+    ra: str | float,
+    dec: str | float,
+    mjd: float,
+    convention: str = "radio",
+    location=CHIME_LOCATION,
 ):
     """
     Compute the instantaneous barycentric velocity correction towards a given direction
@@ -60,7 +64,7 @@ def get_barycentric_correction(
     logger.info(f"Topocentric MJD : {t.mjd}")
 
     vb_optical = coord.radial_velocity_correction(
-        kind="barycentric", obstime=t, location=CHIME_LOCATION
+        kind="barycentric", obstime=t, location=location
     )
 
     if convention == "optical":
@@ -92,7 +96,12 @@ def get_barycentric_correction(
 
 
 def get_mean_barycentric_correction(
-    ra: str, dec: str, start_mjd: float, duration: float, convention: str = "radio"
+    ra: str,
+    dec: str,
+    start_mjd: float,
+    duration: float,
+    convention: str = "radio",
+    location=CHIME_LOCATION,
 ):
     """
     Compute the mean barycentric velocity correction towards a given direction over a
@@ -131,7 +140,7 @@ def get_mean_barycentric_correction(
     vb_corr = []
     for t in times:
         vb_optical = coord.radial_velocity_correction(
-            kind="barycentric", obstime=t, location=CHIME_LOCATION
+            kind="barycentric", obstime=t, location=location
         )
 
         if convention == "optical":

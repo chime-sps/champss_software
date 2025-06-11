@@ -4,7 +4,17 @@ from sps_common.conversion import unix_to_mjd
 from sps_common.interfaces import DedispersedTimeSeries
 
 
-def dedisperse(fdmt, skybeam, chunk_size, maxDT, dm_step=1, cpp=True):
+def dedisperse(
+    fdmt,
+    skybeam,
+    chunk_size,
+    maxDT,
+    dm_step=1,
+    cpp=True,
+    freq_bottom=FREQ_BOTTOM,
+    freq_top=FREQ_TOP,
+    tsamp=TSAMP,
+):
     """
     Dedisperse the skybeam into a collection of dedispersed time series with chunking.
 
@@ -43,7 +53,7 @@ def dedisperse(fdmt, skybeam, chunk_size, maxDT, dm_step=1, cpp=True):
         if cpp:
             dedisp[:, i * chunk_size : (i + 1) * chunk_size] = fdmt.execute(
                 spectra_chunk
-            )[: dedisp.shape[0], maxDT:]
+            )[: dedisp.shape[0] :, maxDT:]
         else:
             dedisp[:, i * chunk_size : (i + 1) * chunk_size] = fdmt.fdmt(
                 spectra_chunk, padding=True, frontpadding=False
@@ -53,8 +63,8 @@ def dedisperse(fdmt, skybeam, chunk_size, maxDT, dm_step=1, cpp=True):
     dms = (
         np.arange(0, maxDT, dm_step)
         / DM_CONSTANT
-        / (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2)
-    ) * TSAMP
+        / (1 / freq_bottom**2 - 1 / freq_top**2)
+    ) * tsamp
 
     dts = DedispersedTimeSeries(
         dedisp_ts=dedisp,
