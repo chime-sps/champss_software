@@ -3,75 +3,115 @@ name: Image
 on:
  workflow_call:
     inputs:
-      image_name:
+      actor:
         type: string
-        default: 'champss_software'
-      image_tag:
+      event_name:
         type: string
-      build_locally:
+      event_repository:
+        type: string
+      event_ref:
+        type: string
+      base_ref:
+        type: string
+      head_ref:
+        type: string
+      ref_name:
+        type: string
+      ref_type:
+        type: string
+      release_tag:
+        type: string
+      release_created:
+        type: string
+      merged:
         type: boolean
-      runs_on:
-        type: string
-        default: 'sps-compute2' # Temporary as BeeGFS servers have TCP settings that currently break Internet downloads
+      
 
 jobs:
-  build-image-and-push-to-remote:
+  build-and-push-image:
     # NEEDS to run on self-hosted GitHub runners because spshuff requires AVX2
-    # supported CPUs for the image to build
-    if: ${{ inputs.build_locally == false }}
-    runs-on: ${{ inputs.runs_on }}
+    # supported CPUs for the image to build. Use testbed as steps will be too slow
+    # when processing is running on site.
+    runs-on: testbed
+    if: ${{ inputs.event_name == 'push' }}
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        id: set-code
+        if: ${{ (inputs.ref_name == 'main' && inputs.release_created == 'true') || inputs.ref_name != 'main'}}
+        # Only perform next 3 steps if now pushing to main AND it's from the
+        # automated release PR merge, or if pushing to a development branch
+        uses: actions/checkout@v3
         with:
           fetch-depth: 1
-      - uses: webfactory/ssh-agent@v0.4.1
+      - name: Setup SSH Agent
+        if: ${{ (inputs.ref_name == 'main' && inputs.release_created == 'true') || inputs.ref_name != 'main'}}
+        uses: webfactory/ssh-agent@v0.4.1
         id: set-ssh
         with:
           ssh-private-key: ${{ secrets.SPS_SSH_ID }}
-      # - uses: docker/setup-buildx-action@v1
-      #   with:
-      #     install: true
-      #     config-inline: |
-      #       [registry."sps-archiver1.chime:5000"]
-      #         http = true
-      #         insecure = true
-      #       [registry."docker.io"]
-      #         http = false
-      - uses: docker/login-action@v2
+      - name: Setup Docker Buildx
+        id: set-docker-buildx
+        if: ${{ (inputs.ref_name == 'main' && inputs.release_created == 'true') || inputs.ref_name != 'main'}}
+        uses: docker/setup-buildx-action@v1
         with:
-          registry: docker.io
+          install: true
+      - name: Perform DockerHub Login
+        id: set-dockerhub-login
+        if: ${{ (inputs.ref_name == 'main' && inputs.release_created == 'true') || inputs.ref_name != 'main'}}
+        uses: docker/login-action@v1
+        with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
-      - uses: docker/build-push-action@v3
+      # If creating image for a release:
+      # Push two images, one with latest as tag (overwriting), and one with its version as tag (for future reference)
+      - name: Build Docker Image and Push to DockerHub
+        id: set-build-and-push-latest
+        if: ${{ (inputs.ref_name == 'main' && inputs.release_created == 'true')}}
+        uses: docker/build-push-action@v3
         with:
           context: .
           file: Dockerfile
           target: runtime
           tags: |
-            sps-archiver1.chime:5000/${{ inputs.image_name }}:${{ inputs.image_tag }}
-            docker.io/chimefrb/${{ inputs.image_name }}:${{ inputs.image_tag }}
+            chimefrb/${{ inputs.event_repository }}:latest
+            chimefrb/${{ inputs.event_repository }}:${{ inputs.release_tag }}
           ssh: "github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}}"
-          build-args: |
-            SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }}
-            SLACK_APP_TOKEN=${{ secrets.SLACK_APP_TOKEN }}
           push: true
-      - run: |
-          docker builder prune -f
-  build-image-and-save-to-local:
-    if: ${{ inputs.build_locally == true }}
-    runs-on: ${{ inputs.runs_on }}
+      # If creating image for a development branch:
+      # Push the image with just its branch as tag
+      - name: Build Docker Image and Push to DockerHub
+        id: set-build-and-push-branch
+        if: ${{ inputs.ref_name != 'main' && inputs.ref_name != 'benchmark'}}
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime
+          tags: |
+            chimefrb/${{ inputs.event_repository }}:${{ inputs.ref_name }}
+          ssh: "github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}}"
+          push: true
+      # If creating image for benchmarking:
+      # Just save it locally since we only run benchmarks on the testbed
+      - name: Build Docker Image and Save Locally
+        id: set-build-and-save-benchmark
+        if: ${{ inputs.ref_name == 'benchmark'}}
+        run: |
+          docker rm -f pipeline-benchmark || true
+          docker image rmi chimefrb/pipeline_batch_db:benchmark || true
+          DOCKER_BUILDKIT=1 docker build -f Dockerfile -t chimefrb/${{ inputs.event_repository }}:${{ inputs.ref_name }} --ssh github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}} --load .
+  delete-image:
+    runs-on: ubuntu-latest
+    # If a pull request is merged to main
+    # and it's not from the automated release PR bot
+    # (since we don't create an image for that branch)
+    # OR
+    # If a development branch is deleted:
+    # We delete the branch's associated DockerHub Image
+    if: ${{ (inputs.event_name == 'pull_request' && inputs.merged && inputs.actor != 'github-actions' && inputs.base_ref == 'main') || (inputs.event_name == 'delete' && inputs.ref_type == 'branch')}}
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 1
-      - uses: webfactory/ssh-agent@v0.4.1
-        id: set-ssh
-        with:
-          ssh-private-key: ${{ secrets.SPS_SSH_ID }}
-      - uses: docker/setup-buildx-action@v1
-        with:
-          install: true
-      - run: |
-          DOCKER_BUILDKIT=1 docker build -f Dockerfile -t local/${{ inputs.image_name }}:${{ inputs.image_tag }} --ssh github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}} --build-arg SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }} --build-arg SLACK_APP_TOKEN=${{ secrets.SLACK_APP_TOKEN }} --load .
-          docker builder prune -f
-
+      - name: Delete Docker Image of Branch from DockerHub
+        run: |
+          TAG='${{ inputs.head_ref || inputs.event_ref}}'
+          HUB_TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d "{\"username\": \"${{ secrets.DOCKERHUB_USERNAME }}\", \"password\": \"${{ secrets.DOCKERHUB_PASSWORD }}\"}" https://hub.docker.com/v2/users/login/ | jq -r .token)
+          curl -i -X DELETE \ -H "Accept: application/json" -H "Authorization: JWT $HUB_TOKEN" https://hub.docker.com/v2/namespaces/${{ secrets.DOCKERHUB_USERNAME }}/repositories/${{ inputs.event_repository }}/tags/$TAG/

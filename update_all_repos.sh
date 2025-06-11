@@ -87,7 +87,6 @@ do
   cd ../..
 done
 
-rm -f poetry.lock
 poetry lock
 
 git add .
