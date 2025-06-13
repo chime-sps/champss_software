@@ -127,28 +127,18 @@ class PowerSpectraSearch:
     precompute_harms = attribute(validator=instance_of(bool), default=True)
     num_threads = attribute(validator=instance_of(int), default=8)
     cluster_scale_factor: float = attribute(default=10)
-    # dbscan_eps: float = attribute(default=0.125)
-    # dbscan_min_samples: int = attribute(default=5)
-    # clustering_max_ndetect: int = attribute(default=30000)
-    # group_duplicate_freqs: bool = attribute(default=True)
-    # clustering_metric_method: str = attribute(default="rhp_norm_by_min_nharm")
-    # clustering_metric_combination: str = attribute(default="multiply")
-    # clustering_method: str = attribute(default="DBSCAN")
-    # clustering_min_freq: float = attribute(default=0)
-    # clustering_ignore_nharm1: bool = attribute(default=False)
-    # filter_by_nharm: bool = attribute(default=False)
     use_nsum_per_bin: bool = attribute(default=False)
     mp_chunk_size: bool = attribute(default=10)
     skip_first_n_bins: int = attribute(default=2)
     injection_overlap_threshold: bool = attribute(default=0.5)
     injection_dm_threshold: int = attribute(default=10.0)
-    # cluster_dm_cut: bool = attribute(default=-1)
     known_source_threshold: float = attribute(default=np.inf)
     filter_birdies: bool = attribute(default=False)
     mean_bin_sigma_threshold: float = attribute(default=0)
     use_stack_threshold = attribute(validator=instance_of(bool), default=False)
     full_harm_bins = attribute(init=False)
     update_db = attribute(default=True, validator=instance_of(bool))
+    max_search_frequency: float = attribute(default=np.inf)
 
     def __attrs_post_init__(self):
         """Precompute bins used in harmonic summing."""
@@ -177,7 +167,6 @@ class PowerSpectraSearch:
         injection_path,
         injection_indices,
         only_injections,
-        cutoff_frequency,
         scale_injections=False,
     ):
         """
@@ -202,9 +191,6 @@ class PowerSpectraSearch:
 
         only_injections: bool
             Whether non-injections are filtered out. Default: False
-
-        cutoff_frequency: float
-            Highest frequency allowed for a candidate/detection. Default: 100
 
         scale_injection: bool
             Whether to scale the injection so that the detected sigma should be
@@ -252,7 +238,6 @@ class PowerSpectraSearch:
                     with open(injection_path) as file:
                         injection_list = yaml.safe_load(file)
                     injection_df = pd.DataFrame(injection_list)
-                    print("zo")
                 except:
                     injection_df = pd.read_pickle(injection_path)
                 # injection_df are the initial injection parameters
@@ -428,7 +413,7 @@ class PowerSpectraSearch:
                 nsum_per_harmonic,
                 power_cutoff_per_harmonic,
                 injection_dicts,
-                cutoff_frequency,
+                self.max_search_frequency,
                 self.skip_first_n_bins,
                 self.injection_overlap_threshold,
                 self.injection_dm_threshold,
@@ -450,19 +435,6 @@ class PowerSpectraSearch:
             log.warning("No detections made. Further processing will not be completed.")
             return None
         log.info("Clustering the detections")
-        # clusterer_dict = dict(
-        #     cluster_scale_factor=self.cluster_scale_factor,
-        #     dbscan_eps=self.dbscan_eps,
-        #     dbscan_min_samples=self.dbscan_min_samples,
-        #     max_ndetect=self.clustering_max_ndetect,
-        #     sigma_detection_threshold=self.sigma_min,
-        #     group_duplicate_freqs=self.group_duplicate_freqs,
-        #     metric_method=self.clustering_metric_method,
-        #     metric_combination=self.clustering_metric_combination,
-        #     clustering_method=self.clustering_method,
-        #     min_freq=self.clustering_min_freq,
-        #     ignore_nharm1=self.clustering_ignore_nharm1,
-        # )
         clusterer = Clusterer(
             **self.cluster_config,
             sigma_detection_threshold=self.sigma_min,
@@ -632,13 +604,12 @@ class PowerSpectraSearch:
                 for idx_count, idx in enumerate(detection_idx):
                     replace_last = False
                     detection_freq = freq_labels[idx] / harm
-                    # skipping candidates with period less than 10 time samples
+                    # skipping candidates with very short and very high frequencies
 
-                    if (
-                        detection_freq <= skip_n_bins * MIN_SEARCH_FREQ
-                        or detection_freq > cutoff_frequency
-                    ):
+                    if detection_freq <= skip_n_bins * freq_labels[1]:
                         continue
+                    if detection_freq > cutoff_frequency:
+                        break
 
                     if sigmas is None:
                         if type(used_nsum) == np.ndarray:

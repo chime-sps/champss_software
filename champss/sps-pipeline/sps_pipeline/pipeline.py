@@ -293,12 +293,6 @@ def dbexcepthook(type, value, tb):
     help="Only process clusters containing injections.",
 )
 @click.option(
-    "--cutoff-frequency",
-    default=100.0,
-    type=float,
-    help="Frequency at which to stop processing candidates.",
-)
-@click.option(
     "--scale-injections/--not-scale-injections",
     default=False,
     help="Scale injection so that input sigma should be detected sigma.",
@@ -341,7 +335,6 @@ def main(
     injection_path,
     injection_idx,
     only_injections,
-    cutoff_frequency,
     scale_injections,
     datpath,
     config_options,
@@ -649,7 +642,6 @@ def main(
                         injection_path,
                         injection_idx,
                         only_injections,
-                        cutoff_frequency,
                         scale_injections,
                         obs_folder,
                         prefix,
