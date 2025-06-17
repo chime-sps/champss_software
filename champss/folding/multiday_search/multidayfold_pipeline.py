@@ -206,6 +206,8 @@ def main(
                 fs_id,
                 "--foldpath",
                 foldpath,
+                "--datpath",
+                datpath,
                 "--db-port",
                 db_port,
                 "--db-name",

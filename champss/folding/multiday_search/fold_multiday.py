@@ -1,6 +1,5 @@
 import datetime as dt
 import logging
-import os
 from glob import glob
 
 import click
@@ -19,7 +18,7 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
     log.setLevel(logging.INFO)
 
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
-    os.chdir(f"{basepath}")
+    # os.chdir(f"{basepath}")
     pst = PointingStrategist(create_db=False)
 
     dates_with_data = []
@@ -34,7 +33,7 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
         date = dt.datetime(year, month, day)
 
         datelow = dt.datetime(2024, 1, 31)
-        datehigh = dt.datetime(2024, 12, 31)
+        datehigh = dt.datetime(2030, 12, 31)
         if (date > datelow) and (date < datehigh):
             active_pointing = pst.get_single_pointing(ra, dec, date)
 
@@ -194,7 +193,7 @@ def main(
                     "--write-to-db",
                     "--foldpath",
                     str(foldpath),
-                    "--datphath",
+                    "--datpath",
                     datpath,
                 ],
                 standalone_mode=False,
