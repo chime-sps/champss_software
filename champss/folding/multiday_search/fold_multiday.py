@@ -144,7 +144,7 @@ def main(
             docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
             docker_memory_reservation = (nchan / 1024) * 8
             docker_mounts = [
-                "{datpath}:{datpath}",
+                f"{datpath}:{datpath}",
                 f"{foldpath}:{foldpath}",
             ]
 
