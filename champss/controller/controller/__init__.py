@@ -129,7 +129,7 @@ def stop_beam(beam: int, basepath: str):
     return proc
 
 
-def stop_all_beams(active_beams, basepath, batchsize=100):
+def stop_all_beams(active_beams, basepath, batchsize=20):
     """
     Stop all beams.
 
@@ -140,10 +140,10 @@ def stop_all_beams(active_beams, basepath, batchsize=100):
     batched_beams = batched(active_beams, batchsize)
     for beam_batch in batched_beams:
         procs = [stop_beam(beam, basepath) for beam in beam_batch]
-        time.sleep(5)
+        time.sleep(0.1)
         for proc, beam in zip(procs, beam_batch):
             try:
-                output = proc.communicate(timeout=0.1)
+                output = proc.communicate(timeout=5)
                 if "parameters successfully applied" in str(output[0]):
                     output = f"Successfully stopped {beam}"
             except subprocess.TimeoutExpired as e:
@@ -368,7 +368,7 @@ def cli_batched(
             except ProcessLookupError:
                 pass
         # Make sure that all rpc-clients are stopped
-        stop_acq.callback(host=host, rows=rows, debug=False, basepath=basepath)
+        stop_acq.callback(host=host, rows=rows, debug=False, basepath=basepath[0])
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
