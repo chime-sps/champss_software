@@ -6,7 +6,7 @@ import numpy as np
 import scipy.stats as stats
 from scipy.fft import rfft
 from scipy.special import chdtri
-from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP
+from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.interfaces.utilities import sigma_sum_powers
 
 log = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ def generate_pulse(noise=False):
             noise: bool
                 whether or not the pulse should be distorted by white noise
     """
-    u = rand.uniform(0.01, 0.99, 1000)
+    u = rand.uniform(0.01, 0.99)
     # inverse sampling theorem for an exponential distribution with lambda = 1/15
     gamma = -15 * np.log(1 - u) / 2 / 360
     prof = lorentzian(phis, gamma)
@@ -177,6 +177,19 @@ class Injection:
         deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
 
+    def get_smeared_fft(self):
+
+        dt_dm = self.true_dm * DM_CONSTANT * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2) 
+        t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
+        sigma = t_eff * self.f #get the FWHM in units of the pulse period
+        smear_gaussian = gaussian(0.4, sigma)
+        smear_fft = rfft(smear_gaussian)
+        prof_fft = rfft(self.phase_prof)
+        smeared_fft = smear_fft * prof_fft
+        
+        return smeared_fft[1:]
+        
+
     def sigma_to_power(self, n_harm, df):
         """
         This function converts an input Gaussian sigma to an approximately equivalent
@@ -193,7 +206,8 @@ class Injection:
             n_harm (int): The actually inected number of harmonics.
         """
         # Compute the normalized powers of the injected profile (Sum of pows == 1)
-        prof_fft = rfft(self.phase_prof)[1:]
+        
+        prof_fft = self.get_smeared_fft()
         norm_pows = np.abs(prof_fft) ** 2.0
         maxpower = norm_pows.sum()
         norm_pows /= maxpower
