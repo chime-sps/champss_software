@@ -178,25 +178,26 @@ class Injection:
         deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
 
-    def get_smeared_fft(self):
+    def smear_fft(self, scaled_fft, n_harm):
 
         dt_dm = self.true_dm * DM_CONSTANT * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2) 
         t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
         fwhm = t_eff * self.f #get the FWHM in units of the pulse period
         sigma = fwhm / 2.355
-        prof_fft = rfft(self.phase_prof)
         
         if sigma > 1/1024: 
-        
+            log.info('Smearing profile.')
             smear_gaussian = gaussian(0.5, sigma)
-            smear_fft = rfft(smear_gaussian)
-            smeared_fft = smear_fft * prof_fft
+            #do I want to normalize the smearing kernel to 1?
+            smear_gaussian /= max(smear_gaussian)
+            smear_fft = rfft(smear_gaussian)[1:]
+            smeared_fft = smear_fft[:n_harm] * scaled_fft
             
-            return smeared_fft[1:]
+            return smeared_fft
 
         else:
-            
-            return prof_fft[1:]
+            log.info('Not smearing profile.')
+            return scaled_fft
         
 
     def sigma_to_power(self, n_harm, df):
@@ -216,7 +217,7 @@ class Injection:
         """
         # Compute the normalized powers of the injected profile (Sum of pows == 1)
         
-        prof_fft = self.get_smeared_fft()
+        prof_fft = rfft(self.phase_prof)[1:]
         norm_pows = np.abs(prof_fft) ** 2.0
         maxpower = norm_pows.sum()
 
@@ -248,8 +249,9 @@ class Injection:
                 n_harm = Nsignif
 
             scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
+            smeared_fft = self.smear_fft(scaled_fft, n_harm)
 
-            return scaled_fft, n_harm
+            return smeared_fft, n_harm
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
         """
