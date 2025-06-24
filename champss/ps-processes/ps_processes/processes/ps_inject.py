@@ -8,6 +8,7 @@ from scipy.fft import rfft
 from scipy.special import chdtri
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.interfaces.utilities import sigma_sum_powers
+import matplotlib.pyplot as plt
 
 log = logging.getLogger(__name__)
 
@@ -181,13 +182,21 @@ class Injection:
 
         dt_dm = self.true_dm * DM_CONSTANT * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2) 
         t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
-        sigma = t_eff * self.f #get the FWHM in units of the pulse period
-        smear_gaussian = gaussian(0.4, sigma)
-        smear_fft = rfft(smear_gaussian)
+        fwhm = t_eff * self.f #get the FWHM in units of the pulse period
+        sigma = fwhm / 2.355
         prof_fft = rfft(self.phase_prof)
-        smeared_fft = smear_fft * prof_fft
         
-        return smeared_fft[1:]
+        if sigma > 1/1024: 
+        
+            smear_gaussian = gaussian(0.5, sigma)
+            smear_fft = rfft(smear_gaussian)
+            smeared_fft = smear_fft * prof_fft
+            
+            return smeared_fft[1:]
+
+        else:
+            
+            return prof_fft[1:]
         
 
     def sigma_to_power(self, n_harm, df):
@@ -210,32 +219,37 @@ class Injection:
         prof_fft = self.get_smeared_fft()
         norm_pows = np.abs(prof_fft) ** 2.0
         maxpower = norm_pows.sum()
-        norm_pows /= maxpower
-        # check the sum of powers is 1
-        assert math.isclose(norm_pows.sum(), 1.0)
-        Nallharms = len(norm_pows)
 
-        # Compute the theoretical power in the harmonics where we will inject
-        # a significant amount of our power (i.e. > 1%)
-        Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
+        if maxpower.all() == 0:
+            return np.zeros(len(n_harm))
 
-        power = x_to_chi2(self.sigma, 2 * Nsignif * self.ndays)
+        else:
+            norm_pows /= maxpower
+            # check the sum of powers is 1
+            assert math.isclose(norm_pows.sum(), 1.0)
+            Nallharms = len(norm_pows)
 
-        # Now compute the theoretical power for each harmonic to inject. We will
-        # add this value to the current stack. Note that we are subtracting the
-        # predicted amount of power due to the means of the power spectra.
+            # Compute the theoretical power in the harmonics where we will inject
+            # a significant amount of our power (i.e. > 1%)
+            Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
 
-        power -= Nsignif * self.ndays
+            power = x_to_chi2(self.sigma, 2 * Nsignif * self.ndays)
 
-        # if there are fewer significant harmonics than there are harmonics that fit
-        # then use Nsignif
-        # otherwise only take harmonics that fit before the Nyquist cutoff frequency
-        if Nsignif < n_harm:
-            n_harm = Nsignif
+            # Now compute the theoretical power for each harmonic to inject. We will
+            # add this value to the current stack. Note that we are subtracting the
+            # predicted amount of power due to the means of the power spectra.
 
-        scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
+            power -= Nsignif * self.ndays
 
-        return scaled_fft, n_harm
+            # if there are fewer significant harmonics than there are harmonics that fit
+            # then use Nsignif
+            # otherwise only take harmonics that fit before the Nyquist cutoff frequency
+            if Nsignif < n_harm:
+                n_harm = Nsignif
+
+            scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
+
+            return scaled_fft, n_harm
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
         """
