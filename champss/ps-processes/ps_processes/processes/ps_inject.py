@@ -469,7 +469,6 @@ class Injection:
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
         scaled_prof_fft, n_harm = self.sigma_to_power(n_harm, df)
-        used_nharm = len(scaled_prof_fft)
         log.info(f"Injecting {n_harm} harmonics.")
 
         dispersed_prof_fft, dm_indices = self.disperse(
@@ -493,7 +492,7 @@ class Injection:
             predicted_nharm,
             predicted_sigma,
             rescale_factor,
-        ) = self.predict_sigma(harms, bins, dm_indices, used_nharm, True)
+        ) = self.predict_sigma(harms, bins, dm_indices, n_harm, True)
 
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
@@ -505,7 +504,7 @@ class Injection:
             harms + self.pspec[injected_indices],
             bins,
             dm_indices,
-            used_nharm,
+            n_harm,
             False,
         )
 
