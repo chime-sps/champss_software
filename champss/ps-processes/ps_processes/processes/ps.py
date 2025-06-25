@@ -317,6 +317,7 @@ class PowerSpectraCreation:
 
             if self.save_medians:
                 rn_medians = medians[np.newaxis, :]
+                print(rn_medians)
                 rn_dm_indices = median_dm_indices[np.newaxis, :]
                 # note that scales are saved iteratively over DM but are identical at each DM
                 # so we only need one row of scales

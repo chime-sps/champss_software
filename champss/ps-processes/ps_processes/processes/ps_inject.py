@@ -4,7 +4,7 @@ import os
 
 import numpy as np
 import scipy.stats as stats
-from scipy.fft import rfft
+from scipy.fft import rfft, irfft
 from scipy.special import chdtri
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.interfaces.utilities import sigma_sum_powers
@@ -180,23 +180,31 @@ class Injection:
 
     def smear_fft(self, scaled_fft, n_harm):
 
-        dt_dm = self.true_dm * DM_CONSTANT * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2) 
+        quadratic_term = 1e-11 #at 600 MHz
+        dt_dm = self.true_dm * DM_CONSTANT * quadratic_term 
         t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
         fwhm = t_eff * self.f #get the FWHM in units of the pulse period
         sigma = fwhm / 2.355
         
         if sigma > 1/1024: 
-            log.info('Smearing profile.')
+            print('Smearing profile.')
             smear_gaussian = gaussian(0.5, sigma)
-            #do I want to normalize the smearing kernel to 1?
-            smear_gaussian /= max(smear_gaussian)
             smear_fft = rfft(smear_gaussian)[1:]
-            smeared_fft = smear_fft[:n_harm] * scaled_fft
             
+            #normalize power in smearing fft to 1
+            norm_pows = np.abs(smear_fft) ** 2.0
+            maxpower = norm_pows.sum()
+            smear_fft /= np.sqrt(maxpower)
+            plt.plot(np.linspace(0, 1, 1024), np.abs(smear_fft)**2)
+            plt.xlabel('Phase', size = 'large')
+            plt.ylabel('Fourier Power', size = 'large')
+            plt.title(f'f = {self.f} Hz, DM = {self.true_dm}')
+            plt.show()
+            smeared_fft = smear_fft[:n_harm] * scaled_fft
             return smeared_fft
 
         else:
-            log.info('Not smearing profile.')
+            print('Not smearing profile.')
             return scaled_fft
         
 
