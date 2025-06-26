@@ -189,17 +189,8 @@ class Injection:
         if sigma > 1/1024: 
             print('Smearing profile.')
             smear_gaussian = gaussian(0.5, sigma)
-            smear_fft = rfft(smear_gaussian)[1:]
-            
-            #normalize power in smearing fft to 1
-            norm_pows = np.abs(smear_fft) ** 2.0
-            maxpower = norm_pows.sum()
-            smear_fft /= np.sqrt(maxpower)
-            plt.plot(np.linspace(0, 1, 1024), np.abs(smear_fft)**2)
-            plt.xlabel('Phase', size = 'large')
-            plt.ylabel('Fourier Power', size = 'large')
-            plt.title(f'f = {self.f} Hz, DM = {self.true_dm}')
-            plt.show()
+            smear_fft = rfft(smear_gaussian)[1:] 
+            smear_fft /= max(smear_fft)
             smeared_fft = smear_fft[:n_harm] * scaled_fft
             return smeared_fft
 
