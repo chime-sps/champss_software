@@ -29,6 +29,10 @@ mean_threes = 0.00995
 kernels = np.load(os.path.dirname(__file__) + "/kernels.npy")
 kernel_scaling = np.load(os.path.dirname(__file__) + "/kernels.meta.npy")
 
+#parameters of the system:
+G = 1.16e-3 #K mJy^-1
+Tsys = 30 #K
+beta = 0.9
 
 def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
@@ -195,7 +199,7 @@ class Injection:
             smear_gaussian = gaussian(0.5, sigma)
             smear_fft = rfft(smear_gaussian)[1:] 
             smear_fft /= max(smear_fft)
-            smeared_fft = smear_fft[:n_harm] * scaled_fft
+            smeared_fft = smear_fft * scaled_fft
             return smeared_fft
 
         else:
@@ -277,8 +281,8 @@ class Injection:
         
         #assume prof is already baselined
         #add noise to prof
-        prof = self.phase_prof + rand.normal(0, 1, len(self.phase_prof))
         #scale prof
+        prof = self.phase_prof
         prof *= SNR / np.sum(prof)
         prof_fft = rfft(prof)
         #scale to pspec with noise in high harmonics
@@ -507,8 +511,10 @@ class Injection:
         df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
-        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm, df)
         log.info(f"Injecting {n_harm} harmonics.")
+
+        scaled_prof_fft = self.flux_to_power(G, beta, Tsys)
+        smeared_prof_fft = self.smear_fft(scaled_prof_fft)[:n_harm]
 
         dispersed_prof_fft, dm_indices = self.disperse(
             scaled_prof_fft, kernels, kernel_scaling
