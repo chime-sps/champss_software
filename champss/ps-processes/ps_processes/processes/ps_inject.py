@@ -136,6 +136,8 @@ def x_to_chi2(x, df):
         return chi2 / 2
 
 
+
+
 def get_median(xlow, xhigh, ylow, yhigh, x):
     m = (yhigh - ylow) / (xhigh - xlow)
 
@@ -154,6 +156,7 @@ class Injection:
         profile,
         sigma,
         scale_injections=False,
+        flux = 1,
     ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
@@ -166,6 +169,7 @@ class Injection:
         self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
         self.phase_prof = profile
         self.sigma = sigma
+        self.flux = flux
         self.power_threshold = 1
         self.full_harm_bins = full_harm_bins
         self.rescale_to_expected_sigma = scale_injections
@@ -233,6 +237,7 @@ class Injection:
             # a significant amount of our power (i.e. > 1%)
             Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
 
+            #use ALL HARMONICS to calculate power
             power = x_to_chi2(self.sigma, 2 * Nsignif * self.ndays)
 
             # Now compute the theoretical power for each harmonic to inject. We will
@@ -251,6 +256,39 @@ class Injection:
             smeared_fft = self.smear_fft(scaled_fft, n_harm)
 
             return smeared_fft, n_harm
+
+    def flux_to_power(self, beta, G, Tsys):
+        '''
+        This function takes a flux in mJy and converts it to a power.
+        NOTES: PULSE PROFILE MUST BE NOISELESS AND SCALED TO 1 
+        '''
+        
+        #things to add to the injection class:
+        #way of getting W (pulse width), tau, deltanu
+        Npol = 2
+        delta_f = 200 #will be precisely calculated for each pspec from num of zapped bins
+        tau = 10*60 #in seconds; depends on ra/dec. should be stored in pspec.
+
+        system_terms = (G / beta / Tsys) #Tsys is in mJy
+        obs_terms = np.sqrt(Npol * tau * delta_f)
+        pulse_terms = np.sqrt(((1 / self.f) - self.W) / self.W) 
+
+        SNR = system_terms * obs_terms * pulse_terms * self.flux
+        
+        #assume prof is already baselined
+        #add noise to prof
+        prof = self.phase_prof + rand.normal(0, 1, len(self.phase_prof))
+        #scale prof
+        prof *= SNR / np.sum(prof)
+        prof_fft = rfft(prof)
+        #scale to pspec with noise in high harmonics
+        Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
+        prof_fft *= self.ndays / prof_fft[Nsignif:] #only use insignificant harmonics
+        #baseline to pspec
+        prof_fft -= self.ndays
+
+        return prof_fft
+
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
         """
@@ -292,7 +330,7 @@ class Injection:
                 np.abs(np.abs((dms[i] - self.true_dm) / self.deltaDM) - kernel_scaling)
             )
             dispersed_prof_fft[i] = prof_fft * kernels[key, 1 : len(prof_fft) + 1]
-
+        
         return dispersed_prof_fft, target_dm_idx
 
     def harmonics(self, prof_fft, df, N=4):
