@@ -30,9 +30,9 @@ kernels = np.load(os.path.dirname(__file__) + "/kernels.npy")
 kernel_scaling = np.load(os.path.dirname(__file__) + "/kernels.meta.npy")
 
 #parameters of the system:
-G = 1.16e-3 #K mJy^-1
-Tsys = 30 #K
-beta = 0.9
+GAIN= 1.16e-3 #K mJy^-1
+TSYS = 30 #K
+BETA = 1.1
 
 def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
@@ -171,13 +171,21 @@ class Injection:
         self.true_dm = DM
         self.trial_dms = self.pspec_obj.dms
         self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
-        self.phase_prof = profile
+        self.phase_prof = np.array(profile)
         self.sigma = sigma
         self.flux = flux
         self.power_threshold = 1
         self.full_harm_bins = full_harm_bins
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
+        self.W = self.get_width()
+
+    def get_width(self):
+
+        integral = np.sum(self.phase_prof) / len(self.phase_prof)
+
+        return integral / max(self.phase_prof)
+        
 
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in
@@ -186,7 +194,7 @@ class Injection:
         deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
 
-    def smear_fft(self, scaled_fft, n_harm):
+    def smear_fft(self, scaled_fft):
 
         quadratic_term = 1e-11 #at 600 MHz
         dt_dm = self.true_dm * DM_CONSTANT * quadratic_term 
@@ -261,7 +269,7 @@ class Injection:
 
             return smeared_fft, n_harm
 
-    def flux_to_power(self, beta, G, Tsys):
+    def flux_to_power(self, G, Tsys, beta):
         '''
         This function takes a flux in mJy and converts it to a power.
         NOTES: PULSE PROFILE MUST BE NOISELESS AND SCALED TO 1 
@@ -270,28 +278,28 @@ class Injection:
         #things to add to the injection class:
         #way of getting W (pulse width), tau, deltanu
         Npol = 2
-        delta_f = 200 #will be precisely calculated for each pspec from num of zapped bins
+        delta_f = 200e6 #will be precisely calculated for each pspec from num of zapped bins
         tau = 10*60 #in seconds; depends on ra/dec. should be stored in pspec.
 
-        system_terms = (G / beta / Tsys) #Tsys is in mJy
+        system_terms = (G / Tsys / beta) #Tsys is in mJy
         obs_terms = np.sqrt(Npol * tau * delta_f)
         pulse_terms = np.sqrt(((1 / self.f) - self.W) / self.W) 
-
         SNR = system_terms * obs_terms * pulse_terms * self.flux
-        
         #assume prof is already baselined
         #add noise to prof
         #scale prof
         prof = self.phase_prof
-        prof *= SNR / np.sum(prof)
-        prof_fft = rfft(prof)
+        prof *= SNR / np.max(prof)
+        prof_fft = rfft(prof)[1:]
         #scale to pspec with noise in high harmonics
-        Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
-        prof_fft *= self.ndays / prof_fft[Nsignif:] #only use insignificant harmonics
+        norm_pows = np.abs(prof_fft) ** 2.0
+        #Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
+        #prof_fft *= self.ndays / np.mean(prof_fft[Nsignif:]) #only use insignificant harmonics
         #baseline to pspec
         prof_fft -= self.ndays
 
-        return prof_fft
+        
+        return prof_fft, SNR
 
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
@@ -344,9 +352,8 @@ class Injection:
 
         Inputs:
         _______
-                prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic
+                prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic, with length n_harm
                 df (float)        : frequency bin width in target spectrum
-                n_harm (int)      : the number of harmonics before the Nyquist frequency
                 N (int)           : number of bins over which to sinc-interpolate the harmonic
         Returns:
         ________
@@ -360,7 +367,7 @@ class Injection:
         harmonics = np.zeros(N * n_harm)
         bins = np.zeros(N * n_harm).astype(int)
 
-        # now evaluate sinc-modified power at each of the first 10 harmonics
+        # now evaluate sinc-modified power at each of the first n_harm harmonics
         for i in range(n_harm):
             f_harm = (i + 1) * self.f
             bin_true = f_harm / df
@@ -511,13 +518,15 @@ class Injection:
         df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
         n_harm = int(np.floor(f_nyquist / self.f))
+        if 32 < n_harm:
+            n_harm = 32
+
         log.info(f"Injecting {n_harm} harmonics.")
-
-        scaled_prof_fft = self.flux_to_power(G, beta, Tsys)
+        
+        scaled_prof_fft = self.flux_to_power(GAIN, TSYS, BETA)
         smeared_prof_fft = self.smear_fft(scaled_prof_fft)[:n_harm]
-
         dispersed_prof_fft, dm_indices = self.disperse(
-            scaled_prof_fft, kernels, kernel_scaling
+            smeared_prof_fft, kernels, kernel_scaling
         )
 
         harms = []
@@ -525,7 +534,6 @@ class Injection:
         for i in range(len(dispersed_prof_fft)):
             bins, harm = self.harmonics(dispersed_prof_fft[i], df)
             harms.append(harm)
-
         harms = np.asarray(harms)
         harms *= self.get_rednoise_normalisation(
             bins,
