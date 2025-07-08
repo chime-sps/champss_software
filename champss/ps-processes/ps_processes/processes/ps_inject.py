@@ -265,7 +265,6 @@ class Injection:
                 n_harm = Nsignif
 
             scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
-            smeared_fft = self.smear_fft(scaled_fft, n_harm)
 
             return smeared_fft, n_harm
 
@@ -286,10 +285,14 @@ class Injection:
         pulse_terms = np.sqrt(((1 / self.f) - self.W) / self.W) 
         SNR = system_terms * obs_terms * pulse_terms * self.flux
         #assume prof is already baselined
-        #add noise to prof
         #scale prof
         prof = self.phase_prof
-        prof *= SNR / np.max(prof)
+        integral = np.sum(prof) / 1024
+        prof *= SNR / integral
+        #add noise to prof
+        prof += rand.normal(0, 1, 1024)
+        plt.plot(prof)
+        plt.show()
         prof_fft = rfft(prof)[1:]
         #scale to pspec with noise in high harmonics
         norm_pows = np.abs(prof_fft) ** 2.0
@@ -298,7 +301,6 @@ class Injection:
         #baseline to pspec
         prof_fft -= self.ndays
 
-        
         return prof_fft, SNR
 
 
@@ -521,14 +523,16 @@ class Injection:
         if 32 < n_harm:
             n_harm = 32
 
-        log.info(f"Injecting {n_harm} harmonics.")
         
-        scaled_prof_fft = self.flux_to_power(GAIN, TSYS, BETA)
+        scaled_prof_fft, SNR = self.flux_to_power(GAIN, TSYS, BETA)
+        print('scaled:', scaled_prof_fft[0])
         smeared_prof_fft = self.smear_fft(scaled_prof_fft)[:n_harm]
+        print('smeared:', smeared_prof_fft[0])
+        log.info(f"Injecting {n_harm} harmonics at SNR = {SNR}.")
         dispersed_prof_fft, dm_indices = self.disperse(
             smeared_prof_fft, kernels, kernel_scaling
         )
-
+        print('dispersed:', max(dispersed_prof_fft[0]))
         harms = []
 
         for i in range(len(dispersed_prof_fft)):
