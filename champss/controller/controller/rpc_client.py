@@ -1048,7 +1048,7 @@ class RpcClient:
         for k in servers:
             self.token += 1
             req = msgpack.packb(['set_spulsar_writer_params', self.token])
-            args = msgpack.packb([int(beam), int(nfreq_out), int(ntime_out), int(nbins_out), str(base_path)])
+            args = msgpack.packb([int(beam), int(nfreq_out), int(ntime_out), int(nbins_out), str(base_path), "champss"])
             tokens.append(self.token)
             self.sockets[k].send(req + args)
         parts = self.wait_for_tokens(tokens, timeout=timeout)

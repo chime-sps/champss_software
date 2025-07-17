@@ -97,7 +97,7 @@ def start_beam(beam: int, basepath: str, channels: int, ntime: int):
     proc = subprocess.Popen(
         [
             f"rpc-client --spulsar-writer-params {beam} {channels} {ntime} 5"
-            f" {basepath} champss tcp://{get_beam_ip(beam)}:5555"
+            f" {basepath} tcp://{get_beam_ip(beam)}:5555"
         ],
         shell=True,  # nosec
         stdin=subprocess.PIPE,
@@ -118,7 +118,7 @@ def stop_beam(beam: int, basepath: str):
     proc = subprocess.Popen(
         [
             f"rpc-client --spulsar-writer-params {beam} {0} 1024 5"
-            f" {basepath} champss tcp://{get_beam_ip(beam)}:5555"
+            f" {basepath} tcp://{get_beam_ip(beam)}:5555"
         ],
         shell=True,  # nosec
         stdin=subprocess.PIPE,
