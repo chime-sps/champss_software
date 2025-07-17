@@ -1329,7 +1329,7 @@ def main():
                     if not isinstance(where, str):
                         where = where.decode()
                     key = (server, beam, where)
-                    if not key in plots:
+                    if key not in plots:
                         plots[key] = []
                     plots[key].append((t1 - t0, fpga))
 
@@ -1338,7 +1338,7 @@ def main():
                     else:
                         key = where
                     key = key.replace(" ", "_")
-                    if not key in columns:
+                    if key not in columns:
                         columns[key] = []
                     # pad missing times
                     npad = len(times) - len(columns[key])
@@ -1391,7 +1391,7 @@ def main():
             I = np.flatnonzero(fpga > 0)
             p = plt.plot(dt[I], fpga[I], ".-", color=color)
             # label=label,
-            if not label in leg:
+            if label not in leg:
                 leg[label] = p[0]
 
         ll = [k for (c, k) in cc.values() if k in leg]
@@ -1637,7 +1637,7 @@ def main():
         doexit = True
 
     if len(opt.spulsar_writer_params):
-        for beam, nfreq_out, ntime_out, nbins_out, base_path in opt.spulsar_writer_params:
+        for beam, nfreq_out, ntime_out, nbins_out, base_path, source in opt.spulsar_writer_params:
             replies = client.set_spulsar_writer_params(beam, nfreq_out, ntime_out, nbins_out, base_path, source)
             for r in replies:
                 print(replies)
