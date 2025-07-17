@@ -1041,14 +1041,14 @@ class RpcClient:
             [sockets.get(token, None) for token in tokens],
         )
 
-    def set_spulsar_writer_params(self, beam, nfreq_out, ntime_out, nbins_out, base_path, servers=None, timeout=-1):
+    def set_spulsar_writer_params(self, beam, nfreq_out, ntime_out, nbins_out, base_path, source="champss", servers=None, timeout=-1):
         if servers is None:
             servers = self.servers.keys()
         tokens = []
         for k in servers:
             self.token += 1
             req = msgpack.packb(['set_spulsar_writer_params', self.token])
-            args = msgpack.packb([int(beam), int(nfreq_out), int(ntime_out), int(nbins_out), str(base_path), "champss"])
+            args = msgpack.packb([int(beam), int(nfreq_out), int(ntime_out), int(nbins_out), str(base_path), str(source)])
             tokens.append(self.token)
             self.sockets[k].send(req + args)
         parts = self.wait_for_tokens(tokens, timeout=timeout)
@@ -1225,10 +1225,10 @@ def main():
     parser.add_argument(
         '--spulsar-writer-params',
         action='append',
-        nargs=5,
+        nargs=6,
         metavar='y',
         default=[],
-        help='Send new slow pulsar writer parameters: <beam_id> <nfreq_out> <ntime_out> <nbins_out> <base_path>'
+        help='Send new slow pulsar writer parameters: <beam_id> <nfreq_out> <ntime_out> <nbins_out> <base_path> <source>'
     )
     parser.add_argument(
         "ports", nargs="*", help="Addresses or port numbers of RPC servers to contact"
@@ -1638,7 +1638,7 @@ def main():
 
     if len(opt.spulsar_writer_params):
         for beam, nfreq_out, ntime_out, nbins_out, base_path in opt.spulsar_writer_params:
-            replies = client.set_spulsar_writer_params(beam, nfreq_out, ntime_out, nbins_out, base_path)
+            replies = client.set_spulsar_writer_params(beam, nfreq_out, ntime_out, nbins_out, base_path, source)
             for r in replies:
                 print(replies)
         doexit = True

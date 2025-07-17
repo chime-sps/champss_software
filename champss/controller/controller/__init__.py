@@ -52,6 +52,7 @@ async def announce_pointing_done(pointing_done_listen):
 async def entry_point(
     active_beams,
     basepath,
+    source="champss"
 ):
     """
     Parent for the pointer and updater tasks.
@@ -77,6 +78,7 @@ async def entry_point(
                     new_pointing_listen,
                     pointing_done_announce.clone(),
                     basepath,
+                    source
                 )
                 beam_schedule_channels[beam_id] = new_pointing_announce
 
@@ -87,7 +89,7 @@ async def entry_point(
         # When cancelling the batch acquisition this Exception will be thrown by trio.
 
 
-def start_beam(beam: int, basepath: str, channels: int, ntime: int):
+def start_beam(beam: int, basepath: str, source: str, channels: int, ntime: int):
     """
     Start beam acquisition with a fixed channelisation.
 
@@ -97,7 +99,7 @@ def start_beam(beam: int, basepath: str, channels: int, ntime: int):
     proc = subprocess.Popen(
         [
             f"rpc-client --spulsar-writer-params {beam} {channels} {ntime} 5"
-            f" {basepath} tcp://{get_beam_ip(beam)}:5555"
+            f" {basepath} {source} tcp://{get_beam_ip(beam)}:5555"
         ],
         shell=True,  # nosec
         stdin=subprocess.PIPE,
@@ -108,7 +110,7 @@ def start_beam(beam: int, basepath: str, channels: int, ntime: int):
     return proc
 
 
-def stop_beam(beam: int, basepath: str):
+def stop_beam(beam: int, basepath: str, source: str):
     """
     Stop beam acquisition.
 
@@ -118,7 +120,7 @@ def stop_beam(beam: int, basepath: str):
     proc = subprocess.Popen(
         [
             f"rpc-client --spulsar-writer-params {beam} {0} 1024 5"
-            f" {basepath} tcp://{get_beam_ip(beam)}:5555"
+            f" {basepath} {source} tcp://{get_beam_ip(beam)}:5555"
         ],
         shell=True,  # nosec
         stdin=subprocess.PIPE,
@@ -129,7 +131,7 @@ def stop_beam(beam: int, basepath: str):
     return proc
 
 
-def stop_all_beams(active_beams, basepath, batchsize=20):
+def stop_all_beams(active_beams, basepath, source="champss", batchsize=20):
     """
     Stop all beams.
 
@@ -139,7 +141,7 @@ def stop_all_beams(active_beams, basepath, batchsize=20):
     # Creating processes for all beams at once will lead to a crash
     batched_beams = batched(active_beams, batchsize)
     for beam_batch in batched_beams:
-        procs = [stop_beam(beam, basepath) for beam in beam_batch]
+        procs = [stop_beam(beam, basepath, source) for beam in beam_batch]
         time.sleep(0.1)
         for proc, beam in zip(procs, beam_batch):
             try:
@@ -178,6 +180,12 @@ def stop_all_beams(active_beams, basepath, batchsize=20):
     help="Path on L1 cf nodes to a CHAMPSS mount.",
 )
 @click.option(
+    "--source",
+    type=str,
+    default="champss",
+    help="The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'",
+)
+@click.option(
     "--nocleanup",
     is_flag=True,
     help="Do not clean up. Used to not interfere with batch processing.",
@@ -206,6 +214,7 @@ def cli(
     loglevel: str,
     logtofile: bool,
     basepath: str,
+    source: str,
     nocleanup: bool,
     logid: str,
     channels: int,
@@ -253,10 +262,10 @@ def cli(
 
     try:
         if channels == -1:
-            trio.run(entry_point, active_beams, basepath)
+            trio.run(entry_point, active_beams, basepath, source)
         else:
             for beam in active_beams:
-                proc = start_beam(beam, basepath, channels, ntime)
+                proc = start_beam(beam, basepath, source, channels, ntime)
             log.info("Started all beams.")
             while True:
                 time.sleep(10)
@@ -267,7 +276,7 @@ def cli(
     finally:
         log.info("Stopping acquisition...")
         if not nocleanup:
-            stop_all_beams(active_beams, basepath)
+            stop_all_beams(active_beams, basepath, source)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -300,6 +309,12 @@ def cli(
     multiple=True,
 )
 @click.option(
+    "--source",
+    type=str,
+    default="champss",
+    help="The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'",
+)
+@click.option(
     "--batchsize",
     type=int,
     default=10,
@@ -312,6 +327,7 @@ def cli_batched(
     loglevel: str,
     logtofile: bool,
     basepath: str,
+    source: str,
     batchsize: int,
     splitlogs: bool,
 ):
@@ -335,6 +351,8 @@ def cli_batched(
                 *batch_str,
                 "--basepath",
                 current_basepath,
+                "--source",
+                source,
                 "--loglevel",
                 loglevel,
                 "--nocleanup",  # Disabling cleanup makes it easier for wrapper to cleanup
@@ -368,7 +386,7 @@ def cli_batched(
             except ProcessLookupError:
                 pass
         # Make sure that all rpc-clients are stopped
-        stop_acq.callback(host=host, rows=rows, debug=False, basepath=basepath[0])
+        stop_acq.callback(host=host, rows=rows, debug=False, basepath=basepath[0], source=source)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -389,7 +407,13 @@ def cli_batched(
     default="/sps-archiver2/raw/",
     help="Path on L1 cf nodes to a CHAMPSS mount.",
 )
-def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str):
+@click.option(
+    "--source",
+    type=str,
+    default="champss",
+    help="The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'",
+)
+def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str, source: str):
     if debug:
         # Set logging level to debug
         log.setLevel(logging.DEBUG)
@@ -407,4 +431,4 @@ def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str):
         active_beams.intersection_update(host_beams)
     log.info("Stopping beams: %s", sorted(list(active_beams)))
     sorted_active_beams = sorted(list(active_beams))
-    stop_all_beams(sorted_active_beams, basepath)
+    stop_all_beams(sorted_active_beams, basepath, source)
