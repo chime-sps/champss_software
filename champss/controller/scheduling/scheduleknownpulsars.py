@@ -34,7 +34,8 @@ def get_folding_pars(psr):
     "--source",
     type=str,
     default="champss",
-    help="The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'",
+    help=("The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'. "
+          "Do not use 'slow' before consulting with the Slow team"),
 )
 @click.option(
     "--db-port",
