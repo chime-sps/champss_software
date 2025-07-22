@@ -268,7 +268,7 @@ class Injection:
 
             return smeared_fft, n_harm
 
-    def flux_to_power(self, G, Tsys, beta, n_harm):
+    def flux_to_power(self):
         '''
         This function takes a flux in mJy and converts it to a power.
         NOTES: PULSE PROFILE MUST BE NOISELESS AND SCALED TO 1 
@@ -277,41 +277,21 @@ class Injection:
         #things to add to the injection class:
         #way of getting tau, deltanu
         Npol = 2
-        delta_f = 200e6 #will be precisely calculated for each pspec from num of zapped bins
-        tau = 10*60 #in seconds; depends on ra/dec. should be stored in pspec.
+        delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
+        tau = 10*60 #in seconds; depends on ra/dec. should be stored in pspec but currently isnt.
+        Nbin = len(self.phase_prof)
+
+        #calculate input signal
         
-        #calculate input SNR
-        system_terms = (G / Tsys / beta) #Tsys is in mJy
-        obs_terms = np.sqrt(Npol * tau * delta_f)
-        pulse_terms = np.sqrt(((1 / self.f) - self.W) / self.W) 
-        SNR = system_terms * obs_terms * pulse_terms * self.flux
-        
-        #assume prof is already baselined
-        #scale prof
+        RMS = np.sqrt(1 / Nbin)
+        signal = self.flux * RMS * np.sqrt(Npol * delta_f * tau / Nbin) * GAIN / TSYS / BETA 
         prof = self.phase_prof
-        integral = np.sum(prof) / 1024
-        prof *= SNR / integral
+        prof *= signal / np.mean(prof)
+        prof += rand.normal(0, RMS, Nbin)
+        prof_fft = rfft(prof)[1:] / (Nbin / 2)**(1/2)
+        prof_fft *= np.sqrt(self.ndays)
 
-        #add noise to prof and take FFT
-        noise = rand.normal(0, 1, 1024)
-        prof += noise
-        prof_fft = rfft(prof)[1:]
-
-        #scale by RMS noise in high harmonics
-        high_harms = prof_fft[-300:] #arbitrary
-        RMS_noise = np.sqrt(np.mean(np.abs(high_harms)**2))
-        prof_fft *= self.ndays / RMS_noise #need to multiply by ndays for df in stack
-       
-        #baseline to pspec
-        norm_pows = np.abs(prof_fft[:n_harm]) ** 2.0
-        power = norm_pows - self.ndays #this is so small as to be negligible??? 
-        maxpower = max(norm_pows)
-        prof_fft[:n_harm] *= np.sqrt(power / maxpower)
-
-        log.info(f'Scaling factors = {np.sqrt(power / maxpower)}.')
-
-
-        return prof_fft, SNR
+        return prof_fft
 
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
@@ -434,7 +414,31 @@ class Injection:
             normalizer += day_normalizer
         return normalizer
 
-    
+    def retrieve_flux(self, harms, bins, best_nharm, true_dm_in_pspec, true_dm_in_harms):
+        
+        Npol = 2
+        delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
+        tau = 10*60 
+
+        N = 2 * best_nharm
+        main_harms = harms[true_dm_in_harms, :4*best_nharm] + self.pspec[true_dm_in_pspec, bins[:4*best_nharm]] 
+        retrieved_fft = np.zeros(best_nharm)
+        for i in range(best_nharm):
+            retrieved_fft[i] = np.sum(main_harms[4*i : 4*(i+1)])
+        retrieved_fft /= np.sqrt(self.ndays)
+        retrieved_prof = irfft(retrieved_fft) * np.sqrt(best_nharm)
+        
+        plt.plot(retrieved_prof)
+        plt.show()
+        
+        RMS = np.sqrt(1 / N)
+        A = np.mean(retrieved_prof)
+
+        flux = A * TSYS * BETA / GAIN / np.sqrt(Npol * delta_f * tau / N) / RMS
+
+        return flux
+
+
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
@@ -535,15 +539,21 @@ class Injection:
             n_harm = 32
 
         
-        scaled_prof_fft, SNR = self.flux_to_power(GAIN, TSYS, BETA, n_harm)
+        scaled_prof_fft = self.flux_to_power()
         log.info(f'Scaled power in first harmonic: {np.abs(scaled_prof_fft[0])**2}')
         smeared_prof_fft = self.smear_fft(scaled_prof_fft)[:n_harm]
         log.info(f'Smeared power in first harmonic: {np.abs(smeared_prof_fft[0])**2}')
-        log.info(f"Injecting {n_harm} harmonics at SNR = {SNR}.")
+        log.info(f"Injecting {n_harm} harmonics.")
         dispersed_prof_fft, dm_indices = self.disperse(
             smeared_prof_fft, kernels, kernel_scaling
         )
-        log.info(f'Dispersed power in first harmonic: {np.abs(max(dispersed_prof_fft[0]))**2}')
+
+        #grab idx of true dm in full pspec
+        true_dm_in_pspec = np.argmin(np.abs(self.true_dm - self.trial_dms))
+        #grab idx of true dm in harms
+        true_dm_in_harms = np.where(dm_indices == true_dm_in_pspec)[0][0]
+
+        log.info(f'Dispersed power in first harmonic: {np.abs(dispersed_prof_fft[true_dm_in_harms, 0])**2}')
         harms = []
 
         for i in range(len(dispersed_prof_fft)):
@@ -564,6 +574,9 @@ class Injection:
             predicted_sigma,
             rescale_factor,
         ) = self.predict_sigma(harms, bins, dm_indices, n_harm, True)
+
+        retrieved_flux = self.retrieve_flux(harms, bins, predicted_nharm, true_dm_in_pspec, true_dm_in_harms)
+        log.info(f'Retrieved flux: {retrieved_flux} mJy.')
 
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
@@ -605,16 +618,6 @@ class Injection:
             "injected_nharm": n_harm,
         }
         
-        Npol = 2
-        delta_f = 200e6 #will be precisely calculated for each pspec from num of zapped bins
-        tau = 10*60
-        system_terms = (GAIN / TSYS / BETA) #Tsys is in mJy
-        obs_terms = np.sqrt(Npol * tau * delta_f)
-        pulse_terms = np.sqrt(((1 / self.f) - self.W) / self.W)
-        ideal_flux = predicted_sigma / system_terms / obs_terms / pulse_terms 
-        predicted_flux = detection_sigma / system_terms / obs_terms / pulse_terms
-        log.info(f'Ideal output flux: {ideal_flux} mJy.')
-        log.info(f'Predicted output flux: {predicted_flux} mJy.')
 
         return output_dict
 
