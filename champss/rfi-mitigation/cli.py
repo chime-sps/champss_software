@@ -3,10 +3,8 @@ import argparse
 import logging
 from glob import glob
 
-import matplotlib.pyplot as plt
 import numpy as np
 import prometheus_client
-from matplotlib.colors import LogNorm
 from rfi_mitigation.pipeline import RFIPipeline
 from rfi_mitigation.reader import DataReader
 
@@ -216,7 +214,7 @@ if __name__ == "__main__":
                 c.write()
 
             prometheus_client.write_to_textfile(
-                "pipeline_batch_db.prom", registry=prometheus_client.REGISTRY
+                "sps_pipeline.prom", registry=prometheus_client.REGISTRY
             )
 
     if args.profile:

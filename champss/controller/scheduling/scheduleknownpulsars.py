@@ -25,6 +25,19 @@ def get_folding_pars(psr):
 @click.argument("psrfile", type=click.File("r"), required="True")
 @click.argument("outfile", type=click.File("a"), required="True")
 @click.option(
+    "--basepath",
+    type=str,
+    default="/sps-archiver2/raw/",
+    help="Path on L1 cf nodes to a CHAMPSS mount.",
+)
+@click.option(
+    "--source",
+    type=str,
+    default="champss",
+    help=("The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'. "
+          "Do not use 'slow' before consulting with the Slow team"),
+)
+@click.option(
     "--db-port",
     default=27017,
     type=int,
@@ -42,7 +55,7 @@ def get_folding_pars(psr):
     type=str,
     help="Name used for the mongodb database.",
 )
-def main(psrfile, outfile, db_port, db_host, db_name):
+def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
     """
     Record SPS data when known pulsars are transitting.
 
@@ -112,7 +125,7 @@ def main(psrfile, outfile, db_port, db_host, db_name):
                         )
                         outfile.flush()
                         processi = subprocess.Popen(
-                            ["spsctl", f"{beamrow}"], shell=False
+                            ["spsctl", f"{beamrow}", "--basepath", f"{basepath}", "--source", f"{source}"], shell=False
                         )  # nosec
                         processes[i] = processi
                     else:

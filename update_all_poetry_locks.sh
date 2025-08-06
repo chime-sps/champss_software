@@ -8,7 +8,7 @@ SUBREPO_NAME=(
     "controller"
     "folding"
     "multi-pointing"
-    "pipeline_batch_db"
+    "sps-pipeline"
     "ps-processes"
     "rfi-mitigation"
     "sps-common"
@@ -19,6 +19,8 @@ SUBREPO_NAME=(
 for SUBREPO_NAME in "${SUBREPO_NAME[@]}"
 do
   cd "$MONOREPO_NAME/$SUBREPO_NAME"
+
+  echo $SUBREPO_NAME
 
   poetry lock
 

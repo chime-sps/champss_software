@@ -11,7 +11,6 @@ exclude = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
-spshuff = {path = "../spshuff", develop=true}
 astropy = "~6.1"
 attrs = "^22.2.0"
 h5py = "~3.9"
@@ -22,6 +21,7 @@ threadpoolctl = "^3.1.0"
 click = "^8.1.4"
 easydict = "^1.11"
 numpy = "^1.24.3"
+pyyaml = "^6.0"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"

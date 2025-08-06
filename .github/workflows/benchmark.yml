@@ -14,7 +14,7 @@ concurrency:
 jobs:
   update-image:
    # Create an image of your branch with the branch name as tag, and save it locally on the testbed since it'll only run there
-    uses: chime-sps/champss_software/.github/workflows/image.yml@main
+    uses: ./.github/workflows/image.yml
     secrets: inherit
     with:
       image_tag: ${{ inputs.branch_name || 'none' }}
@@ -34,7 +34,7 @@ jobs:
             run: |
               export NODE_NAME='sps-compute2'
               export CONTAINER_NAME='champss-${{ inputs.branch_name }}'
-              chmod +x /module/champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh
-              ./champss/pipeline_batch_db/pipeline-scripts/run-benchmark.sh '--using-docker'
+              chmod +x /module/champss/sps_pipeline/pipeline-scripts/run-benchmark.sh
+              ./champss/sps-pipeline/pipeline-scripts/run-benchmark.sh '--using-docker'
       - run: |
           docker image rmi local/champss_software:${{ inputs.branch_name }}

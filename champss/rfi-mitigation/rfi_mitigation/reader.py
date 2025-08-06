@@ -5,7 +5,7 @@ from typing import List
 
 import numpy as np
 from astropy.time import Time, TimeDelta
-from sps_common import conversion as sps_conversion
+from rfi_mitigation import conversion as rfi_conversion
 from sps_common.constants import L0_NCHAN
 from sps_common.interfaces import SlowPulsarIntensityChunk
 
@@ -90,7 +90,7 @@ class DataReader:
 
         for fname in fnames:
             log.debug(f"Loading {fname}")
-            file_chunks = sps_conversion.read_huff_msgpack(
+            file_chunks = rfi_conversion.read_huff_msgpack(
                 fname, channel_downsampling_factor=channel_downsampling_factor
             )
             for fc in file_chunks:

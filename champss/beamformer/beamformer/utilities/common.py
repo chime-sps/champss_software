@@ -2,8 +2,9 @@ import datetime
 import json
 import logging
 from glob import glob
+import importlib
+import sys
 
-import beam_model
 import ephem
 import numpy as np
 import pytz
@@ -13,19 +14,23 @@ from beamformer import CURRENT_POINTING_MAP, NoSuchPointingError
 from sps_common import constants
 from sps_databases import db_utils, models
 
+if importlib.util.find_spec("beam_model"):
+    import beam_model
+
 log = logging.getLogger(__name__)
 
-config = beam_model.current_config
-try:
-    beammod = beam_model.current_model_class(config)
-except FileNotFoundError:
-    log.error("Missing files for beam model. Will try to load them.")
-    from beam_model.bm_data import get_data
+if "beam_model" in sys.modules:
+    config = beam_model.current_config
+    try:
+        beammod = beam_model.current_model_class(config)
+    except FileNotFoundError:
+        log.error("Missing files for beam model. Will try to load them.")
+        from beam_model.bm_data import get_data
 
-    get_data.main()
-    beammod = beam_model.current_model_class(config)
+        get_data.main()
+        beammod = beam_model.current_model_class(config)
 
-beam_transit = beam_model.config.chime
+    beam_transit = beam_model.config.chime
 
 _storage_path = constants.STORAGE_PATH
 
@@ -42,6 +47,11 @@ def find_next_transit(ra: float, dec: float, ref_time: datetime.datetime) -> flo
     Returns:
         float: Transit time in utc in unix format
     """
+    if "beam_model" not in sys.modules:
+        sys.exit(
+            "ImportError: Using find_next_transit() function requires FRB"
+            " beam_model. Please install beam_model if you plan to use this function."
+        )
     coord = ephem.Equatorial(ephem.degrees(str(ra)), ephem.degrees(str(dec)))
     body = ephem.FixedBody()
     body._ra = coord.ra
@@ -114,8 +124,7 @@ def find_closest_pointing(ra, dec, mode="database"):
         )
     if not pointings:
         raise NoSuchPointingError(
-            f"No pointings within one degree of target ra, dec: ({ ra :.2f},"
-            f" { dec :.2f}"
+            f"No pointings within one degree of target ra, dec: ({ra:.2f}, {dec:.2f}"
         )
 
     p_coords = np.zeros((len(pointings), 2))

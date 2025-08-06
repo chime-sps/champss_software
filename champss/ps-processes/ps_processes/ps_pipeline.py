@@ -192,7 +192,6 @@ class PowerSpectraPipeline:
         injection_path,
         injection_idx,
         only_injections,
-        cutoff_frequency,
         scale_injections=False,
         filepath="./",
         prefix="",
@@ -205,7 +204,6 @@ class PowerSpectraPipeline:
             injection_path,
             injection_idx,
             only_injections,
-            cutoff_frequency,
             scale_injections,
         )
         if self.write_ps_detections and power_spectra_detection_clusters is not None:
