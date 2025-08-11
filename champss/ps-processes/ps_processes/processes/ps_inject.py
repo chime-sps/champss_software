@@ -43,11 +43,6 @@ def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
 
 
-def sinc(x):
-    """Sinc function."""
-    return np.sin(x) / x
-
-
 def generate_pulse(noise=False):
     """
     This function generates a random pulse profile to inject.
@@ -300,7 +295,7 @@ class Injection:
     
         #apply Van der Klis Eq 2.19 for time-bin windowing effect
         harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
-        B = sinc(np.pi * harmonic_freqs * TSAMP)
+        B = np.sinc(harmonic_freqs * TSAMP)
         prof_fft *= B
 
         return prof_fft, phases
@@ -375,6 +370,7 @@ class Injection:
         for i in range(n_harm):
             f_harm = (i + 1) * self.f
             bin_true = f_harm / df
+            print(f'true bin = {bin_true}')
             bin_below = np.floor(bin_true)
             bin_above = np.ceil(bin_true)
 
@@ -383,7 +379,7 @@ class Injection:
                 [bin_below - 1, bin_below, bin_above, bin_above + 1]
             )
             bins[i * N : (i + 1) * N] = current_bins
-            amplitude = prof_fft[i] * sinc(np.pi * (bin_true - current_bins))
+            amplitude = prof_fft[i] * np.sinc(bin_true - current_bins)
             harmonics[i * N : (i + 1) * N] = np.abs(amplitude) ** 2
 
         return bins, harmonics
