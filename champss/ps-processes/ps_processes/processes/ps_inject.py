@@ -210,7 +210,7 @@ class Injection:
             smear_gaussian = gaussian(0.5, sigma)
             smear_fft = rfft(smear_gaussian)[1:] 
             smear_fft /= max(smear_fft)
-            smeared_fft = smear_fft * scaled_fft
+            smeared_fft = smear_fft[:len(scaled_fft)] * scaled_fft
             return smeared_fft
 
         else:
@@ -294,8 +294,13 @@ class Injection:
         phases = np.angle(prof_fft)
         prof_fft *= np.sqrt(self.ndays)
         
+        norm_pows = np.abs(prof_fft) ** 2.0
+        Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
+        prof_fft = prof_fft[:Nsignif]    
+    
         #apply Van der Klis Eq 2.19 for time-bin windowing effect
-        B = sinc(np.pi * self.f * TSAMP)
+        harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
+        B = sinc(np.pi * harmonic_freqs * TSAMP)
         prof_fft *= B
 
         return prof_fft, phases
@@ -541,9 +546,6 @@ class Injection:
         freqs = self.pspec_obj.freq_labels
         df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
-        n_harm = int(np.floor(f_nyquist / self.f))
-        if 32 < n_harm:
-            n_harm = 32
 
         if self.use_sigma:
             scaled_prof_fft, phases = self.sigma_to_power()
@@ -554,7 +556,15 @@ class Injection:
             log.info('Using flux as input quantity.')
             log.info(f'Flux = {self.flux} mJy.')
         
-        smeared_prof_fft = self.smear_fft(scaled_prof_fft)[:n_harm]
+        n_harm = int(np.floor(f_nyquist / self.f))
+        
+        if 32 < n_harm:
+            n_harm = 32
+        
+        if len(scaled_prof_fft) > n_harm:
+            scaled_prof_fft = scaled_prof_fft[:n_harm]
+
+        smeared_prof_fft = self.smear_fft(scaled_prof_fft)
         
         log.info(f"Injecting {n_harm} harmonics.")
         dispersed_prof_fft, dm_indices = self.disperse(
