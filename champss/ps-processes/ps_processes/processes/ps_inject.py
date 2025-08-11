@@ -158,9 +158,9 @@ class Injection:
         DM,
         frequency,
         profile,
-        sigma,
         scale_injections=False,
-        flux = 1,
+        flux = None,
+        sigma = None,
     ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
@@ -179,6 +179,10 @@ class Injection:
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
         self.W = self.get_width()
+        if flux is not None:
+            self.use_sigma = False
+        else:
+            self.use_sigma = True
 
     def get_width(self):
 
@@ -203,7 +207,6 @@ class Injection:
         sigma = fwhm / 2.355
         
         if sigma > 1/1024: 
-            print('Smearing profile.')
             smear_gaussian = gaussian(0.5, sigma)
             smear_fft = rfft(smear_gaussian)[1:] 
             smear_fft /= max(smear_fft)
@@ -211,7 +214,6 @@ class Injection:
             return smeared_fft
 
         else:
-            print('Not smearing profile.')
             return scaled_fft
         
 
@@ -265,8 +267,9 @@ class Injection:
                 n_harm = Nsignif
 
             scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
-
-            return smeared_fft, n_harm
+            phases = np.angle(prof_fft)
+            
+            return smeared_fft, phases
 
     def flux_to_power(self):
         '''
@@ -287,11 +290,15 @@ class Injection:
         signal = self.flux * RMS * np.sqrt(Npol * delta_f * tau / Nbin) * GAIN / TSYS / BETA 
         prof = self.phase_prof
         prof *= signal / np.mean(prof)
-        prof += rand.normal(0, RMS, Nbin)
         prof_fft = rfft(prof)[1:] / (Nbin / 2)**(1/2)
+        phases = np.angle(prof_fft)
         prof_fft *= np.sqrt(self.ndays)
+        
+        #apply Van der Klis Eq 2.19 for time-bin windowing effect
+        B = sinc(np.pi * self.f * TSAMP)
+        prof_fft *= B
 
-        return prof_fft
+        return prof_fft, phases
 
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
@@ -414,27 +421,27 @@ class Injection:
             normalizer += day_normalizer
         return normalizer
 
-    def retrieve_flux(self, harms, bins, best_nharm, true_dm_in_pspec, true_dm_in_harms):
-        
+    def retrieve_flux(self, harms, bins, best_nharm, true_dm_in_pspec, true_dm_in_harms, phases):
+        #not that harms are power, not amplitude
         Npol = 2
         delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
         tau = 10*60 
+        N = len(self.phase_prof)
 
-        N = 2 * best_nharm
-        main_harms = harms[true_dm_in_harms, :4*best_nharm] + self.pspec[true_dm_in_pspec, bins[:4*best_nharm]] 
-        retrieved_fft = np.zeros(best_nharm)
+        main_harms = harms[true_dm_in_harms, :4*best_nharm] * best_nharm + self.pspec[true_dm_in_pspec, bins[:4*best_nharm]]
+        log.info(f'noise in background = {np.mean(self.pspec[true_dm_in_pspec, bins[:4*best_nharm]])}')
+        retrieved_powers = np.zeros(best_nharm)
         for i in range(best_nharm):
-            retrieved_fft[i] = np.sum(main_harms[4*i : 4*(i+1)])
-        retrieved_fft /= np.sqrt(self.ndays)
-        retrieved_prof = irfft(retrieved_fft) * np.sqrt(best_nharm)
-        
-        plt.plot(retrieved_prof)
-        plt.show()
-        
-        RMS = np.sqrt(1 / N)
+            retrieved_powers[i] = np.sum(main_harms[4*i : 4*(i+1)])
+        log.info(f'Retrieved powers = {retrieved_powers}')
+        retrieved_powers /= self.ndays
+        retrieved_fft = np.sqrt(retrieved_powers) * np.exp(1j * phases[:best_nharm])
+        retrieved_prof = -1 * irfft(retrieved_fft) 
+        RMS = np.sqrt(1 / 2 / best_nharm)
         A = np.mean(retrieved_prof)
 
-        flux = A * TSYS * BETA / GAIN / np.sqrt(Npol * delta_f * tau / N) / RMS
+        flux = A * TSYS * BETA / GAIN / np.sqrt(Npol * delta_f * tau / best_nharm) / RMS
+
 
         return flux
 
@@ -538,11 +545,17 @@ class Injection:
         if 32 < n_harm:
             n_harm = 32
 
+        if self.use_sigma:
+            scaled_prof_fft, phases = self.sigma_to_power()
+            log.info('Using sigma as input quantity.')
+            log.info(f'Sigma = {self.sigma}.')
+        else:
+            scaled_prof_fft, phases = self.flux_to_power()
+            log.info('Using flux as input quantity.')
+            log.info(f'Flux = {self.flux} mJy.')
         
-        scaled_prof_fft = self.flux_to_power()
-        log.info(f'Scaled power in first harmonic: {np.abs(scaled_prof_fft[0])**2}')
         smeared_prof_fft = self.smear_fft(scaled_prof_fft)[:n_harm]
-        log.info(f'Smeared power in first harmonic: {np.abs(smeared_prof_fft[0])**2}')
+        
         log.info(f"Injecting {n_harm} harmonics.")
         dispersed_prof_fft, dm_indices = self.disperse(
             smeared_prof_fft, kernels, kernel_scaling
@@ -575,7 +588,7 @@ class Injection:
             rescale_factor,
         ) = self.predict_sigma(harms, bins, dm_indices, n_harm, True)
 
-        retrieved_flux = self.retrieve_flux(harms, bins, predicted_nharm, true_dm_in_pspec, true_dm_in_harms)
+        retrieved_flux = self.retrieve_flux(harms, bins, predicted_nharm, true_dm_in_pspec, true_dm_in_harms, phases)
         log.info(f'Retrieved flux: {retrieved_flux} mJy.')
 
         if self.use_rfi_information:
