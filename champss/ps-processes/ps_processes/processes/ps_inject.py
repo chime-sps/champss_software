@@ -181,9 +181,10 @@ class Injection:
 
     def get_width(self):
 
-        integral = np.sum(self.phase_prof) / len(self.phase_prof)
+        phase_width = np.mean(self.phase_prof) / max(self.phase_prof)
+        time_width = phase_width / self.f
 
-        return integral / max(self.phase_prof)
+        return time_width
         
 
     def onewrap_deltaDM(self):
@@ -283,6 +284,7 @@ class Injection:
         
         RMS = np.sqrt(1 / Nbin)
         signal = self.flux * RMS * np.sqrt(Npol * delta_f * tau / Nbin) * GAIN / TSYS / BETA 
+        signal *= np.sqrt(((1 / self.f) - self.W) / self.W)
         prof = self.phase_prof
         prof *= signal / np.mean(prof)
         prof_fft = rfft(prof)[1:] / (Nbin / 2)**(1/2)
