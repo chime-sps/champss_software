@@ -293,13 +293,18 @@ class Injection:
         Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
         prof_fft = prof_fft[:Nsignif]    
     
+
+        return prof_fft, phases
+
+    def time_windowing(self, prof_fft):
+
+
         #apply Van der Klis Eq 2.19 for time-bin windowing effect
         harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
         B = np.sinc(harmonic_freqs * TSAMP)
         prof_fft *= B
 
-        return prof_fft, phases
-
+        return prof_fft
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
         """
@@ -370,7 +375,6 @@ class Injection:
         for i in range(n_harm):
             f_harm = (i + 1) * self.f
             bin_true = f_harm / df
-            print(f'true bin = {bin_true}')
             bin_below = np.floor(bin_true)
             bin_above = np.ceil(bin_true)
 
@@ -560,7 +564,8 @@ class Injection:
         if len(scaled_prof_fft) > n_harm:
             scaled_prof_fft = scaled_prof_fft[:n_harm]
 
-        smeared_prof_fft = self.smear_fft(scaled_prof_fft)
+        windowed_prof_fft = self.time_windowing(scaled_prof_fft)
+        smeared_prof_fft = self.smear_fft(windowed_prof_fft)
         
         log.info(f"Injecting {n_harm} harmonics.")
         dispersed_prof_fft, dm_indices = self.disperse(
