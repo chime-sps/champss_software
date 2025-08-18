@@ -5,6 +5,7 @@ import os
 import numpy as np
 import scipy.stats as stats
 from scipy.fft import rfft, irfft
+from scipy.signal import correlate
 from scipy.special import chdtri
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.interfaces.utilities import sigma_sum_powers
@@ -173,7 +174,7 @@ class Injection:
         self.full_harm_bins = full_harm_bins
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
-        self.W = self.get_width()
+        self.W = self.get_fwhm()
         if flux is not None:
             self.use_sigma = False
         else:
@@ -186,6 +187,16 @@ class Injection:
 
         return time_width
         
+    def get_fwhm(self):
+        
+        phi = np.linspace(0, 1, 1024)
+        acf = correlate(self.phase_prof, self.phase_prof)[len(self.phase_prof) - 1:]
+        hwhm_idx = np.where(acf <= 0.5*acf[0])[0][0]
+        hwhm = phi[hwhm_idx]
+        fwhm = 2 * hwhm / np.sqrt(2)
+        time_fwhm = fwhm / self.f
+
+        return time_fwhm
 
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in
@@ -304,6 +315,8 @@ class Injection:
         #apply Van der Klis Eq 2.19 for time-bin windowing effect
         harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
         B = np.sinc(harmonic_freqs * TSAMP)
+        B[np.isclose(harmonic_freqs * TSAMP, 0.0)] = 1.0
+
         prof_fft *= B
 
         return prof_fft
