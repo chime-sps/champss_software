@@ -33,7 +33,7 @@ def known_bad_channels(nchan: int = 16384) -> list:
     """
     # TODO: This bad channel mask needs to be re-evaluated,
     #  and the ordering needs to be checked
-    badchans_16k = 16383 - np.concatenate(
+    badchans_16k = np.concatenate(
         (
             range(0, 64),
             range(1804, 2224),
