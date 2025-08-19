@@ -364,7 +364,7 @@ class Injection:
         
         return dispersed_prof_fft, target_dm_idx
 
-    def harmonics(self, prof_fft, df, N=4):
+    def scalloping(self, prof_fft, df, N=4):
         """
         This function calculates the array of frequency-domain harmonics for a given
         pulse profile.
@@ -390,8 +390,8 @@ class Injection:
         for i in range(n_harm):
             f_harm = (i + 1) * self.f
             bin_true = f_harm / df
-            bin_below = np.floor(bin_true)
-            bin_above = np.ceil(bin_true)
+            bin_below = np.floor(bin_true + 1e-8)
+            bin_above = bin_below + 1
 
             # use 2 bins on either side
             current_bins = np.array(
@@ -559,9 +559,11 @@ class Injection:
 
         # pull frequency bins from target power spectrum
         freqs = self.pspec_obj.freq_labels
-        df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
-
+        N = 2* len(freqs)
+        tau = TSAMP * N
+        df = 1 / tau
+        
         if self.use_sigma:
             scaled_prof_fft, phases = self.sigma_to_power()
             log.info('Using sigma as input quantity.')
@@ -596,7 +598,7 @@ class Injection:
         harms = []
 
         for i in range(len(dispersed_prof_fft)):
-            bins, harm = self.harmonics(dispersed_prof_fft[i], df)
+            bins, harm = self.scalloping(dispersed_prof_fft[i], df)
             harms.append(harm)
         #note that harms are POWERS, not amplitudes
 
