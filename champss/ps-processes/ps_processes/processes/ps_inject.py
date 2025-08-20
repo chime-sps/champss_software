@@ -283,7 +283,7 @@ class Injection:
         This function takes a flux in mJy and converts it to a power.
         NOTES: PULSE PROFILE MUST BE NOISELESS AND SCALED TO 1 
         '''
-        
+        log.info(f'Injecting from flux with S = {self.flux} mJy.')        
         #things to add to the injection class:
         #way of getting tau, deltanu
         Npol = 2
@@ -315,8 +315,6 @@ class Injection:
         #apply Van der Klis Eq 2.19 for time-bin windowing effect
         harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
         B = np.sinc(harmonic_freqs * TSAMP)
-        B[np.isclose(harmonic_freqs * TSAMP, 0.0)] = 1.0
-
         prof_fft *= B
 
         return prof_fft
@@ -560,10 +558,10 @@ class Injection:
         # pull frequency bins from target power spectrum
         freqs = self.pspec_obj.freq_labels
         f_nyquist = freqs[-1]
-        N = 2* len(freqs)
+        N = 2 * len(freqs)
         tau = TSAMP * N
         df = 1 / tau
-        
+        print(f'df from division = {df}. df from subtraction = {freqs[1] - freqs[0]}')
         if self.use_sigma:
             scaled_prof_fft, phases = self.sigma_to_power()
             log.info('Using sigma as input quantity.')
@@ -580,6 +578,8 @@ class Injection:
         
         if len(scaled_prof_fft) > n_harm:
             scaled_prof_fft = scaled_prof_fft[:n_harm]
+        else:
+            n_harm = len(scaled_prof_fft)
 
         windowed_prof_fft = self.time_windowing(scaled_prof_fft)
         smeared_prof_fft = self.smear_fft(windowed_prof_fft)
