@@ -193,9 +193,7 @@ def dbexcepthook(type, value, tb):
 @click.argument("dec", type=click.FloatRange(-90, 90))
 @click.argument(
     "components",
-    type=click.Choice(
-        ["all", "rfi", "beamform", "dedisp", "ps", "search", "cleanup"]
-    ),
+    type=click.Choice(["all", "rfi", "beamform", "dedisp", "ps", "search", "cleanup"]),
     nargs=-1,
 )
 @click.option(
@@ -850,11 +848,6 @@ def main(
     help="Only process clusters containing injections.",
 )
 @click.option(
-    "--cutoff-frequency",
-    default=100,
-    help="Frequency at which to stop processing candidates.",
-)
-@click.option(
     "--scale-injections/--not-scale-injections",
     default=False,
     help="Scale injection so that input sigma should be detected sigma.",
@@ -887,7 +880,6 @@ def stack_and_search(
     injection_path,
     injection_idx,
     only_injections,
-    cutoff_frequency,
     scale_injections,
     config_file,
     config_options,
@@ -977,7 +969,6 @@ def stack_and_search(
             injection_path,
             injection_idx,
             only_injections,
-            cutoff_frequency,
             scale_injections,
             file=file,
         )
@@ -1012,7 +1003,6 @@ def stack_and_search(
             injection_path,
             injection_idx,
             only_injections,
-            cutoff_frequency,
             scale_injections,
         )
         if to_search:
