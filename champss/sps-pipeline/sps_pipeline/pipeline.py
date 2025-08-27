@@ -215,7 +215,7 @@ def dbexcepthook(type, value, tb):
 )
 @click.option(
     "--db-host",
-    default="localhost",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
@@ -796,7 +796,7 @@ def main(
 )
 @click.option(
     "--db-host",
-    default="localhost",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
@@ -1090,7 +1090,7 @@ def stack_and_search(
 )
 @click.option(
     "--db-host",
-    default="localhost",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
