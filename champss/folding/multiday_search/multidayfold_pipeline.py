@@ -70,6 +70,12 @@ log = logging.getLogger(__name__)
     help="Number of days to fold and search. Default will fold and search all available days.",
 )
 @click.option(
+    "--start-date",
+    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
+    required=False,
+    help="Start date of data to process. Default = Today in UTC",
+)
+@click.option(
     "--use-workflow",
     is_flag=True,
     help="Queue folding jobs in parallel into Workflow, otherwise run locally.",
@@ -95,6 +101,7 @@ def main(
     db_host,
     db_name,
     nday,
+    start_date,
     use_workflow,
     workflow_buckets_name_prefix,
     docker_image_name,
@@ -133,6 +140,8 @@ def main(
                 db_host,
                 "--nday",
                 nday,
+                "--start-date",
+                start_date,
                 "--use-workflow",
                 "--docker-image-name",
                 docker_image_name,
@@ -217,6 +226,8 @@ def main(
                 db_host,
                 "--nday",
                 nday,
+                "--start-date",
+                start_date,
             ],
             standalone_mode=False,
         )
