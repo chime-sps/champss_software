@@ -103,19 +103,48 @@ def main(
         fold_dates = [entry["date"].date() for entry in source.folding_history]
         fold_SN = [entry["SN"] for entry in source.folding_history]
         archives = [entry["archive_fname"] for entry in source.folding_history]
+
         if len(archives) < 2:
             log.error(f"Source {fs_id} does not have more than 1 archive required to run the search, exiting...")
             return
     else:
         log.error(f"Source {fs_id} has no folding history in db, exiting...")
         return
+
+    # sort by date
+    combined = sorted(zip(fold_dates, fold_SN, archives), key=lambda x: x[0])
+    fold_dates, fold_SN, archives = map(list, zip(*combined))
+
+    # find consecutive chunks
+    chunks = []
+    current_chunk = [(fold_dates[0], fold_SN[0], archives[0])]
+
+    for i in range(1, len(fold_dates)):
+        if fold_dates[i] - fold_dates[i-1] <= datetime.timedelta(days=30):
+            current_chunk.append((fold_dates[i], fold_SN[i], archives[i]))
+        else:
+            chunks.append(current_chunk)
+            current_chunk = [(fold_dates[i], fold_SN[i], archives[i])]
+
+    chunks.append(current_chunk)
+
+    # keep the longest chunk, warn about trimmed ones
+    longest = max(chunks, key=len)
+    for ch in chunks:
+        if ch is not longest:
+            start, end = ch[0][0], ch[-1][0]
+            log.warning(f"Source {fs_id}: trimming chunk from {start} to {end} (gap >30d)")
+
+    fold_dates, fold_SN, archives = map(list, zip(*longest))
+
+    # take only first nday if requested
     if nday:
         fold_dates = fold_dates[:nday]
         fold_SN = fold_SN[:nday]
         archives = archives[:nday]
-    print(fold_dates)
-    print(fold_SN)
-    print(archives)
+
+    log.info(f"Folding {len(archives)} days of data: {fold_dates}")
+
     par_file = source.path_to_ephemeris
     par_vals = read_par(par_file)
     DM_incoherent = par_vals["DM"]
@@ -142,7 +171,7 @@ def main(
     )  # Negative or positive to account for position error
     delta_f1max = 2 * f1_max
 
-    T = data["T"]  # Time from first observation to last observation
+    T = data["Tmax_from_reference"]  # Time from first observation to last observation
     npbin = data["npbin"]  # Number of phase bins
     M_f0 = npbin * phase_accuracy
     M_f0 = int(np.max((M_f0, 1)))  # To make sure M_f0 does not return 0
@@ -207,6 +236,9 @@ def main(
                 elif key == "DECJ":
                     DEC_output = f"{line.strip()} 1 \n"
                     output.write(DEC_output)
+                elif key == 'PEPOCH':
+                    PEPOCH_output = f"PEPOCH {data['PEPOCH']} 0 \n"
+                    output.write(PEPOCH_output)
                 else:
                     output.write(line)
 
