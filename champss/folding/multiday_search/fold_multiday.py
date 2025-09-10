@@ -14,7 +14,7 @@ from sps_pipeline.pipeline import default_datpath
 log = logging.getLogger()
 
 
-def find_all_dates_with_data(ra, dec, basepath, nday=0):
+def find_all_dates_with_data(ra, dec, basepath, nday=0, start_date=""):
     log.setLevel(logging.INFO)
 
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
@@ -30,6 +30,10 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
         day = int(filepath.split("/")[-1])
 
         date = dt.datetime(year, month, day)
+
+        if start_date:
+            if date < start_date:
+                continue
 
         active_pointing = pst.get_single_pointing(ra, dec, date)
 
@@ -91,6 +95,12 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
     help="Number of days to fold. Default is to fold all available days.",
 )
 @click.option(
+    "--start-date",
+    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
+    required=False,
+    help="Start date of data to process. Default = Today in UTC",
+)
+@click.option(
     "--use-workflow",
     is_flag=True,
     help="Queue folding jobs in parallel into Workflow, otherwise run locally.",
@@ -121,6 +131,7 @@ def main(
     foldpath,
     datpath,
     nday,
+    start_date,
     use_workflow,
     workflow_buckets_name,
     docker_image_name,
@@ -133,7 +144,7 @@ def main(
     dm = source.dm
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    dates_with_data = find_all_dates_with_data(ra, dec, datpath, nday=nday)
+    dates_with_data = find_all_dates_with_data(ra, dec, datpath, nday=nday, start_date=start_date)
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
         if use_workflow:
