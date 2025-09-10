@@ -73,7 +73,7 @@ def apply_logging_config(level):
     log.debug("Set default level to: %s", level)
 
 
-apply_logging_config(logging.INFO)
+apply_logging_config(logging.WARNING)
 
 
 def candidate_name(ra_deg, dec_deg, j2000=True):
