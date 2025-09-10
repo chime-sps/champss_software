@@ -354,7 +354,7 @@ def main(
         log.error(f"Ephemeris file {ephem_path} not found")
         return {}, [], []
 
-    fname = f"/{ra:02}_{dec:02}_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.fil"
+    fname = f"/{ra:.02f}_{dec:.02f}_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.fil"
     if filterbank_to_ram:
         log.info("Using ram for filterbank file")
         fildir = "/dev/shm"
