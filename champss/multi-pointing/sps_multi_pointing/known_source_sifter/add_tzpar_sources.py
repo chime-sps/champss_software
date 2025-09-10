@@ -169,9 +169,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--survey",
-        default=None,
+        nargs="+",                    # one or more arguments as a list
+        default=["champss"],          # default list
         type=str,
-        help="Survey for the new source",
+        help="Survey(s) for the new source",
     )
     args = parser.parse_args()
     tzpar_path = args.path
