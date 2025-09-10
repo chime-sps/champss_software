@@ -156,7 +156,7 @@ def main(
     print(f"Loaded {len(data['profiles'])} profiles")
 
     if foldpath is not None:
-        data["directory"] = foldpath
+        data["directory"] = f"{foldpath}/candidates/{RA:.02f}_{DEC:.02f}/"
 
     dF0 = 1 / 86164.1  # 1 day alias (can reduce by 2x if necessary)
     f0_min = F0_incoherent - dF0
@@ -184,7 +184,7 @@ def main(
     f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
 
     np.savez(
-        data["directory"] + "/explore_grid.npz",
+        data["directory"] + f"cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
         f0s=f0s,
         f1s=f1s,
         chi2_grid=chi2_grid,
