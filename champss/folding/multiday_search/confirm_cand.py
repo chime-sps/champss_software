@@ -53,6 +53,12 @@ from sps_databases import db_api, db_utils
     help="Number of days to search. Default is to search all available archives."
 )
 @click.option(
+    "--foldpath",
+    default=None,
+    type=str,
+    help="Path for created files during fold step.",
+)
+@click.option(
     "--write-to-db",
     is_flag=True,
     help="Set folded_status to True in the processes database.",
@@ -69,6 +75,7 @@ def main(
     db_name,
     phase_accuracy,
     nday,
+    foldpath,
     write_to_db=False,
     check_cands=False,
 ):
@@ -117,7 +124,10 @@ def main(
     DEC = par_vals["DECJD"]
 
     data = load_profiles(archives)
-    print(len(data["profiles"]))
+    print(f"Loaded {len(data['profiles'])} profiles")
+
+    if foldpath is not None:
+        data["directory"] = foldpath
 
     dF0 = 1 / 86164.1  # 1 day alias (can reduce by 2x if necessary)
     f0_min = F0_incoherent - dF0
@@ -176,7 +186,10 @@ def main(
     f1_optimal = optimal_parameters[1]
 
     optimal_par_file = par_file.replace(".par", "_optimal.par")
-    directory = data["directory"]
+    if foldpath is not None:
+        optimal_par_file = data['directory'] + optimal_par_file.split('/')[-1]
+
+    print(f"Writing new par file to {optimal_par_file}")
     with open(par_file) as input:
         with open(optimal_par_file, "w") as output:
             output.write("# Created: " + str(datetime.datetime.now()) + "\n")
