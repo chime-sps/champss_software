@@ -174,6 +174,7 @@ def main(
             "db_name": db_name,
             "nday": nday,
             "write_to_db": True,
+            "foldpath": foldpath,
         }
         workflow_tags = [
             "multiday",
@@ -233,6 +234,9 @@ def main(
                 db_host,
                 "--nday",
                 nday,
+                "--write-to-db",
+                "--foldpath",
+                foldpath,
             ],
             standalone_mode=False,
         )
