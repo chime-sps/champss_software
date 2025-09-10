@@ -18,7 +18,6 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
     log.setLevel(logging.INFO)
 
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
-    # os.chdir(f"{basepath}") # Why was this performed?
     pst = PointingStrategist(create_db=False)
 
     dates_with_data = []
@@ -32,21 +31,18 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
 
         date = dt.datetime(year, month, day)
 
-        datelow = dt.datetime(2024, 1, 31)  # Are those ranges needed?
-        datehigh = dt.datetime(2040, 12, 31)
-        if (date > datelow) and (date < datehigh):
-            active_pointing = pst.get_single_pointing(ra, dec, date)
+        active_pointing = pst.get_single_pointing(ra, dec, date)
 
-            files = get_data_list(
-                active_pointing[0].max_beams, basepath=basepath, extn="dat"
-            )
-            if len(files) > 0:
-                print(filepath, len(files))
-                dates_with_data.append(date.strftime("%Y%m%d"))
+        files = get_data_list(
+            active_pointing[0].max_beams, basepath=basepath, extn="dat"
+        )
+        if len(files) > 0:
+            print(filepath, len(files))
+            dates_with_data.append(date.strftime("%Y%m%d"))
 
-            if nday:
-                if len(dates_with_data) >= nday:
-                    return dates_with_data
+        if nday:
+            if len(dates_with_data) >= nday:
+                return dates_with_data
 
     return dates_with_data
 
