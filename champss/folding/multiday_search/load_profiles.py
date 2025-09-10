@@ -2,7 +2,7 @@ import os
 
 import astropy.units as u
 import numpy as np
-from astropy.constants import au, c
+import astropy.constants as const
 from astropy.coordinates import (
     BarycentricTrueEcliptic,
     EarthLocation,
@@ -14,20 +14,21 @@ from folding.archive_utils import *
 
 
 def get_ssb_delay(raj, decj, times):
-    """Get Romer delay to Solar System Barycentre (SSB) for correction of site arrival
-    times to barycentric.
-    """
+    """Get Römer delay to Solar System Barycentre (SSB)."""
 
-    coord = SkyCoord(
-        raj, decj, frame=BarycentricTrueEcliptic, unit=(u.hourangle, u.deg)
-    )
-    psr_xyz = coord.cartesian.xyz.value
-    earth_xyz = get_body_barycentric("earth", times).xyz.value
-    t_bary = []
-    for i in range(len(times)):
-        e_dot_p = np.dot(earth_xyz[:, i], psr_xyz)
-        t_bary.append(e_dot_p * au.value / c.value)
-    return np.array(t_bary) * u.s
+    # Pulsar unit vector in ICRS
+    coord = SkyCoord(raj, decj, frame="icrs", unit=(u.hourangle, u.deg))
+    psr_xyz = coord.cartesian.xyz.to(u.one)  # dimensionless, unit vector
+
+    # Earth position wrt SSB (with units!)
+    earth_xyz = get_body_barycentric("earth", times).xyz  # in AU by default
+
+    # Dot product -> length (still with units, e.g. AU)
+    e_dot_p = np.einsum("ij,i->j", earth_xyz.to(u.m).value, psr_xyz.value) * u.m
+
+    t_bary = e_dot_p / const.c
+    # Divide by c -> time
+    return t_bary.to(u.s)
 
 
 def unwrap_profiles(profiles, dts, f0, f1):
@@ -95,6 +96,12 @@ def load_profiles(archives, max_npbin=256):
 
     T0 = Time(PEPOCH, format="mjd")
     print(f"Reference epoch: {T0}, {T0.isot}")
+    times = Time(times, format="mjd")
+    if (min(times) > T0) or (max(times) < T0):
+        print("Warning: PEPOCH is outside range of observation epochs")
+        T0 = Time(np.median(times.mjd), format="mjd")
+        print(f"Changing reference epoch to central observation {T0}, {T0.isot}")
+
 
     npbin = len(profs[0])
     profs = np.array(profs)
@@ -111,8 +118,8 @@ def load_profiles(archives, max_npbin=256):
     DM = get_archive_parameter(f, "DM")
     directory = os.path.dirname(archives[0])
 
-    times = Time(times, format="mjd")
     t_bary = get_ssb_delay(RA, DEC, times)
+
     dts = times + t_bary
     dts = dts - T0
     dts = dts.to_value("second")
@@ -130,7 +137,8 @@ def load_profiles(archives, max_npbin=256):
             "DEC": DEC,
             "directory": directory,
             "npbin": npbin,
-            "T": Tmax_from_reference,
+            "PEPOCH": T0.mjd,
+            "Tmax_from_reference": Tmax_from_reference,
         }
     )
     return param_dict
