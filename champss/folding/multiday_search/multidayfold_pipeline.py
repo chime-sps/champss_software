@@ -76,6 +76,11 @@ log = logging.getLogger(__name__)
     help="Start date of data to process. Default = Today in UTC",
 )
 @click.option(
+    "--overwrite-folding",
+    is_flag=True,
+    help="Re-run folding even if already folded on this date.",
+)
+@click.option(
     "--use-workflow",
     is_flag=True,
     help="Queue folding jobs in parallel into Workflow, otherwise run locally.",
@@ -102,6 +107,7 @@ def main(
     db_name,
     nday,
     start_date,
+    overwrite_folding,
     use_workflow,
     workflow_buckets_name_prefix,
     docker_image_name,
@@ -142,6 +148,7 @@ def main(
                 nday,
                 "--start-date",
                 start_date,
+                "--overwrite-folding" if overwrite_folding else "",
                 "--use-workflow",
                 "--docker-image-name",
                 docker_image_name,
@@ -228,6 +235,7 @@ def main(
                 nday,
                 "--start-date",
                 start_date,
+                "--overwrite-folding" if overwrite_folding else "",
             ],
             standalone_mode=False,
         )

@@ -101,6 +101,11 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0, start_date=""):
     help="Start date of data to process. Default = Today in UTC",
 )
 @click.option(
+    "--overwrite-folding",
+    is_flag=True,
+    help="Re-run folding even if already folded on this date.",
+)
+@click.option(
     "--use-workflow",
     is_flag=True,
     help="Queue folding jobs in parallel into Workflow, otherwise run locally.",
@@ -132,6 +137,7 @@ def main(
     datpath,
     nday,
     start_date,
+    overwrite_folding,
     use_workflow,
     workflow_buckets_name,
     docker_image_name,
@@ -166,6 +172,7 @@ def main(
                 "using_workflow": True,
                 "foldpath": foldpath,
                 "datpath": datpath,
+                "overwrite_folding": overwrite_folding,
             }
             workflow_tags = [
                 "fold",
@@ -202,6 +209,7 @@ def main(
                     str(foldpath),
                     "--datpath",
                     datpath,
+                    "--overwrite-folding" if overwrite_folding else "",
                 ],
                 standalone_mode=False,
             )
