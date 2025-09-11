@@ -14,7 +14,7 @@ python = ">=3.10,<3.12"
 beamformer = {path = "./champss/beamformer", develop=true}
 candidate-processor = {path = "./champss/candidate-processor", develop=true}
 controller = {path = "./champss/controller", develop=true}
-dmt = {git = "https://github.com/chime-sps/dmt.git"}
+dmt = {git = "https://github.com/chime-sps/dmt.git", rev = "raw_init"}
 folding = {path = "./champss/folding", develop=true}
 ps-processes = {path = "./champss/ps-processes", develop=true}
 rfi-mitigation = {path = "./champss/rfi-mitigation", develop=true}
