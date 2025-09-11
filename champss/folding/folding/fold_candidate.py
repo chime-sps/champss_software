@@ -1,11 +1,10 @@
-from importlib import resources
 import logging
+import multiprocessing
 import os
 import subprocess
 
 import click
 import numpy as np
-import yaml
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 
@@ -14,14 +13,13 @@ log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
-from beamformer.skybeam import SkyBeamFormer
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from folding.plot_candidate import plot_candidate_archive
 from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
 from sps_pipeline import beamform
-from sps_pipeline.pipeline import default_datpath, load_config
+from sps_pipeline.pipeline import default_datpath, load_config, apply_logging_config
 
 
 def update_folding_history(id, payload):
@@ -53,29 +51,6 @@ def update_folding_history(id, payload):
         return_document=pymongo.ReturnDocument.AFTER,
     )
 
-
-def apply_logging_config(level):
-    """
-    Applies logging settings from the given configuration.
-
-    Logging settings are under the 'logging' key, and include:
-    - format: string for the `logging.formatter`
-    - level: logging level for the root logger
-    - modules: a dictionary of submodule names and logging level to be applied to that submodule's logger
-    """
-    log_stream.setFormatter(
-        logging.Formatter(
-            fmt="%(asctime)s %(levelname)s >> %(message)s", datefmt="%b %d %H:%M:%S"
-        )
-    )
-
-    logging.root.setLevel(level)
-    log.debug("Set default level to: %s", level)
-
-
-apply_logging_config(logging.WARNING)
-
-
 def candidate_name(ra_deg, dec_deg, j2000=True):
     ra_hhmmss = ra_deg * 24 / 360
     dec_ddmmss = abs(dec_deg)
@@ -84,7 +59,6 @@ def candidate_name(ra_deg, dec_deg, j2000=True):
     dec_str = f"{int(dec_ddmmss):02d}{int((dec_ddmmss * 60) % 60):02d}"
     candidate_name = "J" + ra_str + dec_sign + dec_str
     return candidate_name
-
 
 def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     cand_pos = SkyCoord(ra, dec, unit="deg")
@@ -246,6 +220,7 @@ def main(
     if using_workflow:
         date = convert_date_to_datetime(date)
 
+    multiprocessing.set_start_method("forkserver", force=True)
     db_utils.connect(host=db_host, port=db_port, name=db_name)
     pst = PointingStrategist(create_db=False)
 
@@ -312,6 +287,17 @@ def main(
             " candidate RA and DEC"
         )
         return {}, [], []
+
+    config = load_config()
+    config['beamform']['update_db'] = False
+    config['beamform']['flatten_bandpass'] = False
+    log_path = foldpath + f"/logs/{date.strftime('%Y/%m/%d')}/"
+    log_name = (
+        f"fold_candidate{date.strftime('%Y-%m-%d')}_{ra:.02f}_"
+        f"{dec:.02f}_{f0:.02f}_{dm:.02f}.log"
+    )
+    log_file = log_path + log_name
+    apply_logging_config(config, log_file)
 
     directory_path = f"{foldpath}/{dir_suffix}"
 
@@ -384,9 +370,6 @@ def main(
         intflag = "-L"
         turns = 10
 
-    config = load_config()
-    config['beamform']['update_db'] = False
-    config['beamform']['flatten_bandpass'] = False
     if not os.path.isfile(fil):
         log.info("Beamforming...")
         fdmt = True
