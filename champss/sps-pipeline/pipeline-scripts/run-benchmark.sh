@@ -19,6 +19,6 @@ run-stack-search-pipeline --plot --plot-threshold 10 --db-host sps-archiver1 --d
 print_candidates --threshold 6.5 ./benchmark/2022/06/*/*/*_power_spectra_candidates.npz
 print_candidates --threshold 10  ./benchmark/*/*_candidates.npz
 
-multidayfold_pipeline --db-host sps-archiver1 --db-name sps_benchmark --foldpath ./benchmark/archives/ --datpath /data/chime/sps/raw_backup/ --start-date 20220618 --nday 4 --psr J2108+5000 --overwrite-folding
+multidayfold_pipeline --db-host sps-archiver1 --db-name sps_benchmark --foldpath ./benchmark/archives/ --datpath /data/chime/sps/raw_backup/ --start-date 20220618 --nday 10 --psr J2108+5000 --overwrite-folding
 
 rm -r ./benchmark/stack ./benchmark/archives ./benchmark/2022/06/*/*/*_obs_id.txt
