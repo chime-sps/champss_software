@@ -3,7 +3,6 @@ ADDITIONAL_STACK_PARAMS="$2" # Second argument
 
 rm -r ./benchmark/stack ./benchmark/2022/06/*/*/*_obs_id.txt
 
-multidayfold_pipeline --db-host sps-archiver1 --db-name sps_benchmark --foldpath ./benchmark/archives/ --datpath /data/chime/sps/raw_backup/ --start-date 20220618 --nday 4 --psr J2108+5000 --overwrite-folding
 run-pipeline --plot --plot-threshold 6.5 --date 20220618 --stack --db-host sps-archiver1 --db-name sps_benchmark --basepath ./benchmark/ --datpath /data/chime/sps/raw_backup/ --stackpath ./benchmark/ $ADDITIONAL_PIPELINE_PARAMS 317.21 50.01
 run-pipeline --plot --plot-threshold 6.5 --date 20220619 --stack --db-host sps-archiver1 --db-name sps_benchmark --basepath ./benchmark/ --datpath /data/chime/sps/raw_backup/ --stackpath ./benchmark/ $ADDITIONAL_PIPELINE_PARAMS 317.21 50.01
 run-pipeline --plot --plot-threshold 6.5 --date 20220620 --stack --db-host sps-archiver1 --db-name sps_benchmark --basepath ./benchmark/ --datpath /data/chime/sps/raw_backup/ --stackpath ./benchmark/ $ADDITIONAL_PIPELINE_PARAMS 317.21 50.01
@@ -20,7 +19,6 @@ run-stack-search-pipeline --plot --plot-threshold 10 --db-host sps-archiver1 --d
 print_candidates --threshold 6.5 ./benchmark/2022/06/*/*/*_power_spectra_candidates.npz
 print_candidates --threshold 10  ./benchmark/*/*_candidates.npz
 
+multidayfold_pipeline --db-host sps-archiver1 --db-name sps_benchmark --foldpath ./benchmark/archives/ --datpath /data/chime/sps/raw_backup/ --start-date 20220618 --nday 4 --psr J2108+5000 --overwrite-folding
 
-rm -r ./benchmark/stack ./benchmark/2022/06/*/*/*_obs_id.txt
-
-multidayfold_pipeline 
+rm -r ./benchmark/stack ./benchmark/archives ./benchmark/2022/06/*/*/*_obs_id.txt
