@@ -305,7 +305,6 @@ def main(
         followup_source = add_candidate_to_fsdb(
             date_str, ra, dec, f0, dm, sigma, candpath
         )
-        print(followup_source)
         fs_id = followup_source._id
     else:
         log.error(
@@ -386,16 +385,13 @@ def main(
         turns = 10
 
     config = load_config()
-    print("after load config in fold_candidate", config)
     config['beamform']['update_db'] = False
     config['beamform']['flatten_bandpass'] = False
     if not os.path.isfile(fil):
         log.info("Beamforming...")
         fdmt = True
-        print(foldpath, datpath)
-        beamformer = beamform.initialise(config, rfi_beamform=True, basepath=foldpath, datpath=datpath)
-        print(ap[0])
-        print(beamformer)
+        beamformer = beamform.initialise(config, rfi_beamform=True, 
+                                         basepath=foldpath, datpath=datpath)
         skybeam, spectra_shared = beamform.run(
             ap[0], beamformer, fdmt, num_threads, foldpath
         )
