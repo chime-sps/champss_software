@@ -1,5 +1,4 @@
 import datetime as dt
-import logging
 from glob import glob
 
 import click
@@ -11,11 +10,7 @@ from scheduler.workflow import schedule_workflow_job
 from sps_databases import db_api, db_utils
 from sps_pipeline.pipeline import default_datpath
 
-log = logging.getLogger()
-
-
 def find_all_dates_with_data(ra, dec, basepath, nday=0, start_date=""):
-    log.setLevel(logging.INFO)
 
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
     pst = PointingStrategist(create_db=False)
@@ -151,7 +146,7 @@ def main(
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
     dates_with_data = find_all_dates_with_data(ra, dec, datpath, nday=nday, start_date=start_date)
-    log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
+    print(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
         if use_workflow:
             docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
@@ -192,25 +187,20 @@ def main(
                 workflow_tags,
             )
         else:
+            args = [
+            "--date", str(date),
+            "--fs_id", str(fs_id),
+            "--foldpath", str(foldpath),
+            "--datpath", str(datpath),
+            "--db-port", str(db_port),
+            "--db-name", str(db_name),
+            "--db-host", str(db_host),
+            "--write-to-db",
+            ]
+            if overwrite_folding:
+                args.append("--overwrite-folding")
             fold_candidate.main(
-                args=[
-                    "--date",
-                    str(date),
-                    "--fs_id",
-                    str(fs_id),
-                    "--db-host",
-                    str(db_host),
-                    "--db-port",
-                    str(db_port),
-                    "--db-name",
-                    str(db_name),
-                    "--write-to-db",
-                    "--foldpath",
-                    str(foldpath),
-                    "--datpath",
-                    datpath,
-                    "--overwrite-folding" if overwrite_folding else "",
-                ],
+                args=args,
                 standalone_mode=False,
             )
 

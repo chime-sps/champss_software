@@ -1,5 +1,4 @@
 import datetime as dt
-import logging
 
 import click
 import multiday_search.confirm_cand as confirm_cand
@@ -13,12 +12,6 @@ from scheduler.workflow import (
 )
 from sps_databases import db_utils
 from sps_pipeline.pipeline import default_datpath
-
-log = logging.getLogger()
-log_stream = logging.StreamHandler()
-logging.root.addHandler(log_stream)
-log = logging.getLogger(__name__)
-
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
@@ -112,6 +105,7 @@ def main(
     workflow_buckets_name_prefix,
     docker_image_name,
 ):
+
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     if psr != "":
         fs_id = str(add_mdcand_from_psrname(psr, dt.datetime.now()))
@@ -119,6 +113,21 @@ def main(
         fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
     else:
         raise ValueError("Must provide either a candidate path or pulsar name")
+    
+    args = [
+        "--fs_id", fs_id,
+        "--foldpath", foldpath,
+        "--datpath", datpath,
+        "--db-port", str(db_port),
+        "--db-name", db_name,
+        "--db-host", db_host,
+        "--nday", str(nday)
+    ]
+    if start_date:
+        args += ["--start-date", start_date.strftime("%Y-%m-%d")]
+    if overwrite_folding:
+        args += ["--overwrite-folding"]
+
     if use_workflow:
         docker_service_name_prefix = "fold-multiday"
 
@@ -130,33 +139,13 @@ def main(
             standalone_mode=False,
         )
 
-        fold_multiday.main.main(
-            args=[
-                "--fs_id",
-                fs_id,
-                "--foldpath",
-                foldpath,
-                "--datpath",
-                datpath,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-host",
-                db_host,
-                "--nday",
-                nday,
-                "--start-date",
-                start_date,
-                "--overwrite-folding" if overwrite_folding else "",
-                "--use-workflow",
-                "--docker-image-name",
-                docker_image_name,
-                "--docker-service-name-prefix",
-                docker_service_name_prefix,
-                "--workflow-buckets-name",
-                workflow_buckets_name,
-            ],
+        args.append("--use-workflow")
+        args += ["--docker-image-name", docker_image_name]
+        args += ["--docker-service-name-prefix", docker_service_name_prefix]
+        args += ["--workflow-buckets-name", workflow_buckets_name]
+
+        fold_multiday.main(
+            args=args,
             standalone_mode=False,
         )
 
@@ -218,25 +207,7 @@ def main(
         return foldresults_dict, [], []
     else:
         fold_multiday.main(
-            args=[
-                "--fs_id",
-                fs_id,
-                "--foldpath",
-                foldpath,
-                "--datpath",
-                datpath,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-host",
-                db_host,
-                "--nday",
-                nday,
-                "--start-date",
-                start_date,
-                "--overwrite-folding" if overwrite_folding else "",
-            ],
+            args=args,
             standalone_mode=False,
         )
 
