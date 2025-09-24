@@ -216,7 +216,7 @@ class Injection:
         if sigma > 1/1024: 
             smear_gaussian = gaussian(0.5, sigma)
             smear_fft = rfft(smear_gaussian)[1:] 
-            smear_fft /= max(smear_fft)
+            smear_fft /= max(np.abs(smear_fft))
             smeared_fft = smear_fft[:len(scaled_fft)] * scaled_fft
             return smeared_fft
 
@@ -276,7 +276,7 @@ class Injection:
             scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
             phases = np.angle(prof_fft)
             
-            return smeared_fft, phases
+            return scaled_fft, phases
 
     def flux_to_power(self):
         '''
@@ -447,11 +447,9 @@ class Injection:
         N = len(self.phase_prof)
 
         main_harms = harms[true_dm_in_harms, :4*best_nharm] * best_nharm + self.pspec[true_dm_in_pspec, bins[:4*best_nharm]]
-        log.info(f'noise in background = {np.mean(self.pspec[true_dm_in_pspec, bins[:4*best_nharm]])}')
         retrieved_powers = np.zeros(best_nharm)
         for i in range(best_nharm):
             retrieved_powers[i] = np.sum(main_harms[4*i : 4*(i+1)])
-        log.info(f'Retrieved powers = {retrieved_powers}')
         retrieved_powers /= self.ndays
         retrieved_fft = np.sqrt(retrieved_powers) * np.exp(1j * phases[:best_nharm])
         retrieved_prof = -1 * irfft(retrieved_fft) 
@@ -561,9 +559,14 @@ class Injection:
         N = 2 * len(freqs)
         tau = TSAMP * N
         df = 1 / tau
-        print(f'df from division = {df}. df from subtraction = {freqs[1] - freqs[0]}')
+        
+        n_harm = int(np.floor(f_nyquist / self.f))
+        
+        if 32 < n_harm:
+            n_harm = 32
+        
         if self.use_sigma:
-            scaled_prof_fft, phases = self.sigma_to_power()
+            scaled_prof_fft, phases = self.sigma_to_power(n_harm, df)
             log.info('Using sigma as input quantity.')
             log.info(f'Sigma = {self.sigma}.')
         else:
@@ -571,10 +574,6 @@ class Injection:
             log.info('Using flux as input quantity.')
             log.info(f'Flux = {self.flux} mJy.')
         
-        n_harm = int(np.floor(f_nyquist / self.f))
-        
-        if 32 < n_harm:
-            n_harm = 32
         
         if len(scaled_prof_fft) > n_harm:
             scaled_prof_fft = scaled_prof_fft[:n_harm]
@@ -594,7 +593,6 @@ class Injection:
         #grab idx of true dm in harms
         true_dm_in_harms = np.where(dm_indices == true_dm_in_pspec)[0][0]
 
-        log.info(f'Dispersed power in first harmonic: {np.abs(dispersed_prof_fft[true_dm_in_harms, 0])**2}')
         harms = []
 
         for i in range(len(dispersed_prof_fft)):
@@ -622,7 +620,6 @@ class Injection:
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
             bin_fractions = self.pspec_obj.get_bin_weights_fraction()
-            # Is linear scaling the way to go?
             harms *= bin_fractions[bins]
         injected_indices = np.ix_(dm_indices, bins)
         _, detection_nharm, detection_sigma, _ = self.predict_sigma(
