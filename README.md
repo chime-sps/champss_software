@@ -32,6 +32,8 @@ cd champss/beamformer
 pip install -e . --no-deps
 ```
 
+Due to the relative paths in the pyproject.toml the full software suite cannot be installed as a dependency (when using poetry at least). But sps-common can be installed as dependency in other projects.
+
 ### Running Workflow Scripts
 
 Before running any scripts that call `schedule_workflow_job` outside of a container, you'll need to run:

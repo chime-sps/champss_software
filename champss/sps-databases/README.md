@@ -50,7 +50,7 @@ Pointing(_id=ObjectId('60147308fd86abb1e4b7e5b2'), ra=300.00720109575036, dec=4.
 ```
 
 ## Connect to a database on another port
-If your database is running on a host other than "localhost" and the default port 27017, before calling any functions in `db_api`, first call `db_utils.connect`:
+If your database is running on a host other than "sps-archiver1" and the default port 27017, before calling any functions in `db_api`, first call `db_utils.connect`:
 ```python
 from sps_databases import db_api, db_utils
 
@@ -59,6 +59,7 @@ db_api(get_pointing(pointing_id))
 # Pointing(_id=ObjectId('60147308fd86abb1e4b7e5b2'), ra=300.00720109575036, dec=4.540456929400711, beam_row=23, length=368640, ne2001dm=133.19571311122226, ymw16dm=104.6781383116166, maxdm=300.30837821026887, nchans=2048, search_algorithm=<SearchAlgorithm.power_spec: 1>)
 ```
 Note that when running db_utils.connect multiple times with different settings only the first connection will be established.
+When the database is running on the same machine, you can use "localhost" as the host.
 
 ## Access with `pymongo`
 

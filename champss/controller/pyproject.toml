@@ -11,7 +11,6 @@ exclude = [
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
 beamformer = {path = "../beamformer", develop=true}
-spshuff = {path = "../spshuff", develop=true}
 sps-common = {path = "../sps-common", develop=true}
 sps-databases = {path = "../sps-databases", develop=true}
 async-exit-stack = "^1.0.1"

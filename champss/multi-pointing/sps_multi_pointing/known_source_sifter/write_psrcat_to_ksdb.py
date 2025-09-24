@@ -33,7 +33,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--db-host",
-        default="localhost",
+        default="sps-archiver1",
         type=str,
         help="Host used for the mongodb database.",
     )

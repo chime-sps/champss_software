@@ -157,7 +157,7 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 )
 @click.option(
     "--db-host",
-    default="localhost",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )

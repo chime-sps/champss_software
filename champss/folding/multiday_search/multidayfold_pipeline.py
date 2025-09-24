@@ -11,7 +11,8 @@ from scheduler.workflow import (
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
 )
-from sps_databases import db_api, db_utils, models
+from sps_databases import db_utils
+from sps_pipeline.pipeline import default_datpath
 
 log = logging.getLogger()
 log_stream = logging.StreamHandler()
@@ -37,6 +38,12 @@ log = logging.getLogger(__name__)
     default="/data/chime/sps/archives",
     type=str,
     help="Path for created files during fold step.",
+)
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
 )
 @click.option(
     "--db-port",
@@ -83,6 +90,7 @@ def main(
     candpath,
     psr,
     foldpath,
+    datpath,
     db_port,
     db_host,
     db_name,
@@ -115,6 +123,8 @@ def main(
                 fs_id,
                 "--foldpath",
                 foldpath,
+                "--datpath",
+                datpath,
                 "--db-port",
                 db_port,
                 "--db-name",
@@ -144,7 +154,7 @@ def main(
         docker_name = f"{docker_service_name_prefix}-{fs_id}"
         docker_memory_reservation = 64
         docker_mounts = [
-            "/data/chime/sps/raw:/data/chime/sps/raw",
+            f"{datpath}:{datpath}",
             f"{foldpath}:{foldpath}",
         ]
 
@@ -196,6 +206,8 @@ def main(
                 fs_id,
                 "--foldpath",
                 foldpath,
+                "--datpath",
+                datpath,
                 "--db-port",
                 db_port,
                 "--db-name",

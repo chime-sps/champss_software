@@ -192,7 +192,6 @@ class PowerSpectraPipeline:
         injection_path,
         injection_idx,
         only_injections,
-        cutoff_frequency,
         scale_injections=False,
         filepath="./",
         prefix="",
@@ -205,7 +204,6 @@ class PowerSpectraPipeline:
             injection_path,
             injection_idx,
             only_injections,
-            cutoff_frequency,
             scale_injections,
         )
         if self.write_ps_detections and power_spectra_detection_clusters is not None:
@@ -320,7 +318,6 @@ class StackSearchPipeline:
         injection_path=None,
         injection_idx=None,
         only_store_injections=False,
-        cutoff_frequency=100.0,
         scale_injections=False,
         file=None,
     ):
@@ -405,7 +402,6 @@ class StackSearchPipeline:
                     injection_path,
                     injection_idx,
                     only_store_injections,
-                    cutoff_frequency,
                     scale_injections,
                 )
             else:
@@ -423,7 +419,6 @@ class StackSearchPipeline:
         injection_path=None,
         injection_idx=None,
         only_store_injections=False,
-        cutoff_frequency=100.0,
         scale_injections=False,
     ):
         """
@@ -466,7 +461,6 @@ class StackSearchPipeline:
                         injection_path,
                         injection_idx,
                         only_store_injections,
-                        cutoff_frequency,
                         scale_injections,
                     )
                 stacked_power_spectra = self._ps_stack.stack(monthly_power_spectra)
@@ -520,7 +514,6 @@ class StackSearchPipeline:
                 injection_path,
                 injection_idx,
                 only_store_injections,
-                cutoff_frequency,
                 scale_injections,
             )
             if self.write_ps_detections:

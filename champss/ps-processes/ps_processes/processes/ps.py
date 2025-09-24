@@ -685,16 +685,19 @@ class PowerSpectraCreation:
     ):
         """Prepare and deliver the payload to the observation database."""
 
-        birdie_path = f"{os.path.abspath(observation.datapath)}/birdie_info.npz"
-        np.savez(
-            birdie_path,
-            birdies=bad_freq_indices,
-            birdies_position=birdies_inf.position,
-            birdies_height=birdies_inf.height,
-            birdies_left_freq=birdies_inf.left,
-            birdies_right_freq=birdies_inf.right,
-        )
-        log.info(f"Wrote out birdie info to {birdie_path}")
+        if self.run_dynamic_filter:
+            birdie_path = f"{os.path.abspath(observation.datapath)}/birdie_info.npz"
+            np.savez(
+                birdie_path,
+                birdies=bad_freq_indices,
+                birdies_position=birdies_inf.position,
+                birdies_height=birdies_inf.height,
+                birdies_left_freq=birdies_inf.left,
+                birdies_right_freq=birdies_inf.right,
+            )
+            log.info(f"Wrote out birdie info to {birdie_path}")
+        else:
+            birdie_path = None
 
         payload = dict(
             mean_power=float(power_spectrum.mean()),
@@ -900,6 +903,8 @@ class PowerSpectraCreation:
                 )
             bad_freq_indices = sorted(set(bad_freq_indices).union(strong_periodic_rfi))
             bad_freq_indices = sorted(set(bad_freq_indices).union(common_birdies))
+        else:
+            birdies = None
 
         return bad_freq_indices, compared_obs, birdies, medians_path
 

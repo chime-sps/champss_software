@@ -27,4 +27,3 @@ jobs:
       # E.g. v1.0.0, only set if merging automated release PR
       image_tag: ${{ needs.check-release.outputs.release_tag || 'none' }}
       build_locally: false
-

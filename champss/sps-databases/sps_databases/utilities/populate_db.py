@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--port", type=int, default=27017, help="The port of the database.")
 parser.add_argument("--name", type=str, default="sps", help="The name of the database.")
 parser.add_argument(
-    "--host", type=str, default="localhost", help="The name of the database."
+    "--host", type=str, default="sps-archiver1", help="The name of the database."
 )
 parser.add_argument(
     "--count",

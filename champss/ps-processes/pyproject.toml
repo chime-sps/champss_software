@@ -12,7 +12,6 @@ exclude = [
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}
-spshuff = {path = "../spshuff", develop=true}
 sps-common = {path = "../sps-common", develop=true}
 sps-databases = {path = "../sps-databases", develop=true}
 h5py = "~3.9"

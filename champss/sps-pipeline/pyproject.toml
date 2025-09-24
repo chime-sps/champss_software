@@ -18,7 +18,6 @@ folding = {path = "../folding", develop=true}
 ps-processes = {path = "../ps-processes", develop=true}
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}
 scheduler = {path = "../scheduler", develop=true}
-spshuff = {path = "../spshuff", develop=true}
 sps-common = {path = "../sps-common", develop=true}
 sps-databases = {path = "../sps-databases", develop=true}
 sps-dedispersion = {path = "../sps-dedispersion", develop=true}

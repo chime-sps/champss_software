@@ -91,7 +91,7 @@ def ra_dec_from_ecliptic(elong, elat, elong_err=np.nan, elat_err=np.nan):
     return ra, dec, ra_err, dec_err
 
 
-def add_source_to_database(payload, db_port=27017, db_host="localhost", db_name="sps"):
+def add_source_to_database(payload, db_port=27017, db_host="sps-archiver1", db_name="sps"):
     """
     Add a source into the known source database, given a dictionary including all the
     properties required by the database.
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--db-host",
-        default="localhost",
+        default="sps-archiver1",
         type=str,
         help="Host used for the mongodb database.",
     )

@@ -539,7 +539,7 @@ class SkyBeamFormer:
         """
         Class for reading raw files directly to shared spectra.
 
-        Based on the sps_common.conversion.read_huff_msgpack
+        Based on the sps_common.conversion.read_huff_msgpack (now in rfi_mitigation.conversion)
 
         Parameters
         ==========

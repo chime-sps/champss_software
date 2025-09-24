@@ -1,6 +1,5 @@
 import datetime as dt
 import logging
-import os
 from glob import glob
 
 import click
@@ -10,6 +9,7 @@ from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import get_data_list
 from scheduler.workflow import schedule_workflow_job
 from sps_databases import db_api, db_utils
+from sps_pipeline.pipeline import default_datpath
 
 log = logging.getLogger()
 
@@ -18,7 +18,7 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
     log.setLevel(logging.INFO)
 
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
-    os.chdir(f"{basepath}")
+    # os.chdir(f"{basepath}") # Why was this performed?
     pst = PointingStrategist(create_db=False)
 
     dates_with_data = []
@@ -32,8 +32,8 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
 
         date = dt.datetime(year, month, day)
 
-        datelow = dt.datetime(2024, 1, 31)
-        datehigh = dt.datetime(2024, 12, 31)
+        datelow = dt.datetime(2024, 1, 31)  # Are those ranges needed?
+        datehigh = dt.datetime(2040, 12, 31)
         if (date > datelow) and (date < datehigh):
             active_pointing = pst.get_single_pointing(ra, dec, date)
 
@@ -83,6 +83,12 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+@click.option(
     "--nday",
     default=0,
     type=int,
@@ -117,6 +123,7 @@ def main(
     db_host,
     db_name,
     foldpath,
+    datpath,
     nday,
     use_workflow,
     workflow_buckets_name,
@@ -130,16 +137,14 @@ def main(
     dm = source.dm
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    dates_with_data = find_all_dates_with_data(
-        ra, dec, "/data/chime/sps/raw/", nday=nday
-    )
+    dates_with_data = find_all_dates_with_data(ra, dec, datpath, nday=nday)
     log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for date in dates_with_data:
         if use_workflow:
             docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
             docker_memory_reservation = (nchan / 1024) * 8
             docker_mounts = [
-                "/data/chime/sps/raw:/data/chime/sps/raw",
+                f"{datpath}:{datpath}",
                 f"{foldpath}:{foldpath}",
             ]
 
@@ -153,6 +158,7 @@ def main(
                 "write_to_db": True,
                 "using_workflow": True,
                 "foldpath": foldpath,
+                "datpath": datpath,
             }
             workflow_tags = [
                 "fold",
@@ -185,6 +191,10 @@ def main(
                     "--db-name",
                     str(db_name),
                     "--write-to-db",
+                    "--foldpath",
+                    str(foldpath),
+                    "--datpath",
+                    datpath,
                 ],
                 standalone_mode=False,
             )
