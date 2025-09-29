@@ -246,6 +246,7 @@ class PowerSpectraSearch:
                 if len(injection_indices) == 0:
                     injection_indices = np.arange(len(injection_df))
                 for injection_index in injection_indices:
+                    log.info("Injecting at:")
                     log.info(f"DM: {injection_df.iloc[injection_index]['DM']}")
                     log.info(
                         f"frequency: {injection_df.iloc[injection_index]['frequency']}"

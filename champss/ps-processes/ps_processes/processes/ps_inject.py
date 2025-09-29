@@ -283,12 +283,11 @@ class Injection:
         This function takes a flux in mJy and converts it to a power.
         NOTES: PULSE PROFILE MUST BE NOISELESS AND SCALED TO 1 
         '''
-        log.info(f'Injecting from flux with S = {self.flux} mJy.')        
         #things to add to the injection class:
         #way of getting tau, deltanu
         Npol = 2
         delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
-        tau = 10*60 #in seconds; depends on ra/dec. should be stored in pspec but currently isnt.
+        tau = 2 * self.pspec.shape[1] * TSAMP
         Nbin = len(self.phase_prof)
 
         #calculate input signal
