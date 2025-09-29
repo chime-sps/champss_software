@@ -631,6 +631,12 @@ class Clusterer:
                 ' "dmfreq", "harm"'
             )
 
+        if len(detections_in) <= 1:
+            log.info(f"Only {len(detections_in)} detections, no clustering needed")
+            labels = np.array([0] if len(detections_in) == 1 else [])
+            return detections_in, labels, self.sigma_detection_threshold
+
+
         # Set rogue harm powers filtering method
         if self.rogue_harmpow_scheme == "presto":
             filter_rogue_harmpows = rogue_harmpow_filter_presto
