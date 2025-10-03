@@ -22,6 +22,7 @@ pyfftw = "^0.13.1"
 pyyaml = "^6.0"
 scipy = "^1.10.1"
 tqdm = "^4.66.5"
+cfbm = {git = "https://github.com/chime-frb-open-data/chime-frb-beam-model"}
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
