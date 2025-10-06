@@ -211,7 +211,8 @@ class Injection:
         dt_dm = self.true_dm * DM_CONSTANT * quadratic_term 
         t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
         fwhm = t_eff * self.f #get the FWHM in units of the pulse period
-        sigma = fwhm / 2.355
+        conversion_factor = 2*np.sqrt(2 * np.log(2))
+        sigma = fwhm / conversion_factor #convert from sigma to fwhm
         
         if sigma > 1/1024: 
             smear_gaussian = gaussian(0.5, sigma)
@@ -283,8 +284,7 @@ class Injection:
         This function takes a flux in mJy and converts it to a power.
         NOTES: PULSE PROFILE MUST BE NOISELESS AND SCALED TO 1 
         '''
-        #things to add to the injection class:
-        #way of getting tau, deltanu
+    
         Npol = 2
         delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
         tau = 2 * self.pspec.shape[1] * TSAMP
@@ -442,7 +442,6 @@ class Injection:
         #not that harms are power, not amplitude
         Npol = 2
         delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
-        tau = 10*60 
         N = len(self.phase_prof)
 
         main_harms = harms[true_dm_in_harms, :4*best_nharm] * best_nharm + self.pspec[true_dm_in_pspec, bins[:4*best_nharm]]
