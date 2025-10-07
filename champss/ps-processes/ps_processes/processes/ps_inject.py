@@ -9,6 +9,8 @@ from scipy.signal import correlate
 from scipy.special import chdtri
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.interfaces.utilities import sigma_sum_powers
+from sps_databases import db_api, db_utils
+from beamformer.utilities.common import find_closest_pointing, get_data_list
 import matplotlib.pyplot as plt
 
 log = logging.getLogger(__name__)
@@ -135,9 +137,6 @@ def x_to_chi2(x, df):
         # normalize to CHAMPSS power spectrum by dividing by 2
         return chi2 / 2
 
-
-
-
 def get_median(xlow, xhigh, ylow, yhigh, x):
     m = (yhigh - ylow) / (xhigh - xlow)
 
@@ -206,9 +205,15 @@ class Injection:
         return deltaDM
 
     def smear_fft(self, scaled_fft):
-
-        quadratic_term = 1e-11 #at 600 MHz
-        dt_dm = self.true_dm * DM_CONSTANT * quadratic_term 
+        
+        mode = 'database'
+        db = db_utils.connect(host='sps-archiver1', name='test')
+        ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)        
+        nchan = str(ap.nchans)
+        
+        quadratic_terms = {'1024': 1e-8, '2048': 6e-9, '4096': 3e-9, '8192': 1.5e-9, '16384': 8e-10}
+        #value of 1/400^2 - 1/(400 - dnu)^2 at each channelization, overestimation
+        dt_dm = self.true_dm * DM_CONSTANT * quadratic_terms[nchan]
         t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
         fwhm = t_eff * self.f #get the FWHM in units of the pulse period
         conversion_factor = 2*np.sqrt(2 * np.log(2))
