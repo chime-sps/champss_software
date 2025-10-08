@@ -52,7 +52,7 @@ ENV PYTHONUNBUFFERED=1 \
 COPY . .
 
 RUN set -ex \
-    && python3 -m pip install .[beam-model] \
+    && python3 -m pip install . \
     && get-data \
     && workflow workspace set champss.workspace.yml \
     && python3 download_files.py 
