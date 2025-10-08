@@ -445,6 +445,7 @@ class Injection:
 
     def retrieve_flux(self, harms, bins, best_nharm, true_dm_in_pspec, true_dm_in_harms, phases):
         #not that harms are power, not amplitude
+        tau = 2 * self.pspec.shape[1] * TSAMP
         Npol = 2
         delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
         N = len(self.phase_prof)
