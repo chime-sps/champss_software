@@ -25,7 +25,7 @@ sps-databases = {path = "./champss/sps-databases", develop=true}
 sps-dedispersion = {path = "./champss/sps-dedispersion", develop=true}
 sps-multi-pointing = {path = "./champss/multi-pointing", develop=true}
 sps_pipeline = {path = "./champss/sps-pipeline", develop=true}
-cfbm = {git = "https://github.com/chime-frb-open-data/chime-frb-beam-model"}
+cfbm = {git = "https://github.com/chime-sps/chime-frb-beam-model"}
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"

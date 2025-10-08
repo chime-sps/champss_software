@@ -21,8 +21,6 @@ numpy = "^1.24.3"
 prometheus-client = "^0.17.1"
 pytz = "^2023.3"
 scipy = "^1.10.1"
-ephem = ">=3.7.7.0"
-cfbm = {git = "https://github.com/chime-frb-open-data/chime-frb-beam-model"}
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
