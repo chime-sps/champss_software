@@ -314,8 +314,8 @@ class PowerSpectraCreation:
                 medians = np.asarray(medians)
                 median_dm_indices = np.asarray(median_dm_indices)
                 scales = np.asarray(scales)
-                freq_labels = self.freq_labels[np.cumsum(scales)]
-
+                freq_labels = power_spectra.get_freq_labels[np.cumsum(scales)]
+            
             if self.save_medians:
                 rn_medians = medians[np.newaxis, :]
                 rn_dm_indices = median_dm_indices[np.newaxis, :]
@@ -334,7 +334,7 @@ class PowerSpectraCreation:
                     medians_path,
                     medians=medians,
                     scales=scales,
-                    freq_lables=freq_labels
+                    freq_labels=freq_labels
                 )
             else:
                 medians_path = None
