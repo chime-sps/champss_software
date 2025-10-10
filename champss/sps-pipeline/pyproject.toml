@@ -14,6 +14,7 @@ python = ">=3.10,<3.12"
 beamformer = {path = "../beamformer", develop=true}
 candidate-processor = {path = "../candidate-processor", develop=true}
 workflow-core = {git = "https://github.com/CHIMEFRB/workflow.git"}
+FFA = {path = "../FFA", develop=true}
 folding = {path = "../folding", develop=true}
 ps-processes = {path = "../ps-processes", develop=true}
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}
@@ -32,6 +33,7 @@ pytz = "^2023.3"
 pyyaml = "^6.0"
 pyroscope-io = "^0.8.5"
 requests = "<2.32.0"
+riptide-ffa = "^0.2.5"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"

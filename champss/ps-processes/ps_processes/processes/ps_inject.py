@@ -4,10 +4,14 @@ import os
 
 import numpy as np
 import scipy.stats as stats
-from scipy.fft import rfft
+from scipy.fft import rfft, irfft
+from scipy.signal import correlate
 from scipy.special import chdtri
-from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP
+from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.interfaces.utilities import sigma_sum_powers
+from sps_databases import db_api, db_utils
+from beamformer.utilities.common import find_closest_pointing, get_data_list
+import matplotlib.pyplot as plt
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +32,10 @@ mean_threes = 0.00995
 kernels = np.load(os.path.dirname(__file__) + "/kernels.npy")
 kernel_scaling = np.load(os.path.dirname(__file__) + "/kernels.meta.npy")
 
+#parameters of the system:
+GAIN= 1.16e-3 #K mJy^-1
+TSYS = 30 #K
+BETA = 1.1
 
 def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
@@ -36,11 +44,6 @@ def gaussian(mu, sig):
 
 def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
-
-
-def sinc(x):
-    """Sinc function."""
-    return np.sin(x) / x
 
 
 def generate_pulse(noise=False):
@@ -52,7 +55,7 @@ def generate_pulse(noise=False):
             noise: bool
                 whether or not the pulse should be distorted by white noise
     """
-    u = rand.uniform(0.01, 0.99, 1000)
+    u = rand.uniform(0.01, 0.99)
     # inverse sampling theorem for an exponential distribution with lambda = 1/15
     gamma = -15 * np.log(1 - u) / 2 / 360
     prof = lorentzian(phis, gamma)
@@ -134,7 +137,6 @@ def x_to_chi2(x, df):
         # normalize to CHAMPSS power spectrum by dividing by 2
         return chi2 / 2
 
-
 def get_median(xlow, xhigh, ylow, yhigh, x):
     m = (yhigh - ylow) / (xhigh - xlow)
 
@@ -151,8 +153,9 @@ class Injection:
         DM,
         frequency,
         profile,
-        sigma,
         scale_injections=False,
+        flux = None,
+        sigma = None,
     ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
@@ -163,12 +166,36 @@ class Injection:
         self.true_dm = DM
         self.trial_dms = self.pspec_obj.dms
         self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
-        self.phase_prof = profile
+        self.phase_prof = np.array(profile)
         self.sigma = sigma
+        self.flux = flux
         self.power_threshold = 1
         self.full_harm_bins = full_harm_bins
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
+        self.W = self.get_fwhm()
+        if flux is not None:
+            self.use_sigma = False
+        else:
+            self.use_sigma = True
+
+    def get_width(self):
+
+        phase_width = np.mean(self.phase_prof) / max(self.phase_prof)
+        time_width = phase_width / self.f
+
+        return time_width
+        
+    def get_fwhm(self):
+        
+        phi = np.linspace(0, 1, 1024)
+        acf = correlate(self.phase_prof, self.phase_prof)[len(self.phase_prof) - 1:]
+        hwhm_idx = np.where(acf <= 0.5*acf[0])[0][0]
+        hwhm = phi[hwhm_idx]
+        fwhm = 2 * hwhm / np.sqrt(2)
+        time_fwhm = fwhm / self.f
+
+        return time_fwhm
 
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in
@@ -176,6 +203,32 @@ class Injection:
         """
         deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
+
+    def smear_fft(self, scaled_fft):
+        
+        mode = 'database'
+        db = db_utils.connect(host='sps-archiver1', name='test')
+        ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)        
+        nchan = str(ap.nchans)
+        
+        quadratic_terms = {'1024': 1e-8, '2048': 6e-9, '4096': 3e-9, '8192': 1.5e-9, '16384': 8e-10}
+        #value of 1/400^2 - 1/(400 - dnu)^2 at each channelization, overestimation
+        dt_dm = self.true_dm * DM_CONSTANT * quadratic_terms[nchan]
+        t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
+        fwhm = t_eff * self.f #get the FWHM in units of the pulse period
+        conversion_factor = 2*np.sqrt(2 * np.log(2))
+        sigma = fwhm / conversion_factor #convert from sigma to fwhm
+        
+        if sigma > 1/1024: 
+            smear_gaussian = gaussian(0.5, sigma)
+            smear_fft = rfft(smear_gaussian)[1:] 
+            smear_fft /= max(np.abs(smear_fft))
+            smeared_fft = smear_fft[:len(scaled_fft)] * scaled_fft
+            return smeared_fft
+
+        else:
+            return scaled_fft
+        
 
     def sigma_to_power(self, n_harm, df):
         """
@@ -193,35 +246,82 @@ class Injection:
             n_harm (int): The actually inected number of harmonics.
         """
         # Compute the normalized powers of the injected profile (Sum of pows == 1)
+        
         prof_fft = rfft(self.phase_prof)[1:]
         norm_pows = np.abs(prof_fft) ** 2.0
         maxpower = norm_pows.sum()
-        norm_pows /= maxpower
-        # check the sum of powers is 1
-        assert math.isclose(norm_pows.sum(), 1.0)
-        Nallharms = len(norm_pows)
 
-        # Compute the theoretical power in the harmonics where we will inject
-        # a significant amount of our power (i.e. > 1%)
+        if maxpower.all() == 0:
+            return np.zeros(len(n_harm))
+
+        else:
+            norm_pows /= maxpower
+            # check the sum of powers is 1
+            assert math.isclose(norm_pows.sum(), 1.0)
+            Nallharms = len(norm_pows)
+
+            # Compute the theoretical power in the harmonics where we will inject
+            # a significant amount of our power (i.e. > 1%)
+            Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
+
+            #use ALL HARMONICS to calculate power
+            power = x_to_chi2(self.sigma, 2 * Nsignif * self.ndays)
+
+            # Now compute the theoretical power for each harmonic to inject. We will
+            # add this value to the current stack. Note that we are subtracting the
+            # predicted amount of power due to the means of the power spectra.
+
+            power -= Nsignif * self.ndays
+
+            # if there are fewer significant harmonics than there are harmonics that fit
+            # then use Nsignif
+            # otherwise only take harmonics that fit before the Nyquist cutoff frequency
+            if Nsignif < n_harm:
+                n_harm = Nsignif
+
+            scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
+            phases = np.angle(prof_fft)
+            
+            return scaled_fft, phases
+
+    def flux_to_power(self):
+        '''
+        This function takes a flux in mJy and converts it to a power.
+        NOTES: PULSE PROFILE MUST BE NOISELESS AND SCALED TO 1 
+        '''
+    
+        Npol = 2
+        delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
+        tau = 2 * self.pspec.shape[1] * TSAMP
+        Nbin = len(self.phase_prof)
+
+        #calculate input signal
+        
+        RMS = np.sqrt(1 / Nbin)
+        signal = self.flux * RMS * np.sqrt(Npol * delta_f * tau / Nbin) * GAIN / TSYS / BETA 
+        signal *= np.sqrt(((1 / self.f) - self.W) / self.W)
+        prof = self.phase_prof
+        prof *= signal / np.mean(prof)
+        prof_fft = rfft(prof)[1:] / (Nbin / 2)**(1/2)
+        phases = np.angle(prof_fft)
+        prof_fft *= np.sqrt(self.ndays)
+        
+        norm_pows = np.abs(prof_fft) ** 2.0
         Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
+        prof_fft = prof_fft[:Nsignif]    
+    
 
-        power = x_to_chi2(self.sigma, 2 * Nsignif * self.ndays)
+        return prof_fft, phases
 
-        # Now compute the theoretical power for each harmonic to inject. We will
-        # add this value to the current stack. Note that we are subtracting the
-        # predicted amount of power due to the means of the power spectra.
+    def time_windowing(self, prof_fft):
 
-        power -= Nsignif * self.ndays
 
-        # if there are fewer significant harmonics than there are harmonics that fit
-        # then use Nsignif
-        # otherwise only take harmonics that fit before the Nyquist cutoff frequency
-        if Nsignif < n_harm:
-            n_harm = Nsignif
+        #apply Van der Klis Eq 2.19 for time-bin windowing effect
+        harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
+        B = np.sinc(harmonic_freqs * 4 * TSAMP) #factor of 4 is purely phenomenological
+        prof_fft *= B
 
-        scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
-
-        return scaled_fft, n_harm
+        return prof_fft
 
     def disperse(self, prof_fft, kernels, kernel_scaling):
         """
@@ -263,19 +363,18 @@ class Injection:
                 np.abs(np.abs((dms[i] - self.true_dm) / self.deltaDM) - kernel_scaling)
             )
             dispersed_prof_fft[i] = prof_fft * kernels[key, 1 : len(prof_fft) + 1]
-
+        
         return dispersed_prof_fft, target_dm_idx
 
-    def harmonics(self, prof_fft, df, N=4):
+    def scalloping(self, prof_fft, df, N=4):
         """
         This function calculates the array of frequency-domain harmonics for a given
         pulse profile.
 
         Inputs:
         _______
-                prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic
+                prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic, with length n_harm
                 df (float)        : frequency bin width in target spectrum
-                n_harm (int)      : the number of harmonics before the Nyquist frequency
                 N (int)           : number of bins over which to sinc-interpolate the harmonic
         Returns:
         ________
@@ -289,19 +388,19 @@ class Injection:
         harmonics = np.zeros(N * n_harm)
         bins = np.zeros(N * n_harm).astype(int)
 
-        # now evaluate sinc-modified power at each of the first 10 harmonics
+        # now evaluate sinc-modified power at each of the first n_harm harmonics
         for i in range(n_harm):
             f_harm = (i + 1) * self.f
             bin_true = f_harm / df
-            bin_below = np.floor(bin_true)
-            bin_above = np.ceil(bin_true)
+            bin_below = np.floor(bin_true + 1e-8)
+            bin_above = bin_below + 1
 
             # use 2 bins on either side
             current_bins = np.array(
                 [bin_below - 1, bin_below, bin_above, bin_above + 1]
             )
             bins[i * N : (i + 1) * N] = current_bins
-            amplitude = prof_fft[i] * sinc(np.pi * (bin_true - current_bins))
+            amplitude = prof_fft[i] * np.sinc(bin_true - current_bins)
             harmonics[i * N : (i + 1) * N] = np.abs(amplitude) ** 2
 
         return bins, harmonics
@@ -343,7 +442,30 @@ class Injection:
                 day_normalizer[i] /= rn_interpolated
             normalizer += day_normalizer
         return normalizer
-    
+
+    def retrieve_flux(self, harms, bins, best_nharm, true_dm_in_pspec, true_dm_in_harms, phases):
+        #not that harms are power, not amplitude
+        tau = 2 * self.pspec.shape[1] * TSAMP
+        Npol = 2
+        delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
+        N = len(self.phase_prof)
+
+        main_harms = harms[true_dm_in_harms, :4*best_nharm] * best_nharm + self.pspec[true_dm_in_pspec, bins[:4*best_nharm]]
+        retrieved_powers = np.zeros(best_nharm)
+        for i in range(best_nharm):
+            retrieved_powers[i] = np.sum(main_harms[4*i : 4*(i+1)])
+        retrieved_powers /= self.ndays
+        retrieved_fft = np.sqrt(retrieved_powers) * np.exp(1j * phases[:best_nharm])
+        retrieved_prof = -1 * irfft(retrieved_fft) 
+        RMS = np.sqrt(1 / 2 / best_nharm)
+        A = np.mean(retrieved_prof)
+
+        flux = A * TSYS * BETA / GAIN / np.sqrt(Npol * delta_f * tau / best_nharm) / RMS
+
+
+        return flux
+
+
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
@@ -437,47 +559,78 @@ class Injection:
 
         # pull frequency bins from target power spectrum
         freqs = self.pspec_obj.freq_labels
-        df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
+        N = 2 * len(freqs)
+        tau = TSAMP * N
+        df = 1 / tau
+        
         n_harm = int(np.floor(f_nyquist / self.f))
-        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm, df)
-        used_nharm = len(scaled_prof_fft)
-        log.info(f"Injecting {n_harm} harmonics.")
+        
+        if 32 < n_harm:
+            n_harm = 32
+        
+        if self.use_sigma:
+            scaled_prof_fft, phases = self.sigma_to_power(n_harm, df)
+            log.info('Using sigma as input quantity.')
+            log.info(f'Sigma = {self.sigma}.')
+        else:
+            scaled_prof_fft, phases = self.flux_to_power()
+            log.info('Using flux as input quantity.')
+            log.info(f'Flux = {self.flux} mJy.')
+        
+        
+        if len(scaled_prof_fft) > n_harm:
+            scaled_prof_fft = scaled_prof_fft[:n_harm]
+        else:
+            n_harm = len(scaled_prof_fft)
 
+        windowed_prof_fft = self.time_windowing(scaled_prof_fft)
+        smeared_prof_fft = self.smear_fft(windowed_prof_fft)
+        
+        log.info(f"Injecting {n_harm} harmonics.")
         dispersed_prof_fft, dm_indices = self.disperse(
-            scaled_prof_fft, kernels, kernel_scaling
+            smeared_prof_fft, kernels, kernel_scaling
         )
+
+        #grab idx of true dm in full pspec
+        true_dm_in_pspec = np.argmin(np.abs(self.true_dm - self.trial_dms))
+        #grab idx of true dm in harms
+        true_dm_in_harms = np.where(dm_indices == true_dm_in_pspec)[0][0]
 
         harms = []
 
         for i in range(len(dispersed_prof_fft)):
-            bins, harm = self.harmonics(dispersed_prof_fft[i], df)
+            bins, harm = self.scalloping(dispersed_prof_fft[i], df)
             harms.append(harm)
+        #note that harms are POWERS, not amplitudes
 
         harms = np.asarray(harms)
         harms *= self.get_rednoise_normalisation(
             bins,
             dm_indices,
         )
+
         # estimate sigma
         (
             harms,
             predicted_nharm,
             predicted_sigma,
             rescale_factor,
-        ) = self.predict_sigma(harms, bins, dm_indices, used_nharm, True)
+        ) = self.predict_sigma(harms, bins, dm_indices, n_harm, True)
+
+        retrieved_flux = self.retrieve_flux(harms, bins, predicted_nharm, true_dm_in_pspec, true_dm_in_harms, phases)
+        log.info(f'Retrieved flux: {retrieved_flux} mJy.')
 
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
             bin_fractions = self.pspec_obj.get_bin_weights_fraction()
-            # Is linear scaling the way to go?
             harms *= bin_fractions[bins]
         injected_indices = np.ix_(dm_indices, bins)
         _, detection_nharm, detection_sigma, _ = self.predict_sigma(
             harms + self.pspec[injected_indices],
             bins,
             dm_indices,
-            used_nharm,
+            n_harm,
             False,
         )
 
@@ -506,6 +659,8 @@ class Injection:
             "detection_sigma": detection_sigma,
             "injected_nharm": n_harm,
         }
+        
+
         return output_dict
 
 

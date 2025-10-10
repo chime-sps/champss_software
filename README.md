@@ -8,15 +8,6 @@ First paper: [Preprint](https://arxiv.org/abs/2504.16293)
 
 The full software package can be installed using
 ```
-pip install .[beam-model]
-```
-or
-```
-poetry install -E beam-model
-```
-This installs the CHIMEFRB beam-model repository which is not public and requires being a member of the CHIMEFRB github organization. Without this repository the main CHAMPSS pipeline will not work.
-Without access to this repository the software package can still be installed with
-```
 pip install .
 ```
 or

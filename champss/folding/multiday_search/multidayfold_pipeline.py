@@ -1,5 +1,4 @@
 import datetime as dt
-import logging
 
 import click
 import multiday_search.confirm_cand as confirm_cand
@@ -13,12 +12,6 @@ from scheduler.workflow import (
 )
 from sps_databases import db_utils
 from sps_pipeline.pipeline import default_datpath
-
-log = logging.getLogger()
-log_stream = logging.StreamHandler()
-logging.root.addHandler(log_stream)
-log = logging.getLogger(__name__)
-
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
@@ -70,6 +63,17 @@ log = logging.getLogger(__name__)
     help="Number of days to fold and search. Default will fold and search all available days.",
 )
 @click.option(
+    "--start-date",
+    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
+    required=False,
+    help="Start date of data to process. Default = Today in UTC",
+)
+@click.option(
+    "--overwrite-folding",
+    is_flag=True,
+    help="Re-run folding even if already folded on this date.",
+)
+@click.option(
     "--use-workflow",
     is_flag=True,
     help="Queue folding jobs in parallel into Workflow, otherwise run locally.",
@@ -95,10 +99,13 @@ def main(
     db_host,
     db_name,
     nday,
+    start_date,
+    overwrite_folding,
     use_workflow,
     workflow_buckets_name_prefix,
     docker_image_name,
 ):
+
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     if psr != "":
         fs_id = str(add_mdcand_from_psrname(psr, dt.datetime.now()))
@@ -106,6 +113,21 @@ def main(
         fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
     else:
         raise ValueError("Must provide either a candidate path or pulsar name")
+    
+    args = [
+        "--fs_id", fs_id,
+        "--foldpath", foldpath,
+        "--datpath", datpath,
+        "--db-port", str(db_port),
+        "--db-name", db_name,
+        "--db-host", db_host,
+        "--nday", str(nday)
+    ]
+    if start_date:
+        args += ["--start-date", start_date.strftime("%Y-%m-%d")]
+    if overwrite_folding:
+        args += ["--overwrite-folding"]
+
     if use_workflow:
         docker_service_name_prefix = "fold-multiday"
 
@@ -117,30 +139,13 @@ def main(
             standalone_mode=False,
         )
 
-        fold_multiday.main.main(
-            args=[
-                "--fs_id",
-                fs_id,
-                "--foldpath",
-                foldpath,
-                "--datpath",
-                datpath,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-host",
-                db_host,
-                "--nday",
-                nday,
-                "--use-workflow",
-                "--docker-image-name",
-                docker_image_name,
-                "--docker-service-name-prefix",
-                docker_service_name_prefix,
-                "--workflow-buckets-name",
-                workflow_buckets_name,
-            ],
+        args.append("--use-workflow")
+        args += ["--docker-image-name", docker_image_name]
+        args += ["--docker-service-name-prefix", docker_service_name_prefix]
+        args += ["--workflow-buckets-name", workflow_buckets_name]
+
+        fold_multiday.main(
+            args=args,
             standalone_mode=False,
         )
 
@@ -174,6 +179,7 @@ def main(
             "db_name": db_name,
             "nday": nday,
             "write_to_db": True,
+            "foldpath": foldpath,
         }
         workflow_tags = [
             "multiday",
@@ -201,22 +207,7 @@ def main(
         return foldresults_dict, [], []
     else:
         fold_multiday.main(
-            args=[
-                "--fs_id",
-                fs_id,
-                "--foldpath",
-                foldpath,
-                "--datpath",
-                datpath,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-host",
-                db_host,
-                "--nday",
-                nday,
-            ],
+            args=args,
             standalone_mode=False,
         )
 
@@ -233,6 +224,9 @@ def main(
                 db_host,
                 "--nday",
                 nday,
+                "--write-to-db",
+                "--foldpath",
+                foldpath,
             ],
             standalone_mode=False,
         )

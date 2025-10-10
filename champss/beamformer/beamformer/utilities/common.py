@@ -14,18 +14,18 @@ from beamformer import CURRENT_POINTING_MAP, NoSuchPointingError
 from sps_common import constants
 from sps_databases import db_utils, models
 
-if importlib.util.find_spec("beam_model"):
-    import beam_model
+if importlib.util.find_spec("cfbm"):
+    import cfbm as beam_model
 
 log = logging.getLogger(__name__)
 
-if "beam_model" in sys.modules:
+if "cfbm" in sys.modules:
     config = beam_model.current_config
     try:
         beammod = beam_model.current_model_class(config)
     except FileNotFoundError:
         log.error("Missing files for beam model. Will try to load them.")
-        from beam_model.bm_data import get_data
+        from cfbm.bm_data import get_data
 
         get_data.main()
         beammod = beam_model.current_model_class(config)
@@ -47,10 +47,10 @@ def find_next_transit(ra: float, dec: float, ref_time: datetime.datetime) -> flo
     Returns:
         float: Transit time in utc in unix format
     """
-    if "beam_model" not in sys.modules:
+    if "cfbm" not in sys.modules:
         sys.exit(
             "ImportError: Using find_next_transit() function requires FRB"
-            " beam_model. Please install beam_model if you plan to use this function."
+            " beam_model. Please install cfbm if you plan to use this function."
         )
     coord = ephem.Equatorial(ephem.degrees(str(ra)), ephem.degrees(str(dec)))
     body = ephem.FixedBody()

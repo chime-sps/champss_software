@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+# Credit: Most of the code in this entire file was copy and pasted with slight adaptations
+# from Kathryn Crowter's code in clustering.py
+
 import itertools
 import logging
 import warnings
@@ -16,9 +19,10 @@ from sklearn.cluster import DBSCAN, HDBSCAN
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import paired_distances
 from sklearn.neighbors import radius_neighbors_graph, sort_graph_by_row_values
-from sps_common.interfaces import Cluster
+from .interfaces_FFA import Cluster_FFA
 
 warnings.filterwarnings("ignore", category=SparseEfficiencyWarning)
+
 
 
 log = logging.getLogger(__name__)
@@ -57,7 +61,7 @@ def set_merge(data, out="bins"):
     Credit: alexis on stackoverflow https://stackoverflow.com/a/9453249/18740127
     """
     if not isinstance(data[0], set):
-        raise TypeError("data must be a list of sets")
+        raise TypeError(f"data must be a list of sets")
     bins = list(range(len(data)))  # Initialize each bin[n] == n
     nums = dict()
 
@@ -96,7 +100,7 @@ def set_merge(data, out="bins"):
 
 def filter_duplicates_freq_dm(dets):
     """
-    Filter detections with the same DM, freq but different nharm, only keeping the
+    Filter detections with the same DM, freq but different width, only keeping the
     detection with the highest sigma.
 
     Args:
@@ -113,7 +117,7 @@ def filter_duplicates_freq_dm(dets):
     # flatten and grab index
     idx_to_remove = [item[0] for group in grouped_by_freq_dm for item in group]
     log.info(
-        "Filtering out duplicate freq,dm detections at multiple nharms removes"
+        "Filtering out duplicate freq, dm detections at multiple widths removes"
         f" {len(idx_to_remove)} detections"
     )
     return np.delete(dets, idx_to_remove)
@@ -179,121 +183,6 @@ def group_duplicates_freq(dets, ignorenharm1=False):
     return harmonics, idx_to_skip
 
 
-def rogue_harmpow_filter_presto(detections):
-    """
-    Filter out detections where one harmonic is much stronger than the others Based on
-    presto's sifting.reject_rogueharmpow which has two criteria: # Max-power harmonic is
-    at least 2x more powerful # than the next highest-power harmonic, and is the # 4+th
-    harmonic our of 8+ harmonics and # Max-power harmonic is at least 3x more powerful #
-    than the next highest-power harmonic, and is the # 2+th harmonic our of 4+ harmonics
-    # NB # if the harmonics are [0th, 1st, 2nd, 3rd, 4th, ...] # how the function is
-    written in presto 2+th harmonic actually means # 3rd or higher # since i) the
-    condition is a > rather than >=, and ii) it's that the index is >2.
-
-    Args:
-        detections (np.array): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
-    """
-    if "harm_pow" not in detections.dtype.names:
-        log.warning(
-            "No harm_pow field in detections, cannot filter out rogue harm powers"
-        )
-        return detections
-
-    filter_out_idx = set()
-    for i in np.where(detections["nharm"] >= 8)[0]:
-        harm_pows = detections[i]["harm_pow"][: detections[i]["nharm"]]
-        maxharm = np.argmax(harm_pows)
-        maxpow = harm_pows[maxharm]
-        sortedpows = np.sort(harm_pows)
-        if maxharm > 4 and maxpow > 2 * sortedpows[-2]:
-            filter_out_idx.add(i)
-        elif maxharm > 2 and maxpow > 3 * sortedpows[-2]:
-            filter_out_idx.add(i)
-    for i in np.where(detections["nharm"] == 4)[0]:
-        harm_pows = detections[i]["harm_pow"][: detections[i]["nharm"]]
-        maxharm = np.argmax(harm_pows)
-        maxpow = harm_pows[maxharm]
-        sortedpows = np.sort(harm_pows)
-        if maxharm > 2 and maxpow > 3 * sortedpows[-2]:
-            filter_out_idx.add(i)
-    filter_out_idx = sorted(list(filter_out_idx))
-    return np.delete(detections, filter_out_idx)
-
-
-def rogue_harmpow_filter_presto_tweak(detections):
-    """
-    Filter out detections where one harmonic is much stronger than the others Based on
-    presto's sifting.reject_rogueharmpow which has two criteria: # Max-power harmonic is
-    at least 2x more powerful # than the next highest-power harmonic, and is the # 4+th
-    harmonic our of 8+ harmonics and # Max-power harmonic is at least 3x more powerful #
-    than the next highest-power harmonic, and is the # 2+th harmonic our of 4+
-    harmonics.
-
-    This version of the function is tweaked so that the above conditions apply how
-    I'd interpret them rather than how the code is writted in presto
-
-    Args:
-        detections (np.array): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
-    """
-    if "harm_pow" not in detections.dtype.names:
-        log.warning(
-            "No harm_pow field in detections, cannot filter out rogue harm powers"
-        )
-        return detections
-
-    filter_out_idx = set()
-    for i in np.where(detections["nharm"] >= 8)[0]:
-        harm_pows = detections[i]["harm_pow"][: detections[i]["nharm"]]
-        maxharm = np.argmax(harm_pows)
-        maxpow = harm_pows[maxharm]
-        sortedpows = np.sort(harm_pows)
-        if maxharm >= 3 and maxpow > 2 * sortedpows[-2]:
-            filter_out_idx.add(i)
-        elif maxharm >= 1 and maxpow > 3 * sortedpows[-2]:
-            filter_out_idx.add(i)
-    for i in np.where(detections["nharm"] == 4)[0]:
-        harm_pows = detections[i]["harm_pow"][: detections[i]["nharm"]]
-        maxharm = np.argmax(harm_pows)
-        maxpow = harm_pows[maxharm]
-        sortedpows = np.sort(harm_pows)
-        if maxharm >= 1 and maxpow > 3 * sortedpows[-2]:
-            filter_out_idx.add(i)
-    filter_out_idx = sorted(list(filter_out_idx))
-    return np.delete(detections, filter_out_idx)
-
-
-def rogue_harmpow_filter_alt(detections):
-    """
-    Filter out detections where one harmonic is much stronger than the others.
-
-    Uses the criteria:
-        Max-power harmonic is >= 2 * the sum of all other harmonics
-        plus nharm >= 4
-        plus it's not the fundamental harmonic
-
-    Args:
-        detections (np.array): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
-    """
-    if "harm_pow" not in detections.dtype.names:
-        log.warning(
-            "No harm_pow field in detections, cannot filter out rogue harm powers"
-        )
-        return detections
-
-    filter_out_idx = []
-    for i in np.where(detections["nharm"] >= 4)[0]:
-        harm_pows = detections[i]["harm_pow"][: detections[i]["nharm"]]
-        maxharm = np.argmax(harm_pows)
-        maxpow = harm_pows[maxharm]
-        if maxharm == 0:
-            continue
-        sortedpows = np.sort(harm_pows)
-        sumothers = sortedpows[:-1].sum()
-        if maxpow > 2 * sumothers:
-            filter_out_idx.append(i)
-    return np.delete(detections, filter_out_idx)
-
-
 def intersect2d_ind_filter0(ar1, ar2):
     """
     Find row wise overlap between two arrays.
@@ -338,9 +227,50 @@ def intersect2d_ind_filter0(ar1, ar2):
     ar2_indices_split = np.split(ar2_indices, np.cumsum(take)[:-1])
     return int2d_split, ar1_indices_split, ar2_indices_split
 
+def rogue_width_filter_presto(detections):
+    """
+    Filter out detections where one harmonic is much stronger than the others Based on
+    presto's sifting.reject_rogueharmpow which has two criteria: # Max-power harmonic is
+    at least 2x more powerful # than the next highest-power harmonic, and is the # 4+th
+    harmonic our of 8+ harmonics and # Max-power harmonic is at least 3x more powerful #
+    than the next highest-power harmonic, and is the # 2+th harmonic our of 4+ harmonics
+    # NB # if the harmonics are [0th, 1st, 2nd, 3rd, 4th, ...] # how the function is
+    written in presto 2+th harmonic actually means # 3rd or higher # since i) the
+    condition is a > rather than >=, and ii) it's that the index is >2.
+
+    Args:
+        detections (np.array): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
+    """
+    if "width" not in detections.dtype.names:
+        log.warning(
+            "No width field in detections, cannot filter out rogue width bins"
+        )
+        return detections
+
+    filter_out_idx = set()
+    for i in np.where(detections["width"] >= 8)[0]:
+        harm_pows = detections[i]["harm_pow"][: detections[i]["nharm"]]
+        maxharm = np.argmax(harm_pows)
+        maxpow = harm_pows[maxharm]
+        sortedpows = np.sort(harm_pows)
+        if maxharm > 4 and maxpow > 2 * sortedpows[-2]:
+            filter_out_idx.add(i)
+        elif maxharm > 2 and maxpow > 3 * sortedpows[-2]:
+            filter_out_idx.add(i)
+    for i in np.where(detections["nharm"] == 4)[0]:
+        harm_pows = detections[i]["harm_pow"][: detections[i]["nharm"]]
+        maxharm = np.argmax(harm_pows)
+        maxpow = harm_pows[maxharm]
+        sortedpows = np.sort(harm_pows)
+        if maxharm > 2 and maxpow > 3 * sortedpows[-2]:
+            filter_out_idx.add(i)
+    filter_out_idx = sorted(list(filter_out_idx))
+    return np.delete(detections, filter_out_idx)
+
+
 
 @attrs(slots=True)
-class Clusterer:
+class Clusterer_FFA:
     """
     Class to perform clustering on detections.
 
@@ -348,7 +278,7 @@ class Clusterer:
     ===========
     cluster_scale_factor: float
         The scale factor to apply between the frequency spacing and the dm spacing during the clustering process.
-        A number larger than 1 indicates the numerical spacing between adjacent frequency bin is larger than that
+        A number larger than 1 indicates the numerical spacing between adjacent frequency bins is larger than that
         of adjacent DMs.
 
     dbscan_eps: float
@@ -362,7 +292,7 @@ class Clusterer:
         candidate. Default = 5
 
     sigma_detection_threshold: int
-        The sigma detection threshold used in the power spectra search
+        The sigma detection threshold used in the FFA search
 
     max_ndetect: int
         Maximum number of detections to cluster in DM,freq,harmonic
@@ -371,56 +301,27 @@ class Clusterer:
         Whether to group identical frequencies together before doing the harmonic computations
         (As the harmonic metric is based on the indices summed in the raw power spectrum, this does have an effect)
 
-    metric_method: str
-        Method used to calcualte the harmonic metric
-        Options:
-            "rhp_norm_by_min_nharm": 1 - (the intersection of the two raw harmonic power bins, divided by the max nharm)
-                                     (aka how much the bins intersect / max possible they could intersect)
-            "rhp_overlap": 1 - (the intersection of the two raw harmonic power bins / the max nharm used in the search)
-                           (this would downweight nharm=1 matches)
-
-    metric_combination: str
-        Method used to combine the DM-freq distance and harmonic-relation metrics
-        Options:
-            "multiply": multiply the two together; the harmonic metric modifies the distance metric
-            "replace": where the harmonic metric found some relation (aka it is not 1) replace the distance metric
-                       value with the harmonic metric value, scaled to be within dbscan_eps
-
     clustering_method: str
         DBSCAN / HDBSCAN
 
-
-    min_freq: float
-        Don't calculate the harmonic metric for any detection below this freq
-
-    ignore_nharm1: bool
-        Don't calculate the harmonic metric for any detection with nharm=1
-
-    rogue_harmpow_scheme: str
-        Which scheme to use for rogue harm power rejection:
+    rogue_width_scheme: str
+        Which scheme to use for rogue width rejection:
             "presto" = the same criteria as in presto's sifting
             "tweak" = my tweak of presto's code to actually do what the comment says it does
             "alt" = alternate scheme, must have 4+ harmonics, the max is not the fundamental, and the max is >= 2* sum of the others
     """
 
     # cluster_scale_factor: float = attribute(default=10)
-    freq_scale_factor: float = attribute(default=1)
-    dm_scale_factor: float = attribute(default=0.1)
+    freq_scale_factor: float = attribute(default=0.002)
+    dm_scale_factor: float = attribute(default=0.5)
     dbscan_eps: float = attribute(default=1)
     dbscan_min_samples: int = attribute(default=5)
     max_ndetect: int = attribute(
         default=50000
     )  # 32-bit max_ndetect x max_ndetect matrix is ~4GB
     sigma_detection_threshold: int = attribute(default=5)
-    group_duplicate_freqs: bool = attribute(default=True)
-    metric_method: str = attribute(default="rhp_norm_by_min_nharm")
-    metric_combination: str = attribute(default="multiply")
     clustering_method: str = attribute(default="DBSCAN")
-    min_freq: float = attribute(default=0)
-    ignore_nharm1: bool = attribute(default=False)
-    rogue_harmpow_scheme: str = attribute(default="tweak")
-    filter_nharm: bool = attribute(default=False)
-    remove_harm_idx: bool = attribute(default=False)
+    filter_width: bool = attribute(default=False)
     cluster_dm_cut: float = attribute(default=-1)
     overlap_scale: float = attribute(default=1)
     add_dm_when_replace: bool = attribute(default=False)
@@ -428,25 +329,8 @@ class Clusterer:
     use_sparse: bool = attribute(default=True)
     grouped_freq_dm_scale: float = attribute(default=1)
     use_dbscan_filter: bool = attribute(default=True)
-    dbscan_filter_whole_freqs: bool = attribute(default=True)
-    dbscan_filter_broad_dm: bool = attribute(default=False)
-    dbscan_filter_broad_threshold: bool = attribute(default=100)
+    dbscan_filter_whole_freqs: bool = attribute(default=False)
 
-    @metric_method.validator
-    def _validate_metric_method(self, attribute, value):
-        assert value in [
-            "rhp_norm_by_min_nharm",
-            "rhp_overlap",
-            "power_overlap",
-            "power_overlap_array",
-        ], "metric_method must be either 'rhp_norm_by_min_nharm' or 'rhp_overlap'"
-
-    @metric_combination.validator
-    def _validate_metric_combination(self, attribute, value):
-        assert value in [
-            "multiply",
-            "replace",
-        ], "metric_combination must be either 'multiply' or 'replace'"
 
     @clustering_method.validator
     def _validate_clustering_method(self, attribute, value):
@@ -455,218 +339,49 @@ class Clusterer:
             "HDBSCAN",
         ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
 
-    @rogue_harmpow_scheme.validator
-    def _validate_rogue_harmpow_scheme(self, attribute, value):
-        assert value in [
-            "presto",
-            "tweak",
-            "alt",
-        ], "harmpow_scheme must be 'presto', 'tweak' or 'alt'"
-
-    def calculate_metric_rhp_overlap(self, rhplist, idx0, idx1, *args):
-        """Calculate harmonic distance between two detections
-        1 - scale*len(set.intersection(rhp0, rhp1))
-
-        Args:
-            rhplist (list): list of sets of PowerSpectra bins used in the sum (aka non-zero values of 'harm_idx' in detections)
-            idx0 (int): index of 1st detection (must correspond to the same index in rhplist)
-            idx1 (int): index of 2nd detection
-            scale (int, optional): scale multiplies the length of the set intersection. Defaults to 1.
-
-        Returns:
-            float: value for the harmonic distance
-        """
-        rhp0 = rhplist[idx0]
-        rhp1 = rhplist[idx1]
-        out_metric = 1 - len(set.intersection(rhp0, rhp1))
-        return out_metric
-
-    def calculate_metric_rhp_overlap_normbyminnharm(
-        self, rhplist, idx0, idx1, detections, **kwargs
-    ):
-        """Calculate harmonic distance between two detections
-        1 - len(set.intersection(rhp0, rhp1)) / min(detections['nharm'][idx0], detections['nharm'][idx1])
-
-        Args:
-            rhplist (list): list of sets of PowerSpectra bins used in the sum (aka non-zero values of 'harm_idx' in detections)
-            idx0 (int): index of 1st detection (must correspond to the same index in rhplist)
-            idx1 (int): index of 2nd detection
-            detections (np.ndarray): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
-
-        Returns:
-            _type_: _description_
-        """
-        rhp0 = rhplist[idx0]
-        rhp1 = rhplist[idx1]
-        out_metric = 1 - len(set.intersection(rhp0, rhp1)) / min(
-            detections["nharm"][idx0], detections["nharm"][idx1]
-        )
-        return out_metric
-
-    def calculate_metric_power_overlap(self, rhplist, idx0, idx1, detections, **kwargs):
-        """
-        Calculate harmonic distance based on the power in overlapping bins.
-
-        Args:
-            rhplist (list): list of sets of PowerSpectra bins used in the sum (aka non-zero values of 'harm_idx' in detections)
-            idx0 (int): index of 1st detection (must correspond to the same index in rhplist)
-            idx1 (int): index of 2nd detection
-            detections (np.ndarray): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
-
-        Returns:
-            _type_: _description_
-        """
-        intersect_bins, intersect_idx0, intersect_idx1 = np.intersect1d(
-            detections[idx0]["harm_idx"],
-            detections[idx1]["harm_idx"],
-            return_indices=True,
-        )
-        total_power_1 = np.sum(detections[idx0]["harm_pow"])
-        total_power_2 = np.sum(detections[idx1]["harm_pow"])
-        intersec_power_1 = np.sum(detections[idx0]["harm_pow"][intersect_idx0])
-        intersec_power_2 = np.sum(detections[idx1]["harm_pow"][intersect_idx1])
-        power_overlap = max(
-            intersec_power_1 / total_power_1, intersec_power_2 / total_power_2
-        )
-        out_metric = 1 - power_overlap
-        return out_metric
-
-    def calculate_metric_power_overlap_array(
-        self, rhplist, idxs0, idxs1, detections, **kwargs
-    ):
-        """
-        Calculate overlap of power between two detections. Can be used on arrays.
-
-        Args:
-            rhplist (list): list of sets of PowerSpectra bins used in the sum (aka non-zero values of 'harm_idx' in detections). Not used here
-            idx0 (list(int)): indices of 1st detection (must correspond to the same index in rhplist)
-            idx1 (list(int)): indices of 2nd detection
-            detections (np.ndarray): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
-
-        Returns:
-            out_metric (np.ndarray): (1 - power_overlap). Will be 0 for complete overlap and 1
-        """
-        intersect_bins, intersect_idx0, intersect_idx1 = intersect2d_ind_filter0(
-            detections["harm_idx"][idxs0],
-            detections["harm_idx"][idxs1],
-        )
-        if np.isscalar(idxs0):
-            powers_0 = np.array(
-                [
-                    (row.sum(), row[indices].sum())
-                    for row, indices in zip(
-                        detections["harm_pow"][idxs0][None, :], intersect_idx0
-                    )
-                ]
-            )
-            powers_1 = np.array(
-                [
-                    (row.sum(), row[indices].sum())
-                    for row, indices in zip(
-                        detections["harm_pow"][idxs1][None, :], intersect_idx1
-                    )
-                ]
-            )
-        else:
-            powers_0 = np.array(
-                [
-                    (row.sum(), row[indices].sum())
-                    for row, indices in zip(
-                        detections["harm_pow"][idxs0], intersect_idx0
-                    )
-                ]
-            )
-            powers_1 = np.array(
-                [
-                    (row.sum(), row[indices].sum())
-                    for row, indices in zip(
-                        detections["harm_pow"][idxs1], intersect_idx1
-                    )
-                ]
-            )
-        powers_overlap = np.stack(
-            (
-                powers_0[:, 1] / powers_0[:, 0],
-                powers_1[:, 1] / powers_1[:, 0],
-            ),
-            axis=1,
-        ).max(1)
-        out_metric = 1 - powers_overlap
-        return out_metric
 
     def cluster(
         self,
-        detections_in,
+        detections,
         cluster_dm_spacing,
         cluster_df_spacing,
-        scheme="combined",
+        scheme = "dmfreq",  # scheme="combined", (not implemented yet)
         plot_fname="",
     ):
         """
-        Cluster detections in freq-dm-harmonic space.
-        Does 2-3 things to thin down the number of detections before custering:
-            a) filters out detections with one strong harmonic power using rogue_harmpow_filter_presto
-            b) filters out detections with the same freq,dm but different nharm
-            If the number of detections is > self.max_ndetect:
-            c) raises the sigma threshold until the number of detections is less than self.max_ndetect. This subset is what will be clustered.
+        Cluster FFA detections in freq-dm-width space.
+        To thin down the number of detections, if the number of detections is > self.max_ndetect, raise the sigma threshold 
+        until the number of detections is less than self.max_ndetect. This subset is what will be clustered.
 
         Args:
-            detections_in (np.ndaray): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
+            detections_in (np.ndaray): detections output from FFA search - numpy structured array with fields "dm", "freq", "sigma", "width"
             cluster_dm_spacing (float): spacing between DM trials
-            scheme (str, optional): determines qhat kind of clustering to perform
-                "combined": cluster based on combined metric from DM-freq and harmonic distances
+            scheme (str, optional): determines what kind of clustering to perform
+                "combined": cluster based on combined metric from DM-freq and width distances
                 "dmfreq": cluster only in DM-freq space
-                "harm": cluster only in harmonic space
+                "width": cluster only in width space
                 Defaults to "combined"
             plot_fname (str, optional): if not '', a plot of the detections and clusters will be made and saved to this file
         Returns:
-            np.ndarray: subset of detections_in actually used for the clustering
-            np.ndarray: labels resulting from the clustering
-            float: sigma lower limit used during clustering
+            detections (np.ndarray): subset of detections actually used for the clustering
+            db.labels_ (np.ndarray): labels resulting from the clustering
+            sig_limit (float): sigma lower limit used during clustering
         """
-        log.info("Starting clustering")
-        if scheme not in ["combined", "dmfreq", "harm"]:
+        log.info("Starting FFA clustering")
+        if scheme not in ["combined", "dmfreq", "width"]:
             raise AttributeError(
                 f'Invalid value for scheme ({scheme}). Valid options are "combined",'
-                ' "dmfreq", "harm"'
+                ' "dmfreq", "width"'
             )
-
-        if len(detections_in) <= 1:
-            log.info(f"Only {len(detections_in)} detections, no clustering needed")
-            labels = np.array([0] if len(detections_in) == 1 else [])
-            return detections_in, labels, self.sigma_detection_threshold
-
-
-        # Set rogue harm powers filtering method
-        if self.rogue_harmpow_scheme == "presto":
-            filter_rogue_harmpows = rogue_harmpow_filter_presto
-        elif self.rogue_harmpow_scheme == "tweak":
-            filter_rogue_harmpows = rogue_harmpow_filter_presto_tweak
-        elif self.rogue_harmpow_scheme == "alt":
-            filter_rogue_harmpows = rogue_harmpow_filter_alt
-
-        # Filter out rogue harmonic powers
-        detections_filtered = filter_rogue_harmpows(detections_in)
-        log.info(
-            "Rogue harmonic power filter reduced detections from"
-            f" {len(detections_in)} to {len(detections_filtered)}"
-        )
-        del detections_in
-
-        # Filter out duplicate freq,dm detections (with different nharm)
-        detections_filtered = filter_duplicates_freq_dm(detections_filtered)
-        log.info(
-            f"Duplicate freq,dm filter reduced detections to {len(detections_filtered)}"
-        )
 
         if self.use_dbscan_filter:
             log.info("Running dbscan filter")
             data_filter = np.vstack(
                 (
-                    detections_filtered["dm"]
+                    detections["dm"]
                     / cluster_dm_spacing
                     * self.dm_scale_factor,
-                    detections_filtered["freq"]
+                    detections["freq"]
                     / cluster_df_spacing
                     * self.freq_scale_factor,
                 ),
@@ -683,23 +398,20 @@ class Clusterer:
                 min_samples=self.dbscan_min_samples,
                 metric="precomputed",
             ).fit(metric_array)
+            labels = db_filter.labels_
+            
+            filtered_indices = []
             bad_freqs = []
-            filtered_labels_low_dm = []
-            filtered_labels_broad_dm = []
-            filtered_indices_low_dm = []
-            filtered_indices_broad_dm = []
+            filtered_labels = []
             for i in range(max(db_filter.labels_) + 1):
-                filtered = False
-                current_indices = np.arange(detections_filtered.shape[0])[
+                current_indices = np.arange(detections.shape[0])[
                     db_filter.labels_ == i
                 ]
-                det_sample = detections_filtered[current_indices]
+                det_sample = detections[current_indices]
                 det_max_sigma_pos = np.argmax(det_sample["sigma"])
                 det_max_sigma_dm = det_sample["dm"][det_max_sigma_pos]
-                det_dm_ptp = np.ptp(det_sample["dm"])
                 if det_max_sigma_dm <= self.cluster_dm_cut:
-                    filtered_indices_low_dm.extend(current_indices)
-                    filtered_labels_low_dm.append(i)
+                    filtered_indices.extend(current_indices)
                     bad_freqs.append(
                         (
                             det_sample["freq"].mean(),
@@ -707,43 +419,21 @@ class Clusterer:
                             det_sample["freq"].max(),
                         )
                     )
-                    filtered = True
-                if self.dbscan_filter_broad_dm:
-                    if self.dbscan_filter_broad_threshold < det_dm_ptp:
-                        filtered_indices_broad_dm.extend(current_indices)
-                        filtered_labels_broad_dm.append(i)
-                        if not filtered:
-                            bad_freqs.append(
-                                (
-                                    det_sample["freq"].mean(),
-                                    det_sample["freq"].min(),
-                                    det_sample["freq"].max(),
-                                )
-                            )
-                        filtered = True
-
-            filtered_labels = filtered_labels_low_dm + filtered_labels_broad_dm
-            filtered_indices = filtered_indices_low_dm + filtered_indices_broad_dm
+                    filtered_labels.append(i)
             bad_freqs = np.asarray(bad_freqs)
             bad_low_dm_freqs = len(filtered_indices)
             log.info(
-                f"Dbscan filter removed {len(filtered_indices_low_dm)} detections in low DM clusters."
+                f"Dbscan filter removed {bad_low_dm_freqs} detections in low DM"
+                " clusters."
             )
-            if self.dbscan_filter_broad_dm:
-                log.info(
-                    f"Dbscan filter removed {len(filtered_indices_broad_dm)} detections in broad DM clusters."
-                )
-                log.info(
-                    f"Filtered {len(set(filtered_indices))} from low or broad clusters."
-                )
-
+            
             if self.dbscan_filter_whole_freqs:
                 for i in range(max(db_filter.labels_) + 1):
                     if i not in filtered_labels:
-                        current_indices = np.arange(detections_filtered.shape[0])[
+                        current_indices = np.arange(detections.shape[0])[
                             db_filter.labels_ == i
                         ]
-                        det_sample = detections_filtered[current_indices]
+                        det_sample = detections[current_indices]
                         mean_freq = det_sample["freq"].mean()
                         for row in bad_freqs:
                             if mean_freq > row[1] and mean_freq < row[2]:
@@ -753,18 +443,23 @@ class Clusterer:
                 log.info(
                     "Dbscan filter removed additonal"
                     f" {bad_all_freqs - bad_low_dm_freqs} detection with same"
-                    " frequencies as already filtered DM clusters."
+                    " frequencies as low DM clusters."
                 )
-            mask = np.full(detections_filtered.shape[0], True)
+            mask = np.full(detections.shape[0], True)
             mask[filtered_indices] = False
-            detections_filtered = detections_filtered[mask]
+            detections = detections[mask]
+            labels = labels[mask]
+            
+            # mask = np.where(labels != -1)[0]
+            # detections = detections[mask]
+            # labels = labels[mask]
 
             del data_filter
             del metric_array
             del db_filter
 
-        detections = detections_filtered[
-            detections_filtered["sigma"] > self.sigma_detection_threshold
+        detections = detections[
+            detections["sigma"] > self.sigma_detection_threshold
         ]
 
         # thin down detections if there are too many
@@ -779,16 +474,15 @@ class Clusterer:
                 f" for the usual clustering scheme {self.max_ndetect}"
             )
             sig_limit = self.sigma_detection_threshold + 1
-            selection = np.where(detections_filtered["sigma"] > sig_limit)[0]
+            selection = np.where(detections["sigma"] > sig_limit)[0]
             while len(selection) > self.max_ndetect:
                 sig_limit += 0.2
-                selection = np.where(detections_filtered["sigma"] > sig_limit)[0]
-            detections = detections_filtered[selection]
+                selection = np.where(detections["sigma"] > sig_limit)[0]
+            detections = detections[selection]
             log.warning(
                 f"The minimum sigma has been raised to {sig_limit} to reduce the number"
                 f" of detections to {len(detections)}"
             )
-        del detections_filtered
 
         # make data products necessary for clustering and making the harmonic metric
         data = np.vstack(
@@ -798,24 +492,6 @@ class Clusterer:
             ),
             dtype=np.float32,
         ).T
-
-        rhps = [set(det["harm_idx"][: det["nharm"]]) for det in detections]
-
-        # Find duplicate frequencies and only keep the highest-sigma detection for the harmonic metric caluclation
-        if self.group_duplicate_freqs:
-            log.info("Grouping duplicate frequencies together first")
-            harm, idx_to_skip = group_duplicates_freq(
-                detections, ignorenharm1=self.ignore_nharm1
-            )
-            # set lookup is faster
-            idx_to_skip = set(idx_to_skip)
-            log.info(
-                f"Grouping duplicate frequencies removed {len(idx_to_skip)} detections"
-                " from the harmonic metric computation"
-            )
-        else:
-            harm = None
-            idx_to_skip = []
 
         if scheme in ["combined", "dmfreq"]:
             log.info("Starting freq-DM distance metric computation")
@@ -1064,6 +740,8 @@ class Clusterer:
         cluster_dm_spacing,
         cluster_df_spacing,
         plot_fname="",
+        filter_width=False,
+        cluster_dm_cut=0,
         only_injections=False,
     ):
         """
@@ -1072,16 +750,13 @@ class Clusterer:
 
         Args:
             detections_in (np.ndaray): detections output from PowerSpectra search - numpy structured array
-                with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow", "injection"
+                with fields "dm", "freq", "sigma", "width"
             cluster_dm_spacing (float): spacing between DM trials
             plot_fname (str, optional): A plot of the detections and clusters will be made and saved to
                 this file. Defaults to "".
-            filter_nharm (bool, optional): If True, for each cluster, only keep detections where the nharm
+            filter_width (bool, optional): If True, for each cluster, only keep detections where the width
                 matches that of the highest-sigma detection. Defaults to False.
-            remove_harm_idx (bool, optional): If True, remove the "harm_idx" field from the cluster
-                detections. Defaults to False.
             cluster_dm_cut (float, optional): Filter all clusters equal or below this DM.
-            only_injections: bool Whether non-injections are filtered out. Default: False
 
         Returns:
             clusters (dict): A dict of Cluster objects
@@ -1089,13 +764,13 @@ class Clusterer:
                                   Fields are "cluster_id", "freq", "sigma", "nharm", "injection"
                                   cluster_id corresponds to the keys in clusters
             sig_limit (float): The minimum sigma used when clustering.
-                               If there were many detections this may be higher than the limi used in the search
+                               If there were many detections this may be higher than the limit used in the search
         """
         detections, cluster_labels, sig_limit = self.cluster(
             detections_in,
             cluster_dm_spacing,
             cluster_df_spacing,
-            scheme="combined",
+            scheme="dmfreq",
             plot_fname=plot_fname,
         )
         unique_labels = np.unique(cluster_labels)
@@ -1109,25 +784,18 @@ class Clusterer:
             for lbl in unique_labels:
                 if lbl == -1:
                     continue
-                cluster = Cluster.from_raw_detections(detections[cluster_labels == lbl])
+                cluster = Cluster_FFA.from_raw_detections(detections[cluster_labels == lbl])
                 if self.cluster_dm_cut >= cluster.dm:
                     zero_dm_count += 1
                     continue
-                if self.filter_nharm:
-                    cluster.filter_nharm()
-                if self.remove_harm_idx:
-                    cluster.remove_harm_idx()
-                    cluster.remove_harm_pow()
-                if only_injections and cluster.injection_index == -1:
-                    continue
+                if self.filter_width:
+                    cluster.filter_width()
                 clusters[current_label] = cluster
                 summary[current_label] = dict(
                     freq=cluster.freq,
                     dm=cluster.dm,
                     sigma=cluster.sigma,
-                    nharm=cluster.nharm,
-                    harm_idx=cluster.harm_idx,
-                    injection=cluster.injection_index,
+                    width=cluster.width
                 )
                 current_label += 1
         if zero_dm_count:
@@ -1205,7 +873,7 @@ def plot_clusters(
     preamble = "Estimated"
     title = f"{preamble} number of clusters: {n_clusters_}"
     if labels_want is not None:
-        title += " | clusters: " + ",".join([f"{lw}" for lw in labels_want])
+        title += f" | clusters: " + ",".join([f"{lw}" for lw in labels_want])
     if parameters is not None:
         parameters_str = ", ".join(f"{k}={v}" for k, v in parameters.items())
         title += f"\n{parameters_str}"
