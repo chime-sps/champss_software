@@ -77,7 +77,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
 
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
 
-    log.info(f"Filtering candidates for {date}")
+    log.info(f"Filtering candidates for {date} ")
 
     date = convert_date_to_datetime(date)
 
