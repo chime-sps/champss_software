@@ -22,3 +22,7 @@ print_candidates --threshold 10  ./benchmark/*/*_candidates.npz
 python3 run_rednoise_benchmark.py
 
 rm -r ./benchmark/stack ./benchmark/2022/06/*/*/*_obs_id.txt
+
+#Will want to add below, perhaps change dates/pointings for time
+#multidayfold_pipeline --db-host sps-archiver1 --db-name sps_benchmark --foldpath ./benchmark/archives/ --datpath /data/chime/sps/raw_backup/ --start-date 20220618 --nday 10 --psr J2108+5000 --overwrite-folding
+#rm -r ./benchmark/stack ./benchmark/archives ./benchmark/2022/06/*/*/*_obs_id.txt

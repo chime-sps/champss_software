@@ -11,8 +11,8 @@ from sps_common.constants import TSAMP
 import numpy as np
 
 # Conditional import for beam_model
-if importlib.util.find_spec("beam_model"):
-    import beam_model
+if importlib.util.find_spec("cfbm"):
+    import cfbm as beam_model
 
 
 def read_huff_msgpack(filename, channel_downsampling_factor=1):
@@ -156,10 +156,10 @@ def convert_intensity_to_filterbank(
     """
 
     # check if beam model is imported
-    if "beam_model" not in sys.modules:
+    if "cfbm" not in sys.modules:
         sys.exit(
             "ImportError: Using convert_intensity_to_filterbank() function requires FRB"
-            " beam_model. Please install beam_model if you plan to use this function."
+            " beam_model. Please install cfbm if you plan to use this function."
         )
 
     nchan = 16384 // channel_downsampling_factor
@@ -194,9 +194,9 @@ def convert_intensity_to_filterbank(
             start_unix_time, end_unix_time, beam
         )
 
-    # Get beam sky position. Postion is computed taking the mid epoch of the exposure.
+    # Get beam sky position. Position is computed taking the mid epoch of the exposure.
     bm = beam_model.current_model_class(beam_model.current_config)
-    beam_pos = bm.get_beam_positions([beam], freqs=bm.clamp_freq)
+    beam_pos = bm.get_beam_positions([beam], freqs=bm.config['clamp_freq'])
     time_mid = (start_unix_time + end_unix_time) / 2
     beam_skypos = SkyCoord(
         *bm.get_equatorial_from_position(beam_pos[0, 0, 0], beam_pos[0, 0, 1], time_mid)

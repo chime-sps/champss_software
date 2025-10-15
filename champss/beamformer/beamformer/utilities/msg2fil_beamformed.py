@@ -6,13 +6,17 @@ import sys
 import numpy as np
 import pytz
 from astropy.time import Time
-from frb_common import beam_model, common_utils
+import cfbm as beam_model
 from iautils import cascade
 from iautils.conversion import chime_intensity, filterbank
+from sps_common.constants import FREQ_BOTTOM, FREQ_TOP, TSAMP, L1_NCHAN
 
 beammod = beam_model.current_model_class(beam_model.current_config)
 
 SCRUNCH_FACTORS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
+
+# CHIME channel bandwidth
+CHANNEL_BANDWIDTH = (FREQ_TOP - FREQ_BOTTOM) / L1_NCHAN
 
 
 def create_filterbank_header(cas, filename, psr, ra_hms, dec_hms, start_time_mjd):
@@ -232,9 +236,9 @@ def convert_chunk(msg_chunk, beam, dm, fscrunch=1, zerodm=False):
         dm=dm,
         event_time=event_time,
         fpga_time=fpga_time,
-        fbottom=common_utils.freq_bottom_mhz,
-        dt=common_utils.sampling_time_ms / 1e3 * binning,
-        df=common_utils.channel_bandwidth_mhz,
+        fbottom=FREQ_BOTTOM,
+        dt=TSAMP * binning,
+        df=CHANNEL_BANDWIDTH,
     )
 
     # replace missing channels with mean of good channels

@@ -170,6 +170,20 @@ ps:
       dbscan_filter_broad_dm: True
       dbscan_filter_broad_threshold: 100
 
+ffa:
+  run_ffa_search: True
+  create_periodogram_plots: False
+  create_profile_plots: False
+  write_ffa_detections: True
+  write_ffa_candidates: True
+  write_ffa_stack: True
+  dm_downsample: 8
+  dm_min: 0
+  dm_max: null
+  min_rfi_sigma: 5
+  min_detection_sigma: 7
+  birdie_tolerance: 0.005
+
 cands:
   harmonics: {}
   features:
