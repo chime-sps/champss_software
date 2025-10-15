@@ -17,6 +17,7 @@ from prometheus_client import Summary
 from ps_processes.utilities.utilities import rednoise_normalise
 from rfi_mitigation.cleaners.periodic import DynamicPeriodicFilter, StaticPeriodicFilter
 from scipy.interpolate import interp1d
+from scipy.fft import rfftfreq
 from sps_common.barycenter import (
     bary_from_topo_freq,
     barycenter_timeseries,
@@ -313,8 +314,10 @@ class PowerSpectraCreation:
 
                 medians = np.asarray(medians)
                 median_dm_indices = np.asarray(median_dm_indices)
-                scales = np.asarray(scales)
-                freq_labels = power_spectra.get_freq_labels[np.cumsum(scales)]
+                scales = np.asarray(scales[0]) #same for each DM
+                #this is the jankiest way of getting the freq_labels but I'm not sure how else to do it
+                #all_freqs = rfftfreq(2 * (power_spectra.shape[1] - 1), d = TSAMP)
+                #freq_labels = all_freqs[np.cumsum(scales)]
             
             if self.save_medians:
                 rn_medians = medians[np.newaxis, :]
@@ -334,7 +337,8 @@ class PowerSpectraCreation:
                     medians_path,
                     medians=medians,
                     scales=scales,
-                    freq_labels=freq_labels
+                    freq_labels=freq_labels,
+                    dms=power_spectra.dms,
                 )
             else:
                 medians_path = None
@@ -355,7 +359,7 @@ class PowerSpectraCreation:
         datetimes = Time(dedisp_time_series.start_mjd, format="mjd").datetime.replace(
             tzinfo=pytz.utc
         )
-
+        
         return PowerSpectra(
             power_spectra=power_spectra,
             dms=dedisp_time_series.dms,
