@@ -1,4 +1,4 @@
-ADDITIONAL_PIPELINE_PARAMS="$1" # First argument
+ADDITIONAL_PIPELINE_PARAMS="""$1 --config-options '{"write_medians": True}'""" # First argument
 ADDITIONAL_STACK_PARAMS="$2" # Second argument
 
 rm -r ./benchmark/stack ./benchmark/2022/06/*/*/*_obs_id.txt
@@ -19,5 +19,6 @@ run-stack-search-pipeline --plot --plot-threshold 10 --db-host sps-archiver1 --d
 print_candidates --threshold 6.5 ./benchmark/2022/06/*/*/*_power_spectra_candidates.npz
 print_candidates --threshold 10  ./benchmark/*/*_candidates.npz
 
+python3 run_rednoise_benchmark.py
 
 rm -r ./benchmark/stack ./benchmark/2022/06/*/*/*_obs_id.txt
