@@ -1614,8 +1614,9 @@ def start_processing_cleanup():
                 image_id = image["id"]
 
                 try:
-                    # No force=True; only delete if they are not in use
-                    docker_client.images.remove(image_id)
+                    # Use force=True to remove images that have multiple repository tags
+                    # This is safe since we're only removing old versions (not the most recent)
+                    docker_client.images.remove(image_id, force=True)
                     log.info(f"Successfully removed old image: {image_name}:{image_id}")
                 except Exception as error:
                     log.info(f"Error removing old image: {error}")
