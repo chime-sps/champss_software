@@ -34,7 +34,6 @@ from sps_pipeline.utils import get_pointings_from_list
 
 log = logging.getLogger()
 
-
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--date",
