@@ -53,6 +53,12 @@ from sps_databases import db_api, db_utils
     help="Number of days to search. Default is to search all available archives."
 )
 @click.option(
+    "--foldpath",
+    default=None,
+    type=str,
+    help="Path for created files during fold step.",
+)
+@click.option(
     "--write-to-db",
     is_flag=True,
     help="Set folded_status to True in the processes database.",
@@ -69,6 +75,7 @@ def main(
     db_name,
     phase_accuracy,
     nday,
+    foldpath,
     write_to_db=False,
     check_cands=False,
 ):
@@ -96,19 +103,48 @@ def main(
         fold_dates = [entry["date"].date() for entry in source.folding_history]
         fold_SN = [entry["SN"] for entry in source.folding_history]
         archives = [entry["archive_fname"] for entry in source.folding_history]
+
         if len(archives) < 2:
             log.error(f"Source {fs_id} does not have more than 1 archive required to run the search, exiting...")
             return
     else:
         log.error(f"Source {fs_id} has no folding history in db, exiting...")
         return
+
+    # sort by date
+    combined = sorted(zip(fold_dates, fold_SN, archives), key=lambda x: x[0])
+    fold_dates, fold_SN, archives = map(list, zip(*combined))
+
+    # find consecutive chunks
+    chunks = []
+    current_chunk = [(fold_dates[0], fold_SN[0], archives[0])]
+
+    for i in range(1, len(fold_dates)):
+        if fold_dates[i] - fold_dates[i-1] <= datetime.timedelta(days=30):
+            current_chunk.append((fold_dates[i], fold_SN[i], archives[i]))
+        else:
+            chunks.append(current_chunk)
+            current_chunk = [(fold_dates[i], fold_SN[i], archives[i])]
+
+    chunks.append(current_chunk)
+
+    # keep the longest chunk, warn about trimmed ones
+    longest = max(chunks, key=len)
+    for ch in chunks:
+        if ch is not longest:
+            start, end = ch[0][0], ch[-1][0]
+            log.warning(f"Source {fs_id}: trimming chunk from {start} to {end} (gap >30d)")
+
+    fold_dates, fold_SN, archives = map(list, zip(*longest))
+
+    # take only first nday if requested
     if nday:
         fold_dates = fold_dates[:nday]
         fold_SN = fold_SN[:nday]
         archives = archives[:nday]
-    print(fold_dates)
-    print(fold_SN)
-    print(archives)
+
+    log.info(f"Folding {len(archives)} days of data: {fold_dates}")
+
     par_file = source.path_to_ephemeris
     par_vals = read_par(par_file)
     DM_incoherent = par_vals["DM"]
@@ -117,7 +153,10 @@ def main(
     DEC = par_vals["DECJD"]
 
     data = load_profiles(archives)
-    print(len(data["profiles"]))
+    print(f"Loaded {len(data['profiles'])} profiles")
+
+    if foldpath is not None:
+        data["directory"] = f"{foldpath}/candidates/{RA:.02f}_{DEC:.02f}/"
 
     dF0 = 1 / 86164.1  # 1 day alias (can reduce by 2x if necessary)
     f0_min = F0_incoherent - dF0
@@ -132,7 +171,7 @@ def main(
     )  # Negative or positive to account for position error
     delta_f1max = 2 * f1_max
 
-    T = data["T"]  # Time from first observation to last observation
+    T = data["Tmax_from_reference"]  # Time from first observation to last observation
     npbin = data["npbin"]  # Number of phase bins
     M_f0 = npbin * phase_accuracy
     M_f0 = int(np.max((M_f0, 1)))  # To make sure M_f0 does not return 0
@@ -145,7 +184,7 @@ def main(
     f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
 
     np.savez(
-        data["directory"] + "/explore_grid.npz",
+        data["directory"] + f"cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
         f0s=f0s,
         f1s=f1s,
         chi2_grid=chi2_grid,
@@ -176,7 +215,10 @@ def main(
     f1_optimal = optimal_parameters[1]
 
     optimal_par_file = par_file.replace(".par", "_optimal.par")
-    directory = data["directory"]
+    if foldpath is not None:
+        optimal_par_file = data['directory'] + optimal_par_file.split('/')[-1]
+
+    print(f"Writing new par file to {optimal_par_file}")
     with open(par_file) as input:
         with open(optimal_par_file, "w") as output:
             output.write("# Created: " + str(datetime.datetime.now()) + "\n")
@@ -194,6 +236,9 @@ def main(
                 elif key == "DECJ":
                     DEC_output = f"{line.strip()} 1 \n"
                     output.write(DEC_output)
+                elif key == 'PEPOCH':
+                    PEPOCH_output = f"PEPOCH {data['PEPOCH']} 0 \n"
+                    output.write(PEPOCH_output)
                 else:
                     output.write(line)
 

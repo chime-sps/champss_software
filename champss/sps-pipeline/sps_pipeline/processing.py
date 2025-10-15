@@ -871,6 +871,12 @@ def run_all_pipeline_processes(
     help="To run the multipointing phase of processing or not.",
 )
 @click.option(
+    "--run-classfication",
+    default=True,
+    type=bool,
+    help="To run the classfication phase of processing or not.",
+)
+@click.option(
     "--run-folding",
     default=True,
     type=bool,
@@ -917,6 +923,7 @@ def start_processing_manager(
     docker_image_name,
     run_pipeline,
     run_multipointing,
+    run_classification,
     run_folding,
     run_stacking,
     pipeline_arguments,
@@ -1217,6 +1224,44 @@ def start_processing_manager(
                         f" with filter: ALL_tags=['mp', '{date_string}']"
                     )
             # End of multi-pointing phase
+
+            # Start of classification phase
+            if run_classification:
+                message_slack(f"Running classfication for {date_string}")
+
+                docker_service_name_prefix = "class"
+
+                workflow_buckets_name = (
+                    f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
+                )
+                clear_workflow_buckets.main(
+                    args=["--workflow-buckets-name", workflow_buckets_name],
+                    standalone_mode=False,
+                )
+                class_timeout = 60 * 60 * 60
+                work_id = schedule_workflow_job(
+                    docker_image="sps-archiver1.chime:5000/champss_classification:stable",
+                    docker_mounts=[
+                        f"{datpath}:{datpath}",
+                        f"{basepath}:{basepath}",
+                    ],
+                    docker_name=f"{docker_service_name_prefix}-{date_string}",
+                    docker_memory_reservation=100,
+                    workflow_buckets_name=workflow_buckets_name,
+                    workflow_function="champss_classification.pytorch_model.classify.load_model_and_classify_mp_csv",
+                    workflow_params={
+                        "csv": work_result["csv_file"],
+                    },
+                    workflow_tags=["class", date_string],
+                    timeout=class_timeout,
+                )
+
+                wait_for_no_tasks_in_states(
+                    docker_swarm_running_states,
+                    docker_service_name_prefix,
+                    timeout=class_timeout,
+                )
+            # End of classification phase
 
             # Start of folding phase
             if run_folding:

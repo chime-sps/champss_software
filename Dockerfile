@@ -12,7 +12,6 @@ RUN set -ex \
     && apt-get update \
     && apt-get install -yqq --no-install-recommends \
     curl \
-    ssh \
     git \
     libblas3 \
     liblapack3 \
@@ -22,11 +21,7 @@ RUN set -ex \
     ca-certificates \
     vim \
     less \
-    && mkdir -p ~/.ssh \
-    && update-ca-certificates \
-    && touch ~/.ssh/known_hosts \
-    && chmod 0600 ~/.ssh/known_hosts ~/.ssh \
-    && ssh-keyscan github.com >> ~/.ssh/known_hosts
+    && update-ca-certificates
 
 # Stage 2: Install Miniconda dependencies
 FROM base as miniconda
@@ -56,8 +51,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 COPY . .
 
-RUN --mount=type=ssh,id=github_ssh_id set -ex \
-    && python3 -m pip install .[beam-model] \
+RUN set -ex \
+    && python3 -m pip install . \
     && get-data \
     && workflow workspace set champss.workspace.yml \
     && python3 download_files.py 

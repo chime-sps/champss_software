@@ -1,4 +1,5 @@
 import logging
+import multiprocessing
 import os
 import subprocess
 
@@ -12,13 +13,13 @@ log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
-from beamformer.skybeam import SkyBeamFormer
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 from folding.plot_candidate import plot_candidate_archive
 from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
-from sps_pipeline.pipeline import default_datpath
+from sps_pipeline import beamform
+from sps_pipeline.pipeline import default_datpath, load_config, apply_logging_config
 
 
 def update_folding_history(id, payload):
@@ -50,29 +51,6 @@ def update_folding_history(id, payload):
         return_document=pymongo.ReturnDocument.AFTER,
     )
 
-
-def apply_logging_config(level):
-    """
-    Applies logging settings from the given configuration.
-
-    Logging settings are under the 'logging' key, and include:
-    - format: string for the `logging.formatter`
-    - level: logging level for the root logger
-    - modules: a dictionary of submodule names and logging level to be applied to that submodule's logger
-    """
-    log_stream.setFormatter(
-        logging.Formatter(
-            fmt="%(asctime)s %(levelname)s >> %(message)s", datefmt="%b %d %H:%M:%S"
-        )
-    )
-
-    logging.root.setLevel(level)
-    log.debug("Set default level to: %s", level)
-
-
-apply_logging_config(logging.INFO)
-
-
 def candidate_name(ra_deg, dec_deg, j2000=True):
     ra_hhmmss = ra_deg * 24 / 360
     dec_ddmmss = abs(dec_deg)
@@ -81,7 +59,6 @@ def candidate_name(ra_deg, dec_deg, j2000=True):
     dec_str = f"{int(dec_ddmmss):02d}{int((dec_ddmmss * 60) % 60):02d}"
     candidate_name = "J" + ra_str + dec_sign + dec_str
     return candidate_name
-
 
 def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     cand_pos = SkyCoord(ra, dec, unit="deg")
@@ -186,6 +163,11 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     is_flag=True,
     help="Re-run folding even if already folded on this date.",
 )
+@click.option(
+    "--filterbank-to-ram/--no-filterbank-to-ram",
+    default=True,
+    help="Use ramdisk for filterbank files, default True.",
+)
 def main(
     date,
     sigma,
@@ -205,6 +187,7 @@ def main(
     write_to_db=False,
     using_workflow=False,
     overwrite_folding=False,
+    filterbank_to_ram=True,
 ):
     """
     Perform the main processing steps for folding a candidate or known source.  It can
@@ -237,6 +220,7 @@ def main(
     if using_workflow:
         date = convert_date_to_datetime(date)
 
+    multiprocessing.set_start_method("forkserver", force=True)
     db_utils.connect(host=db_host, port=db_port, name=db_name)
     pst = PointingStrategist(create_db=False)
 
@@ -296,7 +280,6 @@ def main(
         followup_source = add_candidate_to_fsdb(
             date_str, ra, dec, f0, dm, sigma, candpath
         )
-        print(followup_source)
         fs_id = followup_source._id
     else:
         log.error(
@@ -304,6 +287,17 @@ def main(
             " candidate RA and DEC"
         )
         return {}, [], []
+
+    config = load_config()
+    config['beamform']['update_db'] = False
+    config['beamform']['flatten_bandpass'] = False
+    log_path = foldpath + f"/logs/{date.strftime('%Y/%m/%d')}/"
+    log_name = (
+        f"fold_candidate{date.strftime('%Y-%m-%d')}_{ra:.02f}_"
+        f"{dec:.02f}_{f0:.02f}_{dm:.02f}.log"
+    )
+    log_file = log_path + log_name
+    apply_logging_config(config, log_file)
 
     directory_path = f"{foldpath}/{dir_suffix}"
 
@@ -337,25 +331,25 @@ def main(
         if not ephem_path:
             ephem_path = f"{directory_path}/ephemerides/{psr}.par"
 
+    if os.path.isfile(f"{archive_fname}.ar") and not overwrite_folding:
+        log.info(f"Archive file {archive_fname}.ar already exists, skipping folding...")
+        return {}, [], []
+
     if not os.path.exists(ephem_path):
         log.error(f"Ephemeris file {ephem_path} not found")
         return {}, [], []
 
-    outdir = coord_path
-    fname = f"/{year}-{month:02}-{day:02}.fil"
-    fil = outdir + fname
+    fname = f"/{ra:.02f}_{dec:.02f}_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.fil"
+    if filterbank_to_ram:
+        log.info("Using ram for filterbank file")
+        fildir = "/dev/shm"
+    else:
+        log.info("Using disk for filterbank file")
+        fildir = coord_path
+    fil = fildir + fname
 
     pst = PointingStrategist(create_db=False)
     ap = pst.get_single_pointing(ra, dec, date)
-
-    data_list = []
-    for active_pointing in ap:
-        data_list.extend(
-            get_data_list(active_pointing.max_beams, basepath=datpath, extn="dat")
-        )
-    if not data_list:
-        log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
-        return {}, [], []
 
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
@@ -378,30 +372,12 @@ def main(
 
     if not os.path.isfile(fil):
         log.info("Beamforming...")
-        sbf = SkyBeamFormer(
-            extn="dat",
-            update_db=False,
-            min_data_frac=0.5,
-            basepath=datpath,
-            add_local_median=True,
-            detrend_data=True,
-            detrend_nsamp=32768,
-            masking_timescale=512000,
-            # flatten_bandpass=False,
-            run_rfi_mitigation=True,
-            masking_dict=dict(
-                weights=True,
-                l1=True,
-                badchan=True,
-                kurtosis=False,
-                mad=False,
-                sk=True,
-                powspec=False,
-                dummy=False,
-            ),
-            beam_to_normalise=1,
+        fdmt = True
+        beamformer = beamform.initialise(config, rfi_beamform=True, 
+                                         basepath=foldpath, datpath=datpath)
+        skybeam, spectra_shared = beamform.run(
+            ap[0], beamformer, fdmt, num_threads, foldpath
         )
-        skybeam, spectra_shared = sbf.form_skybeam(ap[0], num_threads=num_threads)
         if skybeam is None:
             log.info(
                 "Insufficient unmasked data to form skybeam, exiting before filterbank creation"
@@ -416,26 +392,26 @@ def main(
             spectra_shared.unlink()
             del skybeam
 
-    if not os.path.isfile(f"{archive_fname}.ar"):
-        log.info("Folding...")
-        subprocess.run(
-            [
-                "dspsr",
-                "-t",
-                f"{num_threads}",
-                f"{intflag}",
-                f"{turns}",
-                "-A",
-                "-k",
-                "chime",
-                "-E",
-                f"{ephem_path}",
-                "-O",
-                f"{archive_fname}",
-                f"{fil}",
-            ]
-        )
-        log.info(f"Finished, deleting {fil}")
+    log.info("Folding...")
+    subprocess.run(
+        [
+            "dspsr",
+            "-t",
+            f"{num_threads}",
+            f"{intflag}",
+            f"{turns}",
+            "-A",
+            "-k",
+            "chime",
+            "-E",
+            f"{ephem_path}",
+            "-O",
+            f"{archive_fname}",
+            f"{fil}",
+        ]
+    )
+    log.info(f"Finished, deleting {fil}")
+    if os.path.isfile(fil):
         os.remove(fil)
 
     archive_fname = archive_fname + ".ar"

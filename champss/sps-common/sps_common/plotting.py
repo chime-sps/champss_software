@@ -276,7 +276,8 @@ def plot_scatter_positions(fig, panel, grid_points, candidate):
     )
 
     # Catch warning created by autodatelocator
-    with warnings.catch_warnings(action="ignore"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         ax_time_sigma.xaxis.set_major_formatter(
             mdates.ConciseDateFormatter(ax_time_sigma.xaxis.get_major_locator())
         )
@@ -365,7 +366,8 @@ def plot_candidate(
             panel["col_range"][0] : panel["col_range"][1],
         ]
         globals()[panel["type"]](fig, panel, grid_points, current_data_source)
-    with warnings.catch_warnings(action="ignore"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         fig.savefig(file_name)
     plt.close()
     return file_name

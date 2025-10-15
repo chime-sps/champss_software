@@ -43,6 +43,7 @@ from sps_pipeline import (  # ps,
     beamform,
     cands,
     cleanup,
+    ffa,
     ps_cumul_stack,
     utils,
 )
@@ -193,7 +194,7 @@ def dbexcepthook(type, value, tb):
 @click.argument("dec", type=click.FloatRange(-90, 90))
 @click.argument(
     "components",
-    type=click.Choice(["all", "rfi", "beamform", "dedisp", "ps", "search", "cleanup"]),
+    type=click.Choice(["all", "rfi", "beamform", "dedisp", "ps", "ffa", "search", "cleanup"]),
     nargs=-1,
 )
 @click.option(
@@ -580,7 +581,7 @@ def main(
                     gc.collect()
                 else:
                     dedisp.run(active_pointing, config, basepath)
-            elif "ps" in components:
+            elif "ps" in components or "ffa" in components:
                 dedisp_ts = DedispersedTimeSeries.from_presto_datfiles(
                     obs_folder, active_pointing.obs_id, prefix=prefix
                 )
@@ -588,6 +589,24 @@ def main(
                 if "beamform" in components:
                     spectra_shared.close()
                     spectra_shared.unlink()
+
+            # Run FFA search if requested
+            if "ffa" in components and config.get("ffa", {}).get("run_ffa_search", False):
+                log.info(
+                    "FFA Search"
+                    f" ({active_pointing.ra:.2f} {active_pointing.dec:.2f}) @"
+                    f" {date:%Y-%m-%d}"
+                )
+                ffa_processor = ffa.initialise(config, num_threads)
+                ffa.run(
+                    active_pointing,
+                    dedisp_ts,
+                    ffa_processor,
+                    basepath,
+                    date,
+                )
+                # Note: We don't delete dedisp_ts here as PS might need it
+
             if "ps" in components:
                 # splitting the FFT for power spectra and search/stack process, so
                 # that we can delete dedispersed time series from memory first
@@ -655,6 +674,11 @@ def main(
                 del power_spectra
             else:
                 power_spectra = None
+                # If FFA was run without PS, clean up dedisp_ts
+                if "ffa" in components and "dedisp_ts" in locals():
+                    del dedisp_ts
+                    gc.collect()
+
             if "cleanup" in components:
                 clean_up = cleanup.CleanUp(**OmegaConf.to_container(config.cleanup))
                 clean_up.remove_files(active_pointing)

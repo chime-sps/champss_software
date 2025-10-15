@@ -476,7 +476,7 @@ class PowerSpectra:
 
             if self.rn_medians is not None:
                 h5f.create_dataset(
-                    "rn medians", data=self.rn_medians, dtype=f"f{int(nbit / 8)}"
+                    "rn medians", data=self.rn_medians, 
                 )
                 h5f.create_dataset("rn scales", data=self.rn_scales)
                 h5f.create_dataset("rn dm indices", data=self.rn_dm_indices)
