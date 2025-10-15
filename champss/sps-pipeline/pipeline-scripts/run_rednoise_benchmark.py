@@ -9,4 +9,4 @@ DMs = info['dms']
 medians = info['medians']
 scales = info['scales']
 
-rednoise_diagnostics.plot_medians(freq_labels, DMs, medians, scales, title = 'Benchmark Rednoise Medians'):
+rednoise_diagnostics.plot_medians(freq_labels, DMs, medians, scales, title = 'Benchmark Rednoise Medians')
