@@ -1,5 +1,5 @@
-from sps_common.utilities import rednoise_diagnostics
 import numpy as np
+from sps_common.utilities import rednoise_diagnostics
 
 median_path = './benchmark/2022/06/*/*/medians.npz'
 
