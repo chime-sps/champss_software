@@ -1,5 +1,5 @@
 import numpy as np
-from champss/sps-common/sps_common/utilities import rednoise_diagnostics
+from sps_common.interfaces import rednoise_diagnostics
 
 median_path = './benchmark/2022/06/*/*/medians.npz'
 
