@@ -338,7 +338,7 @@ class PowerSpectraCreation:
                     medians=medians,
                     scales=scales,
                     freq_labels=freq_labels,
-                    dms=power_spectra.dms,
+                    dms=dedisp_time_series.dms,
                 )
             else:
                 medians_path = None
