@@ -53,10 +53,14 @@ COPY . .
 
 RUN set -ex \
     && python3 -m pip install . \
+    && python3 -c "import cfbm; import os; beam_dir = os.path.join(os.path.dirname(cfbm.__file__), 'bm_data'); os.makedirs(beam_dir, exist_ok=True); [os.remove(os.path.join(beam_dir, f)) for f in ['beam_XX_v1.h5', 'beam_YY_v1.h5'] if os.path.exists(os.path.join(beam_dir, f))]" \
     && get-data \
+    && python3 -c "import h5py; import cfbm; import os; beam_dir = os.path.join(os.path.dirname(cfbm.__file__), 'bm_data'); [h5py.File(os.path.join(beam_dir, f), 'r').close() for f in ['beam_XX_v1.h5', 'beam_YY_v1.h5']]" \
     && workflow workspace set champss.workspace.yml \
-    && python3 download_files.py 
-# Above "get-data" call is needed for CHIMEFRB/beam-model
+    && python3 download_files.py
+# Above commands: 1) Create beam data directory and remove any corrupted files
+#                 2) Download beam model files via get-data
+#                 3) Verify HDF5 files are valid by opening them
 # The astropy calls allow downloading of data that might be available when running the container
 
 RUN run-stack-search-pipeline --help
