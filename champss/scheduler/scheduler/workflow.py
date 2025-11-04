@@ -362,11 +362,12 @@ def schedule_workflow_job(
                 )
             )
 
+        service_name = f"processing-{docker_name.replace('.', '_').replace('/', '')}"
         docker_service = {
             "image": docker_image,
             # Can't have dots or slashes in Docker Service names
             # All Docker Services made with this function will be prefixed with "processing-"
-            "name": f"processing-{docker_name.replace('.', '_').replace('/', '')}",
+            "name": service_name,
             # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
@@ -409,9 +410,10 @@ def schedule_workflow_job(
 
         docker_client.services.create(**docker_service)
 
-        wait_for_no_tasks_in_states(docker_swarm_pending_states)
+        wait_for_no_tasks_in_states(docker_swarm_pending_states, docker_service_name_prefix=service_name)
 
         return work_id[0]
+
     except Exception as error:
         log.info(
             f"Failed to deposit Work or create Docker Service: {error}. "

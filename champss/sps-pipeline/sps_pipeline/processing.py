@@ -492,7 +492,7 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
 )
 @click.option(
     "--workers",
-    default=1,
+    default=8,
     type=int,
     help="Number of parallel processes that are executed.",
 )
@@ -653,118 +653,162 @@ def run_all_pipeline_processes(
     )
 
     process_ids = []
-    for process_index, process_dict in enumerate(all_processes):
-        process = models.Process.from_db(process_dict)
-        process_ids.append(ObjectId(process._id))
+    with Pool(workers) as pool:
         try:
-            cmd_string_list = (
-                f"--date {process.date} --db-port {db_port} --db-host {db_host} --stack"
-                " --fdmt --rfi-beamform".split(" ")
+            process_ids_iter = pool.imap(
+                partial(
+                    schedule_individual_job,
+                    db_host,
+                    db_port,
+                    db_name,
+                    dry_run,
+                    basepath,
+                    stackpath,
+                    datpath,
+                    workflow_buckets_name,
+                    docker_image_name,
+                    docker_service_name_prefix,
+                    run_stacking,
+                    pipeline_arguments,
+                    pipeline_config_options,
+                ),
+                all_processes,
             )
-            if basepath:
-                cmd_string_list.extend(["--basepath", f"{basepath}"])
-            if stackpath:
-                cmd_string_list.extend(["--stackpath", f"{stackpath}"])
-            cmd_string_list.extend(
-                [
-                    process.ra,
-                    f" {process.dec}",
-                    "all",
-                ]
-            )
-
-            if workflow_buckets_name == "":
-                log.info(f"Running command: run-pipeline {' '.join(cmd_string_list)}")
-            if not dry_run:
-                if workflow_buckets_name:
-                    formatted_ra = f"{process.ra:.02f}"
-                    formatted_dec = f"{process.dec:.02f}"
-                    formatted_maxdm = f"{process.maxdm:.02f}"
-                    formatted_date = process.date
-
-                    docker_memory_reservation = process.ram_requirement
-                    docker_threads_needed = int(docker_memory_reservation / 3)
-                    docker_image = docker_image_name
-                    docker_mounts = [
-                        f"{datpath}:{datpath}",
-                        f"{basepath}:{basepath}",
-                    ]
-                    docker_name = (
-                        f"{docker_service_name_prefix}-{formatted_ra}-"
-                        f"{formatted_dec}-{formatted_maxdm}-{formatted_date}"
-                    )
-
-                    workflow_function = "sps_pipeline.pipeline.main"
-                    workflow_params = {
-                        "date": process.date,
-                        "stack": run_stacking,
-                        "fdmt": True,
-                        "rfi_beamform": True,
-                        "plot": True,
-                        "plot_threshold": 8.0,
-                        "ra": process.ra,
-                        "dec": f" {process.dec}",
-                        "components": ["all"],
-                        "num_threads": docker_threads_needed,
-                        "db_port": db_port,
-                        "db_host": db_host,
-                        "db_name": db_name,
-                        "basepath": basepath,
-                        "stackpath": stackpath,
-                        "datpath": datpath,
-                        # Run Pyroscope profiling every 100th job
-                        # "using_pyroscope": True if process_index % 100 == 0 else False,
-                        "using_pyroscope": False,
-                        "using_docker": True,
-                        "config_options": pipeline_config_options,
-                    }
-                    if pipeline_arguments != "":
-                        split_args = pipeline_arguments.split("--")
-                        for arg_string in split_args:
-                            arg_string = arg_string.strip()
-                            if arg_string != "":
-                                arg_count = len(arg_string.split(" "))
-                                if arg_count > 1:
-                                    argument, value = arg_string.split(" ", 1)
-                                    workflow_params[argument] = (value,)
-                                else:
-                                    log.error(
-                                        "Flags not implimented yet. Reformated your option to --option_python_name True"
-                                    )
-
-                    workflow_tags = [
-                        "pipeline",
-                        formatted_ra,
-                        formatted_dec,
-                        formatted_maxdm,
-                        formatted_date,
-                    ]
-
-                    schedule_workflow_job(
-                        docker_image,
-                        docker_mounts,
-                        docker_name,
-                        docker_memory_reservation,
-                        workflow_buckets_name,
-                        workflow_function,
-                        workflow_params,
-                        workflow_tags,
-                    )
-                else:
-                    main(cmd_string_list, standalone_mode=False)
-
-                    log.info(
-                        f"Finished processing pointing ({process.ra}, {process.dec})"
-                        f" for date {process.date}"
-                    )
+            for proc in process_ids_iter:
+                process_ids.append(proc)
+            pool.close()
+            pool.join()
         except Exception as error:
             traceback.print_exc()
             log.error(error)
-            if not dry_run:
-                db_api.update_process(process.id, {"status": 3})
+            log.error("Processing interrupted. somehow.")
+            pool.terminate()
 
     return process_ids
 
+def schedule_individual_job(
+    db_host,
+    db_port,
+    db_name,
+    dry_run,
+    basepath,
+    stackpath,
+    datpath,
+    workflow_buckets_name,
+    docker_image_name,
+    docker_service_name_prefix,
+    run_stacking,
+    pipeline_arguments,
+    pipeline_config_options,
+    process_dict,):
+    process = models.Process.from_db(process_dict)
+    # try:
+    cmd_string_list = (
+        f"--date {process.date} --db-port {db_port} --db-host {db_host} --stack"
+        " --fdmt --rfi-beamform".split(" ")
+    )
+    if basepath:
+        cmd_string_list.extend(["--basepath", f"{basepath}"])
+    if stackpath:
+        cmd_string_list.extend(["--stackpath", f"{stackpath}"])
+    cmd_string_list.extend(
+        [
+            process.ra,
+            f" {process.dec}",
+            "all",
+        ]
+    )
+
+    if workflow_buckets_name == "":
+        log.info(f"Running command: run-pipeline {' '.join(cmd_string_list)}")
+    if not dry_run:
+        if workflow_buckets_name:
+            formatted_ra = f"{process.ra:.02f}"
+            formatted_dec = f"{process.dec:.02f}"
+            formatted_maxdm = f"{process.maxdm:.02f}"
+            formatted_date = process.date
+
+            docker_memory_reservation = process.ram_requirement
+            docker_threads_needed = int(docker_memory_reservation / 3)
+            docker_image = docker_image_name
+            docker_mounts = [
+                f"{datpath}:{datpath}",
+                f"{basepath}:{basepath}",
+            ]
+            docker_name = (
+                f"{docker_service_name_prefix}-{formatted_ra}-"
+                f"{formatted_dec}-{formatted_maxdm}-{formatted_date}"
+            )
+
+            workflow_function = "sps_pipeline.pipeline.main"
+            workflow_params = {
+                "date": process.date,
+                "stack": run_stacking,
+                "fdmt": True,
+                "rfi_beamform": True,
+                "plot": True,
+                "plot_threshold": 8.0,
+                "ra": process.ra,
+                "dec": f" {process.dec}",
+                "components": ["all"],
+                "num_threads": docker_threads_needed,
+                "db_port": db_port,
+                "db_host": db_host,
+                "db_name": db_name,
+                "basepath": basepath,
+                "stackpath": stackpath,
+                "datpath": datpath,
+                # Run Pyroscope profiling every 100th job
+                # "using_pyroscope": True if process_index % 100 == 0 else False,
+                "using_pyroscope": False,
+                "using_docker": True,
+                "config_options": pipeline_config_options,
+            }
+            if pipeline_arguments != "":
+                split_args = pipeline_arguments.split("--")
+                for arg_string in split_args:
+                    arg_string = arg_string.strip()
+                    if arg_string != "":
+                        arg_count = len(arg_string.split(" "))
+                        if arg_count > 1:
+                            argument, value = arg_string.split(" ", 1)
+                            workflow_params[argument] = (value,)
+                        else:
+                            log.error(
+                                "Flags not implimented yet. Reformated your option to --option_python_name True"
+                            )
+
+            workflow_tags = [
+                "pipeline",
+                formatted_ra,
+                formatted_dec,
+                formatted_maxdm,
+                formatted_date,
+            ]
+
+            schedule_workflow_job(
+                docker_image,
+                docker_mounts,
+                docker_name,
+                docker_memory_reservation,
+                workflow_buckets_name,
+                workflow_function,
+                workflow_params,
+                workflow_tags,
+            )
+        else:
+            main(cmd_string_list, standalone_mode=False)
+
+            log.info(
+                f"Finished processing pointing ({process.ra}, {process.dec})"
+                f" for date {process.date}"
+            )
+    # except Exception as error:
+    #     traceback.print_exc()
+    #     log.error(error)
+    #     if not dry_run:
+    #         db_api.update_process(process.id, {"status": 3})
+    return ObjectId(process._id)
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
