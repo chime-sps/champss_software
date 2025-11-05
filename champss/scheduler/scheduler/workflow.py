@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import time
+from bson.objectid import ObjectId
 
 import click
 import docker
@@ -46,10 +47,10 @@ def message_slack(
 ):
     log.setLevel(logging.INFO)
     log.info(f"Sending to Slack: \n{slack_message}")
-    
+
     if not slack_token:
         slack_token = os.getenv("SLACK_APP_TOKEN", "")
-    
+
     slack_client = WebClient(token=slack_token)
     try:
         slack_request = slack_client.chat_postMessage(
@@ -316,6 +317,9 @@ def schedule_workflow_job(
 
     workflow_site = "chime"
 
+    tag_id = ObjectId().__str__()
+    workflow_tags.append(tag_id)
+
     try:
         work = Work(
             pipeline=workflow_buckets_name, site=workflow_site, user=workflow_user
@@ -372,7 +376,7 @@ def schedule_workflow_job(
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
                 "workflow run"
-                f" {workflow_buckets_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
+                f" {workflow_buckets_name} --tag {tag_id} --site"
                 f" {workflow_site} --lives 1 --sleep 1"
             ),
             # Using template Docker variables as in-container environment variables
@@ -410,7 +414,9 @@ def schedule_workflow_job(
 
         docker_client.services.create(**docker_service)
 
-        wait_for_no_tasks_in_states(docker_swarm_pending_states, docker_service_name_prefix=service_name)
+        wait_for_no_tasks_in_states(
+            docker_swarm_pending_states, docker_service_name_prefix=service_name
+        )
 
         return work_id[0]
 
