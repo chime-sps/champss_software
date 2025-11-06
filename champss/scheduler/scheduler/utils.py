@@ -10,3 +10,6 @@ def convert_date_to_datetime(date):
             except ValueError:
                 continue
     return date
+
+def dummy_workflow_task(input_dict=None):
+    return {"input_dict": input_dict}, [], []
