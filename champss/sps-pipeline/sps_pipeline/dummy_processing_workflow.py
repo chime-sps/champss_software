@@ -14,7 +14,7 @@ from scheduler.workflow import (
 )
 
 
-def run_dummy_processing():
+def run_dummy_processing_workflow():
     clear_workflow_buckets.main(
                     args=["--workflow-buckets-name", "dummy-schedule"],
                     standalone_mode=False,
@@ -62,4 +62,4 @@ def ram_requirement(pointing_dict):
 
 
 if __name__ == "__main__":
-    run_dummy_processing()
+    run_dummy_processing_workflow()

@@ -12,4 +12,5 @@ def convert_date_to_datetime(date):
     return date
 
 def dummy_workflow_task(input_str=None):
+    print("Task completed.")
     return {"input_str": input_str}, [], []
