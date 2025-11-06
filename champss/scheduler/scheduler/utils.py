@@ -11,5 +11,5 @@ def convert_date_to_datetime(date):
                 continue
     return date
 
-def dummy_workflow_task(input_dict=None):
-    return {"input_dict": input_dict}, [], []
+def dummy_workflow_task(input_str=None):
+    return {"input_str": input_str}, [], []

@@ -24,6 +24,7 @@ pytest = "^7.3.2"
 [tool.poetry.scripts]
 clear-workflow-buckets = "sps_pipeline.workflow:clear_workflow_buckets"
 clear-workflow-results = "sps_pipeline.workflow:clear_workflow_results"
+run-dummy-task = "scheduler.utils:dummy_workflow_task"
 
 [build-system]
 requires = ["poetry-core"]
