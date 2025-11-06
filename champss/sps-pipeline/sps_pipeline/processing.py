@@ -784,6 +784,7 @@ def schedule_individual_job(
                 formatted_dec,
                 formatted_maxdm,
                 formatted_date,
+                process._id,
             ]
 
             schedule_workflow_job(

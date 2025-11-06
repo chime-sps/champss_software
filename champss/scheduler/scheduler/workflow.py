@@ -334,8 +334,6 @@ def schedule_workflow_job(
         work.retries = 1
         work.timeout = timeout
 
-        wait_for_no_tasks_in_states(docker_swarm_pending_states)
-
         work_id = work.deposit(return_ids=True)
 
         docker_volumes = [
@@ -410,7 +408,7 @@ def schedule_workflow_job(
 
         # Wait a few seconds because Workflow Work might still not have propogated
         # to Buckets, and Workflow runner can pickup nothing and just quietly exit
-        time.sleep(2)
+        # time.sleep(1)
 
         docker_client.services.create(**docker_service)
 
