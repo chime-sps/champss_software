@@ -34,15 +34,29 @@ docker_swarm_finished_states = [
     "orphaned",
     "remove",
 ]
+tiers = ["small", "large"]
+mem_ranges = [[0,10], [10,1000]]
+
+def get_tier(mem_req):
+    tier = -1
+    for i, mem_range in enumerate(mem_ranges):
+        if mem_req > mem_range[0] and mem_req < mem_range[1]:
+            tier = i
+            break
+    return tier
+
+    
 
 def deposit_dummy_work(pointing):
     work = Work(
         pipeline="dummy-schedule", site="chime", user="CHAMPSS"
     )
 
-    work.function = "run-dummy-task 0"
-    work.parameters = {}
-    work.tags = [pointing['_id'].__str__()]
+    work.function = "scheduler.utils.dummy_workflow_task"
+    mem_req =ram_requirement(pointing)
+    work.parameters = {"wait_time": mem_req *1/100}
+    tier = get_tier(mem_req)
+    work.tags = [pointing['_id'].__str__(), tiers[tier]]
     work.config.archive.results = True
     work.config.archive.plots = "bypass"
     work.config.archive.products = "bypass"
@@ -63,7 +77,7 @@ def run_dummy_processing():
     db = db_utils.connect()
     docker_client = docker.from_env()
     all_pointings = list(db.pointings.find())
-    all_pointings = all_pointings[:500]
+    all_pointings = all_pointings[:100]
     for index in range(len(all_pointings)):
         current_pointing = all_pointings[index]
         all_pointings[index]["ram_requirement"] = ram_requirement(current_pointing)
@@ -168,6 +182,7 @@ def run_dummy_processing():
                 "workflow run"
                 f" dummy-schedule --site"
                 f" chime --lives 100 --sleep 1"
+                f" --tag {tiers[i%2]}"
             ),
             "mode": docker.types.ServiceMode("replicated", replicas=1),
             "restart_policy": docker.types.RestartPolicy(

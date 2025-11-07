@@ -1,5 +1,6 @@
 import datetime as dt
 import time
+import click
 
 
 def convert_date_to_datetime(date):
