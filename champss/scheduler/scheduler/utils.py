@@ -1,4 +1,5 @@
 import datetime as dt
+import time
 
 
 def convert_date_to_datetime(date):
@@ -11,6 +12,10 @@ def convert_date_to_datetime(date):
                 continue
     return date
 
-def dummy_workflow_task(input_str=None):
-    print("Task completed.")
-    return {"input_str": input_str}, [], []
+
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.argument("wait_time", type=float)
+def dummy_workflow_task(wait_time=None):
+    time.sleep(wait_time)
+    print(f"Task completed after {wait_time} seconds.")
+    return {"wait_time": wait_time}, [], []

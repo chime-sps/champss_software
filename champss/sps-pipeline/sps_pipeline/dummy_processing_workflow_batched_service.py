@@ -40,7 +40,7 @@ def deposit_dummy_work(pointing):
         pipeline="dummy-schedule", site="chime", user="CHAMPSS"
     )
 
-    work.function = "run-dummy-task"
+    work.function = "run-dummy-task 0"
     work.parameters = {}
     work.tags = [pointing['_id'].__str__()]
     work.config.archive.results = True
@@ -74,7 +74,7 @@ def run_dummy_processing():
     #         pipeline="dummy-schedule", site="chime", user="CHAMPSS"
     #     )
 
-    #     work.function = "run-dummy-task"
+    #     work.function = "run-dummy-task 0"
     #     work.parameters = {}
     #     work.tags = [pointing['_id'].__str__()]
     #     work.config.archive.results = True

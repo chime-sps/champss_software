@@ -112,7 +112,7 @@ def run_dummy_processing():
             "name": f"processing-{pointing['_id'].__str__()}",
             # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
-            "command": "run-dummy-task",
+            "command": "run-dummy-task 0",
             "mode": docker.types.ServiceMode("replicated", replicas=1),
             "restart_policy": docker.types.RestartPolicy(
                 condition="none", max_attempts=0

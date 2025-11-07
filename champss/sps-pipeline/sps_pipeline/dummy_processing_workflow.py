@@ -28,7 +28,7 @@ def run_dummy_processing_workflow():
     a= time.time()
     for pointing in tqdm.tqdm(all_pointings):
         workflow_function = "scheduler.utils.dummy_workflow_task"
-        workflow_params = {"input_dict": f"{pointing['ra']:.2f}_{pointing['dec']:.2f}"}
+        workflow_params = {"wait_time": 0}
         workflow_tags = [pointing["_id"].__str__(),]
         docker_mounts = [
             f"{'/mnt/beegfs-client/'}:{'/mnt/beegfs-client/'}",
