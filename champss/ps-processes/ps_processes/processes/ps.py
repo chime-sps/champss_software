@@ -316,14 +316,12 @@ class PowerSpectraCreation:
                 median_dm_indices = np.asarray(median_dm_indices)
                 scales = np.asarray(scales[0]) #same for each DM
                 #this is the jankiest way of getting the freq_labels but I'm not sure how else to do it
-                #all_freqs = rfftfreq(2 * (power_spectra.shape[1] - 1), d = TSAMP)
-                #freq_labels = all_freqs[np.cumsum(scales)]
+                rn_all_freqs = rfftfreq(2 * (power_spectra.shape[1] - 1), d = TSAMP)
+                rn_freq_labels = rn_all_freqs[np.cumsum(scales)]
             
             if self.save_medians:
                 rn_medians = medians[np.newaxis, :]
                 rn_dm_indices = median_dm_indices[np.newaxis, :]
-                # note that scales are saved iteratively over DM but are identical at each DM
-                # so we only need one row of scales
                 rn_scales = scales[np.newaxis, :]
             else:
                 rn_medians = None
@@ -335,9 +333,9 @@ class PowerSpectraCreation:
                 log.info(f"Saving rednoise information to {medians_path}.")
                 np.savez(
                     medians_path,
-                    medians=medians,
-                    scales=scales,
-                    freq_labels=freq_labels,
+                    medians=medians[np.newaxis, :],
+                    scales=scales[np.newaxis, :],
+                    freq_labels=rn_freq_labels[np.newaxis, :],
                     dms=dedisp_time_series.dms,
                 )
             else:
