@@ -36,7 +36,7 @@ class DatabaseError(Exception):
 
 
 processing_tier_limits = [range(10, 110, 10)]
-processing_tier_name = ["max-{max_limit}GB" for max_limit in processing_tier_limits]
+processing_tier_names = ["max-{max_limit}GB" for max_limit in processing_tier_limits]
 
 
 @attrs
@@ -877,7 +877,7 @@ class Process:
         for index, mem_limit in enumerate(processing_tier_limits):
             if ram_requirement < mem_limit:
                 break
-        tier_name = processing_tier_name[index]
+        tier_name = processing_tier_names[index]
         return tier_name
 
     @classmethod

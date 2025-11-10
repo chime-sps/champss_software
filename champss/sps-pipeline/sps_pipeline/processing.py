@@ -898,12 +898,6 @@ def run_all_pipeline_processes(
     help="Path for created files during fold step.",
 )
 @click.option(
-    "--foldpath",
-    default="/data/chime/sps/archives",
-    type=str,
-    help="Path for created files during fold step.",
-)
-@click.option(
     "--datpath",
     default=default_datpath,
     type=str,
