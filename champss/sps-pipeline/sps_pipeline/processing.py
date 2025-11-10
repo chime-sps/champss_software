@@ -489,7 +489,7 @@ def deposit_pipeline_work(workflow_params, workflow_buckets_name, process_dict):
         formatted_dec,
         formatted_maxdm,
         formatted_date,
-        process.tier,
+        f"processing-{process.tier}",
     ]
     work.config.archive.results = True
     work.config.archive.plots = "bypass"
@@ -783,7 +783,7 @@ def run_all_pipeline_processes(
                 "workflow run"
                 f" dummy-schedule --site"
                 f" chime --lives -1 --sleep 1"
-                f" --tag {tier_name}"
+                f" --tag processing-{tier_name}"
             ),
             "mode": docker.types.ServiceMode("replicated", replicas=1),
             "restart_policy": docker.types.RestartPolicy(
@@ -1064,31 +1064,31 @@ def start_processing_manager(
 
             # Start of pipeline phase
             if run_pipeline:
-                processes, [], [] = find_all_pipeline_processes.main(
-                    args=[
-                        "--db-host",
-                        db_host,
-                        "--db-port",
-                        db_port,
-                        "--db-name",
-                        db_name,
-                        "--date",
-                        date_to_process,
-                        "--datpath",
-                        datpath,
-                        "--alert-slack",
-                    ],
-                    standalone_mode=False,
-                )
+                # processes, [], [] = find_all_pipeline_processes.main(
+                #     args=[
+                #         "--db-host",
+                #         db_host,
+                #         "--db-port",
+                #         db_port,
+                #         "--db-name",
+                #         db_name,
+                #         "--date",
+                #         date_to_process,
+                #         "--datpath",
+                #         datpath,
+                #         "--alert-slack",
+                #     ],
+                #     standalone_mode=False,
+                # )
 
-                if len(processes["unfinished_processes"]) == 0:
-                    message_slack(
-                        f"No unfinished processes found for {date_string}. Will progress to"
-                        " next day"
-                    )
-                    number_of_days_processed = number_of_days_processed + 1
-                    date_to_process = date_to_process + dt.timedelta(days=1)
-                    continue
+                # if len(processes["unfinished_processes"]) == 0:
+                #     message_slack(
+                #         f"No unfinished processes found for {date_string}. Will progress to"
+                #         " next day"
+                #     )
+                #     number_of_days_processed = number_of_days_processed + 1
+                #     date_to_process = date_to_process + dt.timedelta(days=1)
+                #     continue
 
                 present_date = dt.datetime.now(dt.timezone.utc)
 

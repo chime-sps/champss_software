@@ -35,8 +35,8 @@ class DatabaseError(Exception):
     pass
 
 
-processing_tier_limits = [range(10, 110, 10)]
-processing_tier_names = ["max-{max_limit}GB" for max_limit in processing_tier_limits]
+processing_tier_limits = range(10, 110, 10)
+processing_tier_names = [f"max-{max_limit}GB" for max_limit in processing_tier_limits]
 
 
 @attrs
