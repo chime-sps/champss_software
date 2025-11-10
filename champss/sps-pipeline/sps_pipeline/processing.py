@@ -838,7 +838,7 @@ def run_all_pipeline_processes(
             current_tag = [tag for tag in current_tag][0]
             upcoming_tags[current_tag] += 1
         log.info(
-            f"Will scale services to use {requested_containers} with the destribution: {upcoming_tags}."
+            f"Will scale services to use {requested_containers} with the following distribution: {upcoming_tags}."
         )
         # Scale services
         for i, tier in enumerate(processing_tier_names):
