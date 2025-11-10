@@ -958,10 +958,10 @@ def run_all_pipeline_processes(
     help="To run the multipointing phase of processing or not.",
 )
 @click.option(
-    "--run-classfication",
+    "--run-classification",
     default=True,
     type=bool,
-    help="To run the classfication phase of processing or not.",
+    help="To run the classification phase of processing or not.",
 )
 @click.option(
     "--run-folding",
