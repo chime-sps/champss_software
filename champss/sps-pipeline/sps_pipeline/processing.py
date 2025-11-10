@@ -1167,7 +1167,7 @@ def start_processing_manager(
                         f"{basepath}:{basepath}",
                     ],
                     docker_name=f"{docker_service_name_prefix}-{date_string}",
-                    docker_memory_reservation=100,
+                    docker_memory_reservation=200,
                     workflow_buckets_name=workflow_buckets_name,
                     workflow_function="sps_multi_pointing.mp_pipeline.cli",
                     workflow_params={
