@@ -296,6 +296,16 @@ def dbexcepthook(type, value, tb):
     help="Path to the raw data folder.",
 )
 @click.option(
+    "--save-medians/--dont-save-medians",
+    default=True,
+    help="Whether to save the rednoise medians as an attribute of the power spectrum.",
+)
+@click.option(
+    "--write-medians/--dont-write-medians",
+    default=False,
+    help="Whether to write a separate npz file to store the rednoise medians.",
+)
+@click.option(
     "--config-options",
     default="{}",
     type=str,
@@ -328,6 +338,8 @@ def main(
     only_injections,
     scale_injections,
     datpath,
+    save_medians,
+    write_medians,
     config_options,
 ):
     """
@@ -612,6 +624,8 @@ def main(
                 # that we can delete dedispersed time series from memory first
                 # before stacking.
                 config.ps_creation.padded_length = ntime_factor * padded_length
+                config.ps_creation.save_medians = save_medians
+                config.ps_creation.write_medians = write_medians
                 psc_pipeline = PowerSpectraCreation(
                     **OmegaConf.to_container(config.ps_creation),
                     num_threads=num_threads,
