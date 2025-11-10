@@ -42,12 +42,12 @@ def plot_medians(freq_labels, DMs, medians, scales, title = 'Rednoise Medians'):
         print(f'day: {day + 1}')
         day_medians = medians[day]
         day_scales = scales[day]
+        day_freqs = freq_labels[day]
         if len(day_scales.shape) == 2:
             freq_idx = np.cumsum(day_scales[0]) #only need one... people keep changing the shape of this :/
         else:
             freq_idx = np.cumsum(day_scales)
-
-        all_freqs = np.zeros((len(day_medians), len(freq_labels)))
+        all_freqs = np.zeros((len(day_medians), len(day_freqs)))
         all_freqs[:] = freq_labels
         segments = [np.column_stack([all_freqs[i, freq_idx], day_medians[i]]) for i in range(N)]
         lc = LineCollection(segments, colors=colors, alpha = 0.01, norm = norm)
