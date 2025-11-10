@@ -35,6 +35,10 @@ class DatabaseError(Exception):
     pass
 
 
+processing_tier_limits = [range(10, 110, 10)]
+processing_tier_name = ["max-{max_limit}GB" for max_limit in processing_tier_limits]
+
+
 @attrs
 class Pointing:
     ra = attrib(converter=float)
@@ -863,11 +867,18 @@ class Process:
     @property
     def ram_requirement(self):
         return min(
-            100,
-            int(
-                4 + (self.maxdm * 0.04 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20)
-            ),
+            100.0,
+            4 + (self.maxdm * 0.04 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20),
         )
+
+    @property
+    def tier(self):
+        ram_requirement = self.ram_requirement
+        for index, mem_limit in enumerate(processing_tier_limits):
+            if ram_requirement < mem_limit:
+                break
+        tier_name = processing_tier_name[index]
+        return tier_name
 
     @classmethod
     def from_db(cls, doc):

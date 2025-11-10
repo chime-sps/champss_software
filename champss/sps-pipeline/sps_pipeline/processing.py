@@ -8,10 +8,10 @@ import signal
 import sys
 import time
 import traceback
-from bson.objectid import ObjectId
 from functools import partial
 from glob import glob
 from multiprocessing import Pool
+import pymongo
 
 import click
 import docker
@@ -28,8 +28,9 @@ from scheduler.workflow import (  # docker_swarm_pending_states,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
 )
+from workflow.definitions.work import Work
 from sps_databases import db_api, db_utils, models
-from sps_pipeline.pipeline import default_datpath, main
+from sps_pipeline.pipeline import default_datpath
 from sps_pipeline.utils import get_pointings_from_list
 
 log = logging.getLogger()
@@ -460,6 +461,46 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
     return all_active_pointings
 
 
+def deposit_pipeline_work(workflow_params, workflow_buckets_name, process_dict):
+    process = models.Process.from_db(process_dict)
+    formatted_ra = f"{process.ra:.02f}"
+    formatted_dec = f"{process.dec:.02f}"
+    formatted_maxdm = f"{process.maxdm:.02f}"
+    formatted_date = process.date
+
+    ram_requirement = process.ram_requirement
+    threads_reserved = int(ram_requirement / 3)
+
+    workflow_params.update(
+        {
+            "date": process.date,
+            "ra": process.ra,
+            "dec": f" {process.dec}",
+            "num_threads": threads_reserved,
+        }
+    )
+    work = Work(pipeline=workflow_buckets_name, site="chime", user="CHAMPSS")
+
+    work.function = "sps_pipeline.pipeline.main"
+    work.parameters = workflow_params
+    work.tags = [
+        "pipeline",
+        formatted_ra,
+        formatted_dec,
+        formatted_maxdm,
+        formatted_date,
+        process.tier,
+    ]
+    work.config.archive.results = True
+    work.config.archive.plots = "bypass"
+    work.config.archive.products = "bypass"
+    work.retries = 1
+    work.timeout = 60 * 120
+
+    work_id = work.deposit(return_ids=True)
+    return work_id
+
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--db-host",
@@ -653,116 +694,162 @@ def run_all_pipeline_processes(
         key=lambda process: (process["date"], process["ra"], process["dec"]),
     )
 
-    process_ids = []
-    for process_index, process_dict in enumerate(all_processes):
-        process = models.Process.from_db(process_dict)
-        process_ids.append(ObjectId(process._id))
-        try:
-            cmd_string_list = (
-                f"--date {process.date} --db-port {db_port} --db-host {db_host} --stack"
-                " --fdmt --rfi-beamform".split(" ")
-            )
-            if basepath:
-                cmd_string_list.extend(["--basepath", f"{basepath}"])
-            if stackpath:
-                cmd_string_list.extend(["--stackpath", f"{stackpath}"])
-            cmd_string_list.extend(
-                [
-                    process.ra,
-                    f" {process.dec}",
-                    "all",
-                ]
-            )
-
-            if workflow_buckets_name == "":
-                log.info(f"Running command: run-pipeline {' '.join(cmd_string_list)}")
-            if not dry_run:
-                if workflow_buckets_name:
-                    formatted_ra = f"{process.ra:.02f}"
-                    formatted_dec = f"{process.dec:.02f}"
-                    formatted_maxdm = f"{process.maxdm:.02f}"
-                    formatted_date = process.date
-
-                    docker_memory_reservation = process.ram_requirement
-                    docker_threads_needed = int(docker_memory_reservation / 3)
-                    docker_image = docker_image_name
-                    docker_mounts = [
-                        f"{datpath}:{datpath}",
-                        f"{basepath}:{basepath}",
-                    ]
-                    docker_name = (
-                        f"{docker_service_name_prefix}-{formatted_ra}-"
-                        f"{formatted_dec}-{formatted_maxdm}-{formatted_date}"
-                    )
-
-                    workflow_function = "sps_pipeline.pipeline.main"
-                    workflow_params = {
-                        "date": process.date,
-                        "stack": run_stacking,
-                        "fdmt": True,
-                        "rfi_beamform": True,
-                        "plot": True,
-                        "plot_threshold": 8.0,
-                        "ra": process.ra,
-                        "dec": f" {process.dec}",
-                        "components": ["all"],
-                        "num_threads": docker_threads_needed,
-                        "db_port": db_port,
-                        "db_host": db_host,
-                        "db_name": db_name,
-                        "basepath": basepath,
-                        "stackpath": stackpath,
-                        "datpath": datpath,
-                        # Run Pyroscope profiling every 100th job
-                        # "using_pyroscope": True if process_index % 100 == 0 else False,
-                        "using_pyroscope": False,
-                        "using_docker": True,
-                        "config_options": pipeline_config_options,
-                    }
-                    if pipeline_arguments != "":
-                        split_args = pipeline_arguments.split("--")
-                        for arg_string in split_args:
-                            arg_string = arg_string.strip()
-                            if arg_string != "":
-                                arg_count = len(arg_string.split(" "))
-                                if arg_count > 1:
-                                    argument, value = arg_string.split(" ", 1)
-                                    workflow_params[argument] = (value,)
-                                else:
-                                    log.error(
-                                        "Flags not implimented yet. Reformated your option to --option_python_name True"
-                                    )
-
-                    workflow_tags = [
-                        "pipeline",
-                        formatted_ra,
-                        formatted_dec,
-                        formatted_maxdm,
-                        formatted_date,
-                    ]
-
-                    schedule_workflow_job(
-                        docker_image,
-                        docker_mounts,
-                        docker_name,
-                        docker_memory_reservation,
-                        workflow_buckets_name,
-                        workflow_function,
-                        workflow_params,
-                        workflow_tags,
-                    )
+    workflow_params = {
+        # "date": process.date,
+        "stack": run_stacking,
+        "fdmt": True,
+        "rfi_beamform": True,
+        "plot": True,
+        "plot_threshold": 8.0,
+        # "ra": process.ra,
+        # "dec": f" {process.dec}",
+        "components": ["all"],
+        # "num_threads": docker_threads_needed,
+        "db_port": db_port,
+        "db_host": db_host,
+        "db_name": db_name,
+        "basepath": basepath,
+        "stackpath": stackpath,
+        "datpath": datpath,
+        "using_pyroscope": False,
+        "using_docker": True,
+        "config_options": pipeline_config_options,
+    }
+    if pipeline_arguments != "":
+        split_args = pipeline_arguments.split("--")
+        for arg_string in split_args:
+            arg_string = arg_string.strip()
+            if arg_string != "":
+                arg_count = len(arg_string.split(" "))
+                if arg_count > 1:
+                    argument, value = arg_string.split(" ", 1)
+                    workflow_params[argument] = (value,)
                 else:
-                    main(cmd_string_list, standalone_mode=False)
-
-                    log.info(
-                        f"Finished processing pointing ({process.ra}, {process.dec})"
-                        f" for date {process.date}"
+                    log.error(
+                        "Flags not implimented yet. Reformated your option to --option_python_name True"
                     )
-        except Exception as error:
-            traceback.print_exc()
-            log.error(error)
-            if not dry_run:
-                db_api.update_process(process.id, {"status": 3})
+    process_ids = [process["_id"] for process in all_processes]
+    pool = Pool(16)
+    # First deposit all process in workflow bucket
+    # Imap will perform these jobs in the background, a single process can deposit ~4 jobs per second
+    work_ids = pool.imap(
+        partial(deposit_pipeline_work, workflow_params, workflow_buckets_name),
+        all_processes,
+    )
+
+    docker_client = docker.from_env()
+    services = []
+    docker_mounts = [
+        f"{datpath}:{datpath}",
+        f"{basepath}:{basepath}",
+    ]
+    docker_volumes = [
+        docker.types.Mount(
+            # Bind mount the Docker socket to allow Docker-in-Docker (Workflow-in-Workflow) usage
+            target="/var/run/docker.sock",
+            source="/var/run/docker.sock",
+            type="bind",
+        ),
+        docker.types.Mount(
+            # Only way I know of to add custom shared memory size allocations with Docker Swarm
+            target="/dev/shm",
+            source="",  # Source value must be empty for tmpfs mounts
+            type="tmpfs",
+            tmpfs_size=int(
+                100 * 1e9
+            ),  # Just give it 100GB of a shared memory as an upper-limit
+        ),
+    ]
+    for mount_path in docker_mounts:
+        mount_paths = mount_path.split(":")
+        mount_source = mount_paths[0]
+        mount_target = mount_paths[1]
+        docker_volumes.append(
+            docker.types.Mount(target=mount_target, source=mount_source, type="bind")
+        )
+
+    # Create Processing services
+    processing_tier_limits = models.processing_tier_limits
+    processing_tier_names = models.processing_tier_names
+    for tier_name, tier_limit in zip(processing_tier_names, processing_tier_limits):
+        docker_service = {
+            "image": docker_image_name,
+            # Can't have dots or slashes in Docker Service names
+            # All Docker Services made with this function will be prefixed with "processing-"
+            "name": f"processing-{tier_name}",
+            # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
+            # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
+            "command": (
+                "workflow run"
+                f" dummy-schedule --site"
+                f" chime --lives -1 --sleep 1"
+                f" --tag {tier_name}"
+            ),
+            "mode": docker.types.ServiceMode("replicated", replicas=1),
+            "restart_policy": docker.types.RestartPolicy(
+                condition="none", max_attempts=0
+            ),
+            # Labels allow for easy filtering with Docker CLI
+            "labels": {"type": "processing"},
+            # The labels on the Docker Nodes are pre-empetively set beforehand
+            "constraints": ["node.labels.compute == true"],
+            # Must be in bytes
+            "resources": docker.types.Resources(mem_reservation=int(tier_limit * 1e9)),
+            # Will throw an error if you give two of the same bind mount paths
+            # e.g. avoid double-mounting basepath and stackpath when they are the same
+            "mounts": docker_volumes,
+            # An externally created Docker Network that allows these spawned containers
+            # to communicate with other containers (MongoDB, Prometheus, etc) that are
+            # also manually added to this network
+            "networks": ["pipeline-network"],
+        }
+
+        log.info(f"Creating Docker Service: \n{docker_service}")
+
+        service = docker_client.services.create(**docker_service)
+        services.append(service.attrs["ID"])
+
+    requested_containers = 100
+    update_time = 30
+    surplus_replicas = 10
+    # This checks if enough work objects have been deopisted. More work objects are scheduled in the background
+    for work_index, work in enumerate(work_ids):
+        if work_index > requested_containers:
+            break
+
+    buckets_db = pymongo.MongoClient(port=27018).work.buckets
+    # Get the next work objects. These should be processed in order by workflow
+    all_works = list(
+        buckets_db.find({"pipeline": workflow_buckets_name})
+        .sort("creation", pymongo.ASCENDING)
+        .limit(requested_containers)
+    )
+    while len(all_works) > 0:
+        # Count how many services should be created
+        upcoming_tags = {tier: 0 for tier in processing_tier_names}
+        for i, work in enumerate(all_works[:]):
+            current_tag = set(work["tags"]).intersection(set(processing_tier_names))
+            current_tag = [tag for tag in current_tag][0]
+            upcoming_tags[current_tag] += 1
+        # Scale services
+        for i, tier in enumerate(processing_tier_names):
+            docker_client.services.get(services[i]).scale(upcoming_tags[tier])
+        time.sleep(update_time)
+        # Check how many services are running
+        running_tasks = 0
+        for i, tier in enumerate(processing_tier_names):
+            service_tasks = docker_client.services.get(services[i]).tasks()
+            running_tasks += sum(
+                1 for task in service_tasks if task["Status"]["State"] == "running"
+            )
+        requested_containers = running_tasks + surplus_replicas
+        all_works = list(
+            buckets_db.find({"pipeline": workflow_buckets_name})
+            .sort("creation", pymongo.ASCENDING)
+            .limit(requested_containers)
+        )
+    for i, tier in enumerate(processing_tier_names):
+        docker_client.services.get(services[i]).scale(0)
 
     return process_ids
 
