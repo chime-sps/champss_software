@@ -1,10 +1,8 @@
 """Functions to enable automatic processing."""
 
-import atexit
 import datetime as dt
 import logging
 import os
-import signal
 import sys
 import time
 import traceback
@@ -489,7 +487,7 @@ def deposit_pipeline_work(workflow_params, workflow_buckets_name, process_dict):
         formatted_dec,
         formatted_maxdm,
         formatted_date,
-        f"processing-{process.tier}",
+        process.tier,
     ]
     work.config.archive.results = True
     work.config.archive.plots = "bypass"
@@ -783,7 +781,7 @@ def run_all_pipeline_processes(
                 "workflow run"
                 f" dummy-schedule --site"
                 f" chime --lives -1 --sleep 1"
-                f" --tag processing-{tier_name}"
+                f" --tag {tier_name}"
             ),
             "mode": docker.types.ServiceMode("replicated", replicas=1),
             "restart_policy": docker.types.RestartPolicy(
@@ -828,6 +826,7 @@ def run_all_pipeline_processes(
         # Count how many services should be created
         upcoming_tags = {tier: 0 for tier in processing_tier_names}
         for i, work in enumerate(all_works[:]):
+            breakpoint()
             current_tag = set(work["tags"]).intersection(set(processing_tier_names))
             current_tag = [tag for tag in current_tag][0]
             upcoming_tags[current_tag] += 1
@@ -1011,11 +1010,11 @@ def start_processing_manager(
     pipeline_config_options,
 ):
     """Manager function containing the multiple processing steps."""
-    atexit.register(remove_processing_services, None, None)
-    signal.signal(signal.SIGINT, remove_processing_services)
-    signal.signal(signal.SIGQUIT, remove_processing_services)
-    signal.signal(signal.SIGABRT, remove_processing_services)
-    signal.signal(signal.SIGTERM, remove_processing_services)
+    # atexit.register(remove_processing_services, None, None)
+    # signal.signal(signal.SIGINT, remove_processing_services)
+    # signal.signal(signal.SIGQUIT, remove_processing_services)
+    # signal.signal(signal.SIGABRT, remove_processing_services)
+    # signal.signal(signal.SIGTERM, remove_processing_services)
 
     start_date = convert_date_to_datetime(start_date)
 
