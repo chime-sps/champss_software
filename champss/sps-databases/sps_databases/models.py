@@ -878,7 +878,8 @@ class Process:
             if ram_requirement < mem_limit:
                 break
         tier_name = processing_tier_names[index]
-        return tier_name
+        tier_limit = processing_tier_limits[index]
+        return tier_name, tier_limit
 
     @classmethod
     def from_db(cls, doc):

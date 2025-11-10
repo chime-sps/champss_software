@@ -468,7 +468,8 @@ def deposit_pipeline_work(workflow_params, workflow_buckets_name, process_dict):
     formatted_date = process.date
 
     ram_requirement = process.ram_requirement
-    threads_reserved = int(ram_requirement / 3)
+    tier_name, tier_limit = process.tier
+    threads_reserved = int(tier_limit / 3)
 
     workflow_params.update(
         {
@@ -488,7 +489,7 @@ def deposit_pipeline_work(workflow_params, workflow_buckets_name, process_dict):
         formatted_dec,
         formatted_maxdm,
         formatted_date,
-        process.tier,
+        tier_name,
     ]
     work.config.archive.results = True
     work.config.archive.plots = "bypass"
