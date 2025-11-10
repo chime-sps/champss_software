@@ -770,11 +770,16 @@ def run_all_pipeline_processes(
     processing_tier_limits = models.processing_tier_limits
     processing_tier_names = models.processing_tier_names
     for tier_name, tier_limit in zip(processing_tier_names, processing_tier_limits):
+        service_name = f"processing-{tier_name}"
+        try:
+            docker_client.services.get(service_name).remove()
+        except docker.errors.NotFound:
+            pass
         docker_service = {
             "image": docker_image_name,
             # Can't have dots or slashes in Docker Service names
             # All Docker Services made with this function will be prefixed with "processing-"
-            "name": f"processing-{tier_name}",
+            "name": service_name,
             # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
@@ -826,7 +831,6 @@ def run_all_pipeline_processes(
         # Count how many services should be created
         upcoming_tags = {tier: 0 for tier in processing_tier_names}
         for i, work in enumerate(all_works[:]):
-            breakpoint()
             current_tag = set(work["tags"]).intersection(set(processing_tier_names))
             current_tag = [tag for tag in current_tag][0]
             upcoming_tags[current_tag] += 1
@@ -847,8 +851,15 @@ def run_all_pipeline_processes(
             .sort("creation", pymongo.ASCENDING)
             .limit(requested_containers)
         )
-    for i, tier in enumerate(processing_tier_names):
-        docker_client.services.get(services[i]).scale(0)
+
+    # for i, tier in enumerate(processing_tier_names):
+    #     docker_client.services.get(services[i]).scale(0)
+    for tier_name, tier_limit in zip(processing_tier_names, processing_tier_limits):
+        service_name = f"processing-{tier_name}"
+        try:
+            docker_client.services.get(service_name).remove()
+        except docker.errors.NotFound:
+            log.info("Could not remove processing service.")
 
     return process_ids
 
