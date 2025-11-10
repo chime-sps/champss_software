@@ -784,7 +784,7 @@ def run_all_pipeline_processes(
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
                 "workflow run"
-                f" dummy-schedule --site"
+                f" champss-pipeline --site"
                 f" chime --lives -1 --sleep 1"
                 f" --tag {tier_name}"
             ),
@@ -834,6 +834,9 @@ def run_all_pipeline_processes(
             current_tag = set(work["tags"]).intersection(set(processing_tier_names))
             current_tag = [tag for tag in current_tag][0]
             upcoming_tags[current_tag] += 1
+        log.info(
+            f"Will scale services to use {requested_containers} with the destribution: {upcoming_tags}."
+        )
         # Scale services
         for i, tier in enumerate(processing_tier_names):
             docker_client.services.get(services[i]).scale(upcoming_tags[tier])
@@ -1074,31 +1077,31 @@ def start_processing_manager(
 
             # Start of pipeline phase
             if run_pipeline:
-                # processes, [], [] = find_all_pipeline_processes.main(
-                #     args=[
-                #         "--db-host",
-                #         db_host,
-                #         "--db-port",
-                #         db_port,
-                #         "--db-name",
-                #         db_name,
-                #         "--date",
-                #         date_to_process,
-                #         "--datpath",
-                #         datpath,
-                #         "--alert-slack",
-                #     ],
-                #     standalone_mode=False,
-                # )
+                processes, [], [] = find_all_pipeline_processes.main(
+                    args=[
+                        "--db-host",
+                        db_host,
+                        "--db-port",
+                        db_port,
+                        "--db-name",
+                        db_name,
+                        "--date",
+                        date_to_process,
+                        "--datpath",
+                        datpath,
+                        "--alert-slack",
+                    ],
+                    standalone_mode=False,
+                )
 
-                # if len(processes["unfinished_processes"]) == 0:
-                #     message_slack(
-                #         f"No unfinished processes found for {date_string}. Will progress to"
-                #         " next day"
-                #     )
-                #     number_of_days_processed = number_of_days_processed + 1
-                #     date_to_process = date_to_process + dt.timedelta(days=1)
-                #     continue
+                if len(processes["unfinished_processes"]) == 0:
+                    message_slack(
+                        f"No unfinished processes found for {date_string}. Will progress to"
+                        " next day"
+                    )
+                    number_of_days_processed = number_of_days_processed + 1
+                    date_to_process = date_to_process + dt.timedelta(days=1)
+                    continue
 
                 present_date = dt.datetime.now(dt.timezone.utc)
 
