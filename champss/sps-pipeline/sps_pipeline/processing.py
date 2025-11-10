@@ -27,6 +27,7 @@ from scheduler.workflow import (  # docker_swarm_pending_states,
     wait_for_no_tasks_in_states,
 )
 from workflow.definitions.work import Work
+from workflow.http.context import HTTPContext
 from sps_databases import db_api, db_utils, models
 from sps_pipeline.pipeline import default_datpath
 from sps_pipeline.utils import get_pointings_from_list
@@ -827,6 +828,7 @@ def run_all_pipeline_processes(
         .sort("creation", pymongo.ASCENDING)
         .limit(requested_containers)
     )
+    first_loop = True
     while len(all_works) > 0:
         # Count how many services should be created
         upcoming_tags = {tier: 0 for tier in processing_tier_names}
@@ -842,13 +844,17 @@ def run_all_pipeline_processes(
             docker_client.services.get(services[i]).scale(upcoming_tags[tier])
         time.sleep(update_time)
         # Check how many services are running
-        running_tasks = 0
-        for i, tier in enumerate(processing_tier_names):
-            service_tasks = docker_client.services.get(services[i]).tasks()
-            running_tasks += sum(
-                1 for task in service_tasks if task["Status"]["State"] == "running"
-            )
-        requested_containers = running_tasks + surplus_replicas
+        # DO not update during the first loop since the image may still need to be distributed
+        if not first_loop:
+            running_tasks = 0
+            for i, tier in enumerate(processing_tier_names):
+                service_tasks = docker_client.services.get(services[i]).tasks()
+                running_tasks += sum(
+                    1 for task in service_tasks if task["Status"]["State"] == "running"
+                )
+            requested_containers = running_tasks + surplus_replicas
+        else:
+            first_loop = False
         all_works = list(
             buckets_db.find({"pipeline": workflow_buckets_name})
             .sort("creation", pymongo.ASCENDING)
@@ -1000,6 +1006,12 @@ def run_all_pipeline_processes(
         """Options passed to --config-options of the pipeline. Example: "{'beamform': {'max_mask_frac': 0.9}}" """
     ),
 )
+@click.option(
+    "--skip-finding-processes/--no-skip-finding-processes",
+    default=False,
+    type=bool,
+    help="Skip finding processes when this is not necessary anymore (during debugging for example).",
+)
 def start_processing_manager(
     db_host,
     db_port,
@@ -1022,6 +1034,7 @@ def start_processing_manager(
     run_stacking,
     pipeline_arguments,
     pipeline_config_options,
+    skip_finding_processes,
 ):
     """Manager function containing the multiple processing steps."""
     # atexit.register(remove_processing_services, None, None)
@@ -1041,6 +1054,9 @@ def start_processing_manager(
     date_to_process = start_date
 
     number_of_days_processed = 0
+
+    # For some reason workflow complains if this is not called
+    http = HTTPContext()
 
     def loop_condition():
         if number_of_days != -1:
@@ -1077,31 +1093,32 @@ def start_processing_manager(
 
             # Start of pipeline phase
             if run_pipeline:
-                processes, [], [] = find_all_pipeline_processes.main(
-                    args=[
-                        "--db-host",
-                        db_host,
-                        "--db-port",
-                        db_port,
-                        "--db-name",
-                        db_name,
-                        "--date",
-                        date_to_process,
-                        "--datpath",
-                        datpath,
-                        "--alert-slack",
-                    ],
-                    standalone_mode=False,
-                )
-
-                if len(processes["unfinished_processes"]) == 0:
-                    message_slack(
-                        f"No unfinished processes found for {date_string}. Will progress to"
-                        " next day"
+                if not skip_finding_processes:
+                    processes, [], [] = find_all_pipeline_processes.main(
+                        args=[
+                            "--db-host",
+                            db_host,
+                            "--db-port",
+                            db_port,
+                            "--db-name",
+                            db_name,
+                            "--date",
+                            date_to_process,
+                            "--datpath",
+                            datpath,
+                            "--alert-slack",
+                        ],
+                        standalone_mode=False,
                     )
-                    number_of_days_processed = number_of_days_processed + 1
-                    date_to_process = date_to_process + dt.timedelta(days=1)
-                    continue
+
+                    if len(processes["unfinished_processes"]) == 0:
+                        message_slack(
+                            f"No unfinished processes found for {date_string}. Will progress to"
+                            " next day"
+                        )
+                        number_of_days_processed = number_of_days_processed + 1
+                        date_to_process = date_to_process + dt.timedelta(days=1)
+                        continue
 
                 present_date = dt.datetime.now(dt.timezone.utc)
 
