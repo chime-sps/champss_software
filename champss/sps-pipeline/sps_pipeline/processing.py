@@ -10,6 +10,7 @@ from functools import partial
 from glob import glob
 from multiprocessing import Pool
 import pymongo
+import atexit
 
 import click
 import docker
@@ -33,6 +34,15 @@ from sps_pipeline.pipeline import default_datpath
 from sps_pipeline.utils import get_pointings_from_list
 
 log = logging.getLogger()
+
+
+def scale_down_service(service_name):
+    try:
+        docker_client = docker.from_env()
+        docker_client.services.get(service_name).scale(0)
+        log.info(f"Scaled down service {service_name}")
+    except:
+        pass
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -814,6 +824,7 @@ def run_all_pipeline_processes(
 
         service = docker_client.services.create(**docker_service)
         services.append(service.attrs["ID"])
+        atexit.register(scale_down_service, service.attrs["ID"])
 
     requested_containers = 100
     update_time = 30
@@ -1051,6 +1062,12 @@ def start_processing_manager(
     # signal.signal(signal.SIGQUIT, remove_processing_services)
     # signal.signal(signal.SIGABRT, remove_processing_services)
     # signal.signal(signal.SIGTERM, remove_processing_services)
+
+    # Ugly way of removing superfluous handler that comes from somehwere
+    try:
+        log.removeHandler(log.handlers[1])
+    except:
+        pass
 
     start_date = convert_date_to_datetime(start_date)
 
