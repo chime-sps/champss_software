@@ -841,6 +841,7 @@ def run_all_pipeline_processes(
         log.info(
             f"Requested distribution with {requested_containers} containers: {upcoming_tags}."
         )
+
         # Scale services
         for i, tier in enumerate(processing_tier_names):
             docker_client.services.get(services[i]).scale(upcoming_tags[tier])
