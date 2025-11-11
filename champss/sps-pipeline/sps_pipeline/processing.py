@@ -839,7 +839,7 @@ def run_all_pipeline_processes(
             current_tag = [tag for tag in current_tag][0]
             upcoming_tags[current_tag] += 1
         log.info(
-            f"Will scale services to use {requested_containers} with the following distribution: {upcoming_tags}."
+            f"Requested distribution with {requested_containers} containers: {upcoming_tags}."
         )
         # Scale services
         for i, tier in enumerate(processing_tier_names):
@@ -857,7 +857,9 @@ def run_all_pipeline_processes(
                 )
                 running_tasks += running_tasks_per_tier
                 running_tiers[tier] = f"{running_tasks_per_tier}/{upcoming_tags[tier]}"
-            log.info("Currently running distribution: {running_tiers}")
+            log.info(
+                f"Currently running distribution with {running_tasks} containers: {running_tiers}"
+            )
             requested_containers = running_tasks + surplus_replicas
         else:
             first_loop = False
