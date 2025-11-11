@@ -461,6 +461,7 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
 
 
 def deposit_pipeline_work(workflow_params, workflow_buckets_name, process_dict):
+    http = HTTPContext()
     process = models.Process.from_db(process_dict)
     formatted_ra = f"{process.ra:.02f}"
     formatted_dec = f"{process.dec:.02f}"
@@ -729,7 +730,7 @@ def run_all_pipeline_processes(
                         "Flags not implimented yet. Reformated your option to --option_python_name True"
                     )
     process_ids = [process["_id"] for process in all_processes]
-    pool = Pool(16)
+    pool = Pool(4)
     # First deposit all process in workflow bucket
     # Imap will perform these jobs in the background, a single process can deposit ~4 jobs per second
     work_ids = pool.imap(
@@ -848,11 +849,15 @@ def run_all_pipeline_processes(
         # DO not update during the first loop since the image may still need to be distributed
         if not first_loop:
             running_tasks = 0
+            running_tiers = {tier: 0 for tier in processing_tier_names}
             for i, tier in enumerate(processing_tier_names):
                 service_tasks = docker_client.services.get(services[i]).tasks()
-                running_tasks += sum(
+                running_tasks_per_tier = sum(
                     1 for task in service_tasks if task["Status"]["State"] == "running"
                 )
+                running_tasks += running_tasks_per_tier
+                running_tiers[tier] = f"{running_tasks_per_tier}/{upcoming_tags[tier]}"
+            log.info("Currently running distribution: {running_tiers}")
             requested_containers = running_tasks + surplus_replicas
         else:
             first_loop = False
@@ -1056,9 +1061,6 @@ def start_processing_manager(
 
     number_of_days_processed = 0
 
-    # For some reason workflow complains if this is not called
-    http = HTTPContext()
-
     def loop_condition():
         if number_of_days != -1:
             # If number_of_days is not -1, then we want to run for a specific number of days
@@ -1132,10 +1134,14 @@ def start_processing_manager(
                 workflow_buckets_name = (
                     f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
                 )
-                clear_workflow_buckets.main(
-                    args=["--workflow-buckets-name", workflow_buckets_name],
-                    standalone_mode=False,
-                )
+                # clear_workflow_buckets.main(
+                #     args=["--workflow-buckets-name", workflow_buckets_name],
+                #     standalone_mode=False,
+                # )
+                db_work = pymongo.MongoClient(
+                    host="sps-archiver1", port=27018
+                ).work.buckets
+                db_work.delete_many({"pipeline": workflow_buckets_name})
                 pipeline_args = [
                     "--db-host",
                     db_host,
