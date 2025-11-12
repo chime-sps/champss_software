@@ -41,7 +41,7 @@ def scale_down_service(service_name):
         docker_client = docker.from_env()
         docker_client.services.get(service_name).scale(0)
         log.info(f"Scaled down service {service_name}")
-    except:
+    except Exception as error:
         pass
 
 
@@ -470,8 +470,9 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
     return all_active_pointings
 
 
-def deposit_pipeline_work(workflow_params, workflow_buckets_name, process_dict):
-    http = HTTPContext()
+def deposit_pipeline_work(
+    workflow_params, workflow_buckets_name, httpcontext, process_dict
+):
     process = models.Process.from_db(process_dict)
     formatted_ra = f"{process.ra:.02f}"
     formatted_dec = f"{process.dec:.02f}"
@@ -490,7 +491,9 @@ def deposit_pipeline_work(workflow_params, workflow_buckets_name, process_dict):
             "num_threads": threads_reserved,
         }
     )
-    work = Work(pipeline=workflow_buckets_name, site="chime", user="CHAMPSS")
+    work = Work(
+        pipeline=workflow_buckets_name, site="chime", user="CHAMPSS", http=httpcontext
+    )
 
     work.function = "sps_pipeline.pipeline.main"
     work.parameters = workflow_params
@@ -501,6 +504,9 @@ def deposit_pipeline_work(workflow_params, workflow_buckets_name, process_dict):
         formatted_maxdm,
         formatted_date,
         tier_name,
+        str(process.id),
+        str(process.pointing_id),
+        str(process.obs_id),
     ]
     work.config.archive.results = True
     work.config.archive.plots = "bypass"
@@ -740,11 +746,12 @@ def run_all_pipeline_processes(
                         "Flags not implimented yet. Reformated your option to --option_python_name True"
                     )
     process_ids = [process["_id"] for process in all_processes]
+    http = HTTPContext()
     pool = Pool(4)
     # First deposit all process in workflow bucket
     # Imap will perform these jobs in the background, a single process can deposit ~4 jobs per second
     work_ids = pool.imap(
-        partial(deposit_pipeline_work, workflow_params, workflow_buckets_name),
+        partial(deposit_pipeline_work, workflow_params, workflow_buckets_name, http),
         all_processes,
     )
 
@@ -818,6 +825,7 @@ def run_all_pipeline_processes(
             # to communicate with other containers (MongoDB, Prometheus, etc) that are
             # also manually added to this network
             "networks": ["pipeline-network"],
+            "stop_grace_period": 600,
         }
 
         log.info(f"Creating Docker Service: \n{docker_service}")
@@ -826,7 +834,7 @@ def run_all_pipeline_processes(
         services.append(service.attrs["ID"])
         atexit.register(scale_down_service, service.attrs["ID"])
 
-    requested_containers = 100
+    requested_containers = 5
     update_time = 30
     surplus_replicas = 10
     # This checks if enough work objects have been deopisted. More work objects are scheduled in the background
@@ -1066,7 +1074,7 @@ def start_processing_manager(
     # Ugly way of removing superfluous handler that comes from somehwere
     try:
         log.removeHandler(log.handlers[1])
-    except:
+    except Exception as error:
         pass
 
     start_date = convert_date_to_datetime(start_date)
