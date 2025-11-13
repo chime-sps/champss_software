@@ -1386,15 +1386,15 @@ def start_processing_manager(
                 )
                 class_timeout = 60 * 60 * 60
                 work_id = schedule_workflow_job(
-                    docker_image="sps-archiver1.chime:5000/champss_classification:stable",
+                    docker_image="sps-archiver1.chime:5000/champss_classification:load_as_you_go",
                     docker_mounts=[
                         f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
                     ],
                     docker_name=f"{docker_service_name_prefix}-{date_string}",
-                    docker_memory_reservation=100,
+                    docker_memory_reservation=300,
                     workflow_buckets_name=workflow_buckets_name,
-                    workflow_function="champss_classification.pytorch_model.classify.load_model_and_classify_mp_csv",
+                    workflow_function="champss_classification.pytorch_model.classify_lazy.load_model_and_classify_mp_csv_lazy",
                     workflow_params={
                         "csv": work_result["csv_file"],
                     },
