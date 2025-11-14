@@ -100,6 +100,16 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
         basepath=basepath,
         foldpath=foldpath,
     )
+    Filter(
+        cand_obs_date=date,
+        db_host=db_host,
+        db_port=db_port,
+        db_name=db_name,
+        write_to_db=True,
+        basepath=basepath,
+        foldpath=foldpath,
+        class_threshold=0.5,
+    )
 
     log.info("Candidate filtering complete")
 

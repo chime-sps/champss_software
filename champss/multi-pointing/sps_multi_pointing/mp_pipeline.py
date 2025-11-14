@@ -133,6 +133,12 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 @click.option("--db/--no-db", default=False, help="Whether to write to database")
 @click.option("--csv/--no-csv", default=True, help="Whether to write summary csv.")
 @click.option(
+    "--sigma-threshold",
+    default=6.0,
+    type=float,
+    help="Sigma threshold under which the single pointing candidates are discarded.",
+)
+@click.option(
     "--plot-threshold",
     default=0.0,
     type=float,
@@ -190,6 +196,7 @@ def cli(
     plot_all_pulsars,
     db,
     csv,
+    sigma_threshold,
     plot_threshold,
     plot_dm_threshold,
     db_port,
@@ -243,7 +250,15 @@ def cli(
         log.error("No files found. Will exit.")
         return
     sp_cands = list(
-        tqdm.tqdm(pool.imap(data_reader.read_cands_summaries, files), total=len(files))
+        tqdm.tqdm(
+            pool.imap(
+                partial(
+                    data_reader.read_cands_summaries, sigma_threshold=sigma_threshold
+                ),
+                files,
+            ),
+            total=len(files),
+        )
     )
     # Filter out None
     sp_cands = [sp_cand_list for sp_cand_list in sp_cands if sp_cand_list is not None]

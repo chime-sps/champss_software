@@ -35,7 +35,7 @@ def read_multi_pointing_candidates(filepath):
     return mp_cands
 
 
-def read_cands_summaries(file):
+def read_cands_summaries(file, sigma_threshold=0):
     """
     Read candidate file and return summaries.
 
@@ -70,6 +70,8 @@ def read_cands_summaries(file):
                 datetimes = []
         """
         for cand_index, candidate in enumerate(spcc.candidates):
+            if candidate.sigma < sigma_threshold:
+                continue
             cand_summary = EasyDict(candidate.summary)
             cand_summary["file_name"] = file
             cand_summary["cand_index"] = cand_index
