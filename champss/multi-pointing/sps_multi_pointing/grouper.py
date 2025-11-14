@@ -159,7 +159,7 @@ class SinglePointingCandidateGroup:
         std_ra = scipy.stats.circstd(all_ra_dec[:, 0] / 180 * math.pi) * 180 / math.pi
         std_dec = np.std(all_ra_dec[:, 1])
 
-        delta_ra = min(np.ptp(ra_dec[:, 1]), 360 - np.ptp(ra_dec[:, 1]))
+        delta_ra = min(np.ptp(ra_dec[:, 0]), 360 - np.ptp(ra_dec[:, 0]))
         delta_dec = np.ptp(ra_dec[:, 1])
 
         self.position_sigmas = np.array(
@@ -172,7 +172,7 @@ class SinglePointingCandidateGroup:
         )
         self.group_attributes.update({"ra": centroid_ra, "dec": centroid_dec})
         self.position_based_features = np.array(
-            (mean_ra, std_ra, delta_ra, mean_dec, delta_dec, std_dec),
+            (mean_ra, std_ra, delta_ra, mean_dec, std_dec, delta_dec),
             dtype=[
                 ("mean_ra", float),
                 ("std_ra", float),
