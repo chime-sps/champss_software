@@ -253,7 +253,7 @@ def cli(
         tqdm.tqdm(
             pool.imap(
                 partial(
-                    data_reader.read_cands_summaries, sigma_threshold=sigma_threshold
+                    data_reader.read_cands_summaries, sigma_threshold=0
                 ),
                 files,
             ),
@@ -274,6 +274,7 @@ def cli(
     #         for cand in sp_cand_list:
     #             cand.datetimes = datetimes
     # Transform list of lists to list
+    log.info("Creating list of lists.")
     sp_cands = [sp_cand for sp_cand_list in sp_cands for sp_cand in sp_cand_list]
     log.info(f"Number of single-pointing candidates: {len(sp_cands)}")
     # np.save("all_cands.npy", sp_cands)
