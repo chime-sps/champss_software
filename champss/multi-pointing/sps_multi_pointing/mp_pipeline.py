@@ -261,14 +261,18 @@ def cli(
         )
     )
     # Filter out None
-    sp_cands = [sp_cand_list for sp_cand_list in sp_cands if sp_cand_list is not None]
+    sp_cands = [
+        sp_cand_list
+        for sp_cand_list in sp_cands
+        if sp_cand_list is not None and sp_cand_list != []
+    ]
     # Get dates if not already done. Only needed for old candidates prior 2024/03
-    for sp_cand_list in sp_cands:
-        old_dates = sp_cand_list[0].get("datetimes", None)
-        if len(old_dates) == 0:
-            datetimes = db_api.get_dates(sp_cand_list[0].obs_id)
-            for cand in sp_cand_list:
-                cand.datetimes = datetimes
+    # for sp_cand_list in sp_cands:
+    #     old_dates = sp_cand_list[0].get("datetimes", None)
+    #     if len(old_dates) == 0:
+    #         datetimes = db_api.get_dates(sp_cand_list[0].obs_id)
+    #         for cand in sp_cand_list:
+    #             cand.datetimes = datetimes
     # Transform list of lists to list
     sp_cands = [sp_cand for sp_cand_list in sp_cands for sp_cand in sp_cand_list]
     log.info(f"Number of single-pointing candidates: {len(sp_cands)}")
