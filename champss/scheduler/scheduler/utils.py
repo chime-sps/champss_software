@@ -27,7 +27,7 @@ def convert_date_to_datetime(date):
 @click.argument("wait_time", type=float)
 def dummy_workflow_task(wait_time=None):
     # atexit.signal(signal.SIGTERM, continue_running)
-    log.ingo(f"Task started. WIll wait for {wait_time} seconds.")
+    log.info(f"Task started. WIll wait for {wait_time} seconds.")
     time.sleep(wait_time)
     log.info(f"Task completed after {wait_time} seconds.")
     return {"wait_time": wait_time}, [], []
