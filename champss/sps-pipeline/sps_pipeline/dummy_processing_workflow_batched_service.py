@@ -12,6 +12,8 @@ from workflow.definitions.work import Work
 from sps_databases import db_utils
 from scheduler.workflow import clear_workflow_buckets
 import pymongo
+import docker
+import atexit
 
 docker_swarm_pending_states = [
     "new",
@@ -35,6 +37,14 @@ mem_ranges = [[0, 11], [11, 1000]]
 mem_reserves = [11, 50]
 
 
+def scale_down_service(service_name):
+    try:
+        docker_client = docker.from_env()
+        docker_client.services.get(service_name).scale(0)
+        log.info(f"Scaled down service {service_name}")
+    except Exception as error:
+        pass
+
 def get_tier(mem_req):
     tier = -1
     for i, mem_range in enumerate(mem_ranges):
@@ -49,7 +59,7 @@ def deposit_dummy_work(pointing):
 
     work.function = "scheduler.utils.dummy_workflow_task"
     mem_req = ram_requirement(pointing)
-    work.parameters = {"wait_time": mem_req}
+    work.parameters = {"wait_time": mem_req*1}
     tier = get_tier(mem_req)
     work.tags = [pointing["_id"].__str__(), tiers[tier]]
     work.config.archive.results = True
@@ -65,14 +75,18 @@ def deposit_dummy_work(pointing):
 
 
 def run_dummy_processing():
-    clear_workflow_buckets.main(
-        args=["--workflow-buckets-name", "dummy-schedule"],
-        standalone_mode=False,
-    )
+    db_work = pymongo.MongoClient(
+        host="sps-archiver1", port=27018
+    ).work.buckets
+    db_work.delete_many({"pipeline": "dummy-schedule"})
+    # clear_workflow_buckets.main(
+    #     args=["--workflow-buckets-name", "dummy-schedule"],
+    #     standalone_mode=False,
+    # )
     db = db_utils.connect()
     docker_client = docker.from_env()
     all_pointings = list(db.pointings.find())
-    all_pointings = all_pointings[:50000]
+    all_pointings = all_pointings[:500]
     for index in range(len(all_pointings)):
         current_pointing = all_pointings[index]
         all_pointings[index]["ram_requirement"] = ram_requirement(current_pointing)
@@ -97,7 +111,7 @@ def run_dummy_processing():
     #     work_id = work.deposit(return_ids=True)
     # with Pool(128) as pool:
     #     work_ids = list(tqdm.tqdm(pool.imap(deposit_dummy_work, all_pointings), total=len(all_pointings)))
-    pool = Pool(32)
+    pool = Pool(4)
     work_ids = pool.imap(deposit_dummy_work, all_pointings)
 
     pointing = all_pointings[0]
@@ -135,7 +149,10 @@ def run_dummy_processing():
         #             finished_indices.append(service_index)
         #     for service_index in finished_indices[::-1]:
         #         del non_finished_services[service_index]
-
+        try:
+            docker_client.services.get(f"processing-{tiers[i]}").remove()
+        except docker.errors.NotFound:
+            pass
         docker_mounts = [
             f"{'/mnt/beegfs-client/'}:{'/mnt/beegfs-client/'}",
         ]
@@ -198,18 +215,20 @@ def run_dummy_processing():
             # to communicate with other containers (MongoDB, Prometheus, etc) that are
             # also manually added to this network
             "networks": ["pipeline-network"],
+            "stop_grace_period": 600,
         }
 
         log.info(f"Creating Docker Service: \n{docker_service}")
 
         service = docker_client.services.create(**docker_service)
         services.append(service.attrs["ID"])
+        atexit.register(scale_down_service, service.attrs["ID"])
         # waiting_services.append(service)
         # non_finished_services.append(service)
         # breakpoint()
         # wait_for_no_tasks_in_states(docker_swarm_pending_states, docker_service_name_prefix=f"processing-{pointing['_id'].__str__()}")
     b = time.time()
-    requested_containers = 10
+    requested_containers = 1
     # first_works = [work for work in work_ids]
     for work_index, work in enumerate(work_ids):
         if work_index > requested_containers:
@@ -223,34 +242,35 @@ def run_dummy_processing():
         .limit(requested_containers)
     )
     while len(all_works) > 0:
-        upcoming_tags = {tier: 0 for tier in tiers}
-        for i, work in enumerate(all_works[:]):
-            current_tag = set(work["tags"]).intersection(set(tiers))
-            current_tag = [tag for tag in current_tag][0]
-            upcoming_tags[current_tag] += 1
-        print(upcoming_tags)
-        print(all_works[0]["creation"])
-        # breakpoint()
-        for i, tier in enumerate(tiers):
-            # services[i].scale(upcoming_tags[tier])
-            docker_client.services.get(services[i]).scale(upcoming_tags[tier])
-        time.sleep(5)
-        running_tasks = 0
-        for i, tier in enumerate(tiers):
-            service_tasks = docker_client.services.get(services[i]).tasks()
-            running_tasks += sum(
-                1 for task in service_tasks if task["Status"]["State"] == "running"
-            )
-        print(running_tasks)
-        requested_containers = running_tasks + 10
-        all_works = list(
-            buckets_db.find({"pipeline": "dummy-schedule"})
-            .sort("creation", pymongo.ASCENDING)
-            .limit(requested_containers)
-        )
-    for i, tier in enumerate(tiers):
-        # services[i].scale(upcoming_tags[tier])
-        docker_client.services.get(services[i]).scale(0)
+        time.sleep(1)
+    #     upcoming_tags = {tier: 0 for tier in tiers}
+    #     for i, work in enumerate(all_works[:]):
+    #         current_tag = set(work["tags"]).intersection(set(tiers))
+    #         current_tag = [tag for tag in current_tag][0]
+    #         upcoming_tags[current_tag] += 1
+    #     print(upcoming_tags)
+    #     print(all_works[0]["creation"])
+    #     # breakpoint()
+    #     for i, tier in enumerate(tiers):
+    #         # services[i].scale(upcoming_tags[tier])
+    #         docker_client.services.get(services[i]).scale(upcoming_tags[tier])
+    #     time.sleep(20)
+    #     running_tasks = 0
+    #     for i, tier in enumerate(tiers):
+    #         service_tasks = docker_client.services.get(services[i]).tasks()
+    #         running_tasks += sum(
+    #             1 for task in service_tasks if task["Status"]["State"] == "running"
+    #         )
+    #     print(running_tasks)
+    #     requested_containers = running_tasks + 0
+    #     all_works = list(
+    #         buckets_db.find({"pipeline": "dummy-schedule"})
+    #         .sort("creation", pymongo.ASCENDING)
+    #         .limit(requested_containers)
+    #     )
+    # for i, tier in enumerate(tiers):
+    #     # services[i].scale(upcoming_tags[tier])
+    #     docker_client.services.get(services[i]).scale(0)
 
     # log.info("Finish Scheduling")
     log.info(b - a)
