@@ -8,6 +8,11 @@ import logging
 log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
+file_handler = logging.FileHandler("/data/lkuenkel/dummy_lof.txt")
+file_handler.setFormatter(
+    logging.Formatter(fmt=config.logging.format, datefmt="%b %d %H:%M:%S")
+)
+logging.root.addHandler(file_handler)
 def continue_running(signum, frame):
     log.info("Received Interrupt.")
 
