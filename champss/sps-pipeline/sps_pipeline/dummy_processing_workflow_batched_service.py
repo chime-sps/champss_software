@@ -10,9 +10,7 @@ log = logging.getLogger(__name__)
 
 from workflow.definitions.work import Work
 from sps_databases import db_utils
-from scheduler.workflow import clear_workflow_buckets
 import pymongo
-import docker
 import atexit
 
 docker_swarm_pending_states = [
@@ -45,6 +43,7 @@ def scale_down_service(service_name):
     except Exception as error:
         pass
 
+
 def get_tier(mem_req):
     tier = -1
     for i, mem_range in enumerate(mem_ranges):
@@ -59,7 +58,7 @@ def deposit_dummy_work(pointing):
 
     work.function = "scheduler.utils.dummy_workflow_task"
     mem_req = ram_requirement(pointing)
-    work.parameters = {"wait_time": mem_req*1}
+    work.parameters = {"wait_time": mem_req * 1}
     tier = get_tier(mem_req)
     work.tags = [pointing["_id"].__str__(), tiers[tier]]
     work.config.archive.results = True
@@ -75,9 +74,7 @@ def deposit_dummy_work(pointing):
 
 
 def run_dummy_processing():
-    db_work = pymongo.MongoClient(
-        host="sps-archiver1", port=27018
-    ).work.buckets
+    db_work = pymongo.MongoClient(host="sps-archiver1", port=27018).work.buckets
     db_work.delete_many({"pipeline": "dummy-schedule"})
     # clear_workflow_buckets.main(
     #     args=["--workflow-buckets-name", "dummy-schedule"],
@@ -154,7 +151,7 @@ def run_dummy_processing():
         except docker.errors.NotFound:
             pass
         docker_mounts = [
-            f"{'/mnt/beegfs-client/'}:{'/mnt/beegfs-client/'}",
+            f"{'/data/'}:{'/data/'}",
         ]
         docker_volumes = [
             docker.types.Mount(
