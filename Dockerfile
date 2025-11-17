@@ -53,10 +53,8 @@ COPY . .
 
 RUN set -ex \
     && python3 -m pip install . \
-    && get-data \
     && workflow workspace set champss.workspace.yml \
     && python3 download_files.py 
-# Above "get-data" call is needed for CHIMEFRB/beam-model
 # The astropy calls allow downloading of data that might be available when running the container
 
 RUN run-stack-search-pipeline --help

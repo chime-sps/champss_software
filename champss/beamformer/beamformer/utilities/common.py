@@ -21,15 +21,7 @@ log = logging.getLogger(__name__)
 
 if "cfbm" in sys.modules:
     config = beam_model.current_config
-    try:
-        beammod = beam_model.current_model_class(config)
-    except FileNotFoundError:
-        log.error("Missing files for beam model. Will try to load them.")
-        from cfbm.bm_data import get_data
-
-        get_data.main()
-        beammod = beam_model.current_model_class(config)
-
+    beammod = beam_model.current_model_class(config)
     beam_transit = beam_model.config.chime
 
 _storage_path = constants.STORAGE_PATH
