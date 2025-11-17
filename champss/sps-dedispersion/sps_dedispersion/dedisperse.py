@@ -38,12 +38,11 @@ def dedisperse(fdmt, skybeam, chunk_size, maxDT, dm_step=1, cpp=True):
             npad = (chunk_size + maxDT) - spectra_chunk.shape[1]
             spectra_chunk = np.pad(spectra_chunk, ((0, 0), (0, npad)), mode="constant")
 
-        # Keeping every 2 steps vs computing every 2 steps sometimes results in one extra DM bin
-        # Cut to the original size of dedisp to keep stacks consistent
+        # Keeping every 2 steps instead of compute every 2 steps, otherwise there is induced time smearing
         if cpp:
             dedisp[:, i * chunk_size : (i + 1) * chunk_size] = fdmt.execute(
                 spectra_chunk
-            )[: dedisp.shape[0], maxDT:]
+            )[::dm_step, maxDT:]
         else:
             dedisp[:, i * chunk_size : (i + 1) * chunk_size] = fdmt.fdmt(
                 spectra_chunk, padding=True, frontpadding=False
