@@ -2,6 +2,7 @@ import datetime as dt
 import time
 import click
 import atexit
+import signal
 
 import logging
 
