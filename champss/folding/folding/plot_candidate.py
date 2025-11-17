@@ -13,12 +13,12 @@ from matplotlib.gridspec import GridSpec
 from sps_databases.db_api import get_nearby_known_sources
 from sps_multi_pointing.known_source_sifter import known_source_filters
 from multiday_search.phase_aligned_search import phase_loop
-from numba import njit, prange
+from numba import njit, prange, set_num_threads
 
 
 def compute_accel_steps(
     dts, f0, npbin, vmax=500 * u.km / u.s, Pbmin=2 * u.hour, phase_accuracy=1.0 / 256,
-    stack_binary_search=False, f0_bins=3
+    stack_binary_search=False, f1_maxbins=2048,
 ):
     """
     Compute the f0 and f1 search grid for acceleration search.
@@ -80,6 +80,11 @@ def compute_accel_steps(
     # Ensure at least a minimal search grid
     f0_points = max(f0_points, 3)
     f1_points = max(f1_points, 3)
+    if f1_points > f1_maxbins:
+        n_f1_downsample = int(np.ceil(f1_points / f1_maxbins))
+        f1_points = f1_points // n_f1_downsample
+        print(f"Warning: f1_points exceeds {f1_maxbins}, downsampling by factor "
+                f"{n_f1_downsample} to {f1_points} points.")
 
     f0s = np.linspace(-dfmax, dfmax, f0_points, endpoint=True)
     f1s = np.linspace(-f1max, f1max, f1_points, endpoint=True)
@@ -112,12 +117,13 @@ def dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin):
     DMprofs : ndarray
         DM trial profiles of shape (nDM, nphase)
     """
+    set_num_threads(8)
+
     nDM = len(DMs)
     nfreq = len(freq)
     nphase = fs_fp.shape[-1]
     DMprofs = np.zeros((nDM, nphase))
 
-    # DM constant: 1/2.41e-4
     DM_constant = 1.0 / 2.41e-4
 
     for i in prange(nDM):
@@ -208,7 +214,6 @@ def plot_candidate_archive(
         f0_slice = chi2_grid[:, i_f1]
         f1_slice = chi2_grid[i_f0]
 
-        npbin = fs_bin.shape[-1]
         dphis = f0_best * dts + 0.5 * f1_best * dts**2
         i_phis = (dphis * npbin).astype("int")
         for i in range(fs_bin.shape[0]):
@@ -255,8 +260,11 @@ def plot_candidate_archive(
     if dm_search:
         freq = F[::binf]
         f_ref = np.max(freq)
-        dDM = 0.125
+        DM_constant = 1.0 / 2.41e-4
+        tsamp_pbin = 1 / (f0*npbin)
+        dDM = 2 * tsamp_pbin / (DM_constant * (1.0 / np.min(freq)**2 - 1.0 / f_ref**2))
         nDM = int(np.ceil(2 * dm / dDM))
+        print(f"DM search over {nDM} trials with dDM = {dDM:.2f} pc cm^-3")
         DMs = np.linspace(0, nDM * dDM, nDM)
         DMs -= np.mean(DMs)
         P = (1 / f0) * u.s
@@ -416,7 +424,6 @@ def plot_candidate_archive(
     cand_param_table.set_fontsize(10)
     cand_param_table.scale(10, 1.25)
 
-    print(known, len(known))
     if not known.strip():
         plotstring = f"cand_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
         plotstring_radec = (
