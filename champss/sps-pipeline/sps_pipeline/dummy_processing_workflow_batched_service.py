@@ -58,7 +58,7 @@ def deposit_dummy_work(pointing):
 
     work.function = "scheduler.utils.dummy_workflow_task"
     mem_req = ram_requirement(pointing)
-    work.parameters = {}
+    # work.parameters = {}
     work.parameters = {"wait_time": mem_req * 1}
     tier = get_tier(mem_req)
     work.tags = [pointing["_id"].__str__(), tiers[tier]]
