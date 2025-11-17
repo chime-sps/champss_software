@@ -836,6 +836,7 @@ def run_all_pipeline_processes(
         # atexit.register(scale_down_service, service.attrs["ID"])
 
     requested_containers = 100
+    minimum_requested_containers = 50
     update_time = 10
     surplus_replica_factor = 1.5
     # This checks if enough work objects have been deopisted. More work objects are scheduled in the background
@@ -851,6 +852,7 @@ def run_all_pipeline_processes(
         .limit(requested_containers)
     )
     first_loop = True
+    running_tasks_per_tier = {}
     while len(all_works) > 0:
         # Count how many services should be created
         upcoming_tags = {tier: 0 for tier in processing_tier_names}
@@ -861,13 +863,20 @@ def run_all_pipeline_processes(
         log.info(
             f"Requested distribution with {requested_containers} containers: {upcoming_tags}."
         )
-        running_tiers = {}
         # Scale services
+        log.info(running_tasks_per_tier)
         for i, tier in enumerate(processing_tier_names):
             # Never scale down a running process since this may kill the container and I do not know how to stop it
             # signal.signal(signal.SIGTERM, signal.SIG_IGN) does not seem to work
 
-            new_scale_value = max(upcoming_tags[tier], running_tiers.get(tier, 0))
+            service_tasks = docker_client.services.get(services[i]).tasks()
+            running_and_pending = sum(
+                1 for task in service_tasks if task["Status"]["State"] in ["running","pending", "starting"]
+            )
+
+            new_scale_value = max(upcoming_tags[tier], running_and_pending)
+            log.info(f"{tier}, {new_scale_value}, {upcoming_tags[tier]}, {running_tasks_per_tier.get(tier, 0)}, {running_and_pending}")
+            # if first_loop:
             docker_client.services.get(services[i]).scale(new_scale_value)
         time.sleep(update_time)
         # Check how many services are running
@@ -877,15 +886,15 @@ def run_all_pipeline_processes(
             running_tiers = {tier: 0 for tier in processing_tier_names}
             for i, tier in enumerate(processing_tier_names):
                 service_tasks = docker_client.services.get(services[i]).tasks()
-                running_tasks_per_tier = sum(
+                running_tasks_per_tier[tier] = sum(
                     1 for task in service_tasks if task["Status"]["State"] == "running"
                 )
-                running_tasks += running_tasks_per_tier
-                running_tiers[tier] = f"{running_tasks_per_tier}/{upcoming_tags[tier]}"
+                running_tasks += running_tasks_per_tier[tier]
+                running_tiers[tier] = f"{running_tasks_per_tier[tier]}/{upcoming_tags[tier]}"
             log.info(
                 f"Currently running distribution with {running_tasks} containers: {running_tiers}"
             )
-            requested_containers = int(running_tasks * surplus_replica_factor)
+            requested_containers = max(int(running_tasks * surplus_replica_factor), minimum_requested_containers)
         else:
             first_loop = False
         all_works = list(
