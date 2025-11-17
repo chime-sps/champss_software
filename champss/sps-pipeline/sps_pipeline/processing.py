@@ -10,7 +10,6 @@ from functools import partial
 from glob import glob
 from multiprocessing import Pool
 import pymongo
-import atexit
 
 import click
 import docker
@@ -832,11 +831,13 @@ def run_all_pipeline_processes(
 
         service = docker_client.services.create(**docker_service)
         services.append(service.attrs["ID"])
-        atexit.register(scale_down_service, service.attrs["ID"])
+
+        # Ideally would scale services down on exit but this will kill processes prematurely
+        # atexit.register(scale_down_service, service.attrs["ID"])
 
     requested_containers = 100
     update_time = 10
-    surplus_replicas = 50
+    surplus_replica_factor = 1.5
     # This checks if enough work objects have been deopisted. More work objects are scheduled in the background
     for work_index, work in enumerate(work_ids):
         if work_index > requested_containers:
@@ -860,12 +861,13 @@ def run_all_pipeline_processes(
         log.info(
             f"Requested distribution with {requested_containers} containers: {upcoming_tags}."
         )
-
+        running_tiers = {}
         # Scale services
         for i, tier in enumerate(processing_tier_names):
             # Never scale down a running process since this may kill the container and I do not know how to stop it
             # signal.signal(signal.SIGTERM, signal.SIG_IGN) does not seem to work
-            new_scale_value = max(upcoming_tags[tier], running_tiers[tier])
+
+            new_scale_value = max(upcoming_tags[tier], running_tiers.get(tier, 0))
             docker_client.services.get(services[i]).scale(new_scale_value)
         time.sleep(update_time)
         # Check how many services are running
@@ -883,7 +885,7 @@ def run_all_pipeline_processes(
             log.info(
                 f"Currently running distribution with {running_tasks} containers: {running_tiers}"
             )
-            requested_containers = running_tasks + surplus_replicas
+            requested_containers = int(running_tasks * surplus_replica_factor)
         else:
             first_loop = False
         all_works = list(
