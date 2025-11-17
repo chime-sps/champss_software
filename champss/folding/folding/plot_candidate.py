@@ -70,6 +70,7 @@ def compute_accel_steps(
         f0_points = 2 * int(0.5 * dfmax * Tobs / phase_accuracy)
     else:
         f0_points = 2 * int(1 / phase_accuracy)
+        dfmax = 1.0 / Tobs
 
     # f1 always uses binary orbital limit
     f1max = (2 * np.pi * dfmax_velocity * u.Hz / Pbmin).to(u.s**-2).value
