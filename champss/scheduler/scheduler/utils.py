@@ -39,10 +39,10 @@ def convert_date_to_datetime(date):
 @click.option("--wait_time", type=float, default=10)
 def dummy_workflow_task(wait_time):
     # signal.signal(signal.SIGTERM, continue_running)
-    # signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     # signal.signal(signal.SIGINT, signal.SIG_IGN)
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    # signal.signal(signal.SIGINT, signal_handler)
+    # signal.signal(signal.SIGTERM, signal_handler)
     # signal.signal(signal.SIGKILL, signal_handler)
     log.info(f"Task started. Will wait for {wait_time} seconds.")
     time.sleep(wait_time)
