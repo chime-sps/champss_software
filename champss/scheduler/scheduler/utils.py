@@ -32,7 +32,7 @@ def convert_date_to_datetime(date):
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.argument("--wait_time", type=float, default=10)
+@click.option("--wait_time", type=float, default=10)
 def dummy_workflow_task(wait_time):
     atexit.register(signal.SIGTERM, continue_running)
     log.info(f"Task started. WIll wait for {wait_time} seconds.")
