@@ -21,7 +21,7 @@ def continue_running(signum, frame):
     log.info("Received Interrupt.")
 
 def signal_handler(sig, frame):
-    print(f"Received signal: {sig} ({signal.Signals(sig).name})")
+    log.info(f"Received signal: {sig} ({signal.Signals(sig).name})")
     # Add any other desired actions here
 
 def convert_date_to_datetime(date):
