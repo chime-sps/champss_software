@@ -37,7 +37,7 @@ def convert_date_to_datetime(date):
 def dummy_workflow_task(wait_time):
     # signal.signal(signal.SIGTERM, continue_running)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    # signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     log.info(f"Task started. Will wait for {wait_time} seconds.")
     time.sleep(wait_time)
     log.info(f"Task completed after {wait_time} seconds.")

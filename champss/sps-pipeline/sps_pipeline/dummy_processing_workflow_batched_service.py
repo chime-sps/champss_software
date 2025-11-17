@@ -194,7 +194,7 @@ def run_dummy_processing():
             #     f" chime --lives -1 --sleep 1"
             #     f" --tag {tiers[i % 2]}"
             # ),
-            "command": "run-dummy-task",
+            "command": "run-dummy-task --wait_time 1000",
             "mode": docker.types.ServiceMode("replicated", replicas=1),
             "restart_policy": docker.types.RestartPolicy(
                 condition="none", max_attempts=0
