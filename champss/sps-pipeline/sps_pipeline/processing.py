@@ -805,10 +805,10 @@ def run_all_pipeline_processes(
             "command": (
                 "workflow run"
                 f" champss-pipeline --site"
-                f" chime --lives -1 --sleep 1"
+                f" chime --lives 1 --sleep 1"
                 f" --tag {tier_name}"
             ),
-            "mode": docker.types.ServiceMode("replicated", replicas=1),
+            "mode": docker.types.ServiceMode("replicated", replicas=0),
             "restart_policy": docker.types.RestartPolicy(
                 condition="none", max_attempts=0
             ),
@@ -834,9 +834,9 @@ def run_all_pipeline_processes(
         services.append(service.attrs["ID"])
         atexit.register(scale_down_service, service.attrs["ID"])
 
-    requested_containers = 5
-    update_time = 30
-    surplus_replicas = 10
+    requested_containers = 100
+    update_time = 10
+    surplus_replicas = 50
     # This checks if enough work objects have been deopisted. More work objects are scheduled in the background
     for work_index, work in enumerate(work_ids):
         if work_index > requested_containers:
@@ -863,7 +863,10 @@ def run_all_pipeline_processes(
 
         # Scale services
         for i, tier in enumerate(processing_tier_names):
-            docker_client.services.get(services[i]).scale(upcoming_tags[tier])
+            # Never scale down a running process since this may kill the container and I do not know how to stop it
+            # signal.signal(signal.SIGTERM, signal.SIG_IGN) does not seem to work
+            new_scale_value = max(upcoming_tags[tier], running_tiers[tier])
+            docker_client.services.get(services[i]).scale(new_scale_value)
         time.sleep(update_time)
         # Check how many services are running
         # DO not update during the first loop since the image may still need to be distributed
