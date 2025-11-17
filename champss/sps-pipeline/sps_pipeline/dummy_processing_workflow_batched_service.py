@@ -188,12 +188,13 @@ def run_dummy_processing():
             "name": f"processing-{tiers[i]}",
             # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
-            "command": (
-                "workflow run"
-                f" dummy-schedule --site"
-                f" chime --lives -1 --sleep 1"
-                f" --tag {tiers[i % 2]}"
-            ),
+            # "command": (
+            #     "workflow run"
+            #     f" dummy-schedule --site"
+            #     f" chime --lives -1 --sleep 1"
+            #     f" --tag {tiers[i % 2]}"
+            # ),
+            "command": "run-dummy-task",
             "mode": docker.types.ServiceMode("replicated", replicas=1),
             "restart_policy": docker.types.RestartPolicy(
                 condition="none", max_attempts=0
