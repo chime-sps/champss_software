@@ -108,12 +108,12 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 
     if config.logging.get("file_logging", False):
         # Remove possibly pre-existing file handler
-        try:
-            for log_handler in log.root.handlers:
-                if isinstance(log_handler, logging.FileHandler):
-                    log.root.removeHandler(log_handler)
-        except Exception as error:
-            log.info(f"Could not remove file handler due to {error}")
+        handlers_to_be_removed = []
+        for log_handler in log.root.handlers:
+            if isinstance(log_handler, logging.FileHandler):
+                handlers_to_be_removed.append(log_handler)
+        for handler in handlers_to_be_removed:
+            log.root.removeHandler(handler)
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(
