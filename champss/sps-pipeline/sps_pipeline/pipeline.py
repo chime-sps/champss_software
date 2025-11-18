@@ -108,9 +108,9 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 
     if config.logging.get("file_logging", False):
         # Remove possibly pre-existing file handler
-        for log_handler in log.handlers:
-            if isinstance(log_handler, logging.FileHandler):
-                log.removeHandler(log_handler)
+        # for log_handler in log.handlers:
+        #     if isinstance(log_handler, logging.FileHandler):
+        #         log.removeHandler(log_handler)
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(

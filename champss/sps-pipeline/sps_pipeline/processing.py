@@ -35,6 +35,8 @@ from sps_pipeline.utils import get_pointings_from_list
 
 log = logging.getLogger()
 
+max_work_duration = 60 * 60 # in seconds
+
 
 def scale_down_service(service_name):
     try:
@@ -512,7 +514,7 @@ def deposit_pipeline_work(
     work.config.archive.plots = "bypass"
     work.config.archive.products = "bypass"
     work.retries = 1
-    work.timeout = 60 * 120
+    work.timeout = max_work_duration
 
     work_id = work.deposit(return_ids=True)
     return work_id
@@ -808,7 +810,7 @@ def run_all_pipeline_processes(
                 f" chime --lives -1 --sleep 1"
                 f" --tag {tier_name}"
             ),
-            "mode": docker.types.ServiceMode("replicated", replicas=1),
+            "mode": docker.types.ServiceMode("replicated", replicas=0),
             "restart_policy": docker.types.RestartPolicy(
                 condition="none", max_attempts=0
             ),
@@ -825,7 +827,7 @@ def run_all_pipeline_processes(
             # to communicate with other containers (MongoDB, Prometheus, etc) that are
             # also manually added to this network
             "networks": ["pipeline-network"],
-            "stop_grace_period": 600,
+            "stop_grace_period": int(max_work_duration * 1e9),
         }
 
         log.info(f"Creating Docker Service: \n{docker_service}")
@@ -834,9 +836,9 @@ def run_all_pipeline_processes(
         services.append(service.attrs["ID"])
         atexit.register(scale_down_service, service.attrs["ID"])
 
-    requested_containers = 5
-    update_time = 30
-    surplus_replicas = 10
+    requested_containers = 100
+    update_time = 60
+    surplus_replicas = 20
     # This checks if enough work objects have been deopisted. More work objects are scheduled in the background
     for work_index, work in enumerate(work_ids):
         if work_index > requested_containers:
@@ -857,9 +859,10 @@ def run_all_pipeline_processes(
             current_tag = set(work["tags"]).intersection(set(processing_tier_names))
             current_tag = [tag for tag in current_tag][0]
             upcoming_tags[current_tag] += 1
-        log.info(
-            f"Requested distribution with {requested_containers} containers: {upcoming_tags}."
-        )
+        if first_loop:
+            log.info(
+                f"Requested distribution with {requested_containers} containers: {upcoming_tags}."
+            )
 
         # Scale services
         for i, tier in enumerate(processing_tier_names):
@@ -889,14 +892,20 @@ def run_all_pipeline_processes(
             .limit(requested_containers)
         )
 
-    # for i, tier in enumerate(processing_tier_names):
-    #     docker_client.services.get(services[i]).scale(0)
-    for tier_name, tier_limit in zip(processing_tier_names, processing_tier_limits):
-        service_name = f"processing-{tier_name}"
-        try:
-            docker_client.services.get(service_name).remove()
-        except docker.errors.NotFound:
-            log.info("Could not remove processing service.")
+    for i, tier in enumerate(processing_tier_names):
+        docker_client.services.get(services[i]).scale(0)
+    for i, tier in enumerate(processing_tier_names):
+        service_tasks = docker_client.services.get(services[i]).tasks()
+        running_tasks_per_tier = sum(
+            1 for task in service_tasks if task["Status"]["State"] == "running"
+        )
+        if running_tasks_per_tier == 0:
+            try:
+                docker_client.services.get(services[i]).remove()
+            except docker.errors.NotFound:
+                log.info("Could not remove processing service {services[i]}.")
+        time.sleep(update_time)
+    log.info("Finished processing and removed all services.")
 
     return process_ids
 
