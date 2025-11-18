@@ -107,6 +107,10 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     )
 
     if config.logging.get("file_logging", False):
+        # Remove possibly pre-existing file handler
+        for log_handler in log.handlers:
+            if isinstance(log_handler, logging.FileHandler):
+                log.removeHandler(log_handler)
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(
@@ -194,7 +198,9 @@ def dbexcepthook(type, value, tb):
 @click.argument("dec", type=click.FloatRange(-90, 90))
 @click.argument(
     "components",
-    type=click.Choice(["all", "rfi", "beamform", "dedisp", "ps", "ffa", "search", "cleanup"]),
+    type=click.Choice(
+        ["all", "rfi", "beamform", "dedisp", "ps", "ffa", "search", "cleanup"]
+    ),
     nargs=-1,
 )
 @click.option(
@@ -591,7 +597,9 @@ def main(
                     spectra_shared.unlink()
 
             # Run FFA search if requested
-            if "ffa" in components and config.get("ffa", {}).get("run_ffa_search", False):
+            if "ffa" in components and config.get("ffa", {}).get(
+                "run_ffa_search", False
+            ):
                 log.info(
                     "FFA Search"
                     f" ({active_pointing.ra:.2f} {active_pointing.dec:.2f}) @"
