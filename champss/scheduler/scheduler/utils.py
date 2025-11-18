@@ -43,7 +43,7 @@ def dummy_workflow_task(wait_time):
     # signal.signal(signal.SIGINT, signal.SIG_IGN)
     # signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGKILL, signal_handler)
+    # signal.signal(signal.SIGKILL, signal_handler)
     # signal.signal(signal.SIGKILL, signal.SIG_IGN)
     log.info(f"Task started. Will wait for {wait_time} seconds.")
     time.sleep(wait_time)
