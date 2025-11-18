@@ -47,9 +47,9 @@ def dummy_workflow_task(wait_time):
     # signal.signal(signal.SIGKILL, signal_handler)
     # signal.signal(signal.SIGKILL, signal.SIG_IGN)
 
-    catchable_sigs = set(signal.Signals) - {signal.SIGKILL, signal.SIGSTOP}
-    for sig in catchable_sigs:
-        signal.signal(sig, print)  # Substitute handler of choice for `print`
+    # catchable_sigs = set(signal.Signals) - {signal.SIGKILL, signal.SIGSTOP}
+    # for sig in catchable_sigs:
+    #     signal.signal(sig, print)  # Substitute handler of choice for `print`
 
     log.info(f"Task started. Will wait for {wait_time} seconds.")
     time.sleep(wait_time)
