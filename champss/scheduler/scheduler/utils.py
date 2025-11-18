@@ -24,6 +24,7 @@ def signal_handler(sig, frame):
     log.info(f"Received signal: {sig} ({signal.Signals(sig).name})")
     # Add any other desired actions here
 
+
 def convert_date_to_datetime(date):
     if isinstance(date, str) or isinstance(date, int):
         for date_format in ["%Y-%m-%d", "%Y%m%d", "%Y/%m/%d"]:
@@ -39,12 +40,17 @@ def convert_date_to_datetime(date):
 @click.option("--wait_time", type=float, default=10)
 def dummy_workflow_task(wait_time):
     # signal.signal(signal.SIGTERM, continue_running)
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    # signal.signal(signal.SIGTERM, signal.SIG_IGN)
     # signal.signal(signal.SIGINT, signal.SIG_IGN)
     # signal.signal(signal.SIGINT, signal_handler)
     # signal.signal(signal.SIGTERM, signal_handler)
     # signal.signal(signal.SIGKILL, signal_handler)
     # signal.signal(signal.SIGKILL, signal.SIG_IGN)
+
+    catchable_sigs = set(signal.Signals) - {signal.SIGKILL, signal.SIGSTOP}
+    for sig in catchable_sigs:
+        signal.signal(sig, print)  # Substitute handler of choice for `print`
+
     log.info(f"Task started. Will wait for {wait_time} seconds.")
     time.sleep(wait_time)
     log.info(f"Task completed after {wait_time} seconds.")

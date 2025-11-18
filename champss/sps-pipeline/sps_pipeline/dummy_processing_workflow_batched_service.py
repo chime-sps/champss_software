@@ -59,7 +59,7 @@ def deposit_dummy_work(pointing):
     work.function = "scheduler.utils.dummy_workflow_task"
     mem_req = ram_requirement(pointing)
     # work.parameters = {}
-    work.parameters = {"wait_time": mem_req * 1}
+    work.parameters = {"wait_time": mem_req * 10}
     tier = get_tier(mem_req)
     work.tags = [pointing["_id"].__str__(), tiers[tier]]
     work.config.archive.results = True
@@ -191,10 +191,10 @@ def run_dummy_processing():
             # "command": (
             #     "workflow run"
             #     f" dummy-schedule --site"
-            #     f" chime --lives 1 --sleep 1"
+            #     f" chime --lives -1 --sleep 1"
             #     f" --tag {tiers[i % 2]}"
             # ),
-            "command": "run-dummy-task --wait_time 1000",
+            "command": "run-dummy-task --wait_time 100",
             "mode": docker.types.ServiceMode("replicated", replicas=1),
             "restart_policy": docker.types.RestartPolicy(
                 condition="none", max_attempts=0
@@ -214,10 +214,10 @@ def run_dummy_processing():
             # to communicate with other containers (MongoDB, Prometheus, etc) that are
             # also manually added to this network
             "networks": ["pipeline-network"],
-            # "stop_grace_period": 100,
+            "stop_grace_period": int(1e11),
             # "stop_signal": "SIGINT",
         }
-        
+
 
         log.info(f"Creating Docker Service: \n{docker_service}")
 
