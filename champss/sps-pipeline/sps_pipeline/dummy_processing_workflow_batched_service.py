@@ -188,14 +188,14 @@ def run_dummy_processing():
             "name": f"processing-{tiers[i]}",
             # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
-            "command": (
-                "workflow run"
-                f" dummy-schedule --site"
-                f" chime --lives 1 --sleep 1"
-                f" --tag {tiers[i % 2]}"
-            ),
-            # "command": "run-dummy-task --wait_time 1000",
-            "mode": docker.types.ServiceMode("replicated", replicas=0),
+            # "command": (
+            #     "workflow run"
+            #     f" dummy-schedule --site"
+            #     f" chime --lives 1 --sleep 1"
+            #     f" --tag {tiers[i % 2]}"
+            # ),
+            "command": "run-dummy-task --wait_time 1000",
+            "mode": docker.types.ServiceMode("replicated", replicas=1),
             "restart_policy": docker.types.RestartPolicy(
                 condition="none", max_attempts=0
             ),
@@ -214,7 +214,7 @@ def run_dummy_processing():
             # to communicate with other containers (MongoDB, Prometheus, etc) that are
             # also manually added to this network
             "networks": ["pipeline-network"],
-            "stop_grace_period": 1000,
+            "stop_grace_period": 100,
             # "stop_signal": "SIGINT",
         }
 
@@ -243,31 +243,33 @@ def run_dummy_processing():
     )
     time.sleep(5)
     while len(all_works) > 0:
-        upcoming_tags = {tier: 0 for tier in tiers}
-        for i, work in enumerate(all_works[:]):
-            current_tag = set(work["tags"]).intersection(set(tiers))
-            current_tag = [tag for tag in current_tag][0]
-            upcoming_tags[current_tag] += 1
-        print(upcoming_tags)
-        print(all_works[0]["creation"])
-        # breakpoint()
-        for i, tier in enumerate(tiers):
-            # services[i].scale(upcoming_tags[tier])
-            docker_client.services.get(services[i]).scale(upcoming_tags[tier])
         time.sleep(5)
-        running_tasks = 0
-        for i, tier in enumerate(tiers):
-            service_tasks = docker_client.services.get(services[i]).tasks()
-            running_tasks += sum(
-                1 for task in service_tasks if task["Status"]["State"] == "running"
-            )
-        print(running_tasks)
-        requested_containers = running_tasks + 0
-        all_works = list(
-            buckets_db.find({"pipeline": "dummy-schedule"})
-            .sort("creation", pymongo.ASCENDING)
-            .limit(requested_containers)
-        )
+        # pass
+        # upcoming_tags = {tier: 0 for tier in tiers}
+        # for i, work in enumerate(all_works[:]):
+        #     current_tag = set(work["tags"]).intersection(set(tiers))
+        #     current_tag = [tag for tag in current_tag][0]
+        #     upcoming_tags[current_tag] += 1
+        # print(upcoming_tags)
+        # print(all_works[0]["creation"])
+        # # breakpoint()
+        # for i, tier in enumerate(tiers):
+        #     # services[i].scale(upcoming_tags[tier])
+        #     docker_client.services.get(services[i]).scale(upcoming_tags[tier])
+        # time.sleep(5)
+        # running_tasks = 0
+        # for i, tier in enumerate(tiers):
+        #     service_tasks = docker_client.services.get(services[i]).tasks()
+        #     running_tasks += sum(
+        #         1 for task in service_tasks if task["Status"]["State"] == "running"
+        #     )
+        # print(running_tasks)
+        # requested_containers = running_tasks + 0
+        # all_works = list(
+        #     buckets_db.find({"pipeline": "dummy-schedule"})
+        #     .sort("creation", pymongo.ASCENDING)
+        #     .limit(requested_containers)
+        # )
     for i, tier in enumerate(tiers):
         # services[i].scale(upcoming_tags[tier])
         docker_client.services.get(services[i]).scale(0)
