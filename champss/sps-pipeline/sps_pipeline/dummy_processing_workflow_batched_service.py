@@ -214,9 +214,10 @@ def run_dummy_processing():
             # to communicate with other containers (MongoDB, Prometheus, etc) that are
             # also manually added to this network
             "networks": ["pipeline-network"],
-            "stop_grace_period": 100,
+            # "stop_grace_period": 100,
             # "stop_signal": "SIGINT",
         }
+        
 
         log.info(f"Creating Docker Service: \n{docker_service}")
 
