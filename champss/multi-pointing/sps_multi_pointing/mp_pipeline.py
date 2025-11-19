@@ -366,6 +366,9 @@ def cli(
                             "freq": summary["freq"],
                             "dm": summary["dm"],
                         }
+                        log.info(
+                            f"Added {pulsar} with {pointing_dict} to pointing {pointing_id}"
+                        )
                         if len(cand.obs_id) <= 1:
                             pointing_dict["obs_id"] = obs_id
                             update_stack = False
@@ -376,6 +379,7 @@ def cli(
                         updated_pointing = db_api.update_pulsars_in_pointing(
                             pointing_id, pulsar, pointing_dict, stack=update_stack
                         )
+                        # breakpoint()
         """
         I don't think  in the current state without filtering
         we want to write candidates to the database.
