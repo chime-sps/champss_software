@@ -31,6 +31,15 @@ class ProcessStatus(enum.Enum):
     blocked = 5
 
 
+class DailyStatus(enum.Enum):
+    created = 0
+    scheduled = 1
+    finishedPipeline = 2
+    finishedMultiPointing = 3
+    finishedClassification = 4
+    finishedFolding = 5
+
+
 class DatabaseError(Exception):
     pass
 
@@ -899,4 +908,47 @@ class Process:
         doc["pointing_id"] = ObjectId(self.pointing_id)
         doc["status"] = self.status.value
         doc["obs_status"] = self.obs_status.value
+        return doc
+
+
+@attrs
+class DailyRun:
+    date = attrib(validator=validators.instance_of(dt.date))
+    status = attrib(validator=validators.in_(DailyStatus), type=DailyStatus)
+    schedule_result = attrib(
+        default={},
+        converter=dict,
+    )
+    pipeline_result = attrib(
+        default={},
+        converter=dict,
+    )
+    multipointing_result = attrib(
+        default={},
+        converter=dict,
+    )
+    classification_result = attrib(
+        default={},
+        converter=dict,
+    )
+    folding_result = attrib(
+        default={},
+        converter=dict,
+    )
+
+    @property
+    def id(self):
+        return self._id
+
+    @classmethod
+    def from_db(cls, doc):
+        """Create a `DailyRun` instance from a MongoDB document."""
+        filtered_doc = filter_class_dict(cls, doc)
+        obj = cls(**filtered_doc)
+        return obj
+
+    def to_db(self):
+        """Return a MongoDB document version of this instance."""
+        doc = asdict(self)
+        doc["_id"] = ObjectId(self.id)
         return doc
