@@ -866,9 +866,11 @@ class Process:
 
     @property
     def ram_requirement(self):
+        # Very long processes will be split into multiple processing runs
+        ntime = min(self.ntime, 2**22)
         return min(
             100.0,
-            4 + (self.maxdm * 0.04 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20),
+            4 + (self.maxdm * 0.04 + ntime * 6e-6) * 2 ** (ntime // 2**20),
         )
 
     @property
