@@ -810,6 +810,11 @@ def run_all_pipeline_processes(
                 f" chime --lives -1 --sleep 1"
                 f" --tag {tier_name}"
             ),
+            # Using template Docker variables as in-container environment variables
+            # that allow us this access out-of-container information
+            "env": ["CONTAINER_NAME={{.Task.Name}}", "NODE_NAME={{.Node.Hostname}}"],
+            # This is neccessary to allow Pyroscope (py-spy) to work in Docker
+            # 'cap_add': ['SYS_PTRACE'],
             "mode": docker.types.ServiceMode("replicated", replicas=0),
             "restart_policy": docker.types.RestartPolicy(
                 condition="none", max_attempts=0
