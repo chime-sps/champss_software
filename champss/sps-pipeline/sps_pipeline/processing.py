@@ -35,7 +35,7 @@ from sps_pipeline.utils import get_pointings_from_list
 
 log = logging.getLogger()
 
-max_work_duration = 60 * 60 # in seconds
+max_work_duration = 60 * 60  # in seconds
 
 
 def scale_down_service(service_name):
@@ -1155,6 +1155,9 @@ def start_processing_manager(
                         ],
                         standalone_mode=False,
                     )
+                    daily_run = db_api.update_daily_run(
+                        current_date.date(), {"schedule_result": processes}
+                    )
 
                     if len(processes["unfinished_processes"]) == 0:
                         message_slack(
@@ -1304,6 +1307,16 @@ def start_processing_manager(
                         )
 
                 message_slack(slack_message)
+                pipeline_result = {
+                    "completed_processes": completed_processes,
+                    "overall_time_of_processing": overall_time_of_processing,
+                    "time_per_nchan": time_per_nchan,
+                    "rfi_processeses": rfi_processeses,
+                    "average_time_of_processing": average_time_of_processing,
+                }
+                daily_run = db_api.update_daily_run(
+                    current_date.date(), {"pipeline_result": pipeline_result}
+                )
             # End of pipeline phase
 
             # Start of multi-pointing phase
@@ -1383,6 +1396,9 @@ def start_processing_manager(
                         "No results from multi-pointing. See Workfklow Web for errors,"
                         f" with filter: ALL_tags=['mp', '{date_string}']"
                     )
+                daily_run = db_api.update_daily_run(
+                    current_date.date(), {"multipointing_result": work_result}
+                )
             # End of multi-pointing phase
 
             # Start of classification phase
@@ -1420,6 +1436,14 @@ def start_processing_manager(
                     docker_swarm_running_states,
                     docker_service_name_prefix,
                     timeout=class_timeout,
+                )
+                work_result = get_work_from_results(
+                    workflow_results_name=workflow_buckets_name,
+                    work_id=work_id,
+                    failover_to_buckets=True,
+                )
+                daily_run = db_api.update_daily_run(
+                    current_date.date(), {"classification_result": work_result}
                 )
             # End of classification phase
 
@@ -1486,6 +1510,9 @@ def start_processing_manager(
                 )
 
                 message_slack(f"Candidate folding for {date_string} complete")
+                daily_run = db_api.update_daily_run(
+                    current_date.date(), {"classification_result": processes}
+                )
             # End of folding phase
 
             number_of_days_processed = number_of_days_processed + 1

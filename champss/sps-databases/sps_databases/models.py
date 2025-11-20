@@ -935,6 +935,13 @@ class DailyRun:
         default={},
         converter=dict,
     )
+    last_changed = attrib(
+        validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
+    )
+    plots = attrib(
+        default={},
+        converter=dict,
+    )
 
     @property
     def id(self):
