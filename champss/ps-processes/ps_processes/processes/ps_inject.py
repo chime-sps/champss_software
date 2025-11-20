@@ -45,53 +45,45 @@ def gaussian(mu, sig):
 def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
 
+def generate_injection(N):
+    '''
+    This function generates a random injection and its parameters.
+    '''
 
-def generate_pulse(noise=False):
-    """
-    This function generates a random pulse profile to inject.
+    profiles = np.load('~/Transmissivity/scripts/smoothed_baselined_TPA_pulses.npy')
 
-    Inputs:
-    -------
-            noise: bool
-                whether or not the pulse should be distorted by white noise
-    """
-    u = rand.uniform(0.01, 0.99)
-    # inverse sampling theorem for an exponential distribution with lambda = 1/15
-    gamma = -15 * np.log(1 - u) / 2 / 360
-    prof = lorentzian(phis, gamma)
-    prof /= max(prof)
-    subpulses = rand.choice(range(4), p=(mean_zeros, mean_ones, mean_twos, mean_threes))
+    f_dist = np.loadtxt('atnf_freqs.txt', usecols = [1])
+    f_log = np.logspace(-3, 2.7, int((4/6)*len(f_dist)))
+    f_choices = np.concatenate([f_dist, f_log]) 
+    f = np.random.choice(f_choices, size = N)
+    f[f > f_nyquist] = f_nyquist
 
-    # interpulse?
-    # the chances of having an interpulse are approximately 23/(1208 - 23), as in TPA
-    roll = rand.choice(range(1208 - 23))
-    if roll < 23:
-        u = rand.choice(np.linspace(0.01, 0.99, 1000))
-        # inverse sampling theorem for an exponential distribution with lambda = 1/15
-        gamma_interpulse = -15 * np.log(1 - u) / 2 / 360
-        x0_inter = rand.normal(0.5, 10 / 360)
-        interpulse = lorentzian(phis, gamma_interpulse, x0_inter)
-        interpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(interpulse)
-        # roll interpulse to correct location at ~180 deg from main pulse
-        np.roll(interpulse, 512)
-        prof += interpulse
+    dm_spread = np.linspace(0, 1000, 10000)
+    dm_weights = dm_distribution(dm_spread, 24, 24, 0.02)
+    #24 is chosen as the maximum DM value at b = 90 deg from NE2001
+    dm_dist = np.random.choice(dm_spread, size = int(0.6*N), p = dm_weights)
+    dm_linear = np.linspace(0, 1000, int(0.4*N))
+    dm = np.concatenate([dm_dist, dm_linear])
+    dm[dm > pspec.dms[-1]] = pspec.dms[-1]
 
-    # subpulses
-    for i in range(subpulses):
-        u = rand.choice(np.linspace(0.01, 0.99, 1000))
-        # inverse sampling theorem for an exponential distribution with lambda = 1/15
-        gamma_sub = -15 * np.log(1 - u) / 2 / 360
-        x0_sub = 0.5 + rand.normal(0, 0.1)
-        subpulse = lorentzian(phis, gamma_sub, x0_sub)
-        subpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(subpulse)
-        prof += subpulse
+    S_choices = np.logspace(-2, 1, 10000)
+    S = np.random.choice(S_choices, N)
 
-    # working on this-- the standard deviation isn't correct
-    if noise:
-        prof += rand.normal(0, 1, len(phis))
+    prof = np.random.choice(profiles, N, axis = 0)
+    #TPA_idx, f, DM, flux, fwhm, predicted_sigma, predicted_nharm
+    
+    injection_profiles = []
 
-    return prof
+    for i in range(N):
+        injection_profiles.append(
+            {
+                "profile": prof[i],
+                "flux": S[i],
+                "frequency": f[i],
+                "DM": dm[i],
+            }
 
+    return injection_profiles
 
 def x_to_chi2(x, df):
     """
@@ -694,79 +686,11 @@ def main(
     --------
             injection_profiles (list(dict)) : List containing dict describing the injection.
     """
-    default_freq = rand.choice(
-        np.linspace(0.1, 100, 10000), num_injections, replace=False
-    )
-    default_dm = rand.choice(np.linspace(10, 200, 10000), num_injections, replace=False)
-    default_sigma = rand.choice(np.linspace(5, 20, 1000), num_injections, replace=False)
-
-    defaults = {
-        "gaussian": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "subpulse": {
-            "profile": gaussian(0.5, 0.025) + 0.5 * gaussian(0.6, 0.015),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "interpulse": {
-            "profile": gaussian(0.5, 0.025) + 0.8 * gaussian(0.1, 0.02),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "faint": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 10,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "high-DM": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 212.3,
-        },
-        "slow": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": 3.27,
-            "DM": 121.4375,
-        },
-        "fast": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": 70.26,
-            "DM": 121.4375,
-        },
-    }
-
-    injection_profiles = []
-
-    if type(injection_profile) == str and injection_profile != "random":
-        injection_profile = defaults[injection_profile]
-        injection_profiles.append(injection_profile)
-        if injection_profile != "slow" and injection_profile != "fast":
-            log.info(f"Your randomly assigned frequency is {default_freq} Hz.")
-
-    elif injection_profile == "random":
-        for i in range(num_injections):
-            pulse = generate_pulse()
-            injection_profiles.append(
-                {
-                    "profile": pulse,
-                    "sigma": default_sigma[i],
-                    "frequency": default_freq[i],
-                    "DM": default_dm[i],
-                }
-            )
+    if injection_profile == "random":
+        injection_profiles = generate_injection(num_injections)
 
     else:
-        injection_profiles.append(injection_profile)
+        injection_profiles = [injection_profile]
 
     if remove_spectra:
         log.info("Replacing spectra with expected mean value.")
