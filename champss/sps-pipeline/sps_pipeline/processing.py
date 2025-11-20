@@ -11,13 +11,14 @@ from glob import glob
 from multiprocessing import Pool
 import pymongo
 import atexit
+import pandas as pd
 
 import click
 import docker
 import numpy as np
 import pytz
 from beamformer.strategist.strategist import PointingStrategist
-from folding.filter_mpcandidates import Filter
+from folding.filter_mpcandidates import filter_mp_df
 from scheduler.utils import convert_date_to_datetime
 from scheduler.workflow import (  # docker_swarm_pending_states,
     clear_workflow_buckets,
@@ -92,26 +93,35 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
     log.info(f"Filtering candidates for {date}")
 
     date = convert_date_to_datetime(date)
+    daily_run = db_api.get_daily_run(date.date())
+    csv_input_name = daily_run["classification_result"]["output_file"]
+    candidate_df = pd.read_csv(csv_input_name, index_col=0)
 
-    Filter(
-        cand_obs_date=date,
-        db_host=db_host,
-        db_port=db_port,
-        db_name=db_name,
-        write_to_db=True,
-        basepath=basepath,
-        foldpath=foldpath,
-    )
-    Filter(
-        cand_obs_date=date,
-        db_host=db_host,
-        db_port=db_port,
-        db_name=db_name,
-        write_to_db=True,
-        basepath=basepath,
-        foldpath=foldpath,
-        class_threshold=0.5,
-    )
+    filtered_df = filter_mp_df(candidate_df, sigma_min=7, class_min=0.9)
+    write_df_to_fsdb(filtered_df, date)
+    output_file = csv.rsplit("_", 1)[0] + "_folded.csv"
+
+    filtered_df.to_csv(output_file)
+
+    # Filter(
+    #     cand_obs_date=date,
+    #     db_host=db_host,
+    #     db_port=db_port,
+    #     db_name=db_name,
+    #     write_to_db=True,
+    #     basepath=basepath,
+    #     foldpath=foldpath,
+    # )
+    # Filter(
+    #     cand_obs_date=date,
+    #     db_host=db_host,
+    #     db_port=db_port,
+    #     db_name=db_name,
+    #     write_to_db=True,
+    #     basepath=basepath,
+    #     foldpath=foldpath,
+    #     class_threshold=0.5,
+    # )
 
     log.info("Candidate filtering complete")
 

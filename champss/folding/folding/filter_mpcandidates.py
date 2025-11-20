@@ -257,6 +257,26 @@ def Filter(
             known=known,
         )
 
+def filter_mp_df(df, sigma_min=7, class_min=0.9):
+    df_filtered = df[df["prediction"] > class_min]
+    df_filtered = df_filtered[df_filtered["sigma"] > min_sigma]
+    df_filtered["folded"] = True
+    return df
+
+def write_df_to_fsdb(df, date):
+    for index, row in df.iterrows():
+        add_candidate_to_fsdb(
+            date.strftime("%Y%m%d"),
+            row["ra"],
+            row["ra"],
+            row["mean_freq"],
+            row["mean_dm"],
+            row["sigma"],
+            row["file_name"],
+            "sd_candidate",
+        )
+
+
 
 @click.command()
 @click.option(
