@@ -320,6 +320,7 @@ def plot_candidate_archive(
 
     num_ks = 16  # Max number of ks displayed in table
     ks_params = []
+    ks_is_psr_scraper = []  # Track which rows have 'psr_scraper' survey flag
     for source in sources_ordered:
         ks_name = source.source_name
         # ks_epoch = source.spin_period_epoch
@@ -345,6 +346,9 @@ def plot_candidate_archive(
             ]
             if len(ks_params) < num_ks:
                 ks_params.append(ks_param)
+                # Check if 'psr_scraper' is in the full survey list
+                has_psr_scraper = source.survey and "psr_scraper" in source.survey
+                ks_is_psr_scraper.append(has_psr_scraper)
 
     ks_text = f"Closest {len(ks_params)} known sources within {radius} degrees, $\Delta$DM < 10%\n"
 
@@ -416,6 +420,13 @@ def plot_candidate_archive(
         ks_param_table.auto_set_font_size(False)
         ks_param_table.set_fontsize(8)
         ks_param_table.auto_set_column_width(col=list(range(len(ks_df.columns))))
+
+        # Color rows blue if they have 'psr_scraper' in their survey flags
+        for row_idx, is_psr_scraper in enumerate(ks_is_psr_scraper):
+            if is_psr_scraper:
+                # row_idx + 1 because row 0 is the header
+                for col_idx in range(len(ks_df.columns)):
+                    ks_param_table[(row_idx + 1, col_idx)].set_text_props(color="blue")
 
     cand_param_table = axtext.table(
         cellText=cand_params_text, cellLoc="left", loc="top", edges="open"
