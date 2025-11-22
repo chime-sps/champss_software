@@ -351,19 +351,20 @@ def plot_candidate_archive(
     i_order = np.argsort(pos_diffs)
     sources_ordered = [sources[i] for i in i_order]
 
-    # Collect bright sources (best_detection sigma > 50) within 5 degrees
+    # Collect bright sources (best detection sigma > 50) within 5 degrees
     # LIKELY MATCH sources (harmonic matches with 1% tolerance) sorted to top
     bright_sources = []
     bright_likely_matches = []
     for source in sources_ordered:
-        # Check if this is a bright source (best_detection sigma > 50)
+        # Check if this is a bright source (max sigma in detection_history > 50)
         is_bright = False
-        if hasattr(source, 'best_detection') and source.best_detection is not None:
-            best_det = source.best_detection
-            if isinstance(best_det, dict) and best_det.get('sigma', 0) > 50:
-                is_bright = True
-            elif hasattr(best_det, 'sigma') and best_det.sigma is not None and best_det.sigma > 50:
-                is_bright = True
+        best_sigma = 0
+        if hasattr(source, 'detection_history') and source.detection_history:
+            sigmas = [d.get('sigma', 0) for d in source.detection_history if isinstance(d, dict)]
+            if sigmas:
+                best_sigma = max(sigmas)
+                if best_sigma > 50:
+                    is_bright = True
 
         if not is_bright:
             continue
@@ -413,11 +414,9 @@ def plot_candidate_archive(
     for source in sources_ordered:
         # Skip bright sources (already in bright_sources table)
         is_bright = False
-        if hasattr(source, 'best_detection') and source.best_detection is not None:
-            best_det = source.best_detection
-            if isinstance(best_det, dict) and best_det.get('sigma', 0) > 50:
-                is_bright = True
-            elif hasattr(best_det, 'sigma') and best_det.sigma is not None and best_det.sigma > 50:
+        if hasattr(source, 'detection_history') and source.detection_history:
+            sigmas = [d.get('sigma', 0) for d in source.detection_history if isinstance(d, dict)]
+            if sigmas and max(sigmas) > 50:
                 is_bright = True
         if is_bright:
             continue
