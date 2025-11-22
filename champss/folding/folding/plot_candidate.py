@@ -539,7 +539,7 @@ def plot_candidate_archive(
     if len(bright_sources_all) > 0:
         ax_alias.text(
             0,
-            0.95,
+            1.0,
             "Bright sources within 5 degrees (sigma > 50):",
             fontsize=10,
             fontweight="bold",
@@ -554,7 +554,7 @@ def plot_candidate_archive(
             colLabels=bright_df.columns,
             colColours=["lightyellow"] * len(bright_df.columns),
             cellLoc="left",
-            loc="top",
+            bbox=[0, 0.6, 1, 0.35],  # [left, bottom, width, height] in axes coords
         )
         bright_table.auto_set_font_size(False)
         bright_table.set_fontsize(9)
