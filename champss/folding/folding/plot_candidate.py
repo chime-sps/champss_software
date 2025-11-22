@@ -382,24 +382,23 @@ def plot_candidate_archive(
         alias_factor = check_frequency_alias(f0, ks_f0, tolerance=0.01)
         if alias_factor is not None:
             if alias_factor < 1:
-                alias_str = f"1/{int(1/alias_factor)}"
+                harm_str = f"1/{int(1/alias_factor)}"
             elif alias_factor == 1:
-                alias_str = "1"
+                harm_str = "1"
             else:
-                alias_str = str(int(alias_factor))
-            match_flag = f"LIKELY MATCH: {source.source_name}, h={alias_str}"
+                harm_str = str(int(alias_factor))
         else:
-            match_flag = ""
+            harm_str = ""
 
         bright_entry = [
             source.source_name,
             round(pos_diff, 2),
             round(ks_f0, 4),
             ks_dm,
-            match_flag,
+            harm_str,
         ]
 
-        if match_flag:
+        if harm_str:
             bright_likely_matches.append(bright_entry)
         else:
             bright_sources.append(bright_entry)
@@ -539,7 +538,7 @@ def plot_candidate_archive(
     if len(bright_sources_all) > 0:
         ax_alias.text(
             0,
-            1.0,
+            0.95,
             "Bright sources within 5 degrees (sigma > 50):",
             fontsize=10,
             fontweight="bold",
@@ -547,20 +546,20 @@ def plot_candidate_archive(
             ha="left",
             transform=ax_alias.transAxes,
         )
-        bright_columns = ["Name", r"$\Delta$Pos.", "F0", "DM", "Match Status"]
+        bright_columns = ["Name", r"$\Delta$Pos.", "F0", "DM", "Harm"]
         bright_df = pd.DataFrame(bright_sources_all, columns=bright_columns)
         bright_table = ax_alias.table(
             cellText=bright_df.values,
             colLabels=bright_df.columns,
             colColours=["lightyellow"] * len(bright_df.columns),
             cellLoc="left",
-            bbox=[0, 0.6, 1, 0.35],  # [left, bottom, width, height] in axes coords
+            loc="top",
         )
         bright_table.auto_set_font_size(False)
         bright_table.set_fontsize(9)
         bright_table.auto_set_column_width(col=list(range(len(bright_df.columns))))
 
-        # Highlight LIKELY MATCH rows in bold/red
+        # Highlight harmonic match rows in bold/red
         for row_idx in range(len(bright_likely_matches)):
             for col_idx in range(len(bright_df.columns)):
                 bright_table[(row_idx + 1, col_idx)].set_text_props(
