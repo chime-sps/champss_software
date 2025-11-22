@@ -16,6 +16,36 @@ from multiday_search.phase_aligned_search import phase_loop
 from numba import njit, prange, set_num_threads
 
 
+def check_frequency_alias(f0_cand, f0_known, tolerance=0.0001):
+    """
+    Check if a candidate frequency is an alias (harmonic or sub-harmonic) of a known pulsar.
+
+    Parameters
+    ----------
+    f0_cand : float
+        Candidate spin frequency in Hz
+    f0_known : float
+        Known pulsar spin frequency in Hz
+    tolerance : float
+        Fractional tolerance for frequency matching (default 0.01%)
+
+    Returns
+    -------
+    alias_factor : float or None
+        The harmonic ratio (e.g., 2 for 2nd harmonic, 0.5 for sub-harmonic),
+        or None if no alias match found
+    """
+    # Check harmonics and sub-harmonics up to 16
+    alias_factors = [1/n for n in range(16, 0, -1)] + [n for n in range(2, 17)]
+
+    for factor in alias_factors:
+        expected_f0 = f0_known * factor
+        if abs(f0_cand - expected_f0) / expected_f0 < tolerance:
+            return factor
+
+    return None
+
+
 def compute_accel_steps(
     dts, f0, npbin, vmax=500 * u.km / u.s, Pbmin=2 * u.hour, phase_accuracy=1.0 / 256,
     stack_binary_search=False, f1_maxbins=2048,
@@ -198,6 +228,9 @@ def plot_candidate_archive(
     ax_kstext = fig.add_subplot(gs[7, 10:17])
     ax_kstext.axis("off")
 
+    ax_alias = fig.add_subplot(gs[0:6, 19:35])
+    ax_alias.axis("off")
+
     plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
 
     if accel_search:
@@ -318,12 +351,78 @@ def plot_candidate_archive(
     i_order = np.argsort(pos_diffs)
     sources_ordered = [sources[i] for i in i_order]
 
-    num_ks = 16  # Max number of ks displayed in table
+    # Collect bright sources (best_detection sigma > 50) within 5 degrees
+    # LIKELY MATCH sources (harmonic matches with 1% tolerance) sorted to top
+    bright_sources = []
+    bright_likely_matches = []
+    for source in sources_ordered:
+        # Check if this is a bright source (best_detection sigma > 50)
+        is_bright = False
+        if hasattr(source, 'best_detection') and source.best_detection is not None:
+            best_det = source.best_detection
+            if isinstance(best_det, dict) and best_det.get('sigma', 0) > 50:
+                is_bright = True
+            elif hasattr(best_det, 'sigma') and best_det.sigma is not None and best_det.sigma > 50:
+                is_bright = True
+
+        if not is_bright:
+            continue
+
+        pos_diff = known_source_filters.angular_separation(
+            ra, dec, source.pos_ra_deg, source.pos_dec_deg
+        )[1]
+        if pos_diff > 5.0:
+            continue
+
+        ks_f0 = 1 / source.spin_period_s
+        ks_dm = round(source.dm, 2)
+
+        # Check for harmonic match with 1% tolerance
+        alias_factor = check_frequency_alias(f0, ks_f0, tolerance=0.01)
+        if alias_factor is not None:
+            if alias_factor < 1:
+                alias_str = f"1/{int(1/alias_factor)}"
+            elif alias_factor == 1:
+                alias_str = "1"
+            else:
+                alias_str = str(int(alias_factor))
+            match_flag = f"LIKELY MATCH: {source.source_name}, h={alias_str}"
+        else:
+            match_flag = ""
+
+        bright_entry = [
+            source.source_name,
+            round(pos_diff, 2),
+            round(ks_f0, 4),
+            ks_dm,
+            match_flag,
+        ]
+
+        if match_flag:
+            bright_likely_matches.append(bright_entry)
+        else:
+            bright_sources.append(bright_entry)
+
+    # Sort LIKELY MATCH entries to top
+    bright_sources_all = bright_likely_matches + bright_sources
+
+    # Collect other sources within 1 degree (max 10)
+    num_ks = 10  # Max number of other sources displayed in table
     ks_params = []
     ks_is_psr_scraper = []  # Track which rows have 'psr_scraper' survey flag
     for source in sources_ordered:
+        # Skip bright sources (already in bright_sources table)
+        is_bright = False
+        if hasattr(source, 'best_detection') and source.best_detection is not None:
+            best_det = source.best_detection
+            if isinstance(best_det, dict) and best_det.get('sigma', 0) > 50:
+                is_bright = True
+            elif hasattr(best_det, 'sigma') and best_det.sigma is not None and best_det.sigma > 50:
+                is_bright = True
+        if is_bright:
+            continue
+
         ks_name = source.source_name
-        # ks_epoch = source.spin_period_epoch
         ks_ra = round(source.pos_ra_deg, 2)
         ks_dec = round(source.pos_dec_deg, 2)
         ks_f0 = round(1 / source.spin_period_s, 4)
@@ -334,6 +433,9 @@ def plot_candidate_archive(
         pos_diff = known_source_filters.angular_separation(
             ra, dec, source.pos_ra_deg, source.pos_dec_deg
         )[1]
+        # Use 1-degree threshold for non-bright sources
+        if pos_diff > 1.0:
+            continue
         if np.abs(dm - ks_dm) < dm / 10.0:
             ks_param = [
                 ks_name,
@@ -350,7 +452,7 @@ def plot_candidate_archive(
                 has_psr_scraper = source.survey and "psr_scraper" in source.survey
                 ks_is_psr_scraper.append(has_psr_scraper)
 
-    ks_text = f"Closest {len(ks_params)} known sources within {radius} degrees, $\Delta$DM < 10%\n"
+    ks_text = f"Other sources within 1 degree, $\Delta$DM < 10% (max {num_ks})\n"
 
     column_labels = ["Name", "$\Delta Pos.$", "RA", "Dec", "F0", "DM", "Survey(s)"]
     ks_df = pd.DataFrame(ks_params, columns=column_labels)
@@ -434,6 +536,38 @@ def plot_candidate_archive(
     cand_param_table.auto_set_font_size(False)
     cand_param_table.set_fontsize(10)
     cand_param_table.scale(10, 1.25)
+
+    # Render "Bright sources within 5deg" table
+    if len(bright_sources_all) > 0:
+        ax_alias.text(
+            0,
+            0.95,
+            "Bright sources within 5 degrees (sigma > 50):",
+            fontsize=10,
+            fontweight="bold",
+            va="top",
+            ha="left",
+            transform=ax_alias.transAxes,
+        )
+        bright_columns = ["Name", r"$\Delta$Pos.", "F0", "DM", "Match Status"]
+        bright_df = pd.DataFrame(bright_sources_all, columns=bright_columns)
+        bright_table = ax_alias.table(
+            cellText=bright_df.values,
+            colLabels=bright_df.columns,
+            colColours=["lightyellow"] * len(bright_df.columns),
+            cellLoc="left",
+            loc="top",
+        )
+        bright_table.auto_set_font_size(False)
+        bright_table.set_fontsize(9)
+        bright_table.auto_set_column_width(col=list(range(len(bright_df.columns))))
+
+        # Highlight LIKELY MATCH rows in bold/red
+        for row_idx in range(len(bright_likely_matches)):
+            for col_idx in range(len(bright_df.columns)):
+                bright_table[(row_idx + 1, col_idx)].set_text_props(
+                    color="red", fontweight="bold"
+                )
 
     if not known.strip():
         plotstring = f"cand_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
