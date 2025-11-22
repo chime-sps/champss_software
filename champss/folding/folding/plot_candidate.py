@@ -436,23 +436,22 @@ def plot_candidate_archive(
         # Use 1-degree threshold for non-bright sources
         if pos_diff > 1.0:
             continue
-        if np.abs(dm - ks_dm) < dm / 10.0:
-            ks_param = [
-                ks_name,
-                round(pos_diff, 2),
-                ks_ra,
-                ks_dec,
-                ks_f0,
-                ks_dm,
-                ks_survey[0],
-            ]
-            if len(ks_params) < num_ks:
-                ks_params.append(ks_param)
-                # Check if 'psr_scraper' is in the full survey list
-                has_psr_scraper = source.survey and "psr_scraper" in source.survey
-                ks_is_psr_scraper.append(has_psr_scraper)
+        ks_param = [
+            ks_name,
+            round(pos_diff, 2),
+            ks_ra,
+            ks_dec,
+            ks_f0,
+            ks_dm,
+            ks_survey[0],
+        ]
+        if len(ks_params) < num_ks:
+            ks_params.append(ks_param)
+            # Check if 'psr_scraper' is in the full survey list
+            has_psr_scraper = source.survey and "psr_scraper" in source.survey
+            ks_is_psr_scraper.append(has_psr_scraper)
 
-    ks_text = f"Other sources within 1 degree, $\Delta$DM < 10% (max {num_ks})\n"
+    ks_text = f"Other sources within 1 degree (max {num_ks})\n"
 
     column_labels = ["Name", "$\Delta Pos.$", "RA", "Dec", "F0", "DM", "Survey(s)"]
     ks_df = pd.DataFrame(ks_params, columns=column_labels)
