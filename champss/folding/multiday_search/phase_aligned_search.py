@@ -21,23 +21,49 @@ from scipy.ndimage import uniform_filter
 
 
 @njit(parallel=True)
-def phase_loop(profiles, dts, f0s, f1s):
+def phase_loop(profiles, dts, f0s, f1s, metric=0):
     """
-    Calculates SNR of the sum of the phase-shifted profiles.
+    Calculates chi-squared or S/N of the sum of the phase-shifted profiles.
 
-    profiles array has shape [ntime, nphase]
+    Parameters
+    ----------
+    profiles : ndarray
+        2D array of shape [ntime, nphase]
+    dts : ndarray
+        Time offsets in seconds
+    f0s : ndarray
+        F0 offset grid
+    f1s : ndarray
+        F1 grid
+    metric : int
+        0 for chi-squared (default), 1 for S/N with boxcar smoothing
+
+    Returns
+    -------
+    grid : ndarray
+        2D grid of chi-squared or S/N values
     """
-    # average noise, assuming individual pulses are faint
     set_num_threads(8)
 
-    sigma_off = np.std(profiles.sum(0))
     npbin = profiles.shape[1]
     Nf1 = len(f1s)
     Nf0 = len(f0s)
-    chi2_grid = np.zeros((Nf0, Nf1))
+    grid = np.zeros((Nf0, Nf1))
+
+    # Pre-compute noise estimate from summed profiles
+    sigma_off = np.std(profiles.sum(0))
+
+    # Pre-compute boxcar widths (powers of 2 up to npbin//4) and scaled noise
+    max_exp = int(np.log2(npbin // 4))
+    n_widths = max_exp + 1
+    widths = np.zeros(n_widths, dtype=np.int64)
+    scaled_sigmas = np.zeros(n_widths)
+    for iw in range(n_widths):
+        widths[iw] = 2 ** iw
+        scaled_sigmas[iw] = sigma_off / np.sqrt(widths[iw])
 
     for i, f0i in enumerate(f0s):
-        profsums = np.zeros((Nf1, profiles.shape[1]))
+        profsums = np.zeros((Nf1, npbin))
         for j in prange(Nf1):
             f1j = f1s[j]
             dphis = f0i * dts + 0.5 * f1j * dts**2
@@ -46,11 +72,42 @@ def phase_loop(profiles, dts, f0s, f1s):
             for k, prof in enumerate(profiles):
                 profsums[j] += np.roll(prof, -i_phis[k])
 
-            chi2_grid[i, j] = np.sum(
-                (profsums[j] - np.mean(profsums[j])) ** 2 / sigma_off**2
-            )
+            if metric == 0:
+                # Chi-squared
+                grid[i, j] = np.sum(
+                    (profsums[j] - np.mean(profsums[j])) ** 2 / sigma_off**2
+                )
+            else:
+                # S/N with boxcar smoothing over powers of 2
+                prof = profsums[j]
+                prof_mean = np.mean(prof)
+                snmax = 0.0
 
-    return chi2_grid
+                # Cumulative sum for efficient boxcar computation
+                cumsum = np.zeros(npbin + 1)
+                for idx in range(npbin):
+                    cumsum[idx + 1] = cumsum[idx] + prof[idx]
+
+                for iw in range(n_widths):
+                    width = widths[iw]
+                    # Find max of boxcar-filtered profile
+                    boxcar_max = -1e30
+                    for idx in range(npbin):
+                        end_idx = idx + width
+                        if end_idx <= npbin:
+                            val = (cumsum[end_idx] - cumsum[idx]) / width
+                        else:
+                            val = (cumsum[npbin] - cumsum[idx] + cumsum[end_idx - npbin]) / width
+                        if val > boxcar_max:
+                            boxcar_max = val
+
+                    sn = (boxcar_max - prof_mean) / scaled_sigmas[iw]
+                    if sn > snmax:
+                        snmax = sn
+
+                grid[i, j] = snmax
+
+    return grid
 
 
 class ExploreGrid:
