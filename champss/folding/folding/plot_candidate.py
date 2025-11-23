@@ -17,7 +17,7 @@ from multiday_search.phase_aligned_search import phase_loop
 from numba import njit, prange, set_num_threads
 
 
-def check_frequency_alias(f0_cand, f0_known, tolerance=0.0001):
+def check_frequency_alias(f0_cand, f0_known, tolerance=0.001):
     """
     Check if a candidate frequency is an alias (harmonic or sub-harmonic) of a known pulsar.
 
@@ -28,7 +28,7 @@ def check_frequency_alias(f0_cand, f0_known, tolerance=0.0001):
     f0_known : float
         Known pulsar spin frequency in Hz
     tolerance : float
-        Fractional tolerance for frequency matching (default 0.01%)
+        Fractional tolerance for frequency matching (default 0.1%)
 
     Returns
     -------
@@ -260,7 +260,7 @@ def plot_candidate_archive(
     gs = GridSpec(32, 18)
 
     # Text info at top (rows 0-3)
-    axtext = fig.add_subplot(gs[0:3, 0:18])
+    axtext = fig.add_subplot(gs[0:3, 0:9])
     axtext.axis("off")
 
     # Main plots below text
@@ -268,15 +268,15 @@ def plot_candidate_archive(
     ax1 = fig.add_subplot(gs[7:19, 0:9])
     ax2 = fig.add_subplot(gs[19:, 0:9])
 
-    ax3top = fig.add_subplot(gs[11, 11:17])
-    ax3 = fig.add_subplot(gs[12:20, 11:17])
-    ax3left = fig.add_subplot(gs[12:20, 10])
+    ax3top = fig.add_subplot(gs[13, 11:17])
+    ax3 = fig.add_subplot(gs[14:21, 11:17])
+    ax3left = fig.add_subplot(gs[14:21, 10])
 
-    ax4top = fig.add_subplot(gs[22, 11:17])
-    ax4 = fig.add_subplot(gs[23:, 11:17])
-    ax4left = fig.add_subplot(gs[23:, 10])
+    ax4top = fig.add_subplot(gs[23, 11:17])
+    ax4 = fig.add_subplot(gs[24:, 11:17])
+    ax4left = fig.add_subplot(gs[24:, 10])
 
-    ax_kstext = fig.add_subplot(gs[10, 10:17])
+    ax_kstext = fig.add_subplot(gs[0:3, 10:17])
     ax_kstext.axis("off")
 
     plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
@@ -433,14 +433,14 @@ def plot_candidate_archive(
             continue
 
         ks_f0 = 1 / source.spin_period_s
-        ks_dm = round(source.dm, 2)
+        ks_dm = round(source.dm, 1)
 
         # Compute f0 ratios for display
         f0_ratio = f0 / ks_f0
         f0_ratio_inv = ks_f0 / f0
 
         # Check for harmonic match with 1% tolerance
-        alias_factor = check_frequency_alias(f0, ks_f0, tolerance=0.01)
+        alias_factor = check_frequency_alias(f0, ks_f0, tolerance=0.001)
         is_harmonic_match = alias_factor is not None
 
         has_psr_scraper = source.survey and "psr_scraper" in source.survey
@@ -518,9 +518,9 @@ def plot_candidate_archive(
 
     # 5 columns x 3 rows layout
     cand_params_text = [
-        [rf"{psr}", f"Date: {T0.isot[:10]}", f"Beam: {beam_str}", f"DM$_{{max}}$: {maxdm_str}", f"DM$_{{best}}$: {dm_best_str}"],
-        [rf"Fold $\sigma$: {SNR_val:.2f}", f"f0: {f0:.5f}", f"l: {gal_l:.2f}", f"DM$_{{NE2001}}$: {ne2001_str}", f"$\\Delta$F0: {f0_best_str}"],
-        [rf"Incoh $\sigma$: {sigma_str}", f"DM: {dm:.2f}", f"b: {gal_b:.2f}", f"DM$_{{YMW16}}$: {ymw16_str}", f"F1: {f1_best_str}"],
+        [rf"{psr}", f"{T0.isot[:10]}", f"DM$_{{max}}$: {maxdm_str}", f"Beam: {beam_str}", f"DM$_{{best}}$: {dm_best_str}"],
+        [f"Fold $\sigma$: {SNR_val:.2f}", f"RA: {ra:.2f}", f"f0: {f0:.5f}", rf"$g_l$: {gal_l:.2f}", f"$\\Delta$F0: {f0_best_str}"],
+        [rf"PS $\sigma$: {sigma_str}", f"Dec: {dec:.2f}", f"DM: {dm:.2f}", rf"$g_b$: {gal_b:.2f}", f"F1: {f1_best_str}"],
     ]
 
     cand_param_table = axtext.table(
