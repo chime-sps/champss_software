@@ -354,28 +354,31 @@ def plot_candidate_archive(
     i_order = np.argsort(pos_diffs)
     sources_ordered = [sources[i] for i in i_order]
 
-    # Collect bright sources (best detection sigma > 50) within 5 degrees
-    # LIKELY MATCH sources (harmonic matches with 1% tolerance) sorted to top
-    bright_sources = []
-    bright_likely_matches = []
+    # Collect nearby known sources:
+    # - Bright sources (sigma > 50): within 5 degrees
+    # - Other sources: within 1 degree
+    # Harmonic matches sorted to top and highlighted
+    num_ks = 10  # Max number of sources displayed
+    ks_likely_matches = []
+    ks_other = []
+    ks_is_psr_scraper = []  # Track which rows have 'psr_scraper' survey flag
+    likely_match_count = 0
+
     for source in sources_ordered:
         # Check if this is a bright source (max sigma in detection_history > 50)
         is_bright = False
-        best_sigma = 0
         if hasattr(source, 'detection_history') and source.detection_history:
             sigmas = [d.get('sigma', 0) for d in source.detection_history if isinstance(d, dict)]
-            if sigmas:
-                best_sigma = max(sigmas)
-                if best_sigma > 50:
-                    is_bright = True
-
-        if not is_bright:
-            continue
+            if sigmas and max(sigmas) > 50:
+                is_bright = True
 
         pos_diff = known_source_filters.angular_separation(
             ra, dec, source.pos_ra_deg, source.pos_dec_deg
         )[1]
-        if pos_diff > 5.0:
+
+        # Bright sources: 5-degree threshold; other sources: 1-degree threshold
+        angular_threshold = 5.0 if is_bright else 1.0
+        if pos_diff > angular_threshold:
             continue
 
         ks_f0 = 1 / source.spin_period_s
@@ -393,7 +396,9 @@ def plot_candidate_archive(
         else:
             harm_str = ""
 
-        bright_entry = [
+        has_psr_scraper = source.survey and "psr_scraper" in source.survey
+
+        ks_entry = [
             source.source_name,
             round(pos_diff, 2),
             round(ks_f0, 4),
@@ -402,60 +407,18 @@ def plot_candidate_archive(
         ]
 
         if harm_str:
-            bright_likely_matches.append(bright_entry)
+            ks_likely_matches.append(ks_entry)
+            ks_is_psr_scraper.insert(likely_match_count, has_psr_scraper)
+            likely_match_count += 1
         else:
-            bright_sources.append(bright_entry)
+            if len(ks_likely_matches) + len(ks_other) < num_ks:
+                ks_other.append(ks_entry)
+                ks_is_psr_scraper.append(has_psr_scraper)
 
-    # Sort LIKELY MATCH entries to top
-    bright_sources_all = bright_likely_matches + bright_sources
-
-    # Collect other sources within 1 degree (max 10)
-    num_ks = 10  # Max number of other sources displayed in table
-    ks_params = []
-    ks_is_psr_scraper = []  # Track which rows have 'psr_scraper' survey flag
-    for source in sources_ordered:
-        # Skip bright sources (already in bright_sources table)
-        is_bright = False
-        if hasattr(source, 'detection_history') and source.detection_history:
-            sigmas = [d.get('sigma', 0) for d in source.detection_history if isinstance(d, dict)]
-            if sigmas and max(sigmas) > 50:
-                is_bright = True
-        if is_bright:
-            continue
-
-        ks_name = source.source_name
-        ks_ra = round(source.pos_ra_deg, 2)
-        ks_dec = round(source.pos_dec_deg, 2)
-        ks_f0 = round(1 / source.spin_period_s, 4)
-        ks_dm = round(source.dm, 2)
-        ks_survey = source.survey[:1]
-        if not ks_survey:
-            ks_survey = ["N/A"]
-        pos_diff = known_source_filters.angular_separation(
-            ra, dec, source.pos_ra_deg, source.pos_dec_deg
-        )[1]
-        # Use 1-degree threshold for non-bright sources
-        if pos_diff > 1.0:
-            continue
-        ks_param = [
-            ks_name,
-            round(pos_diff, 2),
-            ks_ra,
-            ks_dec,
-            ks_f0,
-            ks_dm,
-            ks_survey[0],
-        ]
-        if len(ks_params) < num_ks:
-            ks_params.append(ks_param)
-            # Check if 'psr_scraper' is in the full survey list
-            has_psr_scraper = source.survey and "psr_scraper" in source.survey
-            ks_is_psr_scraper.append(has_psr_scraper)
-
-    ks_text = f"Other sources within 1 degree (max {num_ks})\n"
-
-    column_labels = ["Name", "$\Delta Pos.$", "RA", "Dec", "F0", "DM", "Survey(s)"]
-    ks_df = pd.DataFrame(ks_params, columns=column_labels)
+    # Merge with likely matches first
+    ks_all = ks_likely_matches + ks_other
+    column_labels = ["Name", r"$\Delta$Pos.", "F0", "DM", "Harm"]
+    ks_df = pd.DataFrame(ks_all, columns=column_labels)
 
     ax1.imshow(
         np.nanmean(fs_bin, 0),
@@ -501,35 +464,6 @@ def plot_candidate_archive(
         ],
     ]
 
-    ax_kstext.text(
-        0,
-        0.8,
-        ks_text,
-        fontsize=8,
-        va="top",
-        ha="left",
-        transform=ax_kstext.transAxes,
-    )
-
-    if len(ks_df.values) > 0:
-        ks_param_table = ax_kstext.table(
-            cellText=ks_df.values,
-            colLabels=ks_df.columns,
-            colColours=["lavender"] * len(ks_df.columns),
-            cellLoc="left",
-            loc="top",
-        )
-        ks_param_table.auto_set_font_size(False)
-        ks_param_table.set_fontsize(8)
-        ks_param_table.auto_set_column_width(col=list(range(len(ks_df.columns))))
-
-        # Color rows blue if they have 'psr_scraper' in their survey flags
-        for row_idx, is_psr_scraper in enumerate(ks_is_psr_scraper):
-            if is_psr_scraper:
-                # row_idx + 1 because row 0 is the header
-                for col_idx in range(len(ks_df.columns)):
-                    ks_param_table[(row_idx + 1, col_idx)].set_text_props(color="blue")
-
     cand_param_table = axtext.table(
         cellText=cand_params_text, cellLoc="left", loc="top", edges="open"
     )
@@ -537,37 +471,31 @@ def plot_candidate_archive(
     cand_param_table.set_fontsize(10)
     cand_param_table.scale(10, 1.25)
 
-    # Render "Bright sources within 5deg" table
-    if len(bright_sources_all) > 0:
-        ax_alias.text(
-            0,
-            0.95,
-            "Bright sources within 5 degrees (sigma > 50):",
-            fontsize=10,
-            fontweight="bold",
-            va="top",
-            ha="left",
-            transform=ax_alias.transAxes,
-        )
-        bright_columns = ["Name", r"$\Delta$Pos.", "F0", "DM", "Harm"]
-        bright_df = pd.DataFrame(bright_sources_all, columns=bright_columns)
-        bright_table = ax_alias.table(
-            cellText=bright_df.values,
-            colLabels=bright_df.columns,
-            colColours=["lightyellow"] * len(bright_df.columns),
+    # Render known sources table
+    if len(ks_df.values) > 0:
+        ks_table = ax_alias.table(
+            cellText=ks_df.values,
+            colLabels=ks_df.columns,
+            colColours=["lavender"] * len(ks_df.columns),
             cellLoc="left",
             loc="top",
         )
-        bright_table.auto_set_font_size(False)
-        bright_table.set_fontsize(9)
-        bright_table.auto_set_column_width(col=list(range(len(bright_df.columns))))
+        ks_table.auto_set_font_size(False)
+        ks_table.set_fontsize(9)
+        ks_table.auto_set_column_width(col=list(range(len(ks_df.columns))))
 
         # Highlight harmonic match rows in bold/red
-        for row_idx in range(len(bright_likely_matches)):
-            for col_idx in range(len(bright_df.columns)):
-                bright_table[(row_idx + 1, col_idx)].set_text_props(
+        for row_idx in range(likely_match_count):
+            for col_idx in range(len(ks_df.columns)):
+                ks_table[(row_idx + 1, col_idx)].set_text_props(
                     color="red", fontweight="bold"
                 )
+
+        # Color rows blue if they have 'psr_scraper' in their survey flags
+        for row_idx, is_psr_scraper in enumerate(ks_is_psr_scraper):
+            if is_psr_scraper and row_idx >= likely_match_count:
+                for col_idx in range(len(ks_df.columns)):
+                    ks_table[(row_idx + 1, col_idx)].set_text_props(color="blue")
 
     if not known.strip():
         plotstring = f"cand_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
