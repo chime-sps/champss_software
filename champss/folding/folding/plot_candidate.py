@@ -217,6 +217,7 @@ def plot_candidate_archive(
     max_beam = None
     dm_ne2001 = None
     dm_ymw16 = None
+    maxdm = None
     if ap is not None and len(ap) > 0:
         ap0 = ap[0]
         if hasattr(ap0, 'max_beams') and ap0.max_beams:
@@ -225,6 +226,8 @@ def plot_candidate_archive(
             dm_ne2001 = ap0.ne2001dm
         if hasattr(ap0, 'ymw16dm'):
             dm_ymw16 = ap0.ymw16dm
+        if hasattr(ap0, 'maxdm'):
+            maxdm = ap0.maxdm
     data, params = readpsrarch(fn)
     F = params["F"]
     T = params["T"]
@@ -268,7 +271,7 @@ def plot_candidate_archive(
     ax4 = fig.add_subplot(gs[20:, 11:17])
     ax4left = fig.add_subplot(gs[20:, 10])
 
-    axtext = fig.add_subplot(gs[0, 4])
+    axtext = fig.add_subplot(gs[0:4, 0:18])
     axtext.axis("off")
 
     ax_kstext = fig.add_subplot(gs[7, 10:17])
@@ -506,27 +509,24 @@ def plot_candidate_archive(
     beam_str = f"{max_beam}" if max_beam is not None else "N/A"
     ne2001_str = f"{dm_ne2001:.1f}" if dm_ne2001 is not None else "N/A"
     ymw16_str = f"{dm_ymw16:.1f}" if dm_ymw16 is not None else "N/A"
+    maxdm_str = f"{maxdm:.1f}" if maxdm is not None else "N/A"
+    dm_best_str = f"{dm_best:.2f}" if dm_best is not None else "N/A"
+    f0_best_str = f"{f0_best:.2e}" if f0_best is not None else "N/A"
+    f1_best_str = f"{f1_best:.2e}" if f1_best is not None else "N/A"
 
+    # 5 columns x 3 rows layout
     cand_params_text = [
-        [rf"{psr}", f"Date: {T0.isot[:10]}", f"Beam: {beam_str}"],
-        [rf"RA (deg): {ra:,.5g}", f"f0: {f0:.5f}", f"Incoh. $\\sigma$: {sigma_str}"],
-        [rf"DEC (deg): {dec:,.5g}", f"DM: {dm:.2f}", f"Folded $\\sigma$: {SNR_val:.2f}"],
-        [rf"l: {gal_l:.2f}", f"DM$_{{NE2001}}$: {ne2001_str}", " "],
-        [rf"b: {gal_b:.2f}", f"DM$_{{YMW16}}$: {ymw16_str}", " "],
+        [rf"{psr}", f"Date: {T0.isot[:10]}", f"Beam: {beam_str}", f"DM$_{{max}}$: {maxdm_str}", f"DM$_{{best}}$: {dm_best_str}"],
+        [rf"Fold $\sigma$: {SNR_val:.2f}", f"f0: {f0:.5f}", f"l: {gal_l:.2f}", f"DM$_{{NE2001}}$: {ne2001_str}", f"$\\Delta$F0: {f0_best_str}"],
+        [rf"Incoh $\sigma$: {sigma_str}", f"DM: {dm:.2f}", f"b: {gal_b:.2f}", f"DM$_{{YMW16}}$: {ymw16_str}", f"F1: {f1_best_str}"],
     ]
 
-    # Add search results if available
-    if f0_best is not None:
-        cand_params_text.append([f"$\\Delta$F0: {f0_best:.2e}", f"F1: {f1_best:.2e}", " "])
-    if dm_best is not None:
-        cand_params_text.append([f"DM$_{{best}}$: {dm_best:.2f}", " ", " "])
-
     cand_param_table = axtext.table(
-        cellText=cand_params_text, cellLoc="left", loc="top", edges="open"
+        cellText=cand_params_text, cellLoc="left", loc="center", edges="open"
     )
     cand_param_table.auto_set_font_size(False)
-    cand_param_table.set_fontsize(10)
-    cand_param_table.scale(10, 1.25)
+    cand_param_table.set_fontsize(9)
+    cand_param_table.auto_set_column_width(col=list(range(5)))
 
     # Render known sources table
     if len(ks_df.values) > 0:
