@@ -209,9 +209,9 @@ def plot_candidate_archive(
     )
     fs_bin[np.isnan(fs_bin)] = 0
 
-    fig = plt.figure(figsize=(24, 20))
+    fig = plt.figure(figsize=(12, 20))
 
-    gs = GridSpec(28, 36)
+    gs = GridSpec(28, 18)
 
     ax0 = fig.add_subplot(gs[0:4, 0:9])
     ax1 = fig.add_subplot(gs[4:16, 0:9])
@@ -231,7 +231,7 @@ def plot_candidate_archive(
     ax_kstext = fig.add_subplot(gs[7, 10:17])
     ax_kstext.axis("off")
 
-    ax_alias = fig.add_subplot(gs[0:6, 19:35])
+    ax_alias = fig.add_subplot(gs[0:6, 10:17])
     ax_alias.axis("off")
 
     plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
@@ -243,7 +243,7 @@ def plot_candidate_archive(
         f0s, f1s = compute_accel_steps(dts, f0, npbin)
 
         prof2D = np.mean(fs_bin.squeeze(), 1)
-        chi2_grid = phase_loop(prof2D, dts, f0s, f1s)
+        chi2_grid = phase_loop(prof2D, dts, f0s, f1s, metric=1)
         i_f0, i_f1 = np.unravel_index(np.argmax(chi2_grid), chi2_grid.shape)
         f0_best = f0s[i_f0]
         f1_best = f1s[i_f1]
