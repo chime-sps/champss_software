@@ -231,9 +231,6 @@ def plot_candidate_archive(
     ax_kstext = fig.add_subplot(gs[7, 10:17])
     ax_kstext.axis("off")
 
-    ax_alias = fig.add_subplot(gs[0:6, 10:17])
-    ax_alias.axis("off")
-
     plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
 
     if accel_search:
@@ -473,7 +470,7 @@ def plot_candidate_archive(
 
     # Render known sources table
     if len(ks_df.values) > 0:
-        ks_table = ax_alias.table(
+        ks_table = ax_kstext.table(
             cellText=ks_df.values,
             colLabels=ks_df.columns,
             colColours=["lavender"] * len(ks_df.columns),
