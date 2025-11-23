@@ -268,10 +268,12 @@ def plot_candidate_archive(
     ax1 = fig.add_subplot(gs[7:19, 0:9])
     ax2 = fig.add_subplot(gs[19:, 0:9])
 
+    # F0-F1 grid
     ax3top = fig.add_subplot(gs[13, 11:17])
     ax3 = fig.add_subplot(gs[14:21, 11:17])
     ax3left = fig.add_subplot(gs[14:21, 10])
 
+    # DM-phase grid
     ax4top = fig.add_subplot(gs[23, 11:17])
     ax4 = fig.add_subplot(gs[24:, 11:17])
     ax4left = fig.add_subplot(gs[24:, 10])
@@ -279,9 +281,11 @@ def plot_candidate_archive(
     ax_kstext = fig.add_subplot(gs[0:3, 10:17])
     ax_kstext.axis("off")
 
-    # Sky position scatterplot (above f0-f1 plot)
-    ax_sky = fig.add_subplot(gs[4:12, 10:17])
-
+    # Sky position scatterplot
+    ax_sky = fig.add_subplot(gs[5:12, 11:17])
+    ax_sky.yaxis.tick_right()
+    ax_sky.yaxis.set_label_position("right")
+    
     plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
 
     # Initialize search result variables
@@ -494,6 +498,8 @@ def plot_candidate_archive(
     if ks_positions_other:
         ras_other, decs_other = zip(*ks_positions_other)
         ax_sky.scatter(ras_other, decs_other, s=50, c='gray', marker='o', label='Other', zorder=3)
+    ax_sky.set_xlim(ra - 5/np.cos(dec*u.deg), ra + 5/np.cos(dec*u.deg))
+    ax_sky.set_ylim(dec - 5, dec + 5)
     ax_sky.set_xlabel('RA (deg)', fontsize=12)
     ax_sky.set_ylabel('Dec (deg)', fontsize=12)
     ax_sky.legend(loc='upper right', fontsize=8)
