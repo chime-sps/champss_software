@@ -421,10 +421,6 @@ def main(
     SNprof, SN_arr, plot_fname = plot_candidate_archive(
         archive_fname,
         sigma,
-        dm,
-        f0,
-        ra,
-        dec,
         coord_path,
         known=known,
         foldpath=foldpath + "/plots/folded_candidate_plots/",

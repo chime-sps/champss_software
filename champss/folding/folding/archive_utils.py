@@ -16,7 +16,13 @@ def readpsrarch(fname, dedisperse=True, verbose=False):
     dedisperse: Bool
     apply psrchive's by-channel incoherent de-dispersion
 
-    Returns archive data cube, frequency array, time(mjd) array, source name, telescope
+    Returns
+    -------
+    data : ndarray
+        Archive data cube
+    params : dict
+        Dictionary containing: F (frequency array), T (time/mjd array),
+        psr (source name), tel (telescope), dm, ra, dec, f0
     """
     import psrchive
 
@@ -47,7 +53,26 @@ def readpsrarch(fname, dedisperse=True, verbose=False):
     T = t0 + np.arange(nt) * dt
     T = T.mjd
 
-    return data, F, T, source, tel
+    # Extract additional parameters from archive
+    dm = arch.get_dispersion_measure()
+    coords = arch.get_coordinates()
+    ra = coords.ra().getDegrees()
+    dec = coords.dec().getDegrees()
+    eph = arch.get_ephemeris()
+    f0 = float(eph.get_value("F0"))
+
+    params = {
+        "F": F,
+        "T": T,
+        "psr": source,
+        "tel": tel,
+        "dm": dm,
+        "ra": ra,
+        "dec": dec,
+        "f0": f0,
+    }
+
+    return data, params
 
 
 def get_archive_parameter(fname, param):
@@ -210,7 +235,8 @@ def plot_foldspec(fn):
     archive.
     """
 
-    data, F, T, psr, tel = readpsrarch(fn)
+    data, params = readpsrarch(fn)
+    F, T = params["F"], params["T"]
     fs, flag, mask, bg, bpass = clean_foldspec(data.squeeze())
 
     bpass = np.std(fs.mean(0), axis=-1)
