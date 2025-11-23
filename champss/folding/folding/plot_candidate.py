@@ -255,26 +255,28 @@ def plot_candidate_archive(
     )
     fs_bin[np.isnan(fs_bin)] = 0
 
-    fig = plt.figure(figsize=(12, 20))
+    fig = plt.figure(figsize=(12, 22))
 
-    gs = GridSpec(28, 18)
+    gs = GridSpec(32, 18)
 
-    ax0 = fig.add_subplot(gs[0:4, 0:9])
-    ax1 = fig.add_subplot(gs[4:16, 0:9])
-    ax2 = fig.add_subplot(gs[16:, 0:9])
-
-    ax3top = fig.add_subplot(gs[8, 11:17])
-    ax3 = fig.add_subplot(gs[9:17, 11:17])
-    ax3left = fig.add_subplot(gs[9:17, 10])
-
-    ax4top = fig.add_subplot(gs[19, 11:17])
-    ax4 = fig.add_subplot(gs[20:, 11:17])
-    ax4left = fig.add_subplot(gs[20:, 10])
-
-    axtext = fig.add_subplot(gs[0:4, 0:18])
+    # Text info at top (rows 0-3)
+    axtext = fig.add_subplot(gs[0:3, 0:18])
     axtext.axis("off")
 
-    ax_kstext = fig.add_subplot(gs[7, 10:17])
+    # Main plots below text
+    ax0 = fig.add_subplot(gs[3:7, 0:9])
+    ax1 = fig.add_subplot(gs[7:19, 0:9])
+    ax2 = fig.add_subplot(gs[19:, 0:9])
+
+    ax3top = fig.add_subplot(gs[11, 11:17])
+    ax3 = fig.add_subplot(gs[12:20, 11:17])
+    ax3left = fig.add_subplot(gs[12:20, 10])
+
+    ax4top = fig.add_subplot(gs[22, 11:17])
+    ax4 = fig.add_subplot(gs[23:, 11:17])
+    ax4left = fig.add_subplot(gs[23:, 10])
+
+    ax_kstext = fig.add_subplot(gs[10, 10:17])
     ax_kstext.axis("off")
 
     plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
@@ -525,7 +527,7 @@ def plot_candidate_archive(
         cellText=cand_params_text, cellLoc="left", loc="center", edges="open"
     )
     cand_param_table.auto_set_font_size(False)
-    cand_param_table.set_fontsize(9)
+    cand_param_table.set_fontsize(10)
     cand_param_table.auto_set_column_width(col=list(range(5)))
 
     # Render known sources table
