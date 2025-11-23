@@ -38,10 +38,10 @@ def check_frequency_alias(f0_cand, f0_known, tolerance=0.0001):
     """
     # Integer harmonics and sub-harmonics up to 16
     alias_factors = [1/n for n in range(16, 0, -1)] + [n for n in range(2, 17)]
-    # Half-integer harmonics: 3/2, 5/2, 7/2, 9/2, 11/2, 13/2, 15/2
-    alias_factors += [n/2 for n in range(3, 17, 2)]
+    # Half-integer harmonics: 3/2, 5/2, 7/2, ... up to 31/2 (covers up to 15.5)
+    alias_factors += [n/2 for n in range(3, 33, 2)]
     # Sub-half-integer: 2/3, 2/5, 2/7, etc.
-    alias_factors += [2/n for n in range(3, 17, 2)]
+    alias_factors += [2/n for n in range(3, 33, 2)]
 
     for factor in alias_factors:
         expected_f0 = f0_known * factor
