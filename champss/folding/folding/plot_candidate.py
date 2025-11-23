@@ -176,17 +176,20 @@ def dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin):
 def plot_candidate_archive(
     fn,
     sigma,
-    dm,
-    f0,
-    ra,
-    dec,
     coord_path,
     accel_search=True,
     dm_search=True,
     known=" ",
     foldpath="/data/chime/sps/archives/plots/folded_candidate_plots",
 ):
-    data, F, T, psr, tel = readpsrarch(fn)
+    data, params = readpsrarch(fn)
+    F = params["F"]
+    T = params["T"]
+    psr = params["psr"]
+    dm = params["dm"]
+    ra = params["ra"]
+    dec = params["dec"]
+    f0 = params["f0"]
 
     fs, flag, mask, bg, bpass = clean_foldspec(data.squeeze())
     taxis = ((T - T[0]) * u.day).to(u.min)
