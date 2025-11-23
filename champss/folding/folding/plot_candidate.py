@@ -36,8 +36,12 @@ def check_frequency_alias(f0_cand, f0_known, tolerance=0.0001):
         The harmonic ratio (e.g., 2 for 2nd harmonic, 0.5 for sub-harmonic),
         or None if no alias match found
     """
-    # Check harmonics and sub-harmonics up to 16
+    # Integer harmonics and sub-harmonics up to 16
     alias_factors = [1/n for n in range(16, 0, -1)] + [n for n in range(2, 17)]
+    # Half-integer harmonics: 3/2, 5/2, 7/2, 9/2, 11/2, 13/2, 15/2
+    alias_factors += [n/2 for n in range(3, 17, 2)]
+    # Sub-half-integer: 2/3, 2/5, 2/7, etc.
+    alias_factors += [2/n for n in range(3, 17, 2)]
 
     for factor in alias_factors:
         expected_f0 = f0_known * factor
@@ -426,29 +430,28 @@ def plot_candidate_archive(
         ks_f0 = 1 / source.spin_period_s
         ks_dm = round(source.dm, 2)
 
+        # Compute f0 ratios for display
+        f0_ratio = f0 / ks_f0
+        f0_ratio_inv = ks_f0 / f0
+
         # Check for harmonic match with 1% tolerance
         alias_factor = check_frequency_alias(f0, ks_f0, tolerance=0.01)
-        if alias_factor is not None:
-            if alias_factor < 1:
-                harm_str = f"1/{int(1/alias_factor)}"
-            elif alias_factor == 1:
-                harm_str = "1"
-            else:
-                harm_str = str(int(alias_factor))
-        else:
-            harm_str = ""
+        is_harmonic_match = alias_factor is not None
 
         has_psr_scraper = source.survey and "psr_scraper" in source.survey
 
         ks_entry = [
             source.source_name,
+            round(source.pos_ra_deg, 2),
+            round(source.pos_dec_deg, 2),
             round(pos_diff, 2),
             round(ks_f0, 4),
             ks_dm,
-            harm_str,
+            f"{f0_ratio:.3f}",
+            f"{f0_ratio_inv:.3f}",
         ]
 
-        if harm_str:
+        if is_harmonic_match:
             ks_likely_matches.append(ks_entry)
             ks_is_psr_scraper.insert(likely_match_count, has_psr_scraper)
             likely_match_count += 1
@@ -459,7 +462,7 @@ def plot_candidate_archive(
 
     # Merge with likely matches first
     ks_all = ks_likely_matches + ks_other
-    column_labels = ["Name", r"$\Delta$Pos.", "F0", "DM", "Harm"]
+    column_labels = ["Name", "RA", "Dec", r"$\Delta$Pos.", "F0", "DM", r"$f_0/f_{psr}$", r"$f_{psr}/f_0$"]
     ks_df = pd.DataFrame(ks_all, columns=column_labels)
 
     ax1.imshow(
