@@ -272,6 +272,11 @@ def plot_candidate_archive(
 
     plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
 
+    # Initialize search result variables
+    f0_best = None
+    f1_best = None
+    dm_best = None
+
     if accel_search:
         dts = taxis.to(u.s).value
         dts = dts - np.median(dts)
@@ -349,6 +354,7 @@ def plot_candidate_archive(
         DMprofs = np.tile(DMprofs, (1, 2))
         DM_slice = np.max(DMprofs, axis=-1)
         DM_prof = DMprofs[np.argmax(DM_slice)]
+        dm_best = dm + DMs[np.argmax(DM_slice)]
 
         ax4.pcolormesh(np.linspace(0, 2, 2 * npbin), dm + DMs, DMprofs)
         ax4left.plot(-DM_slice, dm + DMs)
@@ -505,6 +511,12 @@ def plot_candidate_archive(
         [rf"l: {gal_l:.2f}", f"DM$_{{NE2001}}$: {ne2001_str}", " "],
         [rf"b: {gal_b:.2f}", f"DM$_{{YMW16}}$: {ymw16_str}", " "],
     ]
+
+    # Add search results if available
+    if f0_best is not None:
+        cand_params_text.append([f"$\\Delta$F0: {f0_best:.2e}", f"F1: {f1_best:.2e}", " "])
+    if dm_best is not None:
+        cand_params_text.append([f"DM$_{{best}}$: {dm_best:.2f}", " ", " "])
 
     cand_param_table = axtext.table(
         cellText=cand_params_text, cellLoc="left", loc="top", edges="open"
