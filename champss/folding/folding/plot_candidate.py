@@ -279,6 +279,9 @@ def plot_candidate_archive(
     ax_kstext = fig.add_subplot(gs[0:3, 10:17])
     ax_kstext.axis("off")
 
+    # Sky position scatterplot (above f0-f1 plot)
+    ax_sky = fig.add_subplot(gs[4:12, 10:17])
+
     plt.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.4)
 
     # Initialize search result variables
@@ -415,6 +418,11 @@ def plot_candidate_archive(
     ks_is_psr_scraper = []  # Track which rows have 'psr_scraper' survey flag
     likely_match_count = 0
 
+    # Track positions for sky scatter plot
+    ks_positions_match = []  # (ra, dec) for harmonic matches
+    ks_positions_other = []  # (ra, dec) for other sources
+    ks_positions_scraper = []  # (ra, dec) for psr_scraper sources
+
     for source in sources_ordered:
         # Check if this is a bright source (max sigma in detection_history > 50)
         is_bright = False
@@ -459,16 +467,37 @@ def plot_candidate_archive(
         if is_harmonic_match:
             ks_likely_matches.append(ks_entry)
             ks_is_psr_scraper.insert(likely_match_count, has_psr_scraper)
+            ks_positions_match.append((source.pos_ra_deg, source.pos_dec_deg))
             likely_match_count += 1
         else:
             if len(ks_likely_matches) + len(ks_other) < num_ks:
                 ks_other.append(ks_entry)
                 ks_is_psr_scraper.append(has_psr_scraper)
+                if has_psr_scraper:
+                    ks_positions_scraper.append((source.pos_ra_deg, source.pos_dec_deg))
+                else:
+                    ks_positions_other.append((source.pos_ra_deg, source.pos_dec_deg))
 
     # Merge with likely matches first
     ks_all = ks_likely_matches + ks_other
     column_labels = ["Name", "RA", "Dec", r"$\Delta$Pos.", "F0", "DM", r"$f_0/f_{psr}$", r"$f_{psr}/f_0$"]
     ks_df = pd.DataFrame(ks_all, columns=column_labels)
+
+    # Plot sky position scatter plot
+    ax_sky.scatter(ra, dec, s=150, c='k', marker='*', label='Candidate', zorder=10)
+    if ks_positions_match:
+        ras_match, decs_match = zip(*ks_positions_match)
+        ax_sky.scatter(ras_match, decs_match, s=80, c='red', marker='o', label='Harmonic match', zorder=5)
+    if ks_positions_scraper:
+        ras_scraper, decs_scraper = zip(*ks_positions_scraper)
+        ax_sky.scatter(ras_scraper, decs_scraper, s=50, c='blue', marker='s', label='Scraper', zorder=4)
+    if ks_positions_other:
+        ras_other, decs_other = zip(*ks_positions_other)
+        ax_sky.scatter(ras_other, decs_other, s=50, c='gray', marker='o', label='Other', zorder=3)
+    ax_sky.set_xlabel('RA (deg)', fontsize=12)
+    ax_sky.set_ylabel('Dec (deg)', fontsize=12)
+    ax_sky.legend(loc='upper right', fontsize=8)
+    ax_sky.set_aspect('equal', adjustable='datalim')
 
     ax1.imshow(
         np.nanmean(fs_bin, 0),
