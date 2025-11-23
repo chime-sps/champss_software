@@ -418,11 +418,15 @@ def main(
     create_FT = f"pam -T -F {archive_fname} -e FT"
     subprocess.run(create_FT, shell=True, capture_output=True, text=True)
 
+    cand_info = {
+        'sigma': sigma,
+        'known': known,
+        'ap': ap,
+    }
     SNprof, SN_arr, plot_fname = plot_candidate_archive(
         archive_fname,
-        sigma,
         coord_path,
-        known=known,
+        cand_info=cand_info,
         foldpath=foldpath + "/plots/folded_candidate_plots/",
     )
 

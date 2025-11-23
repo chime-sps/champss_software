@@ -7,6 +7,7 @@ import pandas as pd
 from scipy.constants import c
 from scipy.optimize import curve_fit
 from astropy.time import Time
+from astropy.coordinates import SkyCoord
 
 from folding.archive_utils import clean_foldspec, get_SN, readpsrarch
 from matplotlib.gridspec import GridSpec
@@ -175,13 +176,51 @@ def dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin):
 
 def plot_candidate_archive(
     fn,
-    sigma,
     coord_path,
+    cand_info=None,
     accel_search=True,
     dm_search=True,
-    known=" ",
     foldpath="/data/chime/sps/archives/plots/folded_candidate_plots",
 ):
+    """
+    Plot a folded candidate archive.
+
+    Parameters
+    ----------
+    fn : str
+        Path to the archive file
+    coord_path : str
+        Path to save coordinate-based plot
+    cand_info : dict, optional
+        Dictionary containing optional candidate information:
+        - 'sigma': Pipeline sigma of candidate
+        - 'known': Name of known pulsar (empty string if unknown)
+        - 'ap': Active pointing list from PointingStrategist
+    accel_search : bool
+        Whether to perform acceleration search (default True)
+    dm_search : bool
+        Whether to perform DM search (default True)
+    foldpath : str
+        Base path for saving folded candidate plots
+    """
+    if cand_info is None:
+        cand_info = {}
+    sigma = cand_info.get('sigma', None)
+    known = cand_info.get('known', ' ')
+    ap = cand_info.get('ap', None)
+
+    # Extract info from active pointing if available
+    max_beam = None
+    dm_ne2001 = None
+    dm_ymw16 = None
+    if ap is not None and len(ap) > 0:
+        ap0 = ap[0]
+        if hasattr(ap0, 'max_beams') and ap0.max_beams:
+            max_beam = ap0.max_beams[0].get('beam', None)
+        if hasattr(ap0, 'ne2001dm'):
+            dm_ne2001 = ap0.ne2001dm
+        if hasattr(ap0, 'ymw16dm'):
+            dm_ymw16 = ap0.ymw16dm
     data, params = readpsrarch(fn)
     F = params["F"]
     T = params["T"]
@@ -447,18 +486,24 @@ def plot_candidate_archive(
     ax0.plot(phaseaxis, SNprof)
     ax0.set_xlim(0, 2)
     ax0.set_xticks([])
-    if sigma is not None:
-        sigma = round(sigma, 2)
-    else:
-        sigma = 0.0
+
+    # Compute galactic coordinates
+    coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
+    gal_l = coord.galactic.l.deg
+    gal_b = coord.galactic.b.deg
+
+    # Format optional values
+    sigma_str = f"{sigma:.2f}" if sigma is not None else "N/A"
+    beam_str = f"{max_beam}" if max_beam is not None else "N/A"
+    ne2001_str = f"{dm_ne2001:.1f}" if dm_ne2001 is not None else "N/A"
+    ymw16_str = f"{dm_ymw16:.1f}" if dm_ymw16 is not None else "N/A"
+
     cand_params_text = [
-        [rf"{psr}", f"Date: {T0.isot[:10]}", " "],
-        [rf"RA (deg): {ra:,.5g}", f"f0: {f0:.5f}", f"Incoh. $\\sigma$: {sigma:.2f}"],
-        [
-            rf"DEC (deg): {dec:,.5g}",
-            f"DM: {dm:.2f}",
-            f"Folded $\\sigma$: {SNR_val:.2f}",
-        ],
+        [rf"{psr}", f"Date: {T0.isot[:10]}", f"Beam: {beam_str}"],
+        [rf"RA (deg): {ra:,.5g}", f"f0: {f0:.5f}", f"Incoh. $\\sigma$: {sigma_str}"],
+        [rf"DEC (deg): {dec:,.5g}", f"DM: {dm:.2f}", f"Folded $\\sigma$: {SNR_val:.2f}"],
+        [rf"l: {gal_l:.2f}", f"DM$_{{NE2001}}$: {ne2001_str}", " "],
+        [rf"b: {gal_b:.2f}", f"DM$_{{YMW16}}$: {ymw16_str}", " "],
     ]
 
     cand_param_table = axtext.table(
