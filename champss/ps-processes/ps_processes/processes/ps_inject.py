@@ -83,6 +83,7 @@ def generate_injection(pspec, f_nyquist = 508,  N = 1):
         log.info(f'Injecting TPA profile {prof_idx[i]} at f = {f[i]:.2f} Hz, DM = {dm[i]:.2f} pc / cm^3, and S = {S[i]:.2f} mJy.')
         injection_profiles.append(
             {
+                "TPA_idx": prof_idx[i],
                 "profile": prof[i],
                 "flux": S[i],
                 "frequency": f[i],
@@ -640,7 +641,7 @@ class Injection:
 def main(
     pspec,
     full_harm_bins,
-    injection_profile="random",
+    injection_dict="random",
     num_injections=1,
     remove_spectra=False,
     scale_injections=False,
@@ -667,11 +668,11 @@ def main(
     --------
             injection_profiles (list(dict)) : List containing dict describing the injection.
     """
-    if injection_profile == "random":
-        injection_profiles = generate_injection(pspec)
-
-    else:
-        injection_profiles = [injection_profile]
+    if injection_dict == "random":
+        injection_dict = generate_injection(pspec)
+    
+    else: 
+        injection_dict['TPA_idx'] = 'n/a'
 
     if remove_spectra:
         log.info("Replacing spectra with expected mean value.")
@@ -683,39 +684,37 @@ def main(
     # There are probably easier ways to do this
     zero_bins = pspec.power_spectra[0, :] == 0
 
-    i = 0
-    for injection_dict in injection_profiles:
-        injection_output_dict = Injection(
-            pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
-        ).injection()
-        if len(injection_output_dict["injected_powers"]) == 0:
-            log.info("Pulsar too weak.")
-            continue
+    injection_output_dict = Injection(
+        pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
+    ).injection()
+    if len(injection_output_dict["injected_powers"]) == 0:
+        log.info("Pulsar too weak.")
+        continue
 
-        injection_dict["dms"] = injection_output_dict["dm_indices"]
-        injection_dict["bins"] = injection_output_dict["freq_indices"]
-        injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
-        injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
-        injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
-        injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
-        injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
+    injection_dict["dms"] = injection_output_dict["dm_indices"]
+    injection_dict["bins"] = injection_output_dict["freq_indices"]
+    injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
+    injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
+    injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
+    injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
+    injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
 
-        if isinstance(injection_dict["profile"], (np.ndarray, list)):
-            injection_dict["profile"] = "custom_profile"
+    if isinstance(injection_dict["profile"], (np.ndarray, list)):
+        injection_dict["profile"] = "custom_profile"
 
-        if not only_predict:
-            # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
-            # not change the object
-            injected_indices = np.ix_(
-                injection_output_dict["dm_indices"],
-                injection_output_dict["freq_indices"],
-            )
+    if not only_predict:
+        # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
+        # not change the object
+        injected_indices = np.ix_(
+            injection_output_dict["dm_indices"],
+            injection_output_dict["freq_indices"],
+        )
 
-            pspec.power_spectra[injected_indices] += injection_output_dict[
-                "injected_powers"
-            ].astype(pspec.power_spectra.dtype)
+        pspec.power_spectra[injected_indices] += injection_output_dict[
+            "injected_powers"
+        ].astype(pspec.power_spectra.dtype)
 
-        i += 1
+    i += 1
     pspec.power_spectra[:, zero_bins] = 0
 
     return injection_profiles
