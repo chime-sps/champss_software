@@ -95,9 +95,9 @@ def check_frequency_alias(f0_cand, f0_known, tolerance=0.001):
     return None
 
 
-def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=10,
+def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=5,
                           arc_search_radius=0.5, bright_threshold=50,
-                          bright_radius=2.0, other_radius=1.0):
+                          bright_radius=5.0, other_radius=1.0):
     """
     Find and categorize nearby known sources for a candidate.
 
@@ -116,13 +116,13 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=10,
     radius : float
         Search radius for known sources in degrees (default 5)
     num_ks : int
-        Maximum number of sources to return (default 10)
+        Maximum number of sources to return (default 5)
     arc_search_radius : float
         Search radius around arc for bright sources (default 0.5 degrees)
     bright_threshold : float
         Sigma threshold for bright sources (default 50)
     bright_radius : float
-        Angular threshold for bright sources (default 2.0 degrees)
+        Angular threshold for bright sources (default 5.0 degrees)
     other_radius : float
         Angular threshold for other sources (default 1.0 degrees)
 

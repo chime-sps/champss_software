@@ -73,9 +73,7 @@ def plot_aliases(alias_results, output_path=None):
         try:
             data, params = readpsrarch(read_path)
             # Sum over time and frequency to get profile
-            profile = data.squeeze().mean(axis=0)
-            if len(profile.shape) > 1:
-                profile = profile.mean(axis=0)
+            profile = data.squeeze()
             sn = get_SN(profile)
 
             alias_data[label] = {
@@ -106,29 +104,25 @@ def plot_aliases(alias_results, output_path=None):
     profiles_norm = []
     for prof in profiles:
         prof_norm = prof - np.median(prof)
-        prof_norm = prof_norm / np.max(np.abs(prof_norm)) if np.max(np.abs(prof_norm)) > 0 else prof_norm
+        prof_norm = prof_norm / np.max(np.abs(prof_norm))
         profiles_norm.append(prof_norm)
 
     # Create figure
-    fig = plt.figure(figsize=(14, 8))
+    fig = plt.figure(figsize=(10, 6))
 
     # Left panel: profiles as waterfall
     ax1 = plt.subplot2grid((1, 3), (0, 0), colspan=2)
+    plt.subplots_adjust(wspace=0.05)
 
-    # Create 2D array for imshow
-    profile_stack = np.array(profiles_norm)
+    print(len(profiles_norm), profiles_norm[0].shape)
 
-    ax1.imshow(
-        profile_stack,
-        aspect="auto",
-        interpolation="nearest",
-        extent=[0, 1, 0, n_aliases],
-        cmap="viridis",
-        origin="lower",
-    )
+    for i in range(len(profiles_norm)):
+        profile = profiles_norm[i]
+        xaxis = np.linspace(0, 1, len(profile))
+        ax1.plot(xaxis, profile + i, color='k')
 
     # Set y-ticks to show alias factors
-    ytick_positions = np.arange(n_aliases) + 0.5
+    ytick_positions = np.arange(n_aliases)
     ytick_labels = [f"{alias_data[label]['factor']:.3g}" for label in sorted_labels]
     ax1.set_yticks(ytick_positions)
     ax1.set_yticklabels(ytick_labels)
@@ -140,27 +134,12 @@ def plot_aliases(alias_results, output_path=None):
     # Right panel: S/N vs alias factor
     ax2 = plt.subplot2grid((1, 3), (0, 2))
 
-    # Use log scale for x-axis since factors span orders of magnitude
-    ax2.semilogx(factors, sns, "o-", markersize=8)
-    ax2.set_xlabel("Alias Factor")
-    ax2.set_ylabel("S/N")
+    ax2.semilogy(sns, factors, "o")
+    ax2.set_ylabel("Alias Factor")
+    ax2.set_xlabel("S/N")
     ax2.set_title("S/N vs Alias Factor")
-    ax2.grid(True, alpha=0.3)
-
-    # Mark the factor=1 point
-    if 1.0 in factors:
-        ax2.axvline(x=1.0, color="r", linestyle="--", alpha=0.5, label="f0")
-
-    # Highlight max S/N
-    max_sn_idx = np.argmax(sns)
-    ax2.scatter(
-        [factors[max_sn_idx]], [sns[max_sn_idx]],
-        s=150, facecolors="none", edgecolors="red", linewidths=2,
-        label=f"Max S/N: {sns[max_sn_idx]:.1f} at {factors[max_sn_idx]:.3g}",
-    )
-    ax2.legend()
-
-    plt.tight_layout()
+    ax2.yaxis.tick_right()
+    ax2.yaxis.set_label_position("right")
 
     # Save figure
     if output_path is None:
@@ -178,8 +157,7 @@ def plot_aliases(alias_results, output_path=None):
     for label in sorted_labels:
         factor = alias_data[label]["factor"]
         sn = alias_data[label]["sn"]
-        marker = " <-- MAX" if sn == max(sns) else ""
-        print(f"  {factor:8.4f}x : S/N = {sn:6.1f}{marker}")
+        print(f"  {factor:8.4f}x : S/N = {sn:6.1f}")
 
     return output_path
 
