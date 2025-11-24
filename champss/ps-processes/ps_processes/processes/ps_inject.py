@@ -12,6 +12,7 @@ from sps_common.interfaces.utilities import sigma_sum_powers
 from sps_databases import db_api, db_utils
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 import matplotlib.pyplot as plt
+from scipy.special import erf
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ mean_ones = 0.40298
 mean_twos = 0.064676
 mean_threes = 0.00995
 
+TPA_profiles = np.load(os.path.dirname(__file__) + "/smoothed_baselined_TPA_pulses.npy")
+f_dist = np.loadtxt(os.path.dirname(__file__) + "/atnf_freqs.txt", usecols = [1])
 kernels = np.load(os.path.dirname(__file__) + "/kernels.npy")
 kernel_scaling = np.load(os.path.dirname(__file__) + "/kernels.meta.npy")
 
@@ -45,43 +48,46 @@ def gaussian(mu, sig):
 def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
 
-def generate_injection(N):
+def dm_distribution(x, mu, sig, l):
+    gauss = l*np.exp(l*(2*mu + l*sig**2 - 2*x)/2)/2
+    tail = 1 - erf((mu + l*sig**2 - x) / np.sqrt(2) / sig) #complimentary error function
+
+    return gauss*tail / np.sum(gauss*tail)
+
+def generate_injection(pspec, f_nyquist = 508,  N = 1):
     '''
     This function generates a random injection and its parameters.
     '''
-
-    profiles = np.load('~/Transmissivity/scripts/smoothed_baselined_TPA_pulses.npy')
-
-    f_dist = np.loadtxt('atnf_freqs.txt', usecols = [1])
+    
     f_log = np.logspace(-3, 2.7, int((4/6)*len(f_dist)))
     f_choices = np.concatenate([f_dist, f_log]) 
     f = np.random.choice(f_choices, size = N)
     f[f > f_nyquist] = f_nyquist
 
     dm_spread = np.linspace(0, 1000, 10000)
-    dm_weights = dm_distribution(dm_spread, 24, 24, 0.02)
+    dm_weights = 0.6*dm_distribution(dm_spread, 24, 24, 0.02)
+    dm_weights += 0.4 / len(dm_spread)
     #24 is chosen as the maximum DM value at b = 90 deg from NE2001
-    dm_dist = np.random.choice(dm_spread, size = int(0.6*N), p = dm_weights)
-    dm_linear = np.linspace(0, 1000, int(0.4*N))
-    dm = np.concatenate([dm_dist, dm_linear])
+    dm = np.random.choice(dm_spread, size = N, p = dm_weights)
     dm[dm > pspec.dms[-1]] = pspec.dms[-1]
-
-    S_choices = np.logspace(-2, 1, 10000)
-    S = np.random.choice(S_choices, N)
-
-    prof = np.random.choice(profiles, N, axis = 0)
-    #TPA_idx, f, DM, flux, fwhm, predicted_sigma, predicted_nharm
     
+    S_choices = np.logspace(-2, 1, 10000)
+    S = np.random.choice(S_choices, size = N)
+
+    prof_idx = np.random.choice(range(len(TPA_profiles)), size = N)
+    prof = TPA_profiles[prof_idx]
+
     injection_profiles = []
 
     for i in range(N):
+        log.info(f'Injecting TPA profile {prof_idx[i]} at f = {f[i]:.2f} Hz, DM = {dm[i]:.2f} pc / cm^3, and S = {S[i]:.2f} mJy.')
         injection_profiles.append(
             {
                 "profile": prof[i],
                 "flux": S[i],
                 "frequency": f[i],
                 "DM": dm[i],
-            }
+            })
 
     return injection_profiles
 
@@ -435,29 +441,6 @@ class Injection:
             normalizer += day_normalizer
         return normalizer
 
-    def retrieve_flux(self, harms, bins, best_nharm, true_dm_in_pspec, true_dm_in_harms, phases):
-        #not that harms are power, not amplitude
-        tau = 2 * self.pspec.shape[1] * TSAMP
-        Npol = 2
-        delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
-        N = len(self.phase_prof)
-
-        main_harms = harms[true_dm_in_harms, :4*best_nharm] * best_nharm + self.pspec[true_dm_in_pspec, bins[:4*best_nharm]]
-        retrieved_powers = np.zeros(best_nharm)
-        for i in range(best_nharm):
-            retrieved_powers[i] = np.sum(main_harms[4*i : 4*(i+1)])
-        retrieved_powers /= self.ndays
-        retrieved_fft = np.sqrt(retrieved_powers) * np.exp(1j * phases[:best_nharm])
-        retrieved_prof = -1 * irfft(retrieved_fft) 
-        RMS = np.sqrt(1 / 2 / best_nharm)
-        A = np.mean(retrieved_prof)
-
-        flux = A * TSYS * BETA / GAIN / np.sqrt(Npol * delta_f * tau / best_nharm) / RMS
-
-
-        return flux
-
-
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
@@ -610,8 +593,6 @@ class Injection:
             rescale_factor,
         ) = self.predict_sigma(harms, bins, dm_indices, n_harm, True)
 
-        retrieved_flux = self.retrieve_flux(harms, bins, predicted_nharm, true_dm_in_pspec, true_dm_in_harms, phases)
-        log.info(f'Retrieved flux: {retrieved_flux} mJy.')
 
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
@@ -687,7 +668,7 @@ def main(
             injection_profiles (list(dict)) : List containing dict describing the injection.
     """
     if injection_profile == "random":
-        injection_profiles = generate_injection(num_injections)
+        injection_profiles = generate_injection(pspec)
 
     else:
         injection_profiles = [injection_profile]
