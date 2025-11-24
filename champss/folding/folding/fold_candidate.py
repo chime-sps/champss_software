@@ -90,6 +90,128 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
         db_api.update_followup_source(fs_id, {"path_to_ephemeris": ephem_path})
 
 
+def create_alias_ephemeris(base_ephem_path, alias_factor, output_path):
+    """
+    Create a modified ephemeris file with F0 scaled by the alias factor.
+
+    Parameters
+    ----------
+    base_ephem_path : str
+        Path to the base ephemeris file
+    alias_factor : float
+        Factor to multiply F0 by (e.g., 2 for 2nd harmonic, 0.5 for sub-harmonic)
+    output_path : str
+        Path to save the modified ephemeris file
+
+    Returns
+    -------
+    output_path : str
+        Path to the created ephemeris file
+    """
+    with open(base_ephem_path, 'r') as f:
+        lines = f.readlines()
+
+    modified_lines = []
+    for line in lines:
+        if line.strip().startswith('F0'):
+            parts = line.split()
+            original_f0 = float(parts[1])
+            new_f0 = original_f0 * alias_factor
+            modified_lines.append(f"F0\t{new_f0}\n")
+        else:
+            modified_lines.append(line)
+
+    with open(output_path, 'w') as f:
+        f.writelines(modified_lines)
+
+    return output_path
+
+
+def get_alias_factors():
+    """
+    Return the list of alias factors to fold at.
+
+    Returns
+    -------
+    alias_factors : list
+        List of (factor, label) tuples for folding
+    """
+    factors = [
+        (1/16, "1_16"),
+        (1/8, "1_8"),
+        (1/4, "1_4"),
+        (1/3, "1_3"),
+        (1/2, "1_2"),
+        (1, "1"),
+        (2, "2"),
+        (3, "3"),
+        (4, "4"),
+        (8, "8"),
+        (16, "16"),
+    ]
+    return factors
+
+
+def fold_at_alias(fil, ephem_path, alias_dir, alias_factor, alias_label, num_threads):
+    """
+    Fold a filterbank at a specific alias factor.
+
+    Parameters
+    ----------
+    fil : str
+        Path to the filterbank file
+    ephem_path : str
+        Path to the base ephemeris file
+    alias_dir : str
+        Directory path for alias parfiles and archives
+    alias_factor : float
+        Factor to multiply F0 by
+    alias_label : str
+        Label for the alias (e.g., "1_2", "2")
+    num_threads : int
+        Number of threads for dspsr
+
+    Returns
+    -------
+    archive_fname : str
+        Path to the created archive file, or None if folding failed
+    """
+    # Create ephemeris with modified F0 in aliases directory
+    alias_ephem_path = f"{alias_dir}/alias_{alias_label}.par"
+    create_alias_ephemeris(ephem_path, alias_factor, alias_ephem_path)
+
+    # Create archive filename in aliases directory
+    archive_fname = f"{alias_dir}/alias_{alias_label}"
+
+    log.info(f"Folding at alias {alias_label} (factor={alias_factor})...")
+    result = subprocess.run(
+        [
+            "dspsr",
+            "-t",
+            f"{num_threads}",
+            "-k",
+            "chime",
+            "-E",
+            f"{alias_ephem_path}",
+            "-O",
+            f"{archive_fname}",
+            f"{fil}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    archive_fname_full = archive_fname + ".ar"
+    if os.path.isfile(archive_fname_full):
+        # Create frequency and time scrunched version
+        create_FT = f"pam -T -F {archive_fname_full} -e FT"
+        subprocess.run(create_FT, shell=True, capture_output=True, text=True)
+        return archive_fname_full
+    else:
+        log.warning(f"Failed to create archive for alias {alias_label}")
+        return None
+
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--date",
@@ -168,6 +290,11 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     default=True,
     help="Use ramdisk for filterbank files, default True.",
 )
+@click.option(
+    "--fold-aliases",
+    is_flag=True,
+    help="Fold at multiple frequency aliases (1/16, 1/8, 1/4, 1/3, 1/2, 1, 2, 3, 4, 8, 16).",
+)
 def main(
     date,
     sigma,
@@ -188,6 +315,7 @@ def main(
     using_workflow=False,
     overwrite_folding=False,
     filterbank_to_ram=True,
+    fold_aliases=False,
 ):
     """
     Perform the main processing steps for folding a candidate or known source.  It can
@@ -410,13 +538,32 @@ def main(
             f"{fil}",
         ]
     )
-    log.info(f"Finished, deleting {fil}")
-    if os.path.isfile(fil):
-        os.remove(fil)
 
     archive_fname = archive_fname + ".ar"
     create_FT = f"pam -T -F {archive_fname} -e FT"
     subprocess.run(create_FT, shell=True, capture_output=True, text=True)
+
+    # Alias folding if requested
+    alias_results = {}
+    if fold_aliases:
+        log.info("Folding at frequency aliases...")
+        alias_dir = f"{coord_path}/aliases"
+        if not os.path.exists(alias_dir):
+            os.makedirs(alias_dir)
+
+        alias_factors = get_alias_factors()
+        for factor, label in alias_factors:
+            alias_archive = fold_at_alias(
+                fil, ephem_path, alias_dir, factor, label, num_threads
+            )
+            if alias_archive:
+                alias_results[label] = alias_archive
+
+        log.info(f"Completed alias folding: {len(alias_results)} of {len(alias_factors)} successful")
+
+    log.info(f"Finished, deleting {fil}")
+    if os.path.isfile(fil):
+        os.remove(fil)
 
     cand_info = {
         'sigma': sigma,
@@ -431,13 +578,6 @@ def main(
     )
 
     log.info(f"SN of folded profile: {SN_arr}")
-    fold_details = {
-        "date": date,
-        "archive_fname": archive_fname,
-        "SN": float(SN_arr),
-        "path_to_plot": plot_fname,
-    }
-
     fold_details = {
         "date": date,
         "archive_fname": archive_fname,
