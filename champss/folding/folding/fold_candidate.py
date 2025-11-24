@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
+from folding.plot_aliases import plot_aliases
 from folding.plot_candidate import plot_candidate_archive
 from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
@@ -560,6 +561,13 @@ def main(
                 alias_results[label] = alias_archive
 
         log.info(f"Completed alias folding: {len(alias_results)} of {len(alias_factors)} successful")
+
+        # Plot alias results
+        if alias_results:
+            alias_plot_path = os.path.join(
+                alias_dir, f"alias_plot_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.png"
+            )
+            plot_aliases(alias_results, output_path=alias_plot_path)
 
     log.info(f"Finished, deleting {fil}")
     if os.path.isfile(fil):
