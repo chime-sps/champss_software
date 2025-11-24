@@ -95,7 +95,7 @@ def check_frequency_alias(f0_cand, f0_known, tolerance=0.001):
     return None
 
 
-def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=5,
+def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=8,
                           arc_search_radius=0.5, bright_threshold=50,
                           bright_radius=5.0, other_radius=1.0):
     """
