@@ -303,32 +303,32 @@ def plot_candidate_archive(
 
     fig = plt.figure(figsize=(12, 22))
 
-    gs = GridSpec(32, 18)
+    gs = GridSpec(30, 18)
 
-    # Text info at top (rows 0-3)
-    axtext = fig.add_subplot(gs[0:3, 0:9])
+    # Text info at top (rows 0-1)
+    axtext = fig.add_subplot(gs[0:1, 0:9])
     axtext.axis("off")
 
     # Main plots below text
-    ax0 = fig.add_subplot(gs[3:7, 0:9])
-    ax1 = fig.add_subplot(gs[7:19, 0:9])
-    ax2 = fig.add_subplot(gs[19:, 0:9])
+    ax0 = fig.add_subplot(gs[1:5, 0:9])
+    ax1 = fig.add_subplot(gs[5:17, 0:9])
+    ax2 = fig.add_subplot(gs[17:, 0:9])
 
     # F0-F1 grid
-    ax3top = fig.add_subplot(gs[13, 11:17])
-    ax3 = fig.add_subplot(gs[14:21, 11:17])
-    ax3left = fig.add_subplot(gs[14:21, 10])
+    ax3top = fig.add_subplot(gs[11, 11:17])
+    ax3 = fig.add_subplot(gs[12:19, 11:17])
+    ax3left = fig.add_subplot(gs[12:19, 10])
 
     # DM-phase grid
-    ax4top = fig.add_subplot(gs[23, 11:17])
-    ax4 = fig.add_subplot(gs[24:, 11:17])
-    ax4left = fig.add_subplot(gs[24:, 10])
+    ax4top = fig.add_subplot(gs[21, 11:17])
+    ax4 = fig.add_subplot(gs[22:, 11:17])
+    ax4left = fig.add_subplot(gs[22:, 10])
 
-    ax_kstext = fig.add_subplot(gs[0:3, 10:17])
+    ax_kstext = fig.add_subplot(gs[0:1, 10:17])
     ax_kstext.axis("off")
 
     # Sky position scatterplot
-    ax_sky = fig.add_subplot(gs[5:12, 11:17])
+    ax_sky = fig.add_subplot(gs[3:9, 10:17])
     ax_sky.yaxis.tick_right()
     ax_sky.yaxis.set_label_position("right")
     
@@ -531,7 +531,7 @@ def plot_candidate_archive(
             # Arc sources are included regardless of angular distance
             pass
         else:
-            angular_threshold = 5.0 if is_bright else 1.0
+            angular_threshold = 2.0 if is_bright else 1.0
             if pos_diff > angular_threshold:
                 continue
 
@@ -596,8 +596,10 @@ def plot_candidate_archive(
             ax_sky.plot(arc_ras, arc_decs, c='tab:orange', ls=':', lw=1.5, zorder=1, label='EW Arc')
 
     ax_sky.scatter(ra, dec, s=150, c='k', marker='*', label='Candidate', zorder=10)
+    dra_arc = 0
     if ks_positions_match:
         ras_match, decs_match = zip(*ks_positions_match)
+        dra_arc = np.max(np.abs(ra - np.array(ras_match)))
         ax_sky.scatter(ras_match, decs_match, s=80, c='red', marker='o', label='Harmonic match', zorder=5)
     if ks_positions_arc:
         ras_arc, decs_arc = zip(*ks_positions_arc)
@@ -608,7 +610,8 @@ def plot_candidate_archive(
     if ks_positions_other:
         ras_other, decs_other = zip(*ks_positions_other)
         ax_sky.scatter(ras_other, decs_other, s=50, c='gray', marker='o', label='Other', zorder=3)
-    ax_sky.set_xlim(ra - 5/np.cos(dec*u.deg), ra + 5/np.cos(dec*u.deg))
+    xlim_sky = max([5/np.cos(dec*u.deg), dra_arc])
+    ax_sky.set_xlim(ra - xlim_sky, ra + xlim_sky)
     ax_sky.set_ylim(dec - 5, dec + 5)
     ax_sky.set_xlabel('RA (deg)', fontsize=12)
     ax_sky.set_ylabel('Dec (deg)', fontsize=12)
@@ -669,7 +672,8 @@ def plot_candidate_archive(
     ]
 
     cand_param_table = axtext.table(
-        cellText=cand_params_text, cellLoc="left", loc="center", edges="open"
+        cellText=cand_params_text, cellLoc="left", loc="top", edges="open",
+        bbox=[-0.1, 0.5, 1.1, 2]
     )
     cand_param_table.auto_set_font_size(False)
     cand_param_table.set_fontsize(10)
@@ -681,19 +685,17 @@ def plot_candidate_archive(
             cellText=ks_df.values,
             colLabels=ks_df.columns,
             colColours=["lavender"] * len(ks_df.columns),
-            cellLoc="left",
-            loc="top",
+            cellLoc="center",
+            loc="center",
         )
         ks_table.auto_set_font_size(False)
         ks_table.set_fontsize(9)
         ks_table.auto_set_column_width(col=list(range(len(ks_df.columns))))
 
-        # Highlight harmonic match rows in bold/red
+        # Highlight harmonic match rows in red
         for row_idx in range(likely_match_count):
             for col_idx in range(len(ks_df.columns)):
-                ks_table[(row_idx + 1, col_idx)].set_text_props(
-                    color="red", fontweight="bold"
-                )
+                ks_table[(row_idx + 1, col_idx)].set_text_props(color="red")
 
         # Color rows blue if they have 'psr_scraper' in their survey flags
         for row_idx, is_psr_scraper in enumerate(ks_is_psr_scraper):
