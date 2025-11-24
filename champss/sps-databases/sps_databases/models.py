@@ -966,7 +966,7 @@ class DailyRun:
         status = 0
         for step in steps:
             if getattr(self, f"{step}_result", {}) != {}:
-                status + =1
+                status += 1
             else:
                 break
         return status

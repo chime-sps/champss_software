@@ -836,7 +836,7 @@ def run_all_pipeline_processes(
             ),
             # Using template Docker variables as in-container environment variables
             # that allow us this access out-of-container information
-            "env": ["CONTAINER_NAME={{.Task.Name}}", "NODE_NAME={{.Node.Hostname}}"],
+            # "env": ["CONTAINER_NAME={{.Task.Name}}", "NODE_NAME={{.Node.Hostname}}"],
             # This is neccessary to allow Pyroscope (py-spy) to work in Docker
             # 'cap_add': ['SYS_PTRACE'],
             "mode": docker.types.ServiceMode("replicated", replicas=0),
