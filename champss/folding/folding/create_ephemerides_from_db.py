@@ -89,6 +89,50 @@ def check_parfile_has_pepoch(parfile_path):
         return False
 
 
+def check_parfile_is_valid(parfile_path):
+    """
+    Check if a parfile is valid and contains all essential parameters.
+
+    A valid parfile must have: PSRJ, RAJ, DECJ, DM, F0, PEPOCH
+
+    Parameters
+    ----------
+    parfile_path : str
+        Path to the parfile
+
+    Returns
+    -------
+    bool
+        True if parfile is valid, False if corrupted or missing parameters
+    """
+    required_params = {'PSRJ', 'RAJ', 'DECJ', 'DM', 'F0', 'PEPOCH'}
+    found_params = set()
+
+    try:
+        with open(parfile_path, 'r') as f:
+            for line in f:
+                # Skip comments and warnings
+                if line.startswith('#') or line.startswith('WARNING'):
+                    continue
+
+                # Check if line starts with any required parameter
+                for param in required_params:
+                    if line.strip().startswith(param):
+                        found_params.add(param)
+                        break
+
+        # Check if all required parameters are present
+        missing_params = required_params - found_params
+        if missing_params:
+            print(f"Parfile {parfile_path} is missing: {missing_params}")
+            return False
+        return True
+
+    except Exception as e:
+        print(f"Warning: Error reading {parfile_path}: {e}")
+        return False
+
+
 def add_pepoch_to_parfile(parfile_path, pepoch=None):
     """
     Add a PEPOCH line to an existing parfile.
@@ -206,6 +250,7 @@ def main(directory, db_port, db_host, db_name, pepoch, dry_run):
     # Track statistics
     created = 0
     updated = 0
+    regenerated = 0
     skipped = 0
     errors = 0
 
@@ -217,8 +262,22 @@ def main(directory, db_port, db_host, db_name, pepoch, dry_run):
         parfile_path = os.path.join(directory, f"{psr_name}.par")
 
         if os.path.exists(parfile_path):
-            # Check if PEPOCH exists
-            if check_parfile_has_pepoch(parfile_path):
+            # First check if parfile is valid
+            if not check_parfile_is_valid(parfile_path):
+                # Regenerate corrupted parfile
+                if dry_run:
+                    print(f"[DRY RUN] Would regenerate corrupted ephemeris for {psr_name}")
+                    regenerated += 1
+                else:
+                    try:
+                        print(f"Regenerating corrupted ephemeris for {psr_name}")
+                        create_ephemeris_from_db(psr_name, obs_date=obs_date, ephem_path=parfile_path)
+                        regenerated += 1
+                    except Exception as e:
+                        print(f"Error regenerating ephemeris for {psr_name}: {e}")
+                        errors += 1
+            # Check if PEPOCH exists (for valid parfiles)
+            elif check_parfile_has_pepoch(parfile_path):
                 skipped += 1
             else:
                 # Add PEPOCH to existing file
@@ -244,10 +303,11 @@ def main(directory, db_port, db_host, db_name, pepoch, dry_run):
     print("=" * 50)
     print("Summary:")
     print(f"  Created: {created}")
+    print(f"  Regenerated (corrupted): {regenerated}")
     print(f"  Updated (added PEPOCH): {updated}")
     print(f"  Skipped (already complete): {skipped}")
     print(f"  Errors: {errors}")
-    print(f"  Total processed: {created + updated + skipped + errors}")
+    print(f"  Total processed: {created + regenerated + updated + skipped + errors}")
 
 
 if __name__ == "__main__":
