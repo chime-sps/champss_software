@@ -489,16 +489,29 @@ def plot_candidate_archive(
         ks_table.set_fontsize(9)
         ks_table.auto_set_column_width(col=list(range(len(ks_df.columns))))
 
-        # Highlight harmonic match rows in red
-        for row_idx in range(likely_match_count):
-            for col_idx in range(len(ks_df.columns)):
-                ks_table[(row_idx + 1, col_idx)].set_text_props(color="red")
-
-        # Color rows blue if they have 'psr_scraper' in their survey flags
+        # Color code the rows based on match type
         for row_idx, is_psr_scraper in enumerate(ks_is_psr_scraper):
-            if is_psr_scraper and row_idx >= likely_match_count:
-                for col_idx in range(len(ks_df.columns)):
-                    ks_table[(row_idx + 1, col_idx)].set_text_props(color="blue")
+            is_harmonic_match = row_idx < likely_match_count
+
+            # Determine color: purple if both, red if harmonic only, blue if scraper only
+            if is_harmonic_match and is_psr_scraper:
+                color = "purple"
+            elif is_harmonic_match:
+                color = "red"
+            elif is_psr_scraper:
+                color = "blue"
+            else:
+                continue  # No special color
+
+            for col_idx in range(len(ks_df.columns)):
+                ks_table[(row_idx + 1, col_idx)].set_text_props(color=color)
+
+        # Add color legend below table
+        legend_text = (
+            "Red: likely match  |  Blue: unpublished  |  Purple: both"
+        )
+        ax_kstext.text(0.5, -0.05, legend_text, transform=ax_kstext.transAxes,
+                      fontsize=9, ha='center', va='top')
 
     if not known.strip():
         plotstring = f"cand_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
