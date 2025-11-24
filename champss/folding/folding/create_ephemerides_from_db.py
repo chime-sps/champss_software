@@ -12,6 +12,7 @@ import click
 from astropy.time import Time
 
 from folding.fold_candidate import create_ephemeris
+from folding.archive_utils import read_par
 from sps_databases import db_api, db_utils
 
 
@@ -183,6 +184,144 @@ def get_all_known_sources():
     return sources
 
 
+def check_parfile_consistency(parfile_path, psr_name, tolerance=0.01):
+    """
+    Check if parfile parameters match database values.
+
+    Parameters
+    ----------
+    parfile_path : str
+        Path to the parfile
+    psr_name : str
+        Pulsar name to look up in database
+    tolerance : float
+        Fractional tolerance for parameter comparison (default 1%)
+
+    Returns
+    -------
+    dict
+        Dictionary with keys: 'consistent', 'discrepancies'
+        discrepancies is a list of (param, parfile_val, db_val, percent_diff)
+    """
+    # Read parfile
+    try:
+        par = read_par(parfile_path)
+    except Exception as e:
+        return {
+            'consistent': False,
+            'discrepancies': [('ERROR', f'Could not read parfile: {e}', '', 0)]
+        }
+
+    # Get database values
+    sources = db_api.get_known_source_by_names(psr_name)
+    if not sources:
+        return {
+            'consistent': False,
+            'discrepancies': [('ERROR', f'Pulsar {psr_name} not found in database', '', 0)]
+        }
+
+    source = sources[0]
+    db_f0 = 1 / source.spin_period_s
+    db_dm = source.dm
+    db_ra = source.pos_ra_deg
+    db_dec = source.pos_dec_deg
+
+    discrepancies = []
+
+    # Check F0
+    if 'F0' in par:
+        par_f0 = par['F0']
+        if db_f0 != 0:
+            percent_diff = abs(par_f0 - db_f0) / db_f0 * 100
+            if percent_diff > tolerance * 100:
+                discrepancies.append(('F0', par_f0, db_f0, percent_diff))
+
+    # Check DM
+    if 'DM' in par:
+        par_dm = par['DM']
+        if db_dm != 0:
+            percent_diff = abs(par_dm - db_dm) / db_dm * 100
+            if percent_diff > tolerance * 100:
+                discrepancies.append(('DM', par_dm, db_dm, percent_diff))
+
+    # Check RA (use RAJD if available, otherwise convert from RAJ)
+    if 'RAJD' in par:
+        par_ra = par['RAJD']
+        # RA wraps at 360, so check difference accounting for wrap
+        diff = abs(par_ra - db_ra)
+        if diff > 180:
+            diff = 360 - diff
+        percent_diff = diff / 360 * 100
+        if percent_diff > tolerance * 100:
+            discrepancies.append(('RA', par_ra, db_ra, percent_diff))
+
+    # Check DEC
+    if 'DECJD' in par:
+        par_dec = par['DECJD']
+        if abs(db_dec) > 0.01:
+            percent_diff = abs(par_dec - db_dec) / abs(db_dec) * 100
+        else:
+            percent_diff = abs(par_dec - db_dec)
+        if percent_diff > tolerance * 100:
+            discrepancies.append(('DEC', par_dec, db_dec, percent_diff))
+
+    return {
+        'consistent': len(discrepancies) == 0,
+        'discrepancies': discrepancies
+    }
+
+
+def check_all_parfiles(directory, tolerance=0.01):
+    """
+    Check consistency of all parfiles in a directory against database.
+
+    Parameters
+    ----------
+    directory : str
+        Directory containing parfiles
+    tolerance : float
+        Fractional tolerance for parameter comparison (default 1%)
+
+    Returns
+    -------
+    dict
+        Dictionary with 'consistent' and 'inconsistent' lists
+    """
+    import glob
+
+    parfiles = glob.glob(os.path.join(directory, "*.par"))
+    consistent = []
+    inconsistent = []
+
+    print(f"Checking {len(parfiles)} parfiles in {directory}")
+    print("=" * 80)
+
+    for parfile_path in parfiles:
+        psr_name = os.path.basename(parfile_path).replace('.par', '')
+        result = check_parfile_consistency(parfile_path, psr_name, tolerance)
+
+        if result['consistent']:
+            consistent.append(psr_name)
+        else:
+            inconsistent.append((psr_name, result['discrepancies']))
+            print(f"\n{psr_name}:")
+            for param, par_val, db_val, pct_diff in result['discrepancies']:
+                if param == 'ERROR':
+                    print(f"  ERROR: {par_val}")
+                else:
+                    print(f"  {param:6s}: parfile={par_val:15.6f}  db={db_val:15.6f}  diff={pct_diff:6.2f}%")
+
+    print("\n" + "=" * 80)
+    print(f"Summary:")
+    print(f"  Consistent:   {len(consistent)}")
+    print(f"  Inconsistent: {len(inconsistent)}")
+
+    return {
+        'consistent': consistent,
+        'inconsistent': inconsistent
+    }
+
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--directory",
@@ -220,7 +359,18 @@ def get_all_known_sources():
     is_flag=True,
     help="Only show what would be done, don't create/modify files.",
 )
-def main(directory, db_port, db_host, db_name, pepoch, dry_run):
+@click.option(
+    "--check-consistency",
+    is_flag=True,
+    help="Check consistency of existing parfiles against database values.",
+)
+@click.option(
+    "--tolerance",
+    type=float,
+    default=0.01,
+    help="Tolerance for consistency check (fraction, default 0.01 = 1%).",
+)
+def main(directory, db_port, db_host, db_name, pepoch, dry_run, check_consistency, tolerance):
     """
     Create ephemeris files for all known pulsars in the database.
 
@@ -230,6 +380,11 @@ def main(directory, db_port, db_host, db_name, pepoch, dry_run):
     """
     # Connect to database
     db_utils.connect(host=db_host, port=db_port, name=db_name)
+
+    # If check-consistency flag is set, run consistency check and exit
+    if check_consistency:
+        check_all_parfiles(directory, tolerance)
+        return
 
     # Create directory if it doesn't exist
     if not dry_run and not os.path.exists(directory):
