@@ -13,29 +13,134 @@ from matplotlib.gridspec import GridSpec
 from sps_databases.db_api import get_nearby_known_sources
 from sps_multi_pointing.known_source_sifter import known_source_filters
 from multiday_search.phase_aligned_search import phase_loop
+from numba import njit, prange, set_num_threads
 
 
 def compute_accel_steps(
-    dts, f0, npbin, vmax=500 * u.km / u.s, Pbmin=2 * u.hour, phase_accuracy=1.0 / 256
+    dts, f0, npbin, vmax=500 * u.km / u.s, Pbmin=2 * u.hour, phase_accuracy=1.0 / 256,
+    stack_binary_search=False, f1_maxbins=2048,
 ):
-    # P = 1.0 / f0
-    # dphase = P / npbin
-    M_f0 = npbin * phase_accuracy
-    M_f0 = int(np.max((M_f0, 1)))  # To make sure M_f0 does not return 0
+    """
+    Compute the f0 and f1 search grid for acceleration search.
 
-    dfmax = f0 * (vmax / (c * u.m / u.s)).decompose()
-    f1max = (2 * np.pi * dfmax * u.Hz / Pbmin).to(u.s**-2).value
-    dfmax = dfmax.value
+    By default, restrict f0 search range for +- one PS bin (e.g. +- one phase wrap). 
+    Set stack_binary_search=True for binary candidates identified in power spectrum stacks,
+    where f0 range is set by maximum orbital velocity.
 
-    # factor of 2, since we reference to central observation
+    Parameters
+    ----------
+    dts : array
+        Time offsets in seconds
+    f0 : float
+        Spin frequency in Hz
+    npbin : int
+        Number of phase bins
+    vmax : astropy.Quantity
+        Maximum orbital velocity (for binary systems)
+    Pbmin : astropy.Quantity
+        Minimum binary orbital period
+    phase_accuracy : float
+        Required phase accuracy (determines step size)
+    stack_binary_search : bool
+        If True, use velocity-based f0 range for binary candidates from stacks.
+        If False (default), limit f0 search to spectral resolution for single-day obs.
+    f0_bins : int
+        Number of frequency bins (±) to search around f0 (default 3)
+
+    Returns
+    -------
+    f0s : array
+        F0 offset grid
+    f1s : array
+        F1 grid
+    """
     Tobs = max(dts) - min(dts)
-    f0_points = 2 * int(dfmax * Tobs * npbin / M_f0)
-    f1_points = 2 * int(0.5 * f1max * Tobs**2 * npbin / M_f0)
+    if phase_accuracy < 1.0 / npbin:
+        print("Warning: phase accuracy finer than one phase is unnecessary, "
+              "setting to one phase bin.")
+        phase_accuracy = np.max([phase_accuracy, 1.0 / npbin])
+
+    # Calculate dfmax based on velocity (for binary systems)
+    dfmax_velocity = f0 * (vmax / (c * u.m / u.s)).decompose().value
+
+    if stack_binary_search:
+        # Use velocity-based limit for binary candidates from stacks
+        dfmax = dfmax_velocity
+        print(f"Stack binary search mode: dfmax = {dfmax:.2e} Hz")
+        f0_points = 2 * int(0.5 * dfmax * Tobs / phase_accuracy)
+    else:
+        f0_points = 2 * int(1 / phase_accuracy)
+        dfmax = 1.0 / Tobs
+
+    # f1 always uses binary orbital limit
+    f1max = (2 * np.pi * dfmax_velocity * u.Hz / Pbmin).to(u.s**-2).value
+
+    f1_points = 2 * int(0.5 * f1max * Tobs**2 / phase_accuracy)
+
+    # Ensure at least a minimal search grid
+    f0_points = max(f0_points, 3)
+    f1_points = max(f1_points, 3)
+    if f1_points > f1_maxbins:
+        n_f1_downsample = int(np.ceil(f1_points / f1_maxbins))
+        f1_points = f1_points // n_f1_downsample
+        print(f"Warning: f1_points exceeds {f1_maxbins}, downsampling by factor "
+                f"{n_f1_downsample} to {f1_points} points.")
 
     f0s = np.linspace(-dfmax, dfmax, f0_points, endpoint=True)
     f1s = np.linspace(-f1max, f1max, f1_points, endpoint=True)
     print(f"Acceleration search with {len(f0s)} F0, {len(f1s)} F1 trials")
     return f0s, f1s
+
+
+@njit(parallel=True)
+def dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin):
+    """
+    Optimized DM shifting loop using numba njit.
+
+    Parameters
+    ----------
+    fs_fp : ndarray
+        Frequency-phase array of shape (nfreq, nphase)
+    DMs : ndarray
+        Array of DM offsets to try
+    freq : ndarray
+        Frequency array in MHz
+    f_ref : float
+        Reference frequency in MHz
+    P_sec : float
+        Period in seconds
+    npbin : int
+        Number of phase bins
+
+    Returns
+    -------
+    DMprofs : ndarray
+        DM trial profiles of shape (nDM, nphase)
+    """
+    set_num_threads(8)
+
+    nDM = len(DMs)
+    nfreq = len(freq)
+    nphase = fs_fp.shape[-1]
+    DMprofs = np.zeros((nDM, nphase))
+
+    DM_constant = 1.0 / 2.41e-4
+
+    for i in prange(nDM):
+        DMi = DMs[i]
+        # Calculate time delays in seconds for each frequency
+        t_delay = DM_constant * DMi * (1.0 / f_ref**2 - 1.0 / freq**2)
+        # Convert to phase shifts
+        pshifts = ((t_delay / P_sec) * npbin).astype(np.int32)
+
+        # Shift and accumulate
+        for j in range(nfreq):
+            DMprofs[i] += np.roll(fs_fp[j], pshifts[j])
+
+        # Average over frequency
+        DMprofs[i] /= nfreq
+
+    return DMprofs
 
 
 def plot_candidate_archive(
@@ -109,7 +214,6 @@ def plot_candidate_archive(
         f0_slice = chi2_grid[:, i_f1]
         f1_slice = chi2_grid[i_f0]
 
-        npbin = fs_bin.shape[-1]
         dphis = f0_best * dts + 0.5 * f1_best * dts**2
         i_phis = (dphis * npbin).astype("int")
         for i in range(fs_bin.shape[0]):
@@ -156,23 +260,19 @@ def plot_candidate_archive(
     if dm_search:
         freq = F[::binf]
         f_ref = np.max(freq)
-        dDM = 0.125
+        DM_constant = 1.0 / 2.41e-4
+        tsamp_pbin = 1 / (f0*npbin)
+        dDM = 2 * tsamp_pbin / (DM_constant * (1.0 / np.min(freq)**2 - 1.0 / f_ref**2))
         nDM = int(np.ceil(2 * dm / dDM))
+        print(f"DM search over {nDM} trials with dDM = {dDM:.2f} pc cm^-3")
         DMs = np.linspace(0, nDM * dDM, nDM)
         DMs -= np.mean(DMs)
         P = (1 / f0) * u.s
         fs_fp = fs_bin.mean(0)
-        DMprofs = np.zeros((nDM, fs_bin.shape[-1]))
 
-        for i, DMi in enumerate(DMs):
-            t_delay = (1 / 2.41e-4) * DMi * (1.0 / f_ref**2 - 1.0 / freq**2)
-            pshifts = (t_delay / P).decompose().value
-            pshifts = (pshifts * npbin).astype("int")
-
-            fs_shifted = np.zeros_like(fs_fp)
-            for j, p in enumerate(pshifts):
-                fs_shifted[j] = np.roll(fs_fp[j], int(pshifts[j]))
-            DMprofs[i] = fs_shifted.mean(0)
+        # Use optimized njit function for DM shifting
+        P_sec = P.to(u.s).value
+        DMprofs = dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin)
 
         DMprofs = np.tile(DMprofs, (1, 2))
         DM_slice = np.max(DMprofs, axis=-1)
@@ -324,7 +424,6 @@ def plot_candidate_archive(
     cand_param_table.set_fontsize(10)
     cand_param_table.scale(10, 1.25)
 
-    print(known, len(known))
     if not known.strip():
         plotstring = f"cand_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
         plotstring_radec = (

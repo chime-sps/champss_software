@@ -70,9 +70,11 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
             TSAMP,
             dt_max=num_dms,
             dt_min=0,
-            dt_step=fdmt_config.dm_step,
+            dt_step=1,
         )
-        fdmt.set_num_threads(num_threads)  # may want to cap at 8 threads
+        fdmt_threads = np.min([num_threads, 8])
+        #fdmt.set_num_threads(num_threads)  # may want to cap at 8 threads
+        fdmt.set_num_threads(fdmt_threads)
     else:
         log.info("Using Python FDMT")
         from sps_dedispersion.fdmt.cpu_fdmt import FDMT
