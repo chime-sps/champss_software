@@ -914,7 +914,7 @@ class Process:
 @attrs
 class DailyRun:
     date = attrib(validator=validators.instance_of(dt.date))
-    status = attrib(validator=validators.in_(DailyStatus), type=DailyStatus)
+    # status = attrib(validator=validators.in_(DailyStatus), type=DailyStatus)
     schedule_result = attrib(
         default={},
         converter=dict,
@@ -959,3 +959,14 @@ class DailyRun:
         doc = asdict(self)
         doc["_id"] = ObjectId(self.id)
         return doc
+
+    @property
+    def status(self):
+        steps = ["schedule", "pipeline", "multipointing", "classification", "folding"]
+        status = 0
+        for step in steps:
+            if getattr(self, f"{step}_result", {}) != {}:
+                status + =1
+            else:
+                break
+        return status

@@ -98,10 +98,10 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
     candidate_df = pd.read_csv(csv_input_name, index_col=0)
 
     filtered_df = filter_mp_df(candidate_df, sigma_min=7, class_min=0.9)
-    write_df_to_fsdb(filtered_df, date)
-    output_file = csv.rsplit("_", 1)[0] + "_folded.csv"
+    filtered_df = write_df_to_fsdb(filtered_df, date)
+    # output_file = csv.rsplit("_", 1)[0] + "_folded.csv"
 
-    filtered_df.to_csv(output_file)
+    # filtered_df.to_csv(output_file)
 
     # Filter(
     #     cand_obs_date=date,
@@ -148,7 +148,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
             }
         )
 
-    return {"info": info}, [], []
+    return {"info": info, "df": filtered_df}, [], []
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -237,6 +237,7 @@ def run_all_folding_processes(
 
     message_slack(f"Folding {len(processes)} candidates for {date_string}")
 
+    work_ids = []
     for process in processes:
         fs_id = process["fs_id"]
         ra = process["ra"]
@@ -285,16 +286,19 @@ def run_all_folding_processes(
             formatted_date,
         ]
 
-        schedule_workflow_job(
-            docker_image,
-            docker_mounts,
-            docker_name,
-            docker_memory_reservation,
-            workflow_buckets_name,
-            workflow_function,
-            workflow_params,
-            workflow_tags,
+        work_ids.append(
+            schedule_workflow_job(
+                docker_image,
+                docker_mounts,
+                docker_name,
+                docker_memory_reservation,
+                workflow_buckets_name,
+                workflow_function,
+                workflow_params,
+                workflow_tags,
+            )
         )
+    return work_ids
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -1176,7 +1180,7 @@ def start_processing_manager(
                         standalone_mode=False,
                     )
                     daily_run = db_api.update_daily_run(
-                        current_date.date(), {"schedule_result": processes}
+                        present_date.date(), {"schedule_result": processes}
                     )
 
                     if len(processes["unfinished_processes"]) == 0:
@@ -1335,7 +1339,7 @@ def start_processing_manager(
                     "average_time_of_processing": average_time_of_processing,
                 }
                 daily_run = db_api.update_daily_run(
-                    current_date.date(), {"pipeline_result": pipeline_result}
+                    present_date.date(), {"pipeline_result": pipeline_result}
                 )
             # End of pipeline phase
 
@@ -1417,7 +1421,7 @@ def start_processing_manager(
                         f" with filter: ALL_tags=['mp', '{date_string}']"
                     )
                 daily_run = db_api.update_daily_run(
-                    current_date.date(), {"multipointing_result": work_result}
+                    present_date.date(), {"multipointing_result": work_result}
                 )
             # End of multi-pointing phase
 
@@ -1463,13 +1467,14 @@ def start_processing_manager(
                     failover_to_buckets=True,
                 )
                 daily_run = db_api.update_daily_run(
-                    current_date.date(), {"classification_result": work_result}
+                    present_date.date(),
+                    {"classification_result": work_result["results"]},
                 )
             # End of classification phase
 
             # Start of folding phase
             if run_folding:
-                processes, [], [] = find_all_folding_processes.main(
+                fold_schedule_output, [], [] = find_all_folding_processes.main(
                     args=[
                         "--date",
                         date_to_process,
@@ -1486,6 +1491,8 @@ def start_processing_manager(
                     ],
                     standalone_mode=False,
                 )
+                df_mp = fold_schedule_output["df"]
+                processes = fold_schedule_output["info"]
 
                 docker_service_name_prefix = "fold"
 
@@ -1497,7 +1504,7 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
 
-                run_all_folding_processes.main(
+                work_ids = run_all_folding_processes.main(
                     args=[
                         "--date",
                         date_to_process,
@@ -1512,7 +1519,7 @@ def start_processing_manager(
                         "--foldpath",
                         foldpath,
                         "--processes",
-                        processes["info"],
+                        processes,
                         "--workflow-buckets-name",
                         workflow_buckets_name,
                         "--docker-image-name",
@@ -1528,10 +1535,21 @@ def start_processing_manager(
                 wait_for_no_tasks_in_states(
                     docker_swarm_running_states, docker_service_name_prefix
                 )
+                for work_id in work_ids:
+                    work_result = get_work_from_results(
+                        workflow_results_name=workflow_buckets_name,
+                        work_id=work_id,
+                        failover_to_buckets=True,
+                    )
+                    fs_id = work_result["parameters"]["fs_id"]
+                    fold_plot = work_result["parameters"]["path_to_plot"]
+                    df_mp.loc[df["fs_id"] == fs_id, fold_plot]
+
+                # Could get work results, alternatively can query fs db
 
                 message_slack(f"Candidate folding for {date_string} complete")
                 daily_run = db_api.update_daily_run(
-                    current_date.date(), {"classification_result": processes}
+                    present_date.date(), {"folding_result": processes}
                 )
             # End of folding phase
 

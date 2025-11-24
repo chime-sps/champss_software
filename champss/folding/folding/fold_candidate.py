@@ -14,7 +14,7 @@ logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
 from beamformer.strategist.strategist import PointingStrategist
-from beamformer.utilities.common import find_closest_pointing, get_data_list
+from beamformer.utilities.common import find_closest_pointing
 from folding.plot_candidate import plot_candidate_archive
 from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
@@ -51,6 +51,7 @@ def update_folding_history(id, payload):
         return_document=pymongo.ReturnDocument.AFTER,
     )
 
+
 def candidate_name(ra_deg, dec_deg, j2000=True):
     ra_hhmmss = ra_deg * 24 / 360
     dec_ddmmss = abs(dec_deg)
@@ -59,6 +60,7 @@ def candidate_name(ra_deg, dec_deg, j2000=True):
     dec_str = f"{int(dec_ddmmss):02d}{int((dec_ddmmss * 60) % 60):02d}"
     candidate_name = "J" + ra_str + dec_sign + dec_str
     return candidate_name
+
 
 def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     cand_pos = SkyCoord(ra, dec, unit="deg")
@@ -289,8 +291,8 @@ def main(
         return {}, [], []
 
     config = load_config()
-    config['beamform']['update_db'] = False
-    config['beamform']['flatten_bandpass'] = False
+    config["beamform"]["update_db"] = False
+    config["beamform"]["flatten_bandpass"] = False
     log_path = foldpath + f"/logs/{date.strftime('%Y/%m/%d')}/"
     log_name = (
         f"fold_candidate{date.strftime('%Y-%m-%d')}_{ra:.02f}_"
@@ -373,8 +375,9 @@ def main(
     if not os.path.isfile(fil):
         log.info("Beamforming...")
         fdmt = True
-        beamformer = beamform.initialise(config, rfi_beamform=True, 
-                                         basepath=foldpath, datpath=datpath)
+        beamformer = beamform.initialise(
+            config, rfi_beamform=True, basepath=foldpath, datpath=datpath
+        )
         skybeam, spectra_shared = beamform.run(
             ap[0], beamformer, fdmt, num_threads, foldpath
         )
@@ -431,13 +434,6 @@ def main(
     )
 
     log.info(f"SN of folded profile: {SN_arr}")
-    fold_details = {
-        "date": date,
-        "archive_fname": archive_fname,
-        "SN": float(SN_arr),
-        "path_to_plot": plot_fname,
-    }
-
     fold_details = {
         "date": date,
         "archive_fname": archive_fname,
