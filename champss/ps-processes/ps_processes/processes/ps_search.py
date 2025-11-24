@@ -214,62 +214,43 @@ class PowerSpectraSearch:
             ).astype(np.int32)
 
         if injection_path is not None:
-            presets = [
-                "gaussian",
-                "subpulse",
-                "interpulse",
-                "faint",
-                "high-DM",
-                "slow",
-                "fast",
-            ]
-            if injection_path in presets:
-                profile = injection_path
-                injection_dict = ps_inject.main(
-                    pspec,
-                    self.full_harm_bins,
-                    profile,
-                    scale_injections=scale_injections,
-                )
-                injection_dicts = injection_dict
+            injection_dicts = []
+            if injection_path == 'random':
+
+                for i in range(5):
+                    injection_dict = ps_inject.main(
+                        pspec,
+                        self.full_harm_bins,
+                        scale_injections=scale_injections,
+                    )
+                    injection_dicts.append(injection_dict)
             else:
-                injection_dicts = []
-                if injection_path == 'random':
+                try:
+                    with open(injection_path) as file:
+                        injection_list = yaml.safe_load(file)
+                    injection_df = pd.DataFrame(injection_list)
+                except:
+                    injection_df = pd.read_pickle(injection_path)
+                # injection_df are the initial injection parameters
+                # injection_dicts are final injection parameters
+                # Some entries from injection_list may create multiple injection or none
+                if len(injection_indices) == 0:
+                    injection_indices = np.arange(len(injection_df))
+                for injection_index in injection_indices:
+                    log.info("Injecting at:")
+                    log.info(f"DM: {injection_df.iloc[injection_index]['DM']}")
+                    log.info(
+                        f"frequency: {injection_df.iloc[injection_index]['frequency']}"
+                    )
+                    injection_dict = injection_df.iloc[injection_index].to_dict()
 
-                    for i in range(5):
-                        injection_dict = ps_inject.main(
-                            pspec,
-                            self.full_harm_bins,
-                            scale_injections=scale_injections,
-                        )
-                        injection_dicts.extend(injection_dict)
-                else:
-                    try:
-                        with open(injection_path) as file:
-                            injection_list = yaml.safe_load(file)
-                        injection_df = pd.DataFrame(injection_list)
-                    except:
-                        injection_df = pd.read_pickle(injection_path)
-                    # injection_df are the initial injection parameters
-                    # injection_dicts are final injection parameters
-                    # Some entries from injection_list may create multiple injection or none
-                    if len(injection_indices) == 0:
-                        injection_indices = np.arange(len(injection_df))
-                    for injection_index in injection_indices:
-                        log.info("Injecting at:")
-                        log.info(f"DM: {injection_df.iloc[injection_index]['DM']}")
-                        log.info(
-                            f"frequency: {injection_df.iloc[injection_index]['frequency']}"
-                        )
-                        injection_dict = injection_df.iloc[injection_index].to_dict()
-
-                        injection_dict = ps_inject.main(
-                            pspec,
-                            self.full_harm_bins,
-                            injection_dict,
-                            scale_injections=scale_injections,
-                        )
-                        injection_dicts.extend(injection_dict)
+                    injection_dict = ps_inject.main(
+                        pspec,
+                        self.full_harm_bins,
+                        injection_dict,
+                        scale_injections=scale_injections,
+                    )
+                    injection_dicts.append(injection_dict)
             for injection_index, injection_dict in enumerate(injection_dicts):
                 injection_dict["injection_index"] = injection_index
         else:

@@ -54,43 +54,37 @@ def dm_distribution(x, mu, sig, l):
 
     return gauss*tail / np.sum(gauss*tail)
 
-def generate_injection(pspec, f_nyquist = 508,  N = 1):
+def generate_injection(pspec, f_nyquist = 508):
     '''
     This function generates a random injection and its parameters.
     '''
-    
     f_log = np.logspace(-3, 2.7, int((4/6)*len(f_dist)))
     f_choices = np.concatenate([f_dist, f_log]) 
-    f = np.random.choice(f_choices, size = N)
-    f[f > f_nyquist] = f_nyquist
+    f_choices[f_choices > f_nyquist] = f_nyquist
+    f = np.random.choice(f_choices)
 
-    dm_spread = np.linspace(0, 1000, 10000)
+    dm_spread = np.linspace(0, pspec.dms[-1], 10000)
     dm_weights = 0.6*dm_distribution(dm_spread, 24, 24, 0.02)
     dm_weights += 0.4 / len(dm_spread)
     #24 is chosen as the maximum DM value at b = 90 deg from NE2001
-    dm = np.random.choice(dm_spread, size = N, p = dm_weights)
-    dm[dm > pspec.dms[-1]] = pspec.dms[-1]
+    dm = np.random.choice(dm_spread, p = dm_weights)
     
     S_choices = np.logspace(-2, 1, 10000)
-    S = np.random.choice(S_choices, size = N)
+    S = np.random.choice(S_choices)
 
-    prof_idx = np.random.choice(range(len(TPA_profiles)), size = N)
+    prof_idx = np.random.choice(range(len(TPA_profiles)))
     prof = TPA_profiles[prof_idx]
 
-    injection_profiles = []
+    log.info(f'Injecting TPA profile {prof_idx} at f = {f:.2f} Hz, DM = {dm:.2f} pc / cm^3, and S = {S:.2f} mJy.')
+    injection_dict = {
+                "TPA_idx": prof_idx,
+                "profile": prof,
+                "flux": S,
+                "frequency": f,
+                "DM": dm,
+            }
 
-    for i in range(N):
-        log.info(f'Injecting TPA profile {prof_idx[i]} at f = {f[i]:.2f} Hz, DM = {dm[i]:.2f} pc / cm^3, and S = {S[i]:.2f} mJy.')
-        injection_profiles.append(
-            {
-                "TPA_idx": prof_idx[i],
-                "profile": prof[i],
-                "flux": S[i],
-                "frequency": f[i],
-                "DM": dm[i],
-            })
-
-    return injection_profiles
+    return injection_dict
 
 def x_to_chi2(x, df):
     """
@@ -155,6 +149,7 @@ class Injection:
         scale_injections=False,
         flux = None,
         sigma = None,
+        TPA_idx = None, #for bookkeeping
     ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
@@ -672,7 +667,7 @@ def main(
         injection_dict = generate_injection(pspec)
     
     else: 
-        injection_dict['TPA_idx'] = 'n/a'
+        injection_dict['TPA_idx'] = None
 
     if remove_spectra:
         log.info("Replacing spectra with expected mean value.")
@@ -689,8 +684,7 @@ def main(
     ).injection()
     if len(injection_output_dict["injected_powers"]) == 0:
         log.info("Pulsar too weak.")
-        continue
-
+        
     injection_dict["dms"] = injection_output_dict["dm_indices"]
     injection_dict["bins"] = injection_output_dict["freq_indices"]
     injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
@@ -714,7 +708,6 @@ def main(
             "injected_powers"
         ].astype(pspec.power_spectra.dtype)
 
-    i += 1
     pspec.power_spectra[:, zero_bins] = 0
-
-    return injection_profiles
+    
+    return injection_dict
