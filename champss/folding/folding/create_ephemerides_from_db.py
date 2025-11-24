@@ -6,7 +6,6 @@ For each pulsar in the known_sources database:
 - If parfile exists but has no PEPOCH, add a PEPOCH line
 """
 
-import logging
 import os
 
 import click
@@ -14,9 +13,6 @@ from astropy.time import Time
 
 from folding.fold_candidate import create_ephemeris
 from sps_databases import db_api, db_utils
-
-log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def create_ephemeris_from_db(psr_name, obs_date=None, ephem_path=None):
@@ -63,7 +59,7 @@ def create_ephemeris_from_db(psr_name, obs_date=None, ephem_path=None):
 
     # Create the ephemeris
     create_ephemeris(psr_name, ra, dec, dm, obs_date, f0, ephem_path)
-    log.info(f"Created ephemeris for {psr_name} at {ephem_path}")
+    print(f"Created ephemeris for {psr_name} at {ephem_path}")
 
     return ephem_path
 
@@ -89,7 +85,7 @@ def check_parfile_has_pepoch(parfile_path):
                     return True
         return False
     except Exception as e:
-        log.warning(f"Error reading {parfile_path}: {e}")
+        print(f"Warning: Error reading {parfile_path}: {e}")
         return False
 
 
@@ -124,9 +120,9 @@ def add_pepoch_to_parfile(parfile_path, pepoch=None):
         with open(parfile_path, 'w') as f:
             f.writelines(lines)
 
-        log.info(f"Added PEPOCH to {parfile_path}")
+        print(f"Added PEPOCH to {parfile_path}")
     except Exception as e:
-        log.error(f"Error adding PEPOCH to {parfile_path}: {e}")
+        print(f"Error adding PEPOCH to {parfile_path}: {e}")
 
 
 def get_all_known_sources():
@@ -194,11 +190,11 @@ def main(directory, db_port, db_host, db_name, pepoch, dry_run):
     # Create directory if it doesn't exist
     if not dry_run and not os.path.exists(directory):
         os.makedirs(directory)
-        log.info(f"Created directory: {directory}")
+        print(f"Created directory: {directory}")
 
     # Get all known sources
     sources = get_all_known_sources()
-    log.info(f"Found {len(sources)} known sources in database")
+    print(f"Found {len(sources)} known sources in database")
 
     # Set default PEPOCH
     if pepoch is None:
@@ -223,36 +219,35 @@ def main(directory, db_port, db_host, db_name, pepoch, dry_run):
         if os.path.exists(parfile_path):
             # Check if PEPOCH exists
             if check_parfile_has_pepoch(parfile_path):
-                log.debug(f"Skipping {psr_name}: parfile exists with PEPOCH")
                 skipped += 1
             else:
                 # Add PEPOCH to existing file
                 if dry_run:
-                    log.info(f"[DRY RUN] Would add PEPOCH to {parfile_path}")
+                    print(f"[DRY RUN] Would add PEPOCH to {parfile_path}")
                 else:
                     add_pepoch_to_parfile(parfile_path, pepoch_mjd)
                 updated += 1
         else:
             # Create new ephemeris
             if dry_run:
-                log.info(f"[DRY RUN] Would create ephemeris for {psr_name}")
+                print(f"[DRY RUN] Would create ephemeris for {psr_name}")
                 created += 1
             else:
                 try:
                     create_ephemeris_from_db(psr_name, obs_date=obs_date, ephem_path=parfile_path)
                     created += 1
                 except Exception as e:
-                    log.error(f"Error creating ephemeris for {psr_name}: {e}")
+                    print(f"Error creating ephemeris for {psr_name}: {e}")
                     errors += 1
 
     # Print summary
-    log.info("=" * 50)
-    log.info("Summary:")
-    log.info(f"  Created: {created}")
-    log.info(f"  Updated (added PEPOCH): {updated}")
-    log.info(f"  Skipped (already complete): {skipped}")
-    log.info(f"  Errors: {errors}")
-    log.info(f"  Total processed: {created + updated + skipped + errors}")
+    print("=" * 50)
+    print("Summary:")
+    print(f"  Created: {created}")
+    print(f"  Updated (added PEPOCH): {updated}")
+    print(f"  Skipped (already complete): {skipped}")
+    print(f"  Errors: {errors}")
+    print(f"  Total processed: {created + updated + skipped + errors}")
 
 
 if __name__ == "__main__":
