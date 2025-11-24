@@ -247,7 +247,7 @@ def plot_candidate_archive(
     ax_kstext.axis("off")
 
     # Sky position scatterplot
-    ax_sky = fig.add_subplot(gs[3:9, 10:17])
+    ax_sky = fig.add_subplot(gs[4:9, 10:17])
     ax_sky.yaxis.tick_right()
     ax_sky.yaxis.set_label_position("right")
     
