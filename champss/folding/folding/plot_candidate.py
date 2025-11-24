@@ -508,7 +508,7 @@ def plot_candidate_archive(
 
         # Add color legend below table
         legend_text = (
-            "Red: likely match  |  Blue: unpublished  |  Purple: both"
+            "Nearby Sources. Red: likely match  |  Blue: unpublished  |  Purple: both"
         )
         ax_kstext.text(0.5, -0.05, legend_text, transform=ax_kstext.transAxes,
                       fontsize=9, ha='center', va='top')
