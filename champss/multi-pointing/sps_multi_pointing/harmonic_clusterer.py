@@ -76,7 +76,7 @@ class MultiPointingHarmonicClusterer:
         data_freq = df_sorted[:]["mean_freq"].to_numpy()
 
         # Chunk data to save on computations
-        # Chunks contain two times
+        # Chunks contain two times the maximum ra distance
         max_val = data_pos[-1, 0]
         max_dist = self.neighborhood_max_dist * self.ra_scale
         edge_values = np.arange(data_pos[0, 0], max_val + max_dist, max_dist)
