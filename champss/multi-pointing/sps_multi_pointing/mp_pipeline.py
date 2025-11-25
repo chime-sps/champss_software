@@ -264,7 +264,7 @@ def cli(
     sp_cands = list(
         tqdm.tqdm(
             pool.imap(
-                partial(data_reader.read_cands_summaries, sigma_threshold=0),
+                partial(data_reader.read_cands_summaries, sigma_threshold=sigma_threshold),
                 files,
             ),
             total=len(files),

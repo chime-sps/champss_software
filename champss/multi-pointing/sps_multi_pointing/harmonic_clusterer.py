@@ -121,10 +121,13 @@ class MultiPointingHarmonicClusterer:
             ),
             shape=(N, N),
         ).tocsr()
+        log.info(f"Created sparse distance matric {sparse_distances.__repr__()}")
+        if sparse_distances.size ==0:
+            log.info("No neightbouring points found. Aborting clustering process.")
+            return df
         sparse_distances = sort_graph_by_row_values(
             sparse_distances, warn_when_not_sorted=False
         )
-        log.info(f"Created sparse distance matric {sparse_distances.__repr__()}")
 
         dbres = DBSCAN(
             eps=self.frac_eps,
