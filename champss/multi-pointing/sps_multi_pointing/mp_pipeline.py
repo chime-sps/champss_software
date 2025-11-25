@@ -439,10 +439,10 @@ def cli(
     if csv:
         df = pd.DataFrame(summary_dicts)
         if cluster_harmonics:
-            harmonic_clusterer = harmonic_clusterer.MultiPointingHarmonicClusterer(
+            clusterer = harmonic_clusterer.MultiPointingHarmonicClusterer(
                 **OmegaConf.to_container(config.harmonic_clusterer)
             )
-            df = harmonic_clusterer.cluster(df)
+            df = clusterer.cluster(df)
         csv_name = f"{out_folder}/all_mp_cands.csv"
         df.to_csv(csv_name)
     else:

@@ -24,14 +24,14 @@ def frac_metric(f0, f1, max_harm=16):
 
 
 def get_frac_distances_for_chunk(
-    data, max_dist=0.1, frac_eps=0.001, neighbourhood_metric="chebyshev"
+    data, max_dist=0.1, frac_eps=0.001, neighborhood_metric="chebyshev"
 ):
     # Run fract metric on chunk
     data_pos = data[0]
     data_freq = data[1]
     start_index = data[2]
     neighbors_batch = radius_neighbors_graph(
-        data_pos, max_dist, n_jobs=1, metric=neighbourhood_metric
+        data_pos, max_dist, n_jobs=1, metric=neighborhood_metric
     ).tocoo()
     frac_dist_neighbors = frac_metric(
         data_freq[neighbors_batch.coords[0]], data_freq[neighbors_batch.coords[1]]
@@ -48,7 +48,7 @@ def get_frac_distances_for_chunk(
 class MultiPointingHarmonicClusterer:
     """Groups multi pointing candidates and writes clusters to a dataframe"""
 
-    neighbourhood_max_dist = attrib(default=1.1)
+    neighborhood_max_dist = attrib(default=1.1)
     dbscan_min_samples = attrib(default=1)
     freq_spacing = attrib(default=9.70127682e-04)
     dm_spacing = attrib(default=0.10119793310713615)
@@ -56,10 +56,10 @@ class MultiPointingHarmonicClusterer:
     freq_scale = attrib(default=1)
     ra_scale = attrib(default=1.0)
     dec_scale = attrib(default=1.0)
-    neighbourhood_metric = attrib(default="chebyshev")
+    neighborhood_metric = attrib(default="chebyshev")
     frac_eps = attrib(default=0.001)
 
-    def group(self, df: pd.DataFrame, num_threads: int = 16) -> pd.DataFrame:
+    def cluster(self, df: pd.DataFrame, num_threads: int = 16) -> pd.DataFrame:
         """
         Clusters the candidates included in a DataFrame
         """
@@ -78,7 +78,7 @@ class MultiPointingHarmonicClusterer:
         # Chunk data to save on computations
         # Chunks contain two times
         max_val = data_pos[-1, 0]
-        max_dist = self.neighbourhood_max_dist * self.ra_scale
+        max_dist = self.neighborhood_max_dist * self.ra_scale
         edge_values = np.arange(data_pos[0, 0], max_val + max_dist, max_dist)
 
         chunk_edges = np.searchsorted(data_pos[:, 0], edge_values, side="right")
@@ -101,7 +101,7 @@ class MultiPointingHarmonicClusterer:
                             get_frac_distances_for_chunk,
                             max_dist=max_dist,
                             frac_eps=self.frac_eps,
-                            neighbourhood_metric=self.neighbourhood_metric,
+                            neighborhood_metric=self.neighborhood_metric,
                         ),
                         chunked_data,
                     ),
@@ -121,15 +121,17 @@ class MultiPointingHarmonicClusterer:
             ),
             shape=(N, N),
         ).tocsr()
-        sparse_distances = sort_graph_by_row_values(sparse_distances)
-        log.info(f"Created sparse distance matric {sparse_distances}")
+        sparse_distances = sort_graph_by_row_values(
+            sparse_distances, warn_when_not_sorted=False
+        )
+        log.info(f"Created sparse distance matric {sparse_distances.__repr__()}")
 
         dbres = DBSCAN(
             eps=self.frac_eps,
             min_samples=self.dbscan_min_samples,
             n_jobs=num_threads,
             metric="precomputed",
-        ).fit(data_freq)
+        ).fit(sparse_distances)
 
         labels = dbres.labels_
         uniq_labels = set(labels)
@@ -137,14 +139,19 @@ class MultiPointingHarmonicClusterer:
             dbres.labels_, return_index=True, return_counts=True
         )
         log.info(
-            f"Finished Harmonic clustering. Found {len(np_unique_labels_output[0])} clusters."
+            f"Finished Harmonic clustering. Found {len(np_unique_labels_output[0])} clusters in {len(df)} multi-pointing candidates."
         )
         df_sorted["harm_cluster_label"] = dbres.labels_
+        df_sorted["strongest_in_cluster"] = 0
+        df_sorted["harm_cluster_size"] = 0
         sorted_label = np.argsort(np_unique_labels_output[2])[::-1]
         for label in sorted_label:
             subset = df_sorted[df_sorted["harm_cluster_label"] == label]
             df_sorted.loc[subset.index, "harm_cluster_size"] = len(subset)
 
             df_sorted.loc[subset["sigma"].idxmax(), "strongest_in_cluster"] = 1
+
+        df_sorted = df_sorted.sort_values("sigma", ascending=False)
+        df_sorted = df_sorted.reset_index()
 
         return df_sorted
