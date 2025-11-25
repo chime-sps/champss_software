@@ -277,6 +277,7 @@ def write_df_to_fsdb(df, date):
             row["file_name"],
             "sd_candidate",
         )
+
         df.loc[index, "fs_id"] = str(fs["id"])
     return df
 
