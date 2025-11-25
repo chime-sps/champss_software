@@ -1320,7 +1320,7 @@ def update_daily_run(date, payload, upsert=True):
 
     Parameters
     -------
-    date: datetime.date
+    date: datetime.datetime
         The date that should be updated
 
     payload: dict
@@ -1338,7 +1338,7 @@ def update_daily_run(date, payload, upsert=True):
     db = db_utils.connect()
     payload["last_changed"] = dt.datetime.now()
     return db.daily_runs.find_one_and_update(
-        {"date": date},
+        {"date": date.replace(tzinfo=None)},
         {"$set": payload},
         return_document=pymongo.ReturnDocument.AFTER,
         upsert=upsert,
@@ -1354,7 +1354,7 @@ def get_daily_run(date):
 
     Parameters
     -------
-    date: datetime.date
+    date: datetime.datetime
         The date that should be updated
 
     Returns
@@ -1363,4 +1363,4 @@ def get_daily_run(date):
         The DailyRun object for the database entry
     """
     db = db_utils.connect()
-    return DailyRun.from_db(db.processes.find_one({"date": date}))
+    return DailyRun.from_db(db.processes.find_one({"date": date.replace(tzinfo=None)}))

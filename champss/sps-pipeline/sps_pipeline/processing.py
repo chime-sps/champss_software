@@ -1180,7 +1180,7 @@ def start_processing_manager(
                         standalone_mode=False,
                     )
                     daily_run = db_api.update_daily_run(
-                        present_date.date(), {"schedule_result": processes}
+                        date_to_process, {"schedule_result": {key:len(val) for key, val in processes.items()}}
                     )
 
                     if len(processes["unfinished_processes"]) == 0:
@@ -1339,7 +1339,7 @@ def start_processing_manager(
                     "average_time_of_processing": average_time_of_processing,
                 }
                 daily_run = db_api.update_daily_run(
-                    present_date.date(), {"pipeline_result": pipeline_result}
+                    date_to_process, {"pipeline_result": pipeline_result}
                 )
             # End of pipeline phase
 
@@ -1421,7 +1421,7 @@ def start_processing_manager(
                         f" with filter: ALL_tags=['mp', '{date_string}']"
                     )
                 daily_run = db_api.update_daily_run(
-                    present_date.date(), {"multipointing_result": work_result}
+                    date_to_process, {"multipointing_result": work_result}
                 )
             # End of multi-pointing phase
 
@@ -1467,7 +1467,7 @@ def start_processing_manager(
                     failover_to_buckets=True,
                 )
                 daily_run = db_api.update_daily_run(
-                    present_date.date(),
+                    date_to_process,
                     {"classification_result": work_result["results"]},
                 )
             # End of classification phase
@@ -1549,7 +1549,7 @@ def start_processing_manager(
 
                 message_slack(f"Candidate folding for {date_string} complete")
                 daily_run = db_api.update_daily_run(
-                    present_date.date(), {"folding_result": processes}
+                    date_to_process, {"folding_result": processes}
                 )
             # End of folding phase
 
