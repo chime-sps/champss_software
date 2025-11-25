@@ -461,8 +461,8 @@ class MultiPointingCandidate:
             class_value = self.classification.label.name
         else:
             class_value = "none"
-        filename = file_prefix + "_f_{:.3f}_DM_{:.3f}_class_{}_{}.npz".format(
-            self.best_freq, self.best_dm, class_value, self.obs_id[-1]
+        filename = file_prefix + "_f_{:.3f}_DM_{:.3f}_{}.npz".format(
+            self.best_freq, self.best_dm, self.obs_id[-1]
         )
         cand_dict = self.__dict__.copy()
         # Prevent all summaries from being written if they have been loaded
