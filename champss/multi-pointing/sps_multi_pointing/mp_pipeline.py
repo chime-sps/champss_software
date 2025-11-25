@@ -15,7 +15,13 @@ from omegaconf import OmegaConf
 from scheduler.utils import convert_date_to_datetime
 from sps_common.interfaces.multi_pointing import KnownSourceLabel
 from sps_databases import db_api, db_utils
-from sps_multi_pointing import classifier, data_reader, grouper, utilities
+from sps_multi_pointing import (
+    classifier,
+    data_reader,
+    grouper,
+    utilities,
+    harmonic_clusterer,
+)
 from sps_multi_pointing.known_source_sifter.known_source_sifter import KnownSourceSifter
 import tqdm
 
@@ -185,6 +191,11 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     type=str,
     help="Name of the output folder inside the output/mp_runs folder.",
 )
+@click.option(
+    "--cluster-harmonics/--no-cluster_harmonics",
+    default=True,
+    help="Cluster harmonics in the resulting multi_pointing candidates. Currently only written to output csv.",
+)
 def cli(
     output,
     file_path,
@@ -204,6 +215,7 @@ def cli(
     db_name,
     num_threads,
     run_name,
+    cluster_harmonics,
 ):
     """Slow Pulsar Search multiple-pointing candidate processing."""
     date = convert_date_to_datetime(date)
@@ -252,9 +264,7 @@ def cli(
     sp_cands = list(
         tqdm.tqdm(
             pool.imap(
-                partial(
-                    data_reader.read_cands_summaries, sigma_threshold=0
-                ),
+                partial(data_reader.read_cands_summaries, sigma_threshold=0),
                 files,
             ),
             total=len(files),
@@ -286,6 +296,7 @@ def cli(
     )
     mp_cands = sp_grouper.group(sp_cands, num_threads=num_threads)
     log.info(f"Number of multi-pointing candidates: {len(mp_cands)}")
+
     try:
         db_client = db_utils.connect(host=db_host, port=db_port, name=db_name)
         kss = KnownSourceSifter(**OmegaConf.to_container(config.sifter))
@@ -427,6 +438,11 @@ def cli(
         """
     if csv:
         df = pd.DataFrame(summary_dicts)
+        if cluster_harmonics:
+            clusterer = harmonic_clusterer.MultiPointingHarmonicClusterer(
+                **OmegaConf.to_container(config.harmonic_clusterer)
+            )
+            df = clusterer.cluster(df)
         csv_name = f"{out_folder}/all_mp_cands.csv"
         df.to_csv(csv_name)
     else:
