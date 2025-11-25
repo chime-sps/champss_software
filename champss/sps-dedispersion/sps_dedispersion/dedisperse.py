@@ -42,7 +42,7 @@ def dedisperse(fdmt, skybeam, chunk_size, maxDT, dm_step=1, cpp=True):
         if cpp:
             dedisp[:, i * chunk_size : (i + 1) * chunk_size] = fdmt.execute(
                 spectra_chunk
-            )[::dm_step, maxDT:]
+            )[::dm_step, maxDT:][:dedisp.shape[0]]
         else:
             dedisp[:, i * chunk_size : (i + 1) * chunk_size] = fdmt.fdmt(
                 spectra_chunk, padding=True, frontpadding=False
