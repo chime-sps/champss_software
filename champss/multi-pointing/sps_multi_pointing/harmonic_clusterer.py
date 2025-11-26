@@ -13,18 +13,18 @@ from functools import partial
 log = logging.getLogger(__name__)
 
 
-def frac_metric(f0, f1, max_harm=16):
+def frac_metric(f0, f1, max_harm=32):
     # Find distance based on rounding fractions
     stacked = np.stack([f0, f1])
     max_val = np.max(stacked, 0)
     min_val = np.min(stacked, 0)
     frac = max_val / min_val
-    metric = np.abs(frac - np.round(frac).clip(max_harm))
+    metric = np.abs(frac - np.round(frac).clip(1, max_harm))
     return metric
 
 
 def get_frac_distances_for_chunk(
-    data, max_dist=0.1, frac_eps=0.001, neighborhood_metric="chebyshev"
+    data, max_dist=0.1, frac_eps=0.001, neighborhood_metric="chebyshev", max_harm=64
 ):
     # Run fract metric on chunk
     data_pos = data[0]
@@ -34,7 +34,9 @@ def get_frac_distances_for_chunk(
         data_pos, max_dist, n_jobs=1, metric=neighborhood_metric
     ).tocoo()
     frac_dist_neighbors = frac_metric(
-        data_freq[neighbors_batch.coords[0]], data_freq[neighbors_batch.coords[1]]
+        data_freq[neighbors_batch.coords[0]],
+        data_freq[neighbors_batch.coords[1]],
+        max_harm=max_harm,
     )
     recorded_neighbors_bool = frac_dist_neighbors < frac_eps * 2
     return (
@@ -58,6 +60,7 @@ class MultiPointingHarmonicClusterer:
     dec_scale = attrib(default=1.0)
     neighborhood_metric = attrib(default="chebyshev")
     frac_eps = attrib(default=0.001)
+    max_harm = attrib(default=64)
 
     def cluster(self, df: pd.DataFrame, num_threads: int = 16) -> pd.DataFrame:
         """
@@ -102,6 +105,7 @@ class MultiPointingHarmonicClusterer:
                             max_dist=max_dist,
                             frac_eps=self.frac_eps,
                             neighborhood_metric=self.neighborhood_metric,
+                            max_harm=self.max_harm,
                         ),
                         chunked_data,
                     ),
@@ -122,7 +126,7 @@ class MultiPointingHarmonicClusterer:
             shape=(N, N),
         ).tocsr()
         log.info(f"Created sparse distance matric {sparse_distances.__repr__()}")
-        if sparse_distances.size ==0:
+        if sparse_distances.size == 0:
             log.info("No neightbouring points found. Aborting clustering process.")
             return df
         sparse_distances = sort_graph_by_row_values(

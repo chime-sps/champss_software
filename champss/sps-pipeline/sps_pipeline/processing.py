@@ -18,7 +18,7 @@ import docker
 import numpy as np
 import pytz
 from beamformer.strategist.strategist import PointingStrategist
-from folding.filter_mpcandidates import filter_mp_df
+from folding.filter_mpcandidates import filter_mp_df, write_df_to_fsdb
 from scheduler.utils import convert_date_to_datetime
 from scheduler.workflow import (  # docker_swarm_pending_states,
     clear_workflow_buckets,
@@ -1180,7 +1180,12 @@ def start_processing_manager(
                         standalone_mode=False,
                     )
                     daily_run = db_api.update_daily_run(
-                        date_to_process, {"schedule_result": {key:len(val) for key, val in processes.items()}}
+                        date_to_process,
+                        {
+                            "schedule_result": {
+                                key: len(val) for key, val in processes.items()
+                            }
+                        },
                     )
 
                     if len(processes["unfinished_processes"]) == 0:
@@ -1332,7 +1337,7 @@ def start_processing_manager(
 
                 message_slack(slack_message)
                 pipeline_result = {
-                    "completed_processes": completed_processes,
+                    "completed_processes": len(completed_processes),
                     "overall_time_of_processing": overall_time_of_processing,
                     "time_per_nchan": time_per_nchan,
                     "rfi_processeses": rfi_processeses,
@@ -1543,7 +1548,7 @@ def start_processing_manager(
                     )
                     fs_id = work_result["parameters"]["fs_id"]
                     fold_plot = work_result["parameters"]["path_to_plot"]
-                    df_mp.loc[df["fs_id"] == fs_id, fold_plot]
+                    df_mp.loc[df_mp["fs_id"] == fs_id, "fold_plot"] = fold_plot
 
                 # Could get work results, alternatively can query fs db
 
