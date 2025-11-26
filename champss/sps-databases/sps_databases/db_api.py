@@ -1363,4 +1363,4 @@ def get_daily_run(date):
         The DailyRun object for the database entry
     """
     db = db_utils.connect()
-    return DailyRun.from_db(db.processes.find_one({"date": date.replace(tzinfo=None)}))
+    return DailyRun.from_db(db.daily_runs.find_one({"date": date.replace(tzinfo=None)}))

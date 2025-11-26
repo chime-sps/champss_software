@@ -28,11 +28,12 @@ from scheduler.workflow import (  # docker_swarm_pending_states,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
 )
+from sps_common.interfaces import MultiPointingCandidate
 from workflow.definitions.work import Work
 from workflow.http.context import HTTPContext
 from sps_databases import db_api, db_utils, models
 from sps_pipeline.pipeline import default_datpath
-from sps_pipeline.utils import get_pointings_from_list
+from sps_pipeline.utils import get_pointings_from_list, merge_images
 
 log = logging.getLogger()
 
@@ -72,19 +73,7 @@ def scale_down_service(service_name):
     type=str,
     help="Name used for the mongodb database.",
 )
-@click.option(
-    "--basepath",
-    default="/data/chime/sps/sps_processing",
-    type=str,
-    help="Path for created files during pipeline step.",
-)
-@click.option(
-    "--foldpath",
-    default="/data/chime/sps/archives",
-    type=str,
-    help="Path for created files during fold step.",
-)
-def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpath):
+def find_all_folding_processes(date, db_host, db_port, db_name):
     """Find all available folding processes for a given date."""
     log.setLevel(logging.INFO)
 
@@ -93,11 +82,11 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
     log.info(f"Filtering candidates for {date}")
 
     date = convert_date_to_datetime(date)
-    daily_run = db_api.get_daily_run(date.date())
-    csv_input_name = daily_run["classification_result"]["output_file"]
+    daily_run = db_api.get_daily_run(date)
+    csv_input_name = daily_run.classification_result["output_file"]
     candidate_df = pd.read_csv(csv_input_name, index_col=0)
 
-    filtered_df = filter_mp_df(candidate_df, sigma_min=7, class_min=0.9)
+    filtered_df = filter_mp_df(candidate_df, sigma_min=6, class_min=0.9)
     filtered_df = write_df_to_fsdb(filtered_df, date)
     # output_file = csv.rsplit("_", 1)[0] + "_folded.csv"
 
@@ -147,7 +136,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
                 "dm": source["dm"],
             }
         )
-
+    # Outputting the df will probably break, if this function is run by workflow.
     return {"info": info, "df": filtered_df}, [], []
 
 
@@ -174,12 +163,6 @@ def find_all_folding_processes(date, db_host, db_port, db_name, basepath, foldpa
     default="sps-processing",
     type=str,
     help="Name used for the mongodb database.",
-)
-@click.option(
-    "--basepath",
-    default="./",
-    type=str,
-    help="Path for created files during pipeline step.",
 )
 @click.option(
     "--foldpath",
@@ -222,7 +205,6 @@ def run_all_folding_processes(
     db_host,
     db_port,
     db_name,
-    basepath,
     foldpath,
     datpath,
     processes,
@@ -261,7 +243,7 @@ def run_all_folding_processes(
         docker_image = docker_image_name
         docker_mounts = [
             f"{datpath}:{datpath}",
-            f"{basepath}:{basepath}",
+            # f"{basepath}:{basepath}",
             f"{foldpath}:{foldpath}",
         ]
 
@@ -285,7 +267,7 @@ def run_all_folding_processes(
             formatted_dec,
             formatted_date,
         ]
-
+        # breakpoint()
         work_ids.append(
             schedule_workflow_job(
                 docker_image,
@@ -1408,7 +1390,7 @@ def start_processing_manager(
                     workflow_results_name=workflow_buckets_name,
                     work_id=work_id,
                     failover_to_buckets=True,
-                )
+                )["results"]
 
                 # See if result exists, and has the keys (by checking one of them)
                 if work_result and "num_files" in work_result:
@@ -1432,6 +1414,7 @@ def start_processing_manager(
 
             # Start of classification phase
             if run_classification:
+                daily_run = db_api.get_daily_run(date_to_process)
                 message_slack(f"Running classfication for {date_string}")
 
                 docker_service_name_prefix = "class"
@@ -1455,7 +1438,7 @@ def start_processing_manager(
                     workflow_buckets_name=workflow_buckets_name,
                     workflow_function="champss_classification.pytorch_model.classify_lazy.load_model_and_classify_mp_csv_lazy",
                     workflow_params={
-                        "csv": work_result["csv_file"],
+                        "csv": daily_run.multipointing_result["csv_file"],
                     },
                     workflow_tags=["class", date_string],
                     timeout=class_timeout,
@@ -1470,15 +1453,16 @@ def start_processing_manager(
                     workflow_results_name=workflow_buckets_name,
                     work_id=work_id,
                     failover_to_buckets=True,
-                )
+                )["results"]
                 daily_run = db_api.update_daily_run(
                     date_to_process,
-                    {"classification_result": work_result["results"]},
+                    {"classification_result": work_result},
                 )
             # End of classification phase
 
             # Start of folding phase
             if run_folding:
+                daily_run = db_api.get_daily_run(date_to_process)
                 fold_schedule_output, [], [] = find_all_folding_processes.main(
                     args=[
                         "--date",
@@ -1489,10 +1473,6 @@ def start_processing_manager(
                         db_port,
                         "--db-name",
                         db_name,
-                        "--basepath",
-                        basepath,
-                        "--foldpath",
-                        foldpath,
                     ],
                     standalone_mode=False,
                 )
@@ -1519,8 +1499,6 @@ def start_processing_manager(
                         db_port,
                         "--db-name",
                         db_name,
-                        "--basepath",
-                        basepath,
                         "--foldpath",
                         foldpath,
                         "--processes",
@@ -1541,20 +1519,61 @@ def start_processing_manager(
                     docker_swarm_running_states, docker_service_name_prefix
                 )
                 for work_id in work_ids:
-                    work_result = get_work_from_results(
-                        workflow_results_name=workflow_buckets_name,
-                        work_id=work_id,
-                        failover_to_buckets=True,
-                    )
-                    fs_id = work_result["parameters"]["fs_id"]
-                    fold_plot = work_result["parameters"]["path_to_plot"]
-                    df_mp.loc[df_mp["fs_id"] == fs_id, "fold_plot"] = fold_plot
+                    try:
+                        work_object = get_work_from_results(
+                            workflow_results_name=workflow_buckets_name,
+                            work_id=work_id,
+                            failover_to_buckets=True,
+                        )
+                        fs_id = work_object["parameters"]["fs_id"]
+                        fold_plot = work_object["results"]["path_to_plot"]
+                        df_index = df_mp.query(f"fs_id == '{fs_id}'").index
+                        if len(df_index) == 0:
+                            df_mp.loc[len(df_mp), "fold_plot"] = fold_plot
+                        else:
+                            df_mp.loc[df_index, "fold_plot"] = fold_plot
+                    except:
+                        pass
 
+                # Merge candidates
+                for index, row in df_mp.iterrows():
+                    try:
+                        plot_path = row["plot_path"]
+                        if type(row["plot_path"]) != str:
+                            mp_cand = MultiPointingCandidate.read(row["file_name"])
+                            plot_path = mp_cand.plot_candidate(
+                                path="/data/lkuenkel/combined_cand_test/plots_mp/"
+                            )
+                            df_mp.at[index, "plot_path"] = plot_path
+                        output_path = (
+                            "/data/lkuenkel/combined_cand_test/combined_candidates/"
+                            + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
+                            + "_combined.png"
+                        )
+                        merge_images(
+                            [plot_path, row["fold_plot"]], output_path=output_path
+                        )
+                        df_mp.at[index, "combined_plot_path"] = output_path
+                    except:
+                        pass
                 # Could get work results, alternatively can query fs db
+                df_folded_name = (
+                    daily_run.classification_result["output_file"].rsplit("_", 1)[0]
+                    + "_folded.csv"
+                )
+                try:
+                    df_folded_name = (
+                        "/data/lkuenkel/combined_cand_test/"
+                        + df_folded_name.rsplit("/", 1)[1]
+                    )
+                    df_mp.to_csv(df_folded_name)
+                except:
+                    # Might fail due to permission
+                    pass
 
                 message_slack(f"Candidate folding for {date_string} complete")
                 daily_run = db_api.update_daily_run(
-                    date_to_process, {"folding_result": processes}
+                    date_to_process, {"folding_result": {"fold_count": len(processes)}}
                 )
             # End of folding phase
 

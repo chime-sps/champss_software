@@ -258,27 +258,30 @@ def Filter(
         )
 
 
-def filter_mp_df(df, sigma_min=7, class_min=0.9):
+def filter_mp_df(df, sigma_min=6, class_min=0.9, only_use_strongest_in_cluster=True):
     df_filtered = df[df["prediction"] > class_min]
-    df_filtered = df_filtered[df_filtered["sigma"] > min_sigma]
+    df_filtered = df_filtered[df_filtered["sigma"] > sigma_min]
+    # temprarily filter high dec
+    df_filtered = df_filtered[df_filtered["best_dec"] < 85]
+    if only_use_strongest_in_cluster:
+        df_filtered = df_filtered[df_filtered["strongest_in_cluster"] == 1]
     df_filtered["folded"] = True
-    return df
+    return df_filtered
 
 
 def write_df_to_fsdb(df, date):
     for index, row in df.iterrows():
         fs = add_candidate_to_fsdb(
             date.strftime("%Y%m%d"),
-            row["ra"],
-            row["ra"],
+            row["best_ra"],
+            row["best_dec"],
             row["mean_freq"],
             row["mean_dm"],
             row["sigma"],
             row["file_name"],
             "sd_candidate",
         )
-
-        df.loc[index, "fs_id"] = str(fs["id"])
+        df.loc[index, "fs_id"] = str(fs["_id"])
     return df
 
 
