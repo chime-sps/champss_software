@@ -69,8 +69,9 @@ def compute_accel_steps(
         print(f"Stack binary search mode: dfmax = {dfmax:.2e} Hz")
         f0_points = 2 * int(0.5 * dfmax * Tobs / phase_accuracy)
     else:
-        f0_points = 2 * int(1 / phase_accuracy)
-        dfmax = 1.0 / Tobs
+        phase_wraps = 2
+        f0_points = phase_wraps * int(1 / phase_accuracy)
+        dfmax = phase_wraps / Tobs
 
     # f1 always uses binary orbital limit
     f1max = (2 * np.pi * dfmax_velocity * u.Hz / Pbmin).to(u.s**-2).value
@@ -88,7 +89,6 @@ def compute_accel_steps(
 
     f0s = np.linspace(-dfmax, dfmax, f0_points, endpoint=True)
     f1s = np.linspace(-f1max, f1max, f1_points, endpoint=True)
-    print(f"Acceleration search with {len(f0s)} F0, {len(f1s)} F1 trials")
     return f0s, f1s
 
 
@@ -147,8 +147,9 @@ def plot_candidate_archive(
     fn,
     coord_path,
     cand_info=None,
-    accel_search=True,
+    accel_search=False,
     dm_search=True,
+    f0search=True,
     foldpath="/data/chime/sps/archives/plots/folded_candidate_plots",
 ):
     """
@@ -169,6 +170,14 @@ def plot_candidate_archive(
         Whether to perform acceleration search (default True)
     dm_search : bool
         Whether to perform DM search (default True)
+    f0search : dict, optional
+        If provided, performs F0 search instead of accel_search.
+        Dictionary containing parameters to pass to compute_accel_steps.
+        Common parameters include:
+        - 'stack_binary_search': bool, use velocity-based f0 range
+        - 'vmax': astropy.Quantity, maximum orbital velocity
+        - 'Pbmin': astropy.Quantity, minimum binary period
+        - 'phase_accuracy': float, required phase accuracy
     foldpath : str
         Base path for saving folded candidate plots
     """
@@ -177,6 +186,16 @@ def plot_candidate_archive(
     sigma = cand_info.get('sigma', None)
     known = cand_info.get('known', ' ')
     ap = cand_info.get('ap', None)
+
+    data, params = readpsrarch(fn)
+    F = params["F"]
+    T = params["T"]
+    psr = params["psr"]
+    dm = params["dm"]
+    ra = params["ra"]
+    dec = params["dec"]
+    f0 = params["f0"]
+    P0 = 1/f0
 
     # Extract info from active pointing if available
     max_beam = None
@@ -187,20 +206,16 @@ def plot_candidate_archive(
         ap0 = ap[0]
         if hasattr(ap0, 'max_beams') and ap0.max_beams:
             max_beam = ap0.max_beams[0].get('beam', None)
-        if hasattr(ap0, 'ne2001dm'):
-            dm_ne2001 = ap0.ne2001dm
-        if hasattr(ap0, 'ymw16dm'):
-            dm_ymw16 = ap0.ymw16dm
         if hasattr(ap0, 'maxdm'):
             maxdm = ap0.maxdm
-    data, params = readpsrarch(fn)
-    F = params["F"]
-    T = params["T"]
-    psr = params["psr"]
-    dm = params["dm"]
-    ra = params["ra"]
-    dec = params["dec"]
-    f0 = params["f0"]
+
+    try:
+        from beamformer.utilities.dm import DMMap
+        dmm = DMMap()
+        dm_ne2001 = dmm.get_dm_ne2001(latitude=dec, longitude=ra)
+        dm_ymw16 = dmm.get_dm_ymw16(latitude=dec, longitude=ra)
+    except (ImportError, Exception) as e:
+        print(e)
 
     fs, flag, mask, bg, bpass = clean_foldspec(data.squeeze())
     taxis = ((T - T[0]) * u.day).to(u.min)
@@ -233,21 +248,26 @@ def plot_candidate_archive(
     ax1 = fig.add_subplot(gs[5:17, 0:9])
     ax2 = fig.add_subplot(gs[17:, 0:9])
 
-    # F0-F1 grid
-    ax3top = fig.add_subplot(gs[11, 11:17])
-    ax3 = fig.add_subplot(gs[12:19, 11:17])
-    ax3left = fig.add_subplot(gs[12:19, 10])
+    # F0-phase grid
+    ax3top = fig.add_subplot(gs[13, 11:17])
+    ax3 = fig.add_subplot(gs[14:21, 11:17])
+    ax3left = fig.add_subplot(gs[14:21, 10])
 
     # DM-phase grid
     ax4top = fig.add_subplot(gs[21, 11:17])
     ax4 = fig.add_subplot(gs[22:, 11:17])
     ax4left = fig.add_subplot(gs[22:, 10])
 
-    ax_kstext = fig.add_subplot(gs[0:1, 10:17])
+    # F0-1 grid
+    ax_acceltop = fig.add_subplot(gs[13, 11:17])
+    ax_accel = fig.add_subplot(gs[14:21, 11:17])
+    ax_accelleft = fig.add_subplot(gs[14:21, 10])
+
+    ax_kstext = fig.add_subplot(gs[0, 10:17])
     ax_kstext.axis("off")
 
     # Sky position scatterplot
-    ax_sky = fig.add_subplot(gs[4:9, 10:17])
+    ax_sky = fig.add_subplot(gs[3:8, 10:17])
     ax_sky.yaxis.tick_right()
     ax_sky.yaxis.set_label_position("right")
     
@@ -258,11 +278,71 @@ def plot_candidate_archive(
     f1_best = None
     dm_best = None
 
-    if accel_search:
+    if f0search is not None:
+        # F0 search mode: search over F0 offsets and phase
+        dts = taxis.to(u.s).value
+        dts = dts - np.median(dts)
+        npbin = fs_bin.shape[-1]
+
+        # Get F0 steps using compute_accel_steps (ignore F1 steps)
+        f0s, _ = compute_accel_steps(dts, f0, npbin)
+
+        print(f"F0 search over {len(f0s)} trials from {f0s[0]:.2e} to {f0s[-1]:.2e} Hz")
+
+        # Average over frequency once
+        prof2D = np.nanmean(fs_bin, 1)  # Shape: (ntime, nphase)
+
+        # Create phase-F0 grid
+        F0profs = np.zeros((len(f0s), npbin))
+
+        for i_f0, df0 in enumerate(f0s):
+            # Calculate phase shifts for this F0 offset
+            dphis = df0 * dts
+            i_phis = (dphis * npbin).astype("int")
+
+            # Shift each time sample and average
+            prof2D_shifted = np.copy(prof2D)
+            for i_t in range(prof2D_shifted.shape[0]):
+                prof2D_shifted[i_t] = np.roll(prof2D_shifted[i_t], -i_phis[i_t])
+
+            # Average over time to get profile
+            F0profs[i_f0] = np.nanmean(prof2D_shifted, 0)
+
+        # Compute S/N for each F0 trial
+        F0_SNs = np.array([get_SN(prof) for prof in F0profs])
+        i_f0_best = np.argmax(F0_SNs)
+        f0_best = f0s[i_f0_best]
+        F0_prof_best = F0profs[i_f0_best]
+
+        # Apply best F0 correction to fs_bin for subsequent plots
+        dphis = f0_best * dts
+        i_phis = (dphis * npbin).astype("int")
+        for i in range(fs_bin.shape[0]):
+            fs_bin[i] = np.roll(fs_bin[i], -i_phis[i], axis=-1)
+
+        # Plot phase-F0 grid (similar to DM-phase panel)
+        F0profs_tiled = np.tile(F0profs, (1, 2))  # Tile for 2 rotations
+        ax3.pcolormesh(np.linspace(0, 2, 2 * npbin), f0s, F0profs_tiled)
+        ax3left.plot(-F0_SNs, f0s)
+        ax3top.plot(np.linspace(0, 2, len(F0_prof_best) * 2), np.tile(F0_prof_best, 2))
+        ax3left.set_yticks([])
+        ax3left.set_xticks([])
+        ax3top.set_xticks([])
+        ax3top.set_yticks([])
+        ax3.yaxis.tick_right()
+        ax3.yaxis.set_label_position("right")
+        #ax3.set_xlabel("Phase", fontsize=16)
+        ax3.set_xticks([])
+        ax3.set_ylabel(r"$\Delta$F0 (Hz)", fontsize=16)
+        ax3top.set_xlim(0, 2)
+        ax3left.set_ylim(min(f0s), max(f0s))
+
+    elif accel_search:
         dts = taxis.to(u.s).value
         dts = dts - np.median(dts)
         npbin = fs_bin.shape[-1]
         f0s, f1s = compute_accel_steps(dts, f0, npbin)
+        print(f"Acceleration search with {len(f0s)} F0, {len(f1s)} F1 trials")
 
         prof2D = np.mean(fs_bin.squeeze(), 1)
         chi2_grid = phase_loop(prof2D, dts, f0s, f1s, metric=1)
@@ -376,6 +456,7 @@ def plot_candidate_archive(
     ks_positions_scraper = ks_result['ks_positions_scraper']
     ks_positions_other = ks_result['ks_positions_other']
     arc_positions = ks_result['arc_positions']
+    num_sources_not_displayed = ks_result['num_sources_not_displayed']
 
     # Plot sky position scatter plot
     # Plot the arc if available
@@ -410,10 +491,9 @@ def plot_candidate_archive(
     xlim_sky = max([5/np.cos(dec*u.deg), dra_arc])
     ax_sky.set_xlim(ra - xlim_sky, ra + xlim_sky)
     ax_sky.set_ylim(dec - 5, dec + 5)
-    ax_sky.set_xlabel('RA (deg)', fontsize=12)
+    ax_sky.set_xlabel('RA (deg)', fontsize=12, labelpad=-10)
     ax_sky.set_ylabel('Dec (deg)', fontsize=12)
     ax_sky.legend(loc='upper right', fontsize=8)
-    ax_sky.set_aspect('equal', adjustable='datalim')
 
     ax1.imshow(
         np.nanmean(fs_bin, 0),
@@ -458,14 +538,18 @@ def plot_candidate_archive(
     ymw16_str = f"{dm_ymw16:.1f}" if dm_ymw16 is not None else "N/A"
     maxdm_str = f"{maxdm:.1f}" if maxdm is not None else "N/A"
     dm_best_str = f"{dm_best:.2f}" if dm_best is not None else "N/A"
-    f0_best_str = f"{f0_best:.2e}" if f0_best is not None else "N/A"
-    f1_best_str = f"{f1_best:.2e}" if f1_best is not None else "N/A"
+    df0_best_str = f"{f0_best:.2e}" if f0_best is not None else "N/A"
+    f0_best_str = f"{f0+f0_best:.5f}" if f0_best is not None else "N/A"
+    f1_best_str = f"{f1_best:.5f}" if f1_best is not None else "N/A"
+    P0_best = 1/(f0+f0_best) if f0_best is not None else "N/A"
+    P0_best_str = f"{P0_best:.5f}" if P0_best is not None else "N/A"
 
-    # 5 columns x 3 rows layout
+    # 5 columns x 4 rows layout
     cand_params_text = [
-        [rf"{psr}", f"{T0.isot[:10]}", f"DM$_{{max}}$: {maxdm_str}", f"Beam: {beam_str}", f"DM$_{{best}}$: {dm_best_str}"],
-        [f"Fold $\sigma$: {SNR_val:.2f}", f"RA: {ra:.2f}", f"f0: {f0:.5f}", rf"$g_l$: {gal_l:.2f}", f"$\\Delta$F0: {f0_best_str}"],
-        [rf"PS $\sigma$: {sigma_str}", f"Dec: {dec:.2f}", f"DM: {dm:.2f}", rf"$g_b$: {gal_b:.2f}", f"F1: {f1_best_str}"],
+        [rf"{psr}", f"RA: {ra:.2f}", rf"$g_l$: {gal_l:.2f}", f"DM$_{{max}}$: {maxdm_str}", f"$\\Delta$F0: {df0_best_str}"],
+        [rf"{T0.isot[:10]}", f"Dec: {dec:.2f}", rf"$g_b$: {gal_b:.2f}", f"DM$_{{ne2001}}$: {ne2001_str}", f"F0$_{{best}}$: {f0_best_str}"],
+        [rf"Fold $\sigma$: {SNR_val:.2f}", f"DM: {dm:.2f}", f"Beam: {beam_str}", f"DM$_{{ymw16}}$: {ymw16_str}",f"P0$_{{best}}$: {P0_best_str}"],
+        [rf"PS $\sigma$: {sigma_str}", f"f0: {f0:.5f}", f"P0: {P0:.5f}", f"DM$_{{best}}$: {dm_best_str}" , f"F1: {f1_best_str}"],
     ]
 
     cand_param_table = axtext.table(
@@ -481,7 +565,7 @@ def plot_candidate_archive(
         ks_table = ax_kstext.table(
             cellText=ks_df.values,
             colLabels=ks_df.columns,
-            colColours=["lavender"] * len(ks_df.columns),
+            colColours=["honeydew"] * len(ks_df.columns),
             cellLoc="center",
             loc="center",
         )
@@ -506,12 +590,22 @@ def plot_candidate_archive(
             for col_idx in range(len(ks_df.columns)):
                 ks_table[(row_idx + 1, col_idx)].set_text_props(color=color)
 
-        # Add color legend below table
+        bbox = ks_table.get_window_extent(fig.canvas.get_renderer())
+        bbox_ax = bbox.transformed(ax_kstext.transAxes.inverted())
+
+        y_below = bbox_ax.y0 - 0.03
+
         legend_text = (
             "Nearby Sources. Red: likely match  |  Blue: unpublished  |  Purple: both"
         )
-        ax_kstext.text(0.5, -0.05, legend_text, transform=ax_kstext.transAxes,
-                      fontsize=9, ha='center', va='top')
+        if num_sources_not_displayed > 0:
+            legend_text += f"\n {num_sources_not_displayed} additional sources not displayed"
+        ax_kstext.text(
+            0.5, y_below, legend_text,
+            ha='center', va='top',
+            fontsize=9,
+            transform=ax_kstext.transAxes
+        )
 
     if not known.strip():
         plotstring = f"cand_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"

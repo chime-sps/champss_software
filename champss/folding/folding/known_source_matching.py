@@ -95,7 +95,7 @@ def check_frequency_alias(f0_cand, f0_known, tolerance=0.001):
     return None
 
 
-def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=8,
+def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=5,
                           arc_search_radius=0.5, bright_threshold=50,
                           bright_radius=5.0, other_radius=1.0):
     """
@@ -138,6 +138,7 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=8,
         - 'ks_positions_scraper': List of (ra, dec) for scraper sources
         - 'ks_positions_other': List of (ra, dec) for other sources
         - 'arc_positions': Array of arc positions or None
+        - 'num_sources_not_displayed': Number of sources beyond num_ks
     """
     # Get nearby sources and sort by distance
     sources = get_nearby_known_sources(ra, dec, radius)
@@ -191,6 +192,10 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=8,
     ks_positions_scraper = []
     ks_positions_arc = []
 
+    # Track total sources that passed filters but weren't displayed
+    num_sources_passed_filter = 0
+    num_sources_not_displayed = 0
+
     # Combine sources_ordered with arc_sources (avoid duplicates)
     arc_source_names = set(s.source_name for s in arc_sources)
     all_sources = list(sources_ordered)
@@ -221,6 +226,9 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=8,
             angular_threshold = bright_radius if is_bright else other_radius
             if pos_diff > angular_threshold:
                 continue
+
+        # Source passed angular distance filter
+        num_sources_passed_filter += 1
 
         ks_f0 = 1 / source.spin_period_s
         ks_dm = round(source.dm, 1)
@@ -261,6 +269,9 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=8,
                     ks_positions_scraper.append((source.pos_ra_deg, source.pos_dec_deg))
                 else:
                     ks_positions_other.append((source.pos_ra_deg, source.pos_dec_deg))
+            else:
+                # Source passed filter but not displayed due to num_ks limit
+                num_sources_not_displayed += 1
 
     # Merge with likely matches first
     ks_all = ks_likely_matches + ks_other
@@ -276,4 +287,5 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=8,
         'ks_positions_scraper': ks_positions_scraper,
         'ks_positions_other': ks_positions_other,
         'arc_positions': arc_positions,
+        'num_sources_not_displayed': num_sources_not_displayed,
     }
