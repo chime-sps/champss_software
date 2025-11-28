@@ -151,6 +151,7 @@ def plot_candidate_archive(
     dm_search=True,
     f0search=True,
     foldpath="/data/chime/sps/archives/plots/folded_candidate_plots",
+    plot_bw=False,
 ):
     """
     Plot a folded candidate archive.
@@ -180,12 +181,23 @@ def plot_candidate_archive(
         - 'phase_accuracy': float, required phase accuracy
     foldpath : str
         Base path for saving folded candidate plots
+    plot_bw : bool
+        If True, use black/white color scheme (black lines, Greys colormap).
+        If False (default), use color scheme (tab:blue lines, viridis colormap).
     """
     if cand_info is None:
         cand_info = {}
     sigma = cand_info.get('sigma', None)
     known = cand_info.get('known', ' ')
     ap = cand_info.get('ap', None)
+
+    # Set color scheme based on plot_bw
+    if plot_bw:
+        plot_color = 'black'
+        cmap_name = 'Greys'
+    else:
+        plot_color = 'tab:blue'
+        cmap_name = 'viridis'
 
     data, params = readpsrarch(fn)
     F = params["F"]
@@ -322,9 +334,9 @@ def plot_candidate_archive(
 
         # Plot phase-F0 grid (similar to DM-phase panel)
         F0profs_tiled = np.tile(F0profs, (1, 2))  # Tile for 2 rotations
-        ax3.pcolormesh(np.linspace(0, 2, 2 * npbin), f0s, F0profs_tiled)
-        ax3left.plot(-F0_SNs, f0s)
-        ax3top.plot(np.linspace(0, 2, len(F0_prof_best) * 2), np.tile(F0_prof_best, 2))
+        ax3.pcolormesh(np.linspace(0, 2, 2 * npbin), f0s, F0profs_tiled, cmap=cmap_name)
+        ax3left.plot(-F0_SNs, f0s, color=plot_color)
+        ax3top.plot(np.linspace(0, 2, len(F0_prof_best) * 2), np.tile(F0_prof_best, 2), color=plot_color)
         ax3left.set_yticks([])
         ax3left.set_xticks([])
         ax3top.set_xticks([])
@@ -357,10 +369,10 @@ def plot_candidate_archive(
         for i in range(fs_bin.shape[0]):
             fs_bin[i] = np.roll(fs_bin[i], -i_phis[i], axis=-1)
 
-        ax3.pcolormesh(f0s, f1s, chi2_grid.T)
+        ax3.pcolormesh(f0s, f1s, chi2_grid.T, cmap=cmap_name)
         ax3.scatter(f0_best, f1_best, color="w", marker="*")
-        ax3top.plot(f0s, f0_slice)
-        ax3left.plot(-f1_slice, f1s)
+        ax3top.plot(f0s, f0_slice, color=plot_color)
+        ax3left.plot(-f1_slice, f1s, color=plot_color)
         ax3left.set_yticks([])
         ax3left.set_xticks([])
         ax3top.set_xticks([])
@@ -412,14 +424,17 @@ def plot_candidate_archive(
         P_sec = P.to(u.s).value
         DMprofs = dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin)
 
-        DMprofs = np.tile(DMprofs, (1, 2))
-        DM_slice = np.max(DMprofs, axis=-1)
-        DM_prof = DMprofs[np.argmax(DM_slice)]
-        dm_best = dm + DMs[np.argmax(DM_slice)]
+        # Compute S/N for each DM trial (before tiling)
+        DM_SNs = np.array([get_SN(prof) for prof in DMprofs])
+        i_dm_best = np.argmax(DM_SNs)
+        dm_best = dm + DMs[i_dm_best]
 
-        ax4.pcolormesh(np.linspace(0, 2, 2 * npbin), dm + DMs, DMprofs)
-        ax4left.plot(-DM_slice, dm + DMs)
-        ax4top.plot(np.linspace(0, 2, len(DM_prof)), DM_prof)
+        DMprofs = np.tile(DMprofs, (1, 2))
+        DM_prof = DMprofs[i_dm_best]
+
+        ax4.pcolormesh(np.linspace(0, 2, 2 * npbin), dm + DMs, DMprofs, cmap=cmap_name)
+        ax4left.plot(-DM_SNs, dm + DMs, color=plot_color)
+        ax4top.plot(np.linspace(0, 2, len(DM_prof)), DM_prof, color=plot_color)
         ax4left.set_yticks([])
         ax4left.set_xticks([])
         ax4top.set_xticks([])
@@ -502,6 +517,7 @@ def plot_candidate_archive(
         vmin=vfmin,
         vmax=vfmax,
         extent=[0, 2, F[-1], F[1]],
+        cmap=cmap_name,
     )
     ax2.imshow(
         np.nanmean(fs_bin, 1),
@@ -511,6 +527,7 @@ def plot_candidate_archive(
         vmax=vtmax,
         origin="lower",
         extent=[0, 2, 0, max(taxis.to(u.min).value)],
+        cmap=cmap_name,
     )
 
     ax1.set_ylabel("Obs Frequency (MHz)", fontsize=16)
@@ -522,7 +539,7 @@ def plot_candidate_archive(
     phaseaxis = np.linspace(0, 2, 2 * ngate, endpoint=False)
     dp = phaseaxis[1] - phaseaxis[0]
     phaseaxis += dp / 2.0
-    ax0.plot(phaseaxis, SNprof)
+    ax0.plot(phaseaxis, SNprof, color=plot_color)
     ax0.set_xlim(0, 2)
     ax0.set_xticks([])
 
