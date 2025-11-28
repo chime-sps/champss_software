@@ -1092,6 +1092,7 @@ def start_processing_manager(
     # signal.signal(signal.SIGTERM, remove_processing_services)
 
     # Ugly way of removing superfluous handler that comes from somehwere
+    log.info("Test")
     try:
         log.removeHandler(log.handlers[1])
     except Exception as error:
@@ -1752,7 +1753,7 @@ def start_processing_services(
             f" {workflow_buckets_name_prefix} --docker-image-name"
             f" {pipeline_docker_image_name} --run-pipeline"
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
-            f" {run_folding} --run-stacking {run_stacking} --run-classification {run_classification} --datpath {datpath}"
+            f" {run_folding} --run-stacking {run_stacking} --datpath {datpath}"
             f' --pipeline-arguments "{pipeline_arguments}"'
             f' --pipeline-config-options "{pipeline_config_options}"'
         ),
