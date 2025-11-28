@@ -131,7 +131,8 @@ def main(ra, dec, date, nday):
 
     # plot_foldspec(fname_combfs)
 
-    data, F, T, psr, tel = readpsrarch(fname_combfs)
+    data, params = readpsrarch(fname_combfs)
+    F, T = params["F"], params["T"]
     fs, flag, mask, bg, bpass = clean_foldspec(data.squeeze())
     fs -= np.median(fs, axis=-1, keepdims=True)
     if F[1] - F[0] < 0:
@@ -144,7 +145,8 @@ def main(ra, dec, date, nday):
 
     files = np.sort(glob.glob(f"{fpath}/cand_231*2023-1*.F"))
     for i, fn in enumerate(files):
-        data, F, T, psr, tel = readpsrarch(fn)
+        data, params = readpsrarch(fn)
+        F, T = params["F"], params["T"]
         fs = data.squeeze()
         if i == 0:
             fs_comb = np.copy(fs)
@@ -192,7 +194,8 @@ def main(ra, dec, date, nday):
 
         fname = f"/data/chime/sps/archives/candidates/{ra_dir}_{dec_dir}/added.T"
 
-        data, F, T, psr, tel = readpsrarch(fname)
+        data, params = readpsrarch(fname)
+        F, T = params["F"], params["T"]
         fs, flag, mask, bg, bpass = clean_foldspec(data.squeeze())
 
         fs -= np.median(fs, axis=-1, keepdims=True)

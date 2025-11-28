@@ -74,7 +74,8 @@ def load_profiles(archives, max_npbin=256):
         f = filename.replace(".ar", ".FT")
         if os.path.isfile(f) and f.endswith(".FT"):
             print(f)
-            data_ar, F, T, source, tel = readpsrarch(f)
+            data_ar, params = readpsrarch(f)
+            T = params["T"]
             data_ar = data_ar.squeeze()
             if len(data_ar.shape) > 1:
                 prof = data_ar.sum(0)
@@ -166,7 +167,8 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
     F1_incoherent = optimal_parameters[1]
     for i, f in enumerate(sorted(archives)):
         print(f)
-        data_ar, F, times, source, tel = readpsrarch(f)
+        data_ar, params = readpsrarch(f)
+        F, times = params["F"], params["T"]
         data_ar = data_ar.squeeze()
         data_ar = data_ar - np.median(data_ar, axis=-1, keepdims=True)
 
