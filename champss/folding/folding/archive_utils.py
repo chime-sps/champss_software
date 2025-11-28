@@ -323,7 +323,8 @@ def plot_foldspec(fn):
 
 def get_SN(profile, return_profile=False):
     """
-    Get S/N of 1D pulse profile by smoothing over different pulse widths.
+    Get S/N of 1D pulse profile by smoothing over different pulse widths,
+    in powers of 2 up to 1/2 the pulse width
 
     Input: 1D array of pulse profile
 
@@ -332,7 +333,6 @@ def get_SN(profile, return_profile=False):
 
     from scipy.ndimage import uniform_filter
 
-    # go to e.g. 1/4 or 1/2 phase, don't hardcode to 64
     ngate = len(profile)
     maxbin = int(np.log2(ngate // 2))
 
@@ -343,7 +343,8 @@ def get_SN(profile, return_profile=False):
     for i, b in enumerate(binning):
         prof_filtered = uniform_filter(profile, b)
         profsort = np.sort(prof_filtered)
-        prof_N = profsort[: 3 * ngate // 4]
+        # For S/N computation, compute mean, std dev from bottom 1/2 of profile
+        prof_N = profsort[: ngate // 2]
         std = np.std(prof_N)
         mean = np.mean(prof_N)
         SNprof = (prof_filtered - mean) / std
