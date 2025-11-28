@@ -86,7 +86,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name):
     csv_input_name = daily_run.classification_result["output_file"]
     candidate_df = pd.read_csv(csv_input_name, index_col=0)
 
-    filtered_df = filter_mp_df(candidate_df, sigma_min=6, class_min=0.9)
+    filtered_df = filter_mp_df(candidate_df, sigma_min=6.5, class_min=0.9)
     filtered_df = write_df_to_fsdb(filtered_df, date)
     # output_file = csv.rsplit("_", 1)[0] + "_folded.csv"
 
