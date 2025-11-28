@@ -1433,7 +1433,6 @@ def start_processing_manager(
                     docker_mounts=[
                         f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
-                        "/mnt/beegfs-client/:/mnt/beegfs-client/",
                     ],
                     docker_name=f"{docker_service_name_prefix}-{date_string}",
                     docker_memory_reservation=300,
@@ -1465,6 +1464,10 @@ def start_processing_manager(
             # Start of folding phase
             if run_folding:
                 daily_run = db_api.get_daily_run(date_to_process)
+                df_folded_name = (
+                    daily_run.classification_result["output_file"].rsplit("_", 1)[0]
+                    + "_folded.csv"
+                )
                 fold_schedule_output, [], [] = find_all_folding_processes.main(
                     args=[
                         "--date",
@@ -1479,6 +1482,11 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
                 df_mp = fold_schedule_output["df"]
+                try:
+                    df_mp.to_csv(df_folded_name)
+                except:
+                    # Might fail due to permission
+                    pass
                 processes = fold_schedule_output["info"]
 
                 docker_service_name_prefix = "fold"
@@ -1520,35 +1528,43 @@ def start_processing_manager(
                 wait_for_no_tasks_in_states(
                     docker_swarm_running_states, docker_service_name_prefix
                 )
-                for work_id in work_ids:
-                    try:
-                        work_object = get_work_from_results(
-                            workflow_results_name=workflow_buckets_name,
-                            work_id=work_id,
-                            failover_to_buckets=True,
-                        )
-                        fs_id = work_object["parameters"]["fs_id"]
-                        fold_plot = work_object["results"]["path_to_plot"]
-                        df_index = df_mp.query(f"fs_id == '{fs_id}'").index
-                        if len(df_index) == 0:
-                            df_mp.loc[len(df_mp), "fold_plot"] = fold_plot
-                        else:
-                            df_mp.loc[df_index, "fold_plot"] = fold_plot
-                    except:
-                        pass
+                # for work_id in work_ids:
+                #     try:
+                #         work_object = get_work_from_results(
+                #             workflow_results_name=workflow_buckets_name,
+                #             work_id=work_id,
+                #             failover_to_buckets=True,
+                #         )
+                #         fs_id = work_object["parameters"]["fs_id"]
+                #         fold_plot = work_object["results"]["path_to_plot"]
+                #         df_index = df_mp.query(f"fs_id == '{fs_id}'").index
+                #         if len(df_index) == 0:
+                #             df_mp.loc[len(df_mp), "fold_plot"] = fold_plot
+                #         else:
+                #             df_mp.loc[df_index, "fold_plot"] = fold_plot
+                #     except:
+                #         pass
 
                 # Merge candidates
+                merged_candidate_path = (
+                    basepath + "/combined_candidates/" + date_string + "/"
+                )
+                replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
+                os.makedirs(merged_candidate_path, exist_ok=True)
                 for index, row in df_mp.iterrows():
                     try:
                         plot_path = row["plot_path"]
+                        fs_db_entry = db_api.get_followup_source(row["fs_id"])
+                        last_fold = fs_db_entry.folding_history[-1]
+                        df_mp.at[index, "fold_plot"] = last_fold["path_to_plot"]
+                        df_mp.at[index, "fs_sigma"] = last_fold["SN"]
+                        df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
                         if type(row["plot_path"]) != str:
                             mp_cand = MultiPointingCandidate.read(row["file_name"])
-                            plot_path = mp_cand.plot_candidate(
-                                path="/data/lkuenkel/combined_cand_test/plots_mp/"
-                            )
+                            plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
                             df_mp.at[index, "plot_path"] = plot_path
                         output_path = (
-                            "/data/lkuenkel/combined_cand_test/combined_candidates/"
+                            merged_candidate_path
                             + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
                             + "_combined.png"
                         )
@@ -1559,15 +1575,7 @@ def start_processing_manager(
                     except:
                         pass
                 # Could get work results, alternatively can query fs db
-                df_folded_name = (
-                    daily_run.classification_result["output_file"].rsplit("_", 1)[0]
-                    + "_folded.csv"
-                )
                 try:
-                    df_folded_name = (
-                        "/data/lkuenkel/combined_cand_test/"
-                        + df_folded_name.rsplit("/", 1)[1]
-                    )
                     df_mp.to_csv(df_folded_name)
                 except:
                     # Might fail due to permission
