@@ -261,19 +261,19 @@ def plot_candidate_archive(
     ax2 = fig.add_subplot(gs[17:, 0:9])
 
     # F0-phase grid
-    ax3top = fig.add_subplot(gs[13, 11:17])
-    ax3 = fig.add_subplot(gs[14:21, 11:17])
-    ax3left = fig.add_subplot(gs[14:21, 10])
+    ax3top = fig.add_subplot(gs[16, 11:17])
+    ax3 = fig.add_subplot(gs[17:23, 11:17])
+    ax3left = fig.add_subplot(gs[17:23, 10])
 
     # DM-phase grid
-    ax4top = fig.add_subplot(gs[21, 11:17])
-    ax4 = fig.add_subplot(gs[22:, 11:17])
-    ax4left = fig.add_subplot(gs[22:, 10])
+    ax4top = fig.add_subplot(gs[23, 11:17])
+    ax4 = fig.add_subplot(gs[24:, 11:17])
+    ax4left = fig.add_subplot(gs[24:, 10])
 
     # F0-1 grid
-    ax_acceltop = fig.add_subplot(gs[13, 11:17])
-    ax_accel = fig.add_subplot(gs[14:21, 11:17])
-    ax_accelleft = fig.add_subplot(gs[14:21, 10])
+    ax_acceltop = fig.add_subplot(gs[9, 11:17])
+    ax_accel = fig.add_subplot(gs[10:15, 11:17])
+    ax_accelleft = fig.add_subplot(gs[10:15, 10])
 
     ax_kstext = fig.add_subplot(gs[0, 10:17])
     ax_kstext.axis("off")
@@ -289,6 +289,112 @@ def plot_candidate_archive(
     f0_best = None
     f1_best = None
     dm_best = None
+
+    if accel_search is not None:
+        dts = taxis.to(u.s).value
+        dts = dts - np.median(dts)
+        npbin = fs_bin.shape[-1]
+        f0s, f1s = compute_accel_steps(dts, f0, npbin)
+        print(f"Acceleration search with {len(f0s)} F0, {len(f1s)} F1 trials")
+
+        prof2D = np.mean(fs_bin.squeeze(), 1)
+        chi2_grid = phase_loop(prof2D, dts, f0s, f1s, metric=1)
+        i_f0, i_f1 = np.unravel_index(np.argmax(chi2_grid), chi2_grid.shape)
+        f0_best = f0s[i_f0]
+        f1_best = f1s[i_f1]
+        f0_slice = chi2_grid[:, i_f1]
+        f1_slice = chi2_grid[i_f0]
+
+        dphis = f0_best * dts + 0.5 * f1_best * dts**2
+        i_phis = (dphis * npbin).astype("int")
+        if not f0search:
+            for i in range(fs_bin.shape[0]):
+                fs_bin[i] = np.roll(fs_bin[i], -i_phis[i], axis=-1)
+        else:
+            print("Computing accel grid, but only showing profile from F0 search")
+
+        ax_accel.pcolormesh(f0s, f1s, chi2_grid.T)
+        ax_accel.scatter(f0_best, f1_best, color="w", marker="*")
+        ax_acceltop.plot(f0s, f0_slice)
+        ax_accelleft.plot(-f1_slice, f1s)
+        ax_accelleft.set_yticks([])
+        ax_accelleft.set_xticks([])
+        ax_acceltop.set_xticks([])
+        ax_acceltop.set_yticks([])
+        ax_accel.yaxis.tick_right()
+        ax_accel.yaxis.set_label_position("right")
+        ax_accel.set_ylabel("F1 (Hz/s)", fontsize=12)
+        ax_accel.set_xlabel(r"$\Delta$F0 (Hz)", fontsize=12, labelpad=-2)
+        ax_acceltop.set_xlim(min(f0s), max(f0s))
+        ax_accelleft.set_ylim(min(f1s), max(f1s))
+        ax_accel.tick_params(direction="in", length=6)
+
+        F1_scinot = ax3.yaxis.get_offset_text()
+        F1_scinot.set_x(1.15)
+
+        def gaussian(x, x0, sigma, A, C):
+            return A * np.exp(-((x - x0) ** 2) / (2 * sigma**2)) + C
+
+        try:
+            p0 = [
+                f0s[np.argmax(f0s)],
+                0.0002,
+                np.max(f0_slice) - np.median(f0_slice),
+                np.median(f0_slice),
+            ]
+            # popt, pcov = curve_fit(gaussian, f0s, f0_slice, p0=p0)
+            # w = popt[1]
+            # xerr = np.sqrt(pcov[0][0])
+        except Exception as e:
+            print(e)
+    else:
+        ax_accel.axis("off")
+        ax_acceltop.axis("off")
+        ax_accelleft.axis("off")
+
+
+    if accel_search:
+        dts = taxis.to(u.s).value
+        dts = dts - np.median(dts)
+        npbin = fs_bin.shape[-1]
+        f0s, f1s = compute_accel_steps(dts, f0, npbin)
+        print(f"Acceleration search with {len(f0s)} F0, {len(f1s)} F1 trials")
+
+        prof2D = np.mean(fs_bin.squeeze(), 1)
+        chi2_grid = phase_loop(prof2D, dts, f0s, f1s, metric=1)
+        i_f0, i_f1 = np.unravel_index(np.argmax(chi2_grid), chi2_grid.shape)
+        f0_best = f0s[i_f0]
+        f1_best = f1s[i_f1]
+        f0_slice = chi2_grid[:, i_f1]
+        f1_slice = chi2_grid[i_f0]
+
+        dphis = f0_best * dts + 0.5 * f1_best * dts**2
+        i_phis = (dphis * npbin).astype("int")
+        for i in range(fs_bin.shape[0]):
+            fs_bin[i] = np.roll(fs_bin[i], -i_phis[i], axis=-1)
+
+        ax3.pcolormesh(f0s, f1s, chi2_grid.T, cmap=cmap_name)
+        ax3.scatter(f0_best, f1_best, color="w", marker="*")
+        ax3top.plot(f0s, f0_slice, color=plot_color)
+        ax3left.plot(-f1_slice, f1s, color=plot_color)
+        ax3left.set_yticks([])
+        ax3left.set_xticks([])
+        ax3top.set_xticks([])
+        ax3top.set_yticks([])
+        ax3.yaxis.tick_right()
+        ax3.yaxis.set_label_position("right")
+        ax3.set_ylabel("F1 (Hz/s)", fontsize=16)
+        ax3.set_xlabel(r"$\Delta$F0 (Hz)", fontsize=16)
+        ax3top.set_xlim(min(f0s), max(f0s))
+        ax3left.set_ylim(min(f1s), max(f1s))
+
+        F1_scinot = ax3.yaxis.get_offset_text()
+        F1_scinot.set_x(1.15)
+        
+    else:
+        ax_accel.axis("off")
+        ax_acceltop.axis("off")
+        ax_accelleft.axis("off")
 
     if f0search is not None:
         # F0 search mode: search over F0 offsets and phase
@@ -345,63 +451,9 @@ def plot_candidate_archive(
         ax3.yaxis.set_label_position("right")
         #ax3.set_xlabel("Phase", fontsize=16)
         ax3.set_xticks([])
-        ax3.set_ylabel(r"$\Delta$F0 (Hz)", fontsize=16)
+        ax3.set_ylabel(r"$\Delta$F0 (Hz)", fontsize=12)
         ax3top.set_xlim(0, 2)
         ax3left.set_ylim(min(f0s), max(f0s))
-
-    elif accel_search:
-        dts = taxis.to(u.s).value
-        dts = dts - np.median(dts)
-        npbin = fs_bin.shape[-1]
-        f0s, f1s = compute_accel_steps(dts, f0, npbin)
-        print(f"Acceleration search with {len(f0s)} F0, {len(f1s)} F1 trials")
-
-        prof2D = np.mean(fs_bin.squeeze(), 1)
-        chi2_grid = phase_loop(prof2D, dts, f0s, f1s, metric=1)
-        i_f0, i_f1 = np.unravel_index(np.argmax(chi2_grid), chi2_grid.shape)
-        f0_best = f0s[i_f0]
-        f1_best = f1s[i_f1]
-        f0_slice = chi2_grid[:, i_f1]
-        f1_slice = chi2_grid[i_f0]
-
-        dphis = f0_best * dts + 0.5 * f1_best * dts**2
-        i_phis = (dphis * npbin).astype("int")
-        for i in range(fs_bin.shape[0]):
-            fs_bin[i] = np.roll(fs_bin[i], -i_phis[i], axis=-1)
-
-        ax3.pcolormesh(f0s, f1s, chi2_grid.T, cmap=cmap_name)
-        ax3.scatter(f0_best, f1_best, color="w", marker="*")
-        ax3top.plot(f0s, f0_slice, color=plot_color)
-        ax3left.plot(-f1_slice, f1s, color=plot_color)
-        ax3left.set_yticks([])
-        ax3left.set_xticks([])
-        ax3top.set_xticks([])
-        ax3top.set_yticks([])
-        ax3.yaxis.tick_right()
-        ax3.yaxis.set_label_position("right")
-        ax3.set_ylabel("F1 (Hz/s)", fontsize=16)
-        ax3.set_xlabel(r"$\Delta$F0 (Hz)", fontsize=16)
-        ax3top.set_xlim(min(f0s), max(f0s))
-        ax3left.set_ylim(min(f1s), max(f1s))
-
-        F1_scinot = ax3.yaxis.get_offset_text()
-        F1_scinot.set_x(1.15)
-
-        def gaussian(x, x0, sigma, A, C):
-            return A * np.exp(-((x - x0) ** 2) / (2 * sigma**2)) + C
-
-        try:
-            p0 = [
-                f0s[np.argmax(f0s)],
-                0.0002,
-                np.max(f0_slice) - np.median(f0_slice),
-                np.median(f0_slice),
-            ]
-            popt, pcov = curve_fit(gaussian, f0s, f0_slice, p0=p0)
-            # w = popt[1]
-            # xerr = np.sqrt(pcov[0][0])
-        except Exception as e:
-            print(e)
     else:
         ax3.axis("off")
         ax3top.axis("off")
@@ -441,8 +493,8 @@ def plot_candidate_archive(
         ax4top.set_yticks([])
         ax4.yaxis.tick_right()
         ax4.yaxis.set_label_position("right")
-        ax4.set_xlabel("Phase", fontsize=16)
-        ax4.set_ylabel(r"DM (pc cm$^3$)", fontsize=16)
+        ax4.set_xlabel("Phase", fontsize=12)
+        ax4.set_ylabel(r"DM (pc cm$^3$)", fontsize=12)
         ax4top.set_xlim(0, 2)
         ax4left.set_ylim(min(dm + DMs), max(dm + DMs))
 
@@ -506,9 +558,10 @@ def plot_candidate_archive(
     xlim_sky = max([5/np.cos(dec*u.deg), dra_arc])
     ax_sky.set_xlim(ra - xlim_sky, ra + xlim_sky)
     ax_sky.set_ylim(dec - 5, dec + 5)
-    ax_sky.set_xlabel('RA (deg)', fontsize=12, labelpad=-10)
+    ax_sky.set_xlabel('RA (deg)', fontsize=10, labelpad=-2)
     ax_sky.set_ylabel('Dec (deg)', fontsize=12)
-    ax_sky.legend(loc='upper right', fontsize=8)
+    ax_sky.legend(loc='upper left', fontsize=8)
+    ax_sky.tick_params(direction="in", length=6)
 
     ax1.imshow(
         np.nanmean(fs_bin, 0),
@@ -579,12 +632,35 @@ def plot_candidate_archive(
 
     # Render known sources table
     if len(ks_df.values) > 0:
+        fig = ax_kstext.get_figure()
+
+        # First create a temporary table to measure its height
+        tmp_table = ax_kstext.table(
+            cellText=ks_df.values,
+            colLabels=ks_df.columns,
+            loc="center"
+        )
+        tmp_table.auto_set_font_size(False)
+        tmp_table.set_fontsize(9)
+        tmp_table.auto_set_column_width(col=list(range(len(ks_df.columns))))
+
+        fig.canvas.draw()
+
+        # Get height of table in axes coordinates
+        bbox = tmp_table.get_window_extent(fig.canvas.get_renderer())
+        bbox_axes = bbox.transformed(ax_kstext.transAxes.inverted())
+        table_height = bbox_axes.height
+
+        # Remove temporary table
+        tmp_table.remove()
+
+        # Create final table, aligned to axis top
         ks_table = ax_kstext.table(
             cellText=ks_df.values,
             colLabels=ks_df.columns,
-            colColours=["honeydew"] * len(ks_df.columns),
             cellLoc="center",
-            loc="center",
+            loc=None,   # manually positioning!
+            bbox=[-0.1, 2.5 - table_height, 1.2, table_height]  # top aligned!
         )
         ks_table.auto_set_font_size(False)
         ks_table.set_fontsize(9)
@@ -615,7 +691,9 @@ def plot_candidate_archive(
         legend_text = (
             "Nearby Sources. Red: likely match  |  Blue: unpublished  |  Purple: both"
         )
-        if num_sources_not_displayed > 0:
+        if num_sources_not_displayed == 1:
+            legend_text += f"\n {num_sources_not_displayed} additional source not displayed"
+        if num_sources_not_displayed > 1:
             legend_text += f"\n {num_sources_not_displayed} additional sources not displayed"
         ax_kstext.text(
             0.5, y_below, legend_text,
