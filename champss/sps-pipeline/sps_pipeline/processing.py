@@ -1681,6 +1681,12 @@ def start_processing_manager(
     help="To run the multipointing phase of processing or not.",
 )
 @click.option(
+    "--run-classification",
+    default=True,
+    type=bool,
+    help="To run the classification phase of processing or not.",
+)
+@click.option(
     "--run-folding",
     default=True,
     type=bool,
@@ -1724,6 +1730,7 @@ def start_processing_services(
     pipeline_docker_image_name,
     run_pipeline,
     run_multipointing,
+    run_classification,
     run_folding,
     run_stacking,
     pipeline_arguments,
@@ -1746,7 +1753,7 @@ def start_processing_services(
             f" {workflow_buckets_name_prefix} --docker-image-name"
             f" {pipeline_docker_image_name} --run-pipeline"
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
-            f" {run_folding} --run-stacking {run_stacking} --datpath {datpath}"
+            f" {run_folding} --run-stacking {run_stacking} --run-classification {run_classification} --datpath {datpath}"
             f' --pipeline-arguments "{pipeline_arguments}"'
             f' --pipeline-config-options "{pipeline_config_options}"'
         ),
