@@ -1551,6 +1551,7 @@ def start_processing_manager(
                 )
                 replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
                 os.makedirs(merged_candidate_path, exist_ok=True)
+                os.makedirs(replotted_mp_path, exist_ok=True)
                 for index, row in df_mp.iterrows():
                     try:
                         plot_path = row["plot_path"]
