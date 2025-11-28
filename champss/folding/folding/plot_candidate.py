@@ -482,6 +482,13 @@ def plot_candidate_archive(
     num_sources_not_displayed = ks_result['num_sources_not_displayed']
 
     # Plot sky position scatter plot
+    # Set colors based on plot_bw mode
+    arc_color = 'grey' if plot_bw else 'tab:orange'
+    match_color = 'black' if plot_bw else 'red'
+    arc_source_color = 'black' if plot_bw else 'tab:orange'
+    scraper_color = 'black' if plot_bw else 'blue'
+    other_color = 'black' if plot_bw else 'gray'
+
     # Plot the arc if available
     if arc_positions is not None:
         arc_ras = arc_positions[:, 0]
@@ -490,27 +497,27 @@ def plot_candidate_archive(
         ra_break_idx = np.argmax(np.abs(np.diff(arc_ras)))
         if np.abs(np.diff(arc_ras))[ra_break_idx] > 100.0:
             ax_sky.plot(arc_ras[:ra_break_idx + 1], arc_decs[:ra_break_idx + 1],
-                        c='tab:orange', ls=':', lw=1.5, zorder=1, label='EW Arc')
+                        c=arc_color, ls=':', lw=1.5, zorder=1, label='EW Arc')
             ax_sky.plot(arc_ras[ra_break_idx + 1:], arc_decs[ra_break_idx + 1:],
-                        c='tab:orange', ls=':', lw=1.5, zorder=1)
+                        c=arc_color, ls=':', lw=1.5, zorder=1)
         else:
-            ax_sky.plot(arc_ras, arc_decs, c='tab:orange', ls=':', lw=1.5, zorder=1, label='EW Arc')
+            ax_sky.plot(arc_ras, arc_decs, c=arc_color, ls=':', lw=1.5, zorder=1, label='EW Arc')
 
     ax_sky.scatter(ra, dec, s=150, c='k', marker='*', label='Candidate', zorder=10)
     dra_arc = 0
     if ks_positions_match:
         ras_match, decs_match = zip(*ks_positions_match)
         dra_arc = np.max(np.abs(ra - np.array(ras_match)))
-        ax_sky.scatter(ras_match, decs_match, s=80, c='red', marker='o', label='Harmonic match', zorder=5)
+        ax_sky.scatter(ras_match, decs_match, s=80, c=match_color, marker='o', label='Harmonic match', zorder=5)
     if ks_positions_arc:
         ras_arc, decs_arc = zip(*ks_positions_arc)
-        ax_sky.scatter(ras_arc, decs_arc, s=60, c='tab:orange', marker='d', label='Arc source', zorder=6)
+        ax_sky.scatter(ras_arc, decs_arc, s=60, c=arc_source_color, marker='d', label='Arc source', zorder=6)
     if ks_positions_scraper:
         ras_scraper, decs_scraper = zip(*ks_positions_scraper)
-        ax_sky.scatter(ras_scraper, decs_scraper, s=50, c='blue', marker='s', label='Scraper', zorder=4)
+        ax_sky.scatter(ras_scraper, decs_scraper, s=50, c=scraper_color, marker='s', label='Scraper', zorder=4)
     if ks_positions_other:
         ras_other, decs_other = zip(*ks_positions_other)
-        ax_sky.scatter(ras_other, decs_other, s=50, c='gray', marker='o', label='Other', zorder=3)
+        ax_sky.scatter(ras_other, decs_other, s=50, c=other_color, marker='o', label='Other', zorder=3)
     xlim_sky = max([5/np.cos(dec*u.deg), dra_arc])
     ax_sky.set_xlim(ra - xlim_sky, ra + xlim_sky)
     ax_sky.set_ylim(dec - 5, dec + 5)
@@ -624,31 +631,48 @@ def plot_candidate_archive(
         ks_table.set_fontsize(9)
         ks_table.auto_set_column_width(col=list(range(len(ks_df.columns))))
 
-        # Color code the rows based on match type
+        # Color/style code the rows based on match type
         for row_idx, is_psr_scraper in enumerate(ks_is_psr_scraper):
             is_harmonic_match = row_idx < likely_match_count
 
-            # Determine color: purple if both, red if harmonic only, blue if scraper only
-            if is_harmonic_match and is_psr_scraper:
-                color = "purple"
-            elif is_harmonic_match:
-                color = "red"
-            elif is_psr_scraper:
-                color = "blue"
-            else:
-                continue  # No special color
+            if plot_bw:
+                # Greyscale mode: use text styling instead of colors
+                # Harmonic match: bold, Scraper: italic, Both: bold+italic
+                weight = 'bold' if is_harmonic_match else 'normal'
+                style = 'italic' if is_psr_scraper else 'normal'
 
-            for col_idx in range(len(ks_df.columns)):
-                ks_table[(row_idx + 1, col_idx)].set_text_props(color=color)
+                if weight == 'normal' and style == 'normal':
+                    continue  # No special styling
+
+                for col_idx in range(len(ks_df.columns)):
+                    ks_table[(row_idx + 1, col_idx)].set_text_props(weight=weight, style=style)
+            else:
+                # Color mode: purple if both, red if harmonic only, blue if scraper only
+                if is_harmonic_match and is_psr_scraper:
+                    color = "purple"
+                elif is_harmonic_match:
+                    color = "red"
+                elif is_psr_scraper:
+                    color = "blue"
+                else:
+                    continue  # No special color
+
+                for col_idx in range(len(ks_df.columns)):
+                    ks_table[(row_idx + 1, col_idx)].set_text_props(color=color)
 
         bbox = ks_table.get_window_extent(fig.canvas.get_renderer())
         bbox_ax = bbox.transformed(ax_kstext.transAxes.inverted())
 
         y_below = bbox_ax.y0 - 0.03
 
-        legend_text = (
-            "Nearby Sources. Red: likely match  |  Blue: unpublished  |  Purple: both"
-        )
+        if plot_bw:
+            legend_text = (
+                "Nearby Sources. Bold: likely match  |  Italic: unpublished  |  Bold+Italic: both"
+            )
+        else:
+            legend_text = (
+                "Nearby Sources. Red: likely match  |  Blue: unpublished  |  Purple: both"
+            )
         if num_sources_not_displayed == 1:
             legend_text += f"\n {num_sources_not_displayed} additional source not displayed"
         if num_sources_not_displayed > 1:
