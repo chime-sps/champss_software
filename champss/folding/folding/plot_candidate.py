@@ -313,10 +313,10 @@ def plot_candidate_archive(
         else:
             print("Computing accel grid, but only showing profile from F0 search")
 
-        ax_accel.pcolormesh(f0s, f1s, chi2_grid.T)
+        ax_accel.pcolormesh(f0s, f1s, chi2_grid.T, cmap=cmap_name)
         ax_accel.scatter(f0_best, f1_best, color="w", marker="*")
-        ax_acceltop.plot(f0s, f0_slice)
-        ax_accelleft.plot(-f1_slice, f1s)
+        ax_acceltop.plot(f0s, f0_slice, color=plot_color)
+        ax_accelleft.plot(-f1_slice, f1s, color=plot_color)
         ax_accelleft.set_yticks([])
         ax_accelleft.set_xticks([])
         ax_acceltop.set_xticks([])
@@ -329,7 +329,7 @@ def plot_candidate_archive(
         ax_accelleft.set_ylim(min(f1s), max(f1s))
         ax_accel.tick_params(direction="in", length=6)
 
-        F1_scinot = ax3.yaxis.get_offset_text()
+        F1_scinot = ax_accel.yaxis.get_offset_text()
         F1_scinot.set_x(1.15)
 
         def gaussian(x, x0, sigma, A, C):
@@ -347,50 +347,6 @@ def plot_candidate_archive(
             # xerr = np.sqrt(pcov[0][0])
         except Exception as e:
             print(e)
-    else:
-        ax_accel.axis("off")
-        ax_acceltop.axis("off")
-        ax_accelleft.axis("off")
-
-
-    if accel_search:
-        dts = taxis.to(u.s).value
-        dts = dts - np.median(dts)
-        npbin = fs_bin.shape[-1]
-        f0s, f1s = compute_accel_steps(dts, f0, npbin)
-        print(f"Acceleration search with {len(f0s)} F0, {len(f1s)} F1 trials")
-
-        prof2D = np.mean(fs_bin.squeeze(), 1)
-        chi2_grid = phase_loop(prof2D, dts, f0s, f1s, metric=1)
-        i_f0, i_f1 = np.unravel_index(np.argmax(chi2_grid), chi2_grid.shape)
-        f0_best = f0s[i_f0]
-        f1_best = f1s[i_f1]
-        f0_slice = chi2_grid[:, i_f1]
-        f1_slice = chi2_grid[i_f0]
-
-        dphis = f0_best * dts + 0.5 * f1_best * dts**2
-        i_phis = (dphis * npbin).astype("int")
-        for i in range(fs_bin.shape[0]):
-            fs_bin[i] = np.roll(fs_bin[i], -i_phis[i], axis=-1)
-
-        ax3.pcolormesh(f0s, f1s, chi2_grid.T, cmap=cmap_name)
-        ax3.scatter(f0_best, f1_best, color="w", marker="*")
-        ax3top.plot(f0s, f0_slice, color=plot_color)
-        ax3left.plot(-f1_slice, f1s, color=plot_color)
-        ax3left.set_yticks([])
-        ax3left.set_xticks([])
-        ax3top.set_xticks([])
-        ax3top.set_yticks([])
-        ax3.yaxis.tick_right()
-        ax3.yaxis.set_label_position("right")
-        ax3.set_ylabel("F1 (Hz/s)", fontsize=16)
-        ax3.set_xlabel(r"$\Delta$F0 (Hz)", fontsize=16)
-        ax3top.set_xlim(min(f0s), max(f0s))
-        ax3left.set_ylim(min(f1s), max(f1s))
-
-        F1_scinot = ax3.yaxis.get_offset_text()
-        F1_scinot.set_x(1.15)
-        
     else:
         ax_accel.axis("off")
         ax_acceltop.axis("off")
