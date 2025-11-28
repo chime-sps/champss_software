@@ -574,8 +574,8 @@ def plot_candidate_archive(
     cand_params_text = [
         [rf"{psr}", f"RA: {ra:.2f}", rf"$g_l$: {gal_l:.2f}", f"DM$_{{max}}$: {maxdm_str}", f"$\\Delta$F0: {df0_best_str}"],
         [rf"{T0.isot[:10]}", f"Dec: {dec:.2f}", rf"$g_b$: {gal_b:.2f}", f"DM$_{{ne2001}}$: {ne2001_str}", f"F0$_{{best}}$: {f0_best_str}"],
-        [rf"Fold $\sigma$: {SNR_val:.2f}", f"DM: {dm:.2f}", f"Beam: {beam_str}", f"DM$_{{ymw16}}$: {ymw16_str}",f"P0$_{{best}}$: {P0_best_str}"],
-        [rf"PS $\sigma$: {sigma_str}", f"f0: {f0:.5f}", f"P0: {P0:.5f}", f"DM$_{{best}}$: {dm_best_str}" , f"F1: {f1_best_str}"],
+        [rf"PS $\sigma$: {sigma_str}", f"DM: {dm:.2f}", f"Beam: {beam_str}", f"DM$_{{ymw16}}$: {ymw16_str}",f"P0$_{{best}}$: {P0_best_str}"],
+        [rf"Fold $\sigma$: {SNR_val:.2f}", f"f0: {f0:.5f}", f"P0: {P0:.5f}", f"DM$_{{best}}$: {dm_best_str}" , f"F1: {f1_best_str}"],
     ]
 
     cand_param_table = axtext.table(
@@ -585,6 +585,8 @@ def plot_candidate_archive(
     cand_param_table.auto_set_font_size(False)
     cand_param_table.set_fontsize(10)
     cand_param_table.auto_set_column_width(col=list(range(5)))
+    foldsigma_cell = cand_param_table[(3, 0)]
+    foldsigma_cell.get_text().set_weight('bold')
 
     # Render known sources table
     if len(ks_df.values) > 0:
