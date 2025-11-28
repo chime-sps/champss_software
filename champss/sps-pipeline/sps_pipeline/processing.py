@@ -1349,7 +1349,6 @@ def start_processing_manager(
                     docker_mounts=[
                         f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
-                        "/mnt/beegfs-client/:/mnt/beegfs-client/",
                     ],
                     docker_name=f"{docker_service_name_prefix}-{date_string}",
                     docker_memory_reservation=200,
