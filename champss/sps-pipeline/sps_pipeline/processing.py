@@ -1092,7 +1092,6 @@ def start_processing_manager(
     # signal.signal(signal.SIGTERM, remove_processing_services)
 
     # Ugly way of removing superfluous handler that comes from somehwere
-    log.info("Test")
     try:
         log.removeHandler(log.handlers[1])
     except Exception as error:
@@ -1468,6 +1467,7 @@ def start_processing_manager(
                     daily_run.classification_result["output_file"].rsplit("_", 1)[0]
                     + "_folded.csv"
                 )
+                df_folded_name = "/data/lkuenkel/combined_cand/all_folded.csv"
                 fold_schedule_output, [], [] = find_all_folding_processes.main(
                     args=[
                         "--date",
@@ -1550,6 +1550,12 @@ def start_processing_manager(
                     basepath + "/combined_candidates/" + date_string + "/"
                 )
                 replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
+                merged_candidate_path = (
+                    "/data/lkuenkel/proc_test/combined_candidates/" + date_string + "/"
+                )
+                replotted_mp_path = (
+                    "/data/lkuenkel/proc_test/mp_candidates/" + date_string + "/"
+                )
                 os.makedirs(merged_candidate_path, exist_ok=True)
                 os.makedirs(replotted_mp_path, exist_ok=True)
                 for index, row in df_mp.iterrows():

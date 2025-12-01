@@ -362,6 +362,7 @@ def main(
     E.g. If you want to produce filterbank files only from scratch,
     you can do run-pipeline --date 20200701 317.86 20.96 rfi beamform
     """
+    log.info("START")
     # Logging in multiprocessing child processes with Linux default
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
