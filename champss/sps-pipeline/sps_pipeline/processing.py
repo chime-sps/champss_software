@@ -488,6 +488,7 @@ def deposit_pipeline_work(
     formatted_date = process.date
 
     ram_requirement = process.ram_requirement
+
     tier_name, tier_limit = process.tier
     threads_reserved = int(tier_limit / 3)
 
