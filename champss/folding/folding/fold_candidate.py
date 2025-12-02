@@ -473,8 +473,9 @@ def main(
 
     # If multiple sub-pointings, force to disk (too large for RAM)
     if len(ap) > 1:
-        log.info(f"Multiple sub-pointings ({len(ap)}), forcing filterbank to disk")
+        log.info(f"Multiple sub-pointings ({len(ap)}), writing filterbank to disk")
         filterbank_to_ram = False
+        config.beamform.beam_to_normalise = None
 
     fname = f"/{ra:.02f}_{dec:.02f}_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.fil"
     if filterbank_to_ram:
