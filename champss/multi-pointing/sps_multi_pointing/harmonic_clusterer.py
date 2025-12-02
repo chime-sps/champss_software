@@ -30,6 +30,8 @@ def get_frac_distances_for_chunk(
     data_pos = data[0]
     data_freq = data[1]
     start_index = data[2]
+    if data_pos.shape[0] == 0:
+        return ([], [], [])
     neighbors_batch = radius_neighbors_graph(
         data_pos, max_dist, n_jobs=1, metric=neighborhood_metric
     ).tocoo()
