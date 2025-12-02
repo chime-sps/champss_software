@@ -908,15 +908,18 @@ def run_all_pipeline_processes(
         docker_client.services.get(services[i]).scale(0)
     for i, tier in enumerate(processing_tier_names):
         service_tasks = docker_client.services.get(services[i]).tasks()
-        running_tasks_per_tier = sum(
-            1 for task in service_tasks if task["Status"]["State"] == "running"
-        )
-        if running_tasks_per_tier == 0:
-            try:
-                docker_client.services.get(services[i]).remove()
-            except docker.errors.NotFound:
-                log.info("Could not remove processing service {services[i]}.")
-        time.sleep(update_time)
+        running_tasks_per_tier = 1
+        while running_tasks_per_tier:
+            running_tasks_per_tier = sum(
+                1 for task in service_tasks if task["Status"]["State"] == "running"
+            )
+            if running_tasks_per_tier == 0:
+                try:
+                    docker_client.services.get(services[i]).remove()
+                except docker.errors.NotFound:
+                    log.info("Could not remove processing service {services[i]}.")
+            else:
+                time.sleep(update_time)
     log.info("Finished processing and removed all services.")
 
     return process_ids
@@ -1170,165 +1173,178 @@ def start_processing_manager(
                             }
                         },
                     )
+                else:
+                    processes = {
+                        "unfinished_processes": ["dummy"],
+                        "finished_processes": [],
+                    }
 
-                    if len(processes["unfinished_processes"]) == 0:
+                if len(processes["unfinished_processes"]) == 0:
+                    if len(processes["finished_processes"]) == 0:
                         message_slack(
-                            f"No unfinished processes found for {date_string}. Will progress to"
+                            f"No processes found for {date_string}. Will progress to"
                             " next day"
                         )
                         number_of_days_processed = number_of_days_processed + 1
                         date_to_process = date_to_process + dt.timedelta(days=1)
                         continue
-
-                present_date = dt.datetime.now(dt.timezone.utc)
-
-                time_passed = present_date - (date_to_process + dt.timedelta(days=1))
-
-                start_time_of_processing = time.time()
-
-                docker_service_name_prefix = "pipeline"
-
-                workflow_buckets_name = (
-                    f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
-                )
-                # clear_workflow_buckets.main(
-                #     args=["--workflow-buckets-name", workflow_buckets_name],
-                #     standalone_mode=False,
-                # )
-                db_work = pymongo.MongoClient(
-                    host="sps-archiver1", port=27018
-                ).work.buckets
-                db_work.delete_many({"pipeline": workflow_buckets_name})
-                pipeline_args = [
-                    "--db-host",
-                    db_host,
-                    "--db-port",
-                    db_port,
-                    "--db-name",
-                    db_name,
-                    "--date",
-                    date_to_process,
-                    "--min-ra",
-                    min_ra,
-                    "--max-ra",
-                    max_ra,
-                    "--min-dec",
-                    min_dec,
-                    "--max-dec",
-                    max_dec,
-                    "--basepath",
-                    basepath,
-                    "--stackpath",
-                    basepath,
-                    "--datpath",
-                    datpath,
-                    "--workflow-buckets-name",
-                    workflow_buckets_name,
-                    "--docker-image-name",
-                    docker_image_name,
-                    "--docker-service-name-prefix",
-                    docker_service_name_prefix,
-                    "--run-stacking",
-                    run_stacking,
-                    "--pipeline-arguments",
-                    pipeline_arguments,
-                    "--pipeline-config-options",
-                    pipeline_config_options,
-                    "--alert-slack",
-                ]
-                process_ids = run_all_pipeline_processes.main(
-                    args=pipeline_args,
-                    standalone_mode=False,
-                )
-
-                wait_for_no_tasks_in_states(
-                    docker_swarm_running_states, docker_service_name_prefix
-                )
-
-                end_time_of_processing = time.time()
-                processed = list(db.processes.find({"_id": {"$in": process_ids}}))
-                if not len(processed):
-                    number_of_days_processed = number_of_days_processed + 1
-                    date_to_process = date_to_process + dt.timedelta(days=1)
-                    continue
-
-                overall_time_of_processing = (
-                    end_time_of_processing - start_time_of_processing
-                ) / 60
-                average_time_of_processing = (
-                    overall_time_of_processing / len(processed)
-                ) * 60
-
-                completed_processes = [
-                    proc for proc in processed if proc["status"] == 2
-                ]
-                rfi_processeses = [
-                    proc
-                    for proc in completed_processes
-                    if proc["quality_label"] is False
-                ]
-                db["processes"].count_documents(
-                    {"date": date_string, "status": 2, "is_in_stack": False}
-                )
-
-                obs_ids = [proc["obs_id"] for proc in completed_processes]
-                observations = list(db.observations.find({"_id": {"$in": obs_ids}}))
-                mean_detections = np.nanmean(
-                    [obs["num_detections"] for obs in observations]
-                )
-
-                # Get the execution time and nchan per process for the day
-                time_per_nchan = {
-                    1024: {"total": 0, "count": 0},
-                    2048: {"total": 0, "count": 0},
-                    4096: {"total": 0, "count": 0},
-                    8192: {"total": 0, "count": 0},
-                    16384: {"total": 0, "count": 0},
-                }
-
-                for process in processed:
-                    nchan = process["nchan"]
-                    execution_time = process["process_time"]
-
-                    if execution_time is not None and nchan in time_per_nchan:
-                        time_per_nchan[nchan]["total"] += execution_time
-                        time_per_nchan[nchan]["count"] += 1
-
-                slack_message = (
-                    f"For {date_string}:\n{len(completed_processes)} /"
-                    f" {len(processed)} finished successfully for the day\nOf those,"
-                    f" {len(rfi_processeses)} were rejected by quality metrics\nMean number"
-                    f" of detections: {mean_detections}\nOverall processing time for"
-                    f" current run: {overall_time_of_processing:.2f} minutes\n(/"
-                    f" {len(processed)} jobs run ="
-                    f" {average_time_of_processing:.2f} seconds)"
-                )
-
-                for nchan in time_per_nchan.keys():
-                    time_of_nchan = time_per_nchan[nchan]
-
-                    if time_of_nchan["count"] > 0:
-                        mean_time_of_nchan = round(
-                            time_of_nchan["total"] / time_of_nchan["count"]
+                    else:
+                        message_slack(
+                            f"No unfinished processes found for {date_string}. Will progress to"
+                            " next step"
                         )
+                else:
+                    present_date = dt.datetime.now(dt.timezone.utc)
 
-                        slack_message += (
-                            f"\nMean process time for nchan {nchan}:"
-                            f" {mean_time_of_nchan} seconds"
-                            f" ({mean_time_of_nchan / 60:.2f} minutes)"
-                        )
+                    time_passed = present_date - (
+                        date_to_process + dt.timedelta(days=1)
+                    )
 
-                message_slack(slack_message)
-                pipeline_result = {
-                    "completed_processes": len(completed_processes),
-                    "overall_time_of_processing": overall_time_of_processing,
-                    "time_per_nchan": time_per_nchan,
-                    "rfi_processeses": rfi_processeses,
-                    "average_time_of_processing": average_time_of_processing,
-                }
-                daily_run = db_api.update_daily_run(
-                    date_to_process, {"pipeline_result": pipeline_result}
-                )
+                    start_time_of_processing = time.time()
+
+                    docker_service_name_prefix = "pipeline"
+
+                    workflow_buckets_name = (
+                        f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
+                    )
+                    # clear_workflow_buckets.main(
+                    #     args=["--workflow-buckets-name", workflow_buckets_name],
+                    #     standalone_mode=False,
+                    # )
+                    db_work = pymongo.MongoClient(
+                        host="sps-archiver1", port=27018
+                    ).work.buckets
+                    db_work.delete_many({"pipeline": workflow_buckets_name})
+                    pipeline_args = [
+                        "--db-host",
+                        db_host,
+                        "--db-port",
+                        db_port,
+                        "--db-name",
+                        db_name,
+                        "--date",
+                        date_to_process,
+                        "--min-ra",
+                        min_ra,
+                        "--max-ra",
+                        max_ra,
+                        "--min-dec",
+                        min_dec,
+                        "--max-dec",
+                        max_dec,
+                        "--basepath",
+                        basepath,
+                        "--stackpath",
+                        basepath,
+                        "--datpath",
+                        datpath,
+                        "--workflow-buckets-name",
+                        workflow_buckets_name,
+                        "--docker-image-name",
+                        docker_image_name,
+                        "--docker-service-name-prefix",
+                        docker_service_name_prefix,
+                        "--run-stacking",
+                        run_stacking,
+                        "--pipeline-arguments",
+                        pipeline_arguments,
+                        "--pipeline-config-options",
+                        pipeline_config_options,
+                        "--alert-slack",
+                    ]
+                    process_ids = run_all_pipeline_processes.main(
+                        args=pipeline_args,
+                        standalone_mode=False,
+                    )
+
+                    wait_for_no_tasks_in_states(
+                        docker_swarm_running_states, docker_service_name_prefix
+                    )
+
+                    end_time_of_processing = time.time()
+                    processed = list(db.processes.find({"_id": {"$in": process_ids}}))
+                    if not len(processed):
+                        number_of_days_processed = number_of_days_processed + 1
+                        date_to_process = date_to_process + dt.timedelta(days=1)
+                        continue
+
+                    overall_time_of_processing = (
+                        end_time_of_processing - start_time_of_processing
+                    ) / 60
+                    average_time_of_processing = (
+                        overall_time_of_processing / len(processed)
+                    ) * 60
+
+                    completed_processes = [
+                        proc for proc in processed if proc["status"] == 2
+                    ]
+                    rfi_processeses = [
+                        proc
+                        for proc in completed_processes
+                        if proc["quality_label"] is False
+                    ]
+                    db["processes"].count_documents(
+                        {"date": date_string, "status": 2, "is_in_stack": False}
+                    )
+
+                    obs_ids = [proc["obs_id"] for proc in completed_processes]
+                    observations = list(db.observations.find({"_id": {"$in": obs_ids}}))
+                    mean_detections = np.nanmean(
+                        [obs["num_detections"] for obs in observations]
+                    )
+
+                    # Get the execution time and nchan per process for the day
+                    time_per_nchan = {
+                        "1024": {"total": 0, "count": 0},
+                        "2048": {"total": 0, "count": 0},
+                        "4096": {"total": 0, "count": 0},
+                        "8192": {"total": 0, "count": 0},
+                        "16384": {"total": 0, "count": 0},
+                    }
+
+                    for process in processed:
+                        nchan = str(process["nchan"])
+                        execution_time = process["process_time"]
+
+                        if execution_time is not None and nchan in time_per_nchan:
+                            time_per_nchan[nchan]["total"] += execution_time
+                            time_per_nchan[nchan]["count"] += 1
+
+                    slack_message = (
+                        f"For {date_string}:\n{len(completed_processes)} /"
+                        f" {len(processed)} finished successfully for the day\nOf those,"
+                        f" {len(rfi_processeses)} were rejected by quality metrics\nMean number"
+                        f" of detections: {mean_detections}\nOverall processing time for"
+                        f" current run: {overall_time_of_processing:.2f} minutes\n(/"
+                        f" {len(processed)} jobs run ="
+                        f" {average_time_of_processing:.2f} seconds)"
+                    )
+
+                    for nchan in time_per_nchan.keys():
+                        time_of_nchan = time_per_nchan[nchan]
+
+                        if time_of_nchan["count"] > 0:
+                            mean_time_of_nchan = round(
+                                time_of_nchan["total"] / time_of_nchan["count"]
+                            )
+
+                            slack_message += (
+                                f"\nMean process time for nchan {float(nchan)}:"
+                                f" {mean_time_of_nchan} seconds"
+                                f" ({mean_time_of_nchan / 60:.2f} minutes)"
+                            )
+
+                    message_slack(slack_message)
+                    pipeline_result = {
+                        "completed_processes": len(completed_processes),
+                        "overall_time_of_processing": overall_time_of_processing,
+                        "time_per_nchan": time_per_nchan,
+                        "rfi_processeses": rfi_processeses,
+                        "average_time_of_processing": average_time_of_processing,
+                    }
+                    daily_run = db_api.update_daily_run(
+                        date_to_process, {"pipeline_result": pipeline_result}
+                    )
             # End of pipeline phase
 
             # Start of multi-pointing phase
@@ -1551,37 +1567,32 @@ def start_processing_manager(
                     basepath + "/combined_candidates/" + date_string + "/"
                 )
                 replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
-                merged_candidate_path = (
-                    "/data/lkuenkel/proc_test/combined_candidates/" + date_string + "/"
-                )
-                replotted_mp_path = (
-                    "/data/lkuenkel/proc_test/mp_candidates/" + date_string + "/"
-                )
+                # merged_candidate_path = (
+                #     "/data/lkuenkel/proc_test/combined_candidates/" + date_string + "/"
+                # )
+                # replotted_mp_path = (
+                #     "/data/lkuenkel/proc_test/mp_candidates/" + date_string + "/"
+                # )
                 os.makedirs(merged_candidate_path, exist_ok=True)
                 os.makedirs(replotted_mp_path, exist_ok=True)
                 for index, row in df_mp.iterrows():
-                    try:
-                        plot_path = row["plot_path"]
-                        fs_db_entry = db_api.get_followup_source(row["fs_id"])
-                        last_fold = fs_db_entry.folding_history[-1]
-                        df_mp.at[index, "fold_plot"] = last_fold["path_to_plot"]
-                        df_mp.at[index, "fs_sigma"] = last_fold["SN"]
-                        df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
-                        if type(row["plot_path"]) != str:
-                            mp_cand = MultiPointingCandidate.read(row["file_name"])
-                            plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
-                            df_mp.at[index, "plot_path"] = plot_path
-                        output_path = (
-                            merged_candidate_path
-                            + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
-                            + "_combined.png"
-                        )
-                        merge_images(
-                            [plot_path, row["fold_plot"]], output_path=output_path
-                        )
-                        df_mp.at[index, "combined_plot_path"] = output_path
-                    except:
-                        pass
+                    plot_path = row["plot_path"]
+                    fs_db_entry = db_api.get_followup_source(row["fs_id"])
+                    last_fold = fs_db_entry.folding_history[-1]
+                    df_mp.at[index, "fold_plot"] = last_fold["path_to_plot"]
+                    df_mp.at[index, "fs_sigma"] = last_fold["SN"]
+                    df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
+                    if type(row["plot_path"]) != str:
+                        mp_cand = MultiPointingCandidate.read(row["file_name"])
+                        plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
+                        df_mp.at[index, "plot_path"] = plot_path
+                    output_path = (
+                        merged_candidate_path
+                        + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
+                        + "_combined.png"
+                    )
+                    merge_images([plot_path, row["fold_plot"]], output_path=output_path)
+                    df_mp.at[index, "combined_plot_path"] = output_path
                 # Could get work results, alternatively can query fs db
                 try:
                     df_mp.to_csv(df_folded_name)
