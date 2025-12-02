@@ -468,6 +468,14 @@ def main(
         log.error(f"Ephemeris file {ephem_path} not found")
         return {}, [], []
 
+    pst = PointingStrategist(create_db=False, split_long_pointing=True)
+    ap = pst.get_single_pointing(ra, dec, date)
+
+    # If multiple sub-pointings, force to disk (too large for RAM)
+    if len(ap) > 1:
+        log.info(f"Multiple sub-pointings ({len(ap)}), forcing filterbank to disk")
+        filterbank_to_ram = False
+
     fname = f"/{ra:.02f}_{dec:.02f}_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.fil"
     if filterbank_to_ram:
         log.info("Using ram for filterbank file")
@@ -477,19 +485,8 @@ def main(
         fildir = coord_path
     fil = fildir + fname
 
-    pst = PointingStrategist(create_db=False)
-    ap = pst.get_single_pointing(ra, dec, date)
-
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    if nchan < ap[0].nchan:
-        log.info(
-            f"only need nchan = {nchan} for dm = {dm}, beamforming with"
-            f" {nchan} channels"
-        )
-        ap[0].nchan = nchan
-    num_threads = 4 * nchan // 1024
-    log.info(f"using {num_threads} threads")
 
     # set number of turns, roughly equalling 10s
     turns = int(np.ceil(10 * f0))
@@ -500,23 +497,44 @@ def main(
         turns = 10
 
     if not os.path.isfile(fil):
-        log.info("Beamforming...")
+        log.info(f"Beamforming {len(ap)} sub-pointing(s)...")
         fdmt = True
-        beamformer = beamform.initialise(config, rfi_beamform=True, 
+        beamformer = beamform.initialise(config, rfi_beamform=True,
                                          basepath=foldpath, datpath=datpath)
-        skybeam, spectra_shared = beamform.run(
-            ap[0], beamformer, fdmt, num_threads, foldpath
-        )
-        if skybeam is None:
-            log.info(
-                "Insufficient unmasked data to form skybeam, exiting before filterbank creation"
+
+        # Loop through all active pointings and append them into one filterbank
+        for i, active_pointing in enumerate(ap):
+            # Adjust nchan if needed
+            if nchan < active_pointing.nchan:
+                log.info(
+                    f"only need nchan = {nchan} for dm = {dm}, beamforming with"
+                    f" {nchan} channels"
+                )
+                active_pointing.nchan = nchan
+
+            num_threads = 4 * nchan // 1024
+            log.info(f"Beamforming sub-pointing {i+1}/{len(ap)} with {num_threads} threads")
+
+            skybeam, spectra_shared = beamform.run(
+                active_pointing, beamformer, fdmt, num_threads, foldpath
             )
-            spectra_shared.close()
-            spectra_shared.unlink()
-            return
-        else:
-            log.info(f"Writing to {fil}")
-            skybeam.write(fil)
+
+            if skybeam is None:
+                log.warning(
+                    f"Insufficient unmasked data to form skybeam for sub-pointing {i+1}, skipping"
+                )
+                spectra_shared.close()
+                spectra_shared.unlink()
+                continue
+
+            # Write first sub-pointing to create the file, append subsequent ones
+            if i == 0:
+                log.info(f"Writing sub-pointing {i+1} to {fil}")
+                skybeam.write(fil)
+            else:
+                log.info(f"Appending sub-pointing {i+1} to {fil}")
+                skybeam.append(fil)
+
             spectra_shared.close()
             spectra_shared.unlink()
             del skybeam
