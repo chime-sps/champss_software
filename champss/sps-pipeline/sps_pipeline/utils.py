@@ -91,7 +91,7 @@ def merge_images(image_list, output_path):
     total_width = sum(widths)
     max_height = max(heights)
 
-    new_im = PIL.Image.new("RGB", (total_width, max_height))
+    new_im = PIL.Image.new("RGBA", (total_width, max_height))
 
     x_offset = 0
     for im in images:

@@ -267,7 +267,6 @@ def run_all_folding_processes(
             formatted_dec,
             formatted_date,
         ]
-        # breakpoint()
         work_ids.append(
             schedule_workflow_job(
                 docker_image,
@@ -1545,44 +1544,28 @@ def start_processing_manager(
                 wait_for_no_tasks_in_states(
                     docker_swarm_running_states, docker_service_name_prefix
                 )
-                # for work_id in work_ids:
-                #     try:
-                #         work_object = get_work_from_results(
-                #             workflow_results_name=workflow_buckets_name,
-                #             work_id=work_id,
-                #             failover_to_buckets=True,
-                #         )
-                #         fs_id = work_object["parameters"]["fs_id"]
-                #         fold_plot = work_object["results"]["path_to_plot"]
-                #         df_index = df_mp.query(f"fs_id == '{fs_id}'").index
-                #         if len(df_index) == 0:
-                #             df_mp.loc[len(df_mp), "fold_plot"] = fold_plot
-                #         else:
-                #             df_mp.loc[df_index, "fold_plot"] = fold_plot
-                #     except:
-                #         pass
 
                 # Merge candidates
+                log.info("Creating merged candidate plots.")
                 merged_candidate_path = (
                     basepath + "/combined_candidates/" + date_string + "/"
                 )
                 replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
-                # merged_candidate_path = (
-                #     "/data/lkuenkel/proc_test/combined_candidates/" + date_string + "/"
-                # )
-                # replotted_mp_path = (
-                #     "/data/lkuenkel/proc_test/mp_candidates/" + date_string + "/"
-                # )
                 os.makedirs(merged_candidate_path, exist_ok=True)
                 os.makedirs(replotted_mp_path, exist_ok=True)
                 for index, row in df_mp.iterrows():
                     plot_path = row["plot_path"]
                     fs_db_entry = db_api.get_followup_source(row["fs_id"])
+                    fold_history = fs_db_entry.folding_history
+                    if len(fs_db_entry.folding_history) == 0:
+                        continue
                     last_fold = fs_db_entry.folding_history[-1]
                     df_mp.at[index, "fold_plot"] = last_fold["path_to_plot"]
                     df_mp.at[index, "fs_sigma"] = last_fold["SN"]
                     df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
                     if type(row["plot_path"]) != str:
+                        if not os.path.exists(row["file_name"]):
+                            continue
                         mp_cand = MultiPointingCandidate.read(row["file_name"])
                         plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
                         df_mp.at[index, "plot_path"] = plot_path
@@ -1591,12 +1574,16 @@ def start_processing_manager(
                         + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
                         + "_combined.png"
                     )
-                    merge_images([plot_path, row["fold_plot"]], output_path=output_path)
+                    merge_images(
+                        [plot_path, df_mp.at[index, "fold_plot"]],
+                        output_path=output_path,
+                    )
                     df_mp.at[index, "combined_plot_path"] = output_path
                 # Could get work results, alternatively can query fs db
                 try:
                     df_mp.to_csv(df_folded_name)
                 except:
+                    log.error("Could not write out csv containing combined candidates.")
                     # Might fail due to permission
                     pass
 
