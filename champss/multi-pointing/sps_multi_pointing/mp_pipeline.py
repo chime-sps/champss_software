@@ -230,6 +230,7 @@ def cli(
     if os.path.isdir(out_folder):
         log.error(f"Found existing folder {out_folder}. Will delete that folder.")
         shutil.rmtree(out_folder)
+
     os.makedirs(out_folder, exist_ok=False)
     os.makedirs(out_folder + "/candidates/", exist_ok=False)
     log_file = out_folder + "/run.log"
