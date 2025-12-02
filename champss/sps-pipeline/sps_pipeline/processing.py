@@ -1759,6 +1759,7 @@ def start_processing_services(
             f" {pipeline_docker_image_name} --run-pipeline"
             f" {run_pipeline} --run-multipointing {run_multipointing} --run-folding"
             f" {run_folding} --run-stacking {run_stacking} --datpath {datpath}"
+            f" --run-classification {run_classification}"
             f' --pipeline-arguments "{pipeline_arguments}"'
             f' --pipeline-config-options "{pipeline_config_options}"'
         ),
