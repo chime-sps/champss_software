@@ -14,11 +14,7 @@ logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
 from beamformer.strategist.strategist import PointingStrategist
-<<<<<<< HEAD
-from beamformer.utilities.common import find_closest_pointing
-=======
 from beamformer.utilities.common import find_closest_pointing, get_data_list
->>>>>>> 7d6baa3 (Fold ks improvements (#185))
 from folding.plot_aliases import plot_aliases
 from folding.plot_candidate import plot_candidate_archive
 from scheduler.utils import convert_date_to_datetime
@@ -115,20 +111,12 @@ def create_alias_ephemeris(base_ephem_path, alias_factor, output_path):
     output_path : str
         Path to the created ephemeris file
     """
-<<<<<<< HEAD
-    with open(base_ephem_path, "r") as f:
-=======
     with open(base_ephem_path, 'r') as f:
->>>>>>> 7d6baa3 (Fold ks improvements (#185))
         lines = f.readlines()
 
     modified_lines = []
     for line in lines:
-<<<<<<< HEAD
-        if line.strip().startswith("F0"):
-=======
         if line.strip().startswith('F0'):
->>>>>>> 7d6baa3 (Fold ks improvements (#185))
             parts = line.split()
             original_f0 = float(parts[1])
             new_f0 = original_f0 * alias_factor
@@ -136,11 +124,7 @@ def create_alias_ephemeris(base_ephem_path, alias_factor, output_path):
         else:
             modified_lines.append(line)
 
-<<<<<<< HEAD
-    with open(output_path, "w") as f:
-=======
     with open(output_path, 'w') as f:
->>>>>>> 7d6baa3 (Fold ks improvements (#185))
         f.writelines(modified_lines)
 
     return output_path
@@ -156,19 +140,11 @@ def get_alias_factors():
         List of (factor, label) tuples for folding
     """
     factors = [
-<<<<<<< HEAD
-        (1 / 16, "1_16"),
-        (1 / 8, "1_8"),
-        (1 / 4, "1_4"),
-        (1 / 3, "1_3"),
-        (1 / 2, "1_2"),
-=======
         (1/16, "1_16"),
         (1/8, "1_8"),
         (1/4, "1_4"),
         (1/3, "1_3"),
         (1/2, "1_2"),
->>>>>>> 7d6baa3 (Fold ks improvements (#185))
         (1, "1"),
         (2, "2"),
         (3, "3"),
@@ -526,17 +502,6 @@ def main(
     if not os.path.isfile(fil):
         log.info(f"Beamforming {len(ap)} sub-pointing(s)...")
         fdmt = True
-<<<<<<< HEAD
-        beamformer = beamform.initialise(
-            config, rfi_beamform=True, basepath=foldpath, datpath=datpath
-        )
-        skybeam, spectra_shared = beamform.run(
-            ap[0], beamformer, fdmt, num_threads, foldpath
-        )
-        if skybeam is None:
-            log.info(
-                "Insufficient unmasked data to form skybeam, exiting before filterbank creation"
-=======
         beamformer = beamform.initialise(config, rfi_beamform=True,
                                          basepath=foldpath, datpath=datpath)
 
@@ -555,7 +520,6 @@ def main(
 
             skybeam, spectra_shared = beamform.run(
                 active_pointing, beamformer, fdmt, num_threads, foldpath
->>>>>>> 7d6baa3 (Fold ks improvements (#185))
             )
 
             if skybeam is None:
@@ -617,23 +581,12 @@ def main(
             if alias_archive:
                 alias_results[label] = alias_archive
 
-<<<<<<< HEAD
-        log.info(
-            f"Completed alias folding: {len(alias_results)} of {len(alias_factors)} successful"
-        )
-=======
         log.info(f"Completed alias folding: {len(alias_results)} of {len(alias_factors)} successful")
->>>>>>> 7d6baa3 (Fold ks improvements (#185))
 
         # Plot alias results
         if alias_results:
             alias_plot_path = os.path.join(
-<<<<<<< HEAD
-                alias_dir,
-                f"alias_plot_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.png",
-=======
                 alias_dir, f"alias_plot_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.png"
->>>>>>> 7d6baa3 (Fold ks improvements (#185))
             )
             plot_aliases(alias_results, output_path=alias_plot_path)
 
@@ -642,15 +595,9 @@ def main(
         os.remove(fil)
 
     cand_info = {
-<<<<<<< HEAD
-        "sigma": sigma,
-        "known": known,
-        "ap": ap,
-=======
         'sigma': sigma,
         'known': known,
         'ap': ap,
->>>>>>> 7d6baa3 (Fold ks improvements (#185))
     }
     SNprof, SN_arr, plot_fname = plot_candidate_archive(
         archive_fname,
