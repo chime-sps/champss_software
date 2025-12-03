@@ -214,9 +214,17 @@ class PointingStrategist:
         beam_row: int
             The beam row (0-255) with the closest declination to the target
         """
-        # Get declinations for all beam rows
-        decs = np.array([beammod.reference_angles[i] for i in range(256)])
-        # Find the beam row with minimum angular separation
+        from datetime import datetime
+        # Use a reference time to get equatorial coordinates for each beam_row
+        ref_time = datetime(2021, 3, 20, 20, 5, 17)
+        decs = []
+        for i in range(256):
+            ra_beam, dec_beam = beammod.get_equatorial_from_position(
+                            0, beammod.reference_angles[i], ref_time
+                            )
+            decs.append(dec_beam)
+        decs = np.array(decs)
+
         return int(np.argmin(np.abs(decs - dec)))
 
     def _create_arbitrary_pointing(self, ra, dec):
