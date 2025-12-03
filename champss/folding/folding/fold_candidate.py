@@ -296,6 +296,11 @@ def fold_at_alias(fil, ephem_path, alias_dir, alias_factor, alias_label, num_thr
     is_flag=True,
     help="Fold at multiple frequency aliases (1/16, 1/8, 1/4, 1/3, 1/2, 1, 2, 3, 4, 8, 16).",
 )
+@click.option(
+    "--exact-coords",
+    is_flag=True,
+    help="Use exact RA/Dec coordinates without snapping to pointing map grid (for known pulsars).",
+)
 def main(
     date,
     sigma,
@@ -317,6 +322,7 @@ def main(
     overwrite_folding=False,
     filterbank_to_ram=True,
     fold_aliases=False,
+    exact_coords=False,
 ):
     """
     Perform the main processing steps for folding a candidate or known source.  It can
@@ -351,7 +357,6 @@ def main(
 
     multiprocessing.set_start_method("forkserver", force=True)
     db_utils.connect(host=db_host, port=db_port, name=db_name)
-    pst = PointingStrategist(create_db=False)
 
     # fs_id known_source, md_candidate, sd_candidate, ra+dec, psr
     ephem_path = None
@@ -387,9 +392,10 @@ def main(
         f0 = 1 / source.spin_period_s
         known = psr
     elif ra and dec:
-        coords = find_closest_pointing(ra, dec)
-        ra = coords.ra
-        dec = coords.dec
+        if not exact_coords:
+            coords = find_closest_pointing(ra, dec)
+            ra = coords.ra
+            dec = coords.dec
         dir_suffix = "candidates"
         name = candidate_name(ra, dec)
     elif candpath and write_to_db:
@@ -468,8 +474,13 @@ def main(
         log.error(f"Ephemeris file {ephem_path} not found")
         return {}, [], []
 
+    if exact_coords:
+        log.info(f"Using exact coordinates (RA={ra:.6f}, Dec={dec:.6f}) without grid snapping")
+    else:
+        log.info(f"Using coordinates from pointing map (RA={ra:.2f}, Dec={dec:.2f})")
+
     pst = PointingStrategist(create_db=False, split_long_pointing=True)
-    ap = pst.get_single_pointing(ra, dec, date)
+    ap = pst.get_single_pointing(ra, dec, date, use_grid=not exact_coords)
 
     # If multiple sub-pointings, force to disk (too large for RAM)
     if len(ap) > 1:

@@ -58,6 +58,9 @@ class PointingStrategist:
     def __attrs_post_init__(self):
         if not self.from_db:
             self.create_db = False
+        # Initialize DM mapper for arbitrary pointing calculations
+        from beamformer.strategist.mapper import PointingMapper
+        self._mapper = PointingMapper()
 
     def get_pointings(self, utc_start, utc_end, beam_row):
         """
@@ -88,7 +91,7 @@ class PointingStrategist:
             active_pointings = self.pointings_from_map(utc_start, utc_end, beam_row)
         return active_pointings
 
-    def get_single_pointing(self, ra, dec, date):
+    def get_single_pointing(self, ra, dec, date, use_grid=True):
         """
         Get the single pointing to process for the given date along with their
         properties. The output will be served as input to SkyBeamFormer.form_skybeam.
@@ -105,6 +108,10 @@ class PointingStrategist:
         date: datetime
             The datetime object of the date to be processed
 
+        use_grid: bool
+            Whether to snap coordinates to the pointing map grid (default: True).
+            If False, creates a pointing at exact RA/Dec coordinates.
+
         Returns
         =======
 
@@ -116,11 +123,15 @@ class PointingStrategist:
         NoSuchPointingError
             Raised if requested coordinates are not found in the pointing map.
         """
-        if self.from_db:
-            mode = "database"
+        if use_grid:
+            if self.from_db:
+                mode = "database"
+            else:
+                mode = "local"
+            pointing = find_closest_pointing(ra, dec, mode=mode)
         else:
-            mode = "local"
-        pointing = find_closest_pointing(ra, dec, mode=mode)
+            # Create pointing at exact coordinates without grid snapping
+            pointing = self._create_arbitrary_pointing(ra, dec)
         return self.active_pointing_from_pointing(pointing, date)
 
     def active_pointing_from_pointing(self, pointing, date):
@@ -187,6 +198,83 @@ class PointingStrategist:
             for i, p in enumerate(active_pointings):
                 active_pointings[i] = self.create_database_entry(p)
         return active_pointings
+
+    def _find_beam_row_for_dec(self, dec):
+        """
+        Find the FRB beam row whose declination is closest to the target declination.
+
+        Parameters
+        ==========
+        dec: float
+            Target declination in degrees
+
+        Returns
+        =======
+        beam_row: int
+            The beam row (0-255) with the closest declination to the target
+        """
+        # Get declinations for all beam rows
+        decs = np.array([beammod.reference_angles[i] for i in range(256)])
+        # Find the beam row with minimum angular separation
+        return int(np.argmin(np.abs(decs - dec)))
+
+    def _create_arbitrary_pointing(self, ra, dec):
+        """
+        Create a Pointing object at arbitrary RA/Dec coordinates without grid snapping.
+
+        Parameters
+        ==========
+        ra: float
+            Right ascension in degrees
+        dec: float
+            Declination in degrees
+
+        Returns
+        =======
+        pointing: Pointing (from sps_common.interfaces.beamformer)
+            A Pointing object with calculated properties for the exact coordinates
+        """
+        from sps_common.interfaces.beamformer import Pointing
+
+        # Find the best beam row for this declination
+        beam_row = self._find_beam_row_for_dec(dec)
+
+        # Calculate DM values using the mapper
+        ne2001_dm, ymw16_dm = self._mapper.get_ne2001_ymw16(ra, dec)
+
+        # Calculate maximum DM to search
+        maxdm = self._mapper.get_max_dm(
+            ra, dec, ne2001_dm, ymw16_dm,
+            exp=self._mapper.exp,
+            excess=self._mapper.excess,
+            excess_fac=self._mapper.excess_fac,
+            extragalactic=self._mapper.extragalactic
+        )
+
+        # Calculate number of channels needed
+        nchans = self._mapper.get_nchans(maxdm)
+
+        # Get the pointing length for this beam row
+        beam_index = np.where(self._mapper.beams == beam_row)[0]
+        if len(beam_index) > 0:
+            length = self._mapper.get_length(beam_index[0])
+        else:
+            # If beam_row not in mapper's beam list, use standard length
+            length = 368640
+
+        # Create and return the Pointing object
+        pointing = Pointing(
+            ra=ra,
+            dec=dec,
+            beam_row=beam_row,
+            length=length,
+            ne2001dm=ne2001_dm,
+            ymw16dm=ymw16_dm,
+            maxdm=maxdm,
+            nchans=nchans
+        )
+
+        return pointing
 
     def pointings_from_map(self, utc_start, utc_end, beam_row):
         """
