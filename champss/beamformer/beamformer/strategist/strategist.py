@@ -231,7 +231,7 @@ class PointingStrategist:
 
     def _create_arbitrary_pointing(self, ra, dec):
         """
-        Create a Pointing object at arbitrary RA/Dec coordinates without grid snapping.
+        Create a Pointing object at arbitrary RA/Dec coordinates.
 
         Parameters
         ==========
@@ -247,13 +247,9 @@ class PointingStrategist:
         """
         from sps_common.interfaces.beamformer import Pointing
 
-        # Find the best beam row for this declination
+        # Calculate standard pointing attributes
         beam_row = self._find_beam_row_for_dec(dec)
-
-        # Calculate DM values using the mapper
         ne2001_dm, ymw16_dm = self._mapper.get_ne2001_ymw16(ra, dec)
-
-        # Calculate maximum DM to search
         maxdm = self._mapper.get_max_dm(
             ra, dec, ne2001_dm, ymw16_dm,
             exp=self._mapper.exp,
@@ -261,19 +257,12 @@ class PointingStrategist:
             excess_fac=self._mapper.excess_fac,
             extragalactic=self._mapper.extragalactic
         )
-
-        # Calculate number of channels needed
         nchans = self._mapper.get_nchans(maxdm)
 
         # Get the pointing length for this beam row
         beam_index = np.where(self._mapper.beams == beam_row)[0]
-        if len(beam_index) > 0:
-            length = self._mapper.get_length(beam_index[0])
-        else:
-            # If beam_row not in mapper's beam list, use standard length
-            length = 368640
+        length = self._mapper.get_length(beam_index[0])
 
-        # Create and return the Pointing object
         pointing = Pointing(
             ra=ra,
             dec=dec,
