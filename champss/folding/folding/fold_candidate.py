@@ -52,7 +52,6 @@ def update_folding_history(id, payload):
         return_document=pymongo.ReturnDocument.AFTER,
     )
 
-
 def candidate_name(ra_deg, dec_deg, j2000=True):
     ra_hhmmss = ra_deg * 24 / 360
     dec_ddmmss = abs(dec_deg)
@@ -61,7 +60,6 @@ def candidate_name(ra_deg, dec_deg, j2000=True):
     dec_str = f"{int(dec_ddmmss):02d}{int((dec_ddmmss * 60) % 60):02d}"
     candidate_name = "J" + ra_str + dec_sign + dec_str
     return candidate_name
-
 
 def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     cand_pos = SkyCoord(ra, dec, unit="deg")
@@ -420,8 +418,8 @@ def main(
         return {}, [], []
 
     config = load_config()
-    config["beamform"]["update_db"] = False
-    config["beamform"]["flatten_bandpass"] = False
+    config['beamform']['update_db'] = False
+    config['beamform']['flatten_bandpass'] = False
     log_path = foldpath + f"/logs/{date.strftime('%Y/%m/%d')}/"
     log_name = (
         f"fold_candidate{date.strftime('%Y-%m-%d')}_{ra:.02f}_"
