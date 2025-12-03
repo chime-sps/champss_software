@@ -332,21 +332,6 @@ def plot_candidate_archive(
         F1_scinot = ax_accel.yaxis.get_offset_text()
         F1_scinot.set_x(1.15)
 
-        def gaussian(x, x0, sigma, A, C):
-            return A * np.exp(-((x - x0) ** 2) / (2 * sigma**2)) + C
-
-        try:
-            p0 = [
-                f0s[np.argmax(f0s)],
-                0.0002,
-                np.max(f0_slice) - np.median(f0_slice),
-                np.median(f0_slice),
-            ]
-            # popt, pcov = curve_fit(gaussian, f0s, f0_slice, p0=p0)
-            # w = popt[1]
-            # xerr = np.sqrt(pcov[0][0])
-        except Exception as e:
-            print(e)
     else:
         ax_accel.axis("off")
         ax_acceltop.axis("off")
@@ -383,7 +368,8 @@ def plot_candidate_archive(
             F0profs[i_f0] = np.nanmean(prof2D_shifted, 0)
 
         # Compute S/N for each F0 trial
-        F0_SNs = np.array([get_SN(prof) for prof in F0profs])
+        #F0_SNs = np.array([get_SN(prof) for prof in F0profs])
+        F0_SNs = np.max(F0profs, axis=-1)
         i_f0_best = np.argmax(F0_SNs)
         f0_best = f0s[i_f0_best]
         F0_prof_best = F0profs[i_f0_best]
@@ -433,7 +419,8 @@ def plot_candidate_archive(
         DMprofs = dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin)
 
         # Compute S/N for each DM trial (before tiling)
-        DM_SNs = np.array([get_SN(prof) for prof in DMprofs])
+        #DM_SNs = np.array([get_SN(prof) for prof in DMprofs])
+        DM_SNs = np.max(DMprofs, axis=-1)
         i_dm_best = np.argmax(DM_SNs)
         dm_best = dm + DMs[i_dm_best]
 
@@ -486,8 +473,8 @@ def plot_candidate_archive(
     arc_color = 'grey' if plot_bw else 'tab:orange'
     match_color = 'black' if plot_bw else 'red'
     arc_source_color = 'black' if plot_bw else 'tab:orange'
-    scraper_color = 'black' if plot_bw else 'blue'
-    other_color = 'black' if plot_bw else 'gray'
+    scraper_color = 'grey' if plot_bw else 'blue'
+    other_color = 'grey'
 
     # Plot the arc if available
     if arc_positions is not None:
