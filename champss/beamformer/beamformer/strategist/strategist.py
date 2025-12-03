@@ -54,6 +54,7 @@ class PointingStrategist:
         default=False, validator=attr.validators.instance_of(bool)
     )
     max_length = attr.ib(default=2**22, validator=attr.validators.instance_of(int))
+    _mapper = attr.ib(init=False, repr=False)
 
     def __attrs_post_init__(self):
         if not self.from_db:
@@ -178,7 +179,7 @@ class PointingStrategist:
                         max_beams=split_max_beams[i],
                         beam_row=pointing.beam_row,
                         sub_pointing=i,
-                        pointing_id=pointing._id,
+                        pointing_id=getattr(pointing, '_id', None),
                     )
                 )
         else:
@@ -191,7 +192,7 @@ class PointingStrategist:
                     maxdm=pointing.maxdm,
                     max_beams=max_beams,
                     beam_row=pointing.beam_row,
-                    pointing_id=pointing._id,
+                    pointing_id=getattr(pointing, '_id', None),
                 )
             ]
         if self.create_db:
