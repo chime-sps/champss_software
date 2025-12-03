@@ -1483,7 +1483,6 @@ def start_processing_manager(
                     daily_run.classification_result["output_file"].rsplit("_", 1)[0]
                     + "_folded.csv"
                 )
-                df_folded_name = "/data/lkuenkel/combined_cand/all_folded.csv"
                 fold_schedule_output, [], [] = find_all_folding_processes.main(
                     args=[
                         "--date",
