@@ -261,8 +261,6 @@ def Filter(
 def filter_mp_df(df, sigma_min=6, class_min=0.9, only_use_strongest_in_cluster=True):
     df_filtered = df[df["prediction"] > class_min]
     df_filtered = df_filtered[df_filtered["sigma"] > sigma_min]
-    # temprarily filter high dec
-    df_filtered = df_filtered[df_filtered["best_dec"] < 85]
     if only_use_strongest_in_cluster:
         df_filtered = df_filtered[df_filtered["strongest_in_cluster"] == 1]
     df_filtered["folded"] = True
