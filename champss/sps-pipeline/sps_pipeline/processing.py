@@ -1563,7 +1563,7 @@ def start_processing_manager(
                     df_mp.at[index, "fold_plot"] = last_fold["path_to_plot"]
                     df_mp.at[index, "fs_sigma"] = last_fold["SN"]
                     df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
-                    if not os.path.exists(row["path_to_plot"]):
+                    if not os.path.exists(last_fold["path_to_plot"]):
                         continue
                     if type(row["plot_path"]) != str:
                         if not os.path.exists(row["file_name"]):
