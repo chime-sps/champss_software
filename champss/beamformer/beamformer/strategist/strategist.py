@@ -203,6 +203,7 @@ class PointingStrategist:
     def _find_beam_row_for_dec(self, dec):
         """
         Find the FRB beam row whose declination is closest to the target declination.
+        Uses upper transit only (beam_row < 224) to avoid degeneracy for circumpolar sources.
 
         Parameters
         ==========
@@ -212,13 +213,14 @@ class PointingStrategist:
         Returns
         =======
         beam_row: int
-            The beam row (0-255) with the closest declination to the target
+            The beam row (0-223) with the closest declination to the target
         """
         from datetime import datetime
         # Use a reference time to get equatorial coordinates for each beam_row
         ref_time = datetime(2021, 3, 20, 20, 5, 17)
         decs = []
-        for i in range(256):
+        # Only check upper transit beam_rows (0-223) to avoid circumpolar degeneracy
+        for i in range(224):
             ra_beam, dec_beam = beammod.get_equatorial_from_position(
                             0, beammod.reference_angles[i], ref_time
                             )
