@@ -312,24 +312,24 @@ def plot_candidate_archive(
                 fs_bin[i] = np.roll(fs_bin[i], -i_phis[i], axis=-1)
         else:
             print("Computing accel grid, but only showing profile from F0 search")
+<<<<<<< HEAD
 
-        ax_accel.pcolormesh(f0s, f1s, chi2_grid.T, cmap=cmap_name)
-        ax_accel.scatter(f0_best, f1_best, color="w", marker="*")
-        ax_acceltop.plot(f0s, f0_slice, color=plot_color)
-        ax_accelleft.plot(-f1_slice, f1s, color=plot_color)
-        ax_accelleft.set_yticks([])
-        ax_accelleft.set_xticks([])
-        ax_acceltop.set_xticks([])
-        ax_acceltop.set_yticks([])
-        ax_accel.yaxis.tick_right()
-        ax_accel.yaxis.set_label_position("right")
-        ax_accel.set_ylabel("F1 (Hz/s)", fontsize=12)
-        ax_accel.set_xlabel(r"$\Delta$F0 (Hz)", fontsize=12, labelpad=-2)
-        ax_acceltop.set_xlim(min(f0s), max(f0s))
-        ax_accelleft.set_ylim(min(f1s), max(f1s))
-        ax_accel.tick_params(direction="in", length=6)
+        ax3.pcolormesh(f0s, f1s, chi2_grid.T)
+        ax3.scatter(f0_best, f1_best, color="w", marker="*")
+        ax3top.plot(f0s, f0_slice)
+        ax3left.plot(-f1_slice, f1s)
+        ax3left.set_yticks([])
+        ax3left.set_xticks([])
+        ax3top.set_xticks([])
+        ax3top.set_yticks([])
+        ax3.yaxis.tick_right()
+        ax3.yaxis.set_label_position("right")
+        ax3.set_ylabel("F1 (Hz/s)", fontsize=16)
+        ax3.set_xlabel(r"$\Delta$F0 (Hz)", fontsize=16)
+        ax3top.set_xlim(min(f0s), max(f0s))
+        ax3left.set_ylim(min(f1s), max(f1s))
 
-        F1_scinot = ax_accel.yaxis.get_offset_text()
+        F1_scinot = ax3.yaxis.get_offset_text()
         F1_scinot.set_x(1.15)
 
         def gaussian(x, x0, sigma, A, C):
@@ -342,74 +342,11 @@ def plot_candidate_archive(
                 np.max(f0_slice) - np.median(f0_slice),
                 np.median(f0_slice),
             ]
-            # popt, pcov = curve_fit(gaussian, f0s, f0_slice, p0=p0)
+            popt, pcov = curve_fit(gaussian, f0s, f0_slice, p0=p0)
             # w = popt[1]
             # xerr = np.sqrt(pcov[0][0])
         except Exception as e:
             print(e)
-    else:
-        ax_accel.axis("off")
-        ax_acceltop.axis("off")
-        ax_accelleft.axis("off")
-
-    if f0search is not None:
-        # F0 search mode: search over F0 offsets and phase
-        dts = taxis.to(u.s).value
-        dts = dts - np.median(dts)
-        npbin = fs_bin.shape[-1]
-
-        # Get F0 steps using compute_accel_steps (ignore F1 steps)
-        f0s, _ = compute_accel_steps(dts, f0, npbin)
-
-        print(f"F0 search over {len(f0s)} trials from {f0s[0]:.2e} to {f0s[-1]:.2e} Hz")
-
-        # Average over frequency once
-        prof2D = np.nanmean(fs_bin, 1)  # Shape: (ntime, nphase)
-
-        # Create phase-F0 grid
-        F0profs = np.zeros((len(f0s), npbin))
-
-        for i_f0, df0 in enumerate(f0s):
-            # Calculate phase shifts for this F0 offset
-            dphis = df0 * dts
-            i_phis = (dphis * npbin).astype("int")
-
-            # Shift each time sample and average
-            prof2D_shifted = np.copy(prof2D)
-            for i_t in range(prof2D_shifted.shape[0]):
-                prof2D_shifted[i_t] = np.roll(prof2D_shifted[i_t], -i_phis[i_t])
-
-            # Average over time to get profile
-            F0profs[i_f0] = np.nanmean(prof2D_shifted, 0)
-
-        # Compute S/N for each F0 trial
-        F0_SNs = np.array([get_SN(prof) for prof in F0profs])
-        i_f0_best = np.argmax(F0_SNs)
-        f0_best = f0s[i_f0_best]
-        F0_prof_best = F0profs[i_f0_best]
-
-        # Apply best F0 correction to fs_bin for subsequent plots
-        dphis = f0_best * dts
-        i_phis = (dphis * npbin).astype("int")
-        for i in range(fs_bin.shape[0]):
-            fs_bin[i] = np.roll(fs_bin[i], -i_phis[i], axis=-1)
-
-        # Plot phase-F0 grid (similar to DM-phase panel)
-        F0profs_tiled = np.tile(F0profs, (1, 2))  # Tile for 2 rotations
-        ax3.pcolormesh(np.linspace(0, 2, 2 * npbin), f0s, F0profs_tiled, cmap=cmap_name)
-        ax3left.plot(-F0_SNs, f0s, color=plot_color)
-        ax3top.plot(np.linspace(0, 2, len(F0_prof_best) * 2), np.tile(F0_prof_best, 2), color=plot_color)
-        ax3left.set_yticks([])
-        ax3left.set_xticks([])
-        ax3top.set_xticks([])
-        ax3top.set_yticks([])
-        ax3.yaxis.tick_right()
-        ax3.yaxis.set_label_position("right")
-        #ax3.set_xlabel("Phase", fontsize=16)
-        ax3.set_xticks([])
-        ax3.set_ylabel(r"$\Delta$F0 (Hz)", fontsize=12)
-        ax3top.set_xlim(0, 2)
-        ax3left.set_ylim(min(f0s), max(f0s))
     else:
         ax3.axis("off")
         ax3top.axis("off")
@@ -431,11 +368,6 @@ def plot_candidate_archive(
         # Use optimized njit function for DM shifting
         P_sec = P.to(u.s).value
         DMprofs = dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin)
-
-        # Compute S/N for each DM trial (before tiling)
-        DM_SNs = np.array([get_SN(prof) for prof in DMprofs])
-        i_dm_best = np.argmax(DM_SNs)
-        dm_best = dm + DMs[i_dm_best]
 
         DMprofs = np.tile(DMprofs, (1, 2))
         DM_prof = DMprofs[i_dm_best]
@@ -469,62 +401,49 @@ def plot_candidate_archive(
     vtmin = np.nanmean(fs_bin) - 1 * np.nanstd(np.nanmean(fs_bin, 1))
     vtmax = np.nanmean(fs_bin) + 3 * np.nanstd(np.nanmean(fs_bin, 1))
 
-    # Find and categorize nearby known sources
-    ks_result = find_matching_sources(ra, dec, f0, T, max_beam=max_beam)
-    ks_df = pd.DataFrame(ks_result['ks_df_data'], columns=ks_result['column_labels'])
-    likely_match_count = ks_result['likely_match_count']
-    ks_is_psr_scraper = ks_result['ks_is_psr_scraper']
-    ks_positions_match = ks_result['ks_positions_match']
-    ks_positions_arc = ks_result['ks_positions_arc']
-    ks_positions_scraper = ks_result['ks_positions_scraper']
-    ks_positions_other = ks_result['ks_positions_other']
-    arc_positions = ks_result['arc_positions']
-    num_sources_not_displayed = ks_result['num_sources_not_displayed']
+    radius = 5
+    sources = get_nearby_known_sources(ra, dec, radius)
+    pos_diffs = []
+    for source in sources:
+        pos_diff = known_source_filters.angular_separation(
+            ra, dec, source.pos_ra_deg, source.pos_dec_deg
+        )[1]
+        pos_diffs.append(pos_diff)
+    i_order = np.argsort(pos_diffs)
+    sources_ordered = [sources[i] for i in i_order]
 
-    # Plot sky position scatter plot
-    # Set colors based on plot_bw mode
-    arc_color = 'grey' if plot_bw else 'tab:orange'
-    match_color = 'black' if plot_bw else 'red'
-    arc_source_color = 'black' if plot_bw else 'tab:orange'
-    scraper_color = 'black' if plot_bw else 'blue'
-    other_color = 'black' if plot_bw else 'gray'
+    num_ks = 16  # Max number of ks displayed in table
+    ks_params = []
+    for source in sources_ordered:
+        ks_name = source.source_name
+        # ks_epoch = source.spin_period_epoch
+        ks_ra = round(source.pos_ra_deg, 2)
+        ks_dec = round(source.pos_dec_deg, 2)
+        ks_f0 = round(1 / source.spin_period_s, 4)
+        ks_dm = round(source.dm, 2)
+        ks_survey = source.survey[:1]
+        if not ks_survey:
+            ks_survey = ["N/A"]
+        pos_diff = known_source_filters.angular_separation(
+            ra, dec, source.pos_ra_deg, source.pos_dec_deg
+        )[1]
+        if np.abs(dm - ks_dm) < dm / 10.0:
+            ks_param = [
+                ks_name,
+                round(pos_diff, 2),
+                ks_ra,
+                ks_dec,
+                ks_f0,
+                ks_dm,
+                ks_survey[0],
+            ]
+            if len(ks_params) < num_ks:
+                ks_params.append(ks_param)
 
-    # Plot the arc if available
-    if arc_positions is not None:
-        arc_ras = arc_positions[:, 0]
-        arc_decs = arc_positions[:, 1]
-        # Handle RA wrap-around (plot in two segments if needed)
-        ra_break_idx = np.argmax(np.abs(np.diff(arc_ras)))
-        if np.abs(np.diff(arc_ras))[ra_break_idx] > 100.0:
-            ax_sky.plot(arc_ras[:ra_break_idx + 1], arc_decs[:ra_break_idx + 1],
-                        c=arc_color, ls=':', lw=1.5, zorder=1, label='EW Arc')
-            ax_sky.plot(arc_ras[ra_break_idx + 1:], arc_decs[ra_break_idx + 1:],
-                        c=arc_color, ls=':', lw=1.5, zorder=1)
-        else:
-            ax_sky.plot(arc_ras, arc_decs, c=arc_color, ls=':', lw=1.5, zorder=1, label='EW Arc')
+    ks_text = f"Closest {len(ks_params)} known sources within {radius} degrees, $\Delta$DM < 10%\n"
 
-    ax_sky.scatter(ra, dec, s=150, c='k', marker='*', label='Candidate', zorder=10)
-    dra_arc = 0
-    if ks_positions_match:
-        ras_match, decs_match = zip(*ks_positions_match)
-        dra_arc = np.max(np.abs(ra - np.array(ras_match)))
-        ax_sky.scatter(ras_match, decs_match, s=80, c=match_color, marker='o', label='Harmonic match', zorder=5)
-    if ks_positions_arc:
-        ras_arc, decs_arc = zip(*ks_positions_arc)
-        ax_sky.scatter(ras_arc, decs_arc, s=60, c=arc_source_color, marker='d', label='Arc source', zorder=6)
-    if ks_positions_scraper:
-        ras_scraper, decs_scraper = zip(*ks_positions_scraper)
-        ax_sky.scatter(ras_scraper, decs_scraper, s=50, c=scraper_color, marker='s', label='Scraper', zorder=4)
-    if ks_positions_other:
-        ras_other, decs_other = zip(*ks_positions_other)
-        ax_sky.scatter(ras_other, decs_other, s=50, c=other_color, marker='o', label='Other', zorder=3)
-    xlim_sky = max([5/np.cos(dec*u.deg), dra_arc])
-    ax_sky.set_xlim(ra - xlim_sky, ra + xlim_sky)
-    ax_sky.set_ylim(dec - 5, dec + 5)
-    ax_sky.set_xlabel('RA (deg)', fontsize=10, labelpad=-2)
-    ax_sky.set_ylabel('Dec (deg)', fontsize=12)
-    ax_sky.legend(loc='upper left', fontsize=8)
-    ax_sky.tick_params(direction="in", length=6)
+    column_labels = ["Name", "$\Delta Pos.$", "RA", "Dec", "F0", "DM", "Survey(s)"]
+    ks_df = pd.DataFrame(ks_params, columns=column_labels)
 
     ax1.imshow(
         np.nanmean(fs_bin, 0),
