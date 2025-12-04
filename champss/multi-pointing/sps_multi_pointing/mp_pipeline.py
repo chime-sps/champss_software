@@ -265,7 +265,9 @@ def cli(
     sp_cands = list(
         tqdm.tqdm(
             pool.imap(
-                partial(data_reader.read_cands_summaries, sigma_threshold=sigma_threshold),
+                partial(
+                    data_reader.read_cands_summaries, sigma_threshold=sigma_threshold
+                ),
                 files,
             ),
             total=len(files),
@@ -446,6 +448,7 @@ def cli(
             df = clusterer.cluster(df)
         csv_name = f"{out_folder}/all_mp_cands.csv"
         df.to_csv(csv_name)
+        log.info(f"csv file written to {csv_name}")
     else:
         csv_name = ""
 
