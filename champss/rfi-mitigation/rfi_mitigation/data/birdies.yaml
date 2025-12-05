@@ -186,16 +186,16 @@ known_bad_frequencies:
   b23:
     frac_nharm: 0
     frequency: 1
-    int_nharm: 2
+    int_nharm: 4
     note: Multi-pointing candidates from 20251031
-    width: 0.02
+    width: 0.01
 
   b23:
     frac_nharm: 0
-    frequency: 5
+    frequency: 4.988
     int_nharm: 2
     note: Multi-pointing candidates from 20251031
-    width: 0.02
+    width: 0.01
 
   b24:
     frac_nharm: 0
