@@ -1,6 +1,5 @@
 import argparse
 
-import numpy as np
 import psrqpy
 from add_tzpar_sources import add_source_to_database
 from beamformer.utilities.dm import DMMap
@@ -44,127 +43,51 @@ if __name__ == "__main__":
         help="Name used for the mongodb database.",
     )
     parser.add_argument(
-        "--filename",
-        metavar="filename",
-        default=None,
-        type=str,
-        help="the path to the text file containing the psrcat entries",
-    )
-    parser.add_argument(
         "--update",
         help="Update the known source database instead of adding new sources",
         action="store_true",
     )
     args = parser.parse_args()
-    filename = args.filename
-    if filename is None:
-        print("No file provided. Will use psrqpy.")
-        use_psrqpy = True
-    else:
-        print(f"Will use {filename}.")
-        use_psrqpy = False
     db = db_utils.connect(host=args.db_host, port=args.db_port, name=args.db_name)
     dmm = DMMap()
-    if not use_psrqpy:
-        with open(filename) as infile:
-            for line in infile.readlines():
-                entry = line.split()
-                payload = {
-                    "source_type": 1,
-                    "source_name": entry[0],
-                    "pos_ra_deg": float(entry[2]),
-                    "pos_dec_deg": float(entry[4]),
-                    "pos_error_semimajor_deg": "",
-                    "pos_error_semiminor_deg": "",
-                    "pos_error_theta_deg": 0.0,
-                    "dm": float(entry[14]),
-                    "dm_error": "",
-                    "spin_period_s": float(entry[6]),
-                    "spin_period_s_error": "",
-                    "dm_galactic_ne_2001_max": float(
-                        dmm.get_dm_ne2001(float(entry[4]), float(entry[2]))
-                    ),
-                    "dm_galactic_ymw_2016_max": float(
-                        dmm.get_dm_ymw16(float(entry[4]), float(entry[2]))
-                    ),
-                    "spin_period_derivative": 0.0,
-                    "spin_period_derivative_error": 0.0,
-                    "spin_period_epoch": float(entry[12]),
-                }
-                if entry[3] != "0":
-                    payload["pos_error_semimajor_deg"] = float(entry[3])
-                else:
-                    payload["pos_error_semimajor_deg"] = 0.068
-                if entry[5] != "0":
-                    payload["pos_error_semiminor_deg"] = float(entry[5])
-                else:
-                    payload["pos_error_semiminor_deg"] = 0.068
-                if entry[7] != "0":
-                    payload["spin_period_s_error"] = float(entry[7])
-                else:
-                    payload["spin_period_s_error"] = 1 * 10 ** -(
-                        len(entry[6].split(".")[-1])
-                    )
-                if entry[15] != "0":
-                    payload["dm_error"] = float(entry[15])
-                else:
-                    payload["dm_error"] = 1 * 10 ** -(len(entry[14].split(".")[-1]))
-                if entry[9] != "NAN":
-                    payload["spin_period_derivative"] = float(entry[9])
-                if entry[10] != "0":
-                    payload["spin_period_derivative_error"] = float(entry[10])
-                add_source_to_database(payload)
-    else:
-        query = psrqpy.QueryATNF(
-            params=["name", "rajd", "decjd", "P0", "P1", "pepoch", "dm", "survey"],
-            condition="decjd > -20",
-            checkupdate=True,
-        )
+    query = psrqpy.QueryATNF(
+        params=["name", "rajd", "decjd", "P0", "P1", "pepoch", "dm", "survey"],
+        condition="decjd > -20",
+        checkupdate=True,
+    )
 
-        print(f"Using psrcat {query.catalogue.version}.")
-        for index, pulsar in query.pandas.iterrows():
-            payload = {
-                "source_type": 1,
-                "source_name": pulsar["NAME"],
-                "survey": pulsar["SURVEY"].lower().split(","),
-                "pos_ra_deg": pulsar["RAJD"],
-                "pos_dec_deg": pulsar["DECJD"],
-                "pos_error_semimajor_deg": pulsar["RAJD_ERR"]
-                if pulsar["RAJD_ERR"] != 0
-                else 0.068,
-                "pos_error_semiminor_deg": pulsar["DECJD_ERR"]
-                if pulsar["DECJD_ERR"] != 0
-                else 0.068,
-                "pos_error_theta_deg": 0.0,
-                "dm": pulsar["DM"],
-                "dm_error": pulsar["DM_ERR"]
-                if pulsar["DM_ERR"] != 0
-                else 1 * 10 ** -(len(str(pulsar["DM"]).split(".")[-1])),
-                "spin_period_s": pulsar["P0"],
-                "spin_period_s_error": pulsar["P0_ERR"]
-                if pulsar["P0_ERR"] != 0
-                else 1 * 10 ** -(len(str(pulsar["P0"]).split(".")[-1])),
-                "dm_galactic_ne_2001_max": float(
-                    dmm.get_dm_ne2001(float(pulsar["DECJD"]), float(pulsar["RAJD"]))
-                ),
-                "dm_galactic_ymw_2016_max": float(
-                    dmm.get_dm_ymw16(float(pulsar["DECJD"]), float(pulsar["RAJD"]))
-                ),
-                "spin_period_derivative": pulsar["P1"]
-                if not np.isnan(pulsar["P1"])
-                else 0.0,
-                "spin_period_derivative_error": pulsar["P1_ERR"]
-                if not np.isnan(pulsar["P1_ERR"])
-                else 0.0,
-                "spin_period_epoch": float(pulsar["PEPOCH"]),
-            }
-            if not args.update:
+    print(f"Using psrcat {query.catalogue.version}.")
+    for index, pulsar in query.pandas.iterrows():
+        payload = {
+            "source_type": 1,
+            "source_name": pulsar["NAME"],
+            "survey": pulsar["SURVEY"].lower().split(","),
+            "pos_ra_deg": pulsar["RAJD"],
+            "pos_dec_deg": pulsar["DECJD"],
+            "pos_error_semimajor_deg": pulsar["RAJD_ERR"],
+            "pos_error_semiminor_deg": pulsar["DECJD_ERR"],
+            "pos_error_theta_deg": 0.0,
+            "dm": pulsar["DM"],
+            "dm_error": pulsar["DM_ERR"],
+            "spin_period_s": pulsar["P0"],
+            "spin_period_s_error": pulsar["P0_ERR"],
+            "dm_galactic_ne_2001_max": float(
+                dmm.get_dm_ne2001(float(pulsar["DECJD"]), float(pulsar["RAJD"]))
+            ),
+            "dm_galactic_ymw_2016_max": float(
+                dmm.get_dm_ymw16(float(pulsar["DECJD"]), float(pulsar["RAJD"]))
+            ),
+            "spin_period_derivative": pulsar["P1"],
+            "spin_period_derivative_error": pulsar["P1_ERR"],
+            "spin_period_epoch": float(pulsar["PEPOCH"]),
+        }
+        if not args.update:
+            add_source_to_database(payload)
+        else:
+            print("Updating known source database using psrcat")
+            ks = db.known_sources.find_one({"source_name": pulsar["NAME"]})
+            if ks is None:
                 add_source_to_database(payload)
             else:
-                print("Updating known source database using psrcat")
-                ks = db.known_sources.find_one({"source_name": pulsar["NAME"]})
-                if ks is None:
-                    add_source_to_database(payload)
-                else: 
-                    ks_id = ks["_id"]
-                    db_api.update_known_source(ks_id, payload)
+                ks_id = ks["_id"]
+                db_api.update_known_source(ks_id, payload)
