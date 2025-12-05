@@ -428,6 +428,14 @@ class MultiPointingCandidate:
         """
         return self.single_candidate(0)
 
+    @property
+    def best_ra(self):
+        return self.position_sigmas[np.argmax(self.position_sigmas[:, 2]), 0]
+
+    @property
+    def best_dec(self):
+        return self.position_sigmas[np.argmax(self.position_sigmas[:, 2]), 1]
+
     def get_all_summaries(self):
         """Load a SinglePointingCandidate based on an index."""
         all_summaries = [

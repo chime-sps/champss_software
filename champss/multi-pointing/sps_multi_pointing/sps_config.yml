@@ -7,10 +7,10 @@ logging:
 grouper:
   dbscan_min_samples: 1
   dbscan_eps: 1.1
-  freq_scale: 1
+  freq_scale: 0.5
   dm_scale: 0.1
-  ra_scale: 0.1
-  dec_scale: 0.1
+  ra_scale: 0.2
+  dec_scale: 0.2
   metric: "chebyshev"
 
 harmonic_clusterer:

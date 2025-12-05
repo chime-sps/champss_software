@@ -189,7 +189,7 @@ class SinglePointingCandidateGroup:
         """
         # summaries = [spc.summary for spc in self.group_members]
 
-        # Sort by sigma
+        # Sort by sigma, Removing sorting will break some of the properties of the resulting candidate
         sorted_members = sorted(self.group_members, key=lambda d: d.sigma, reverse=True)
 
         # this is dumb, but for now, the summary is reduced to the summary of

@@ -162,5 +162,6 @@ class MultiPointingHarmonicClusterer:
 
         df_sorted = df_sorted.sort_values("sigma", ascending=False)
         df_sorted = df_sorted.reset_index()
+        log.info("Finished altering dataframe with harmonic cluster info.")
 
         return df_sorted
