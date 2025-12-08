@@ -35,6 +35,79 @@ def get_folding_pars(psr):
     return ra, dec
 
 
+def update_psr_list(psrs, pointings, current_acq, processes, pst, outfile, Tnow):
+    """
+    Update the pulsar list by querying the timing_ops database.
+
+    Compares current pulsar list with database, adds new pulsars with
+    champss_foldmode=True, and removes pulsars that no longer have it enabled.
+
+    Args:
+        psrs: Current list of pulsar IDs
+        pointings: Current list of pointing objects
+        current_acq: Current acquisition status list
+        processes: Current process list
+        pst: PointingStrategist object
+        outfile: Log file handle
+        Tnow: Current time (astropy Time object)
+
+    Returns:
+        Tuple of (psrs, pointings, current_acq, processes) with updates applied
+    """
+    print(f"\n{Tnow.isot} Checking database for pulsar list updates...")
+    outfile.write(f"{Tnow.isot} Checking database for pulsar list updates\n")
+    outfile.flush()
+
+    # Query database for current pulsar list
+    new_pulsar_entries = get_champss_fm_sources()
+    new_psr_ids = {entry['psr_id'] for entry in new_pulsar_entries}
+    current_psr_ids = set(psrs)
+
+    # Find new pulsars to add
+    pulsars_to_add = new_psr_ids - current_psr_ids
+    if pulsars_to_add:
+        print(f"Adding {len(pulsars_to_add)} new pulsar(s): {sorted(pulsars_to_add)}")
+        outfile.write(f"{Tnow.isot} Adding {len(pulsars_to_add)} new pulsar(s): {sorted(pulsars_to_add)}\n")
+        outfile.flush()
+
+        for entry in new_pulsar_entries:
+            psr = entry['psr_id']
+            if psr in pulsars_to_add:
+                ra = entry['ra'] * 15.0  # Convert hours to degrees
+                dec = entry['dec']
+                Dnow_update = datetime.datetime.now()
+                ap = pst.get_single_pointing(ra, dec, Dnow_update)
+                beamrow = ap[0].max_beams[0]["beam"]
+                pointings.append(ap)
+                current_acq.append(0)
+                processes.append(0)
+                psrs.append(psr)
+                print(f"  Added {psr} (beam {beamrow})")
+
+    # Find pulsars to remove (no longer in database)
+    pulsars_to_remove = current_psr_ids - new_psr_ids
+    if pulsars_to_remove:
+        print(f"Removing {len(pulsars_to_remove)} pulsar(s): {sorted(pulsars_to_remove)}")
+        outfile.write(f"{Tnow.isot} Removing {len(pulsars_to_remove)} pulsar(s): {sorted(pulsars_to_remove)}\n")
+        outfile.flush()
+
+        # Remove pulsars by rebuilding all lists without removed pulsars
+        indices_to_keep = [i for i, psr in enumerate(psrs) if psr not in pulsars_to_remove]
+        psrs = [psrs[i] for i in indices_to_keep]
+        pointings = [pointings[i] for i in indices_to_keep]
+        current_acq = [current_acq[i] for i in indices_to_keep]
+        processes = [processes[i] for i in indices_to_keep]
+
+    if not pulsars_to_add and not pulsars_to_remove:
+        print("No changes to pulsar list")
+        outfile.write(f"{Tnow.isot} No changes to pulsar list\n")
+        outfile.flush()
+
+    print(f"Updated pulsar count: {len(psrs)}\n")
+
+    return psrs, pointings, current_acq, processes
+
+
 def is_beam_recording(beam, basepath, source="champss"):
     """
     Check if a beam is currently recording by checking folder modification time.
@@ -169,11 +242,17 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
     psrs = []
     processes = []
     transit_buffer = 3 * u.min
+    db_check_interval = 1800
+    
+    # Track last database check time (for periodic updates in database mode)
+    last_db_check = Time.now()
+    use_database_mode = (psrfile is None)
 
     # Load pulsar list from database or text file
     if psrfile is None:
         # Load from timing_ops database
         print("Loading pulsars from timing_ops database (champss_foldmode=True)")
+        print(f"Database check interval: {db_check_interval} seconds ({db_check_interval/60:.1f} minutes)\n")
         pulsar_entries = get_champss_fm_sources()
         print(f"Found {len(pulsar_entries)} pulsars in database\n")
 
@@ -217,6 +296,16 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
     print("Pointings loaded, running dynamic scheduler \n")
     while True:
         Tnow = Time.now()
+
+        # Periodically check database for pulsar list updates (database mode only)
+        if use_database_mode:
+            time_since_last_check = (Tnow - last_db_check).to(u.s).value
+            if time_since_last_check >= db_check_interval:
+                psrs, pointings, current_acq, processes = update_psr_list(
+                    psrs, pointings, current_acq, processes, pst, outfile, Tnow
+                )
+                last_db_check = Tnow
+
         i = 0
         for psr in psrs:
             ap = pointings[i]
