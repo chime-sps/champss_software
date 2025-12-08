@@ -73,7 +73,7 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, outfile, Tnow)
         for entry in new_pulsar_entries:
             psr = entry['psr_id']
             if psr in pulsars_to_add:
-                ra = entry['ra'] * 15.0  # Convert hours to degrees
+                ra = entry['ra']
                 dec = entry['dec']
                 Dnow_update = datetime.datetime.now()
                 ap = pst.get_single_pointing(ra, dec, Dnow_update)
@@ -259,8 +259,7 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
         print("Acquiring pointings for all pulsars in database \n")
         for entry in pulsar_entries:
             psr = entry['psr_id']
-            # Database stores ra in hours, convert to degrees
-            ra = entry['ra'] * 15.0
+            ra = entry['ra']
             dec = entry['dec']
 
             # avoid duplicates
