@@ -335,7 +335,7 @@ class Observation:
                 try:
                     birdie_info = np.load(birdie_file)
                     doc.update(birdie_info.items())
-                except FileNotFoundError as e:
+                except (FileNotFoundError, OSError) as e:
                     log.warning(f"Could not load birdie_file at {birdie_file}.")
                     log.warning(e)
             rn_file = doc.get("rn_file", None)
@@ -344,7 +344,7 @@ class Observation:
                     rn_arrays = np.load(rn_file)
                     doc["rn_medians"] = rn_arrays["medians"]
                     doc["rn_scales"] = rn_arrays["scales"]
-                except FileNotFoundError as e:
+                except (FileNotFoundError, OSError) as e:
                     log.warning(f"Could not load dm0 red noise file at {rn_file}.")
                     log.warning(e)
             dm0_rn_file = doc.get("dm0_rn_file", None)
@@ -353,7 +353,7 @@ class Observation:
                     dm0_rn_arrays = np.load(dm0_rn_file)
                     doc["dm0_rn_medians"] = dm0_rn_arrays["medians"]
                     doc["dm0_rn_scales"] = dm0_rn_arrays["scales"]
-                except FileNotFoundError as e:
+                except (FileNotFoundError, OSError) as e:
                     log.warning(f"Could not load dm0 red noise file at {dm0_rn_file}.")
                     log.warning(e)
             filtered_doc = filter_class_dict(cls, doc)
