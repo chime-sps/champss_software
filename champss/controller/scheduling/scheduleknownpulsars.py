@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import signal
 import subprocess  # nosec
@@ -10,6 +11,40 @@ import pymongo
 from astropy.time import Time
 from beamformer.strategist.strategist import PointingStrategist
 from sps_databases import db_api, db_utils
+
+def setup_logger(logfile="schedknownpsrlog.txt"):
+    """
+    Set up logger with both console and file output.
+
+    Args:
+        logfile: Path to log file
+
+    Returns:
+        Configured logger instance
+    """
+    logger = logging.getLogger("scheduleknownpulsars")
+    logger.setLevel(logging.INFO)
+
+    # Remove any existing handlers
+    logger.handlers = []
+
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%dT%H:%M:%S')
+
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # File handler
+    file_handler = logging.FileHandler(logfile, mode='a')
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    return logger
+
 
 def get_champss_fm_sources(server_url="mongodb://localhost:27017/", db_name="timing_ops"):
     # Initialize connection and cursor
@@ -35,7 +70,7 @@ def get_folding_pars(psr):
     return ra, dec
 
 
-def update_psr_list(psrs, pointings, current_acq, processes, pst, outfile, Tnow):
+def update_psr_list(psrs, pointings, current_acq, processes, pst, logger):
     """
     Update the pulsar list by querying the timing_ops database.
 
@@ -48,15 +83,12 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, outfile, Tnow)
         current_acq: Current acquisition status list
         processes: Current process list
         pst: PointingStrategist object
-        outfile: Log file handle
-        Tnow: Current time (astropy Time object)
+        logger: Logger instance
 
     Returns:
         Tuple of (psrs, pointings, current_acq, processes) with updates applied
     """
-    print(f"\n{Tnow.isot} Checking database for pulsar list updates...")
-    outfile.write(f"{Tnow.isot} Checking database for pulsar list updates\n")
-    outfile.flush()
+    logger.info("Checking database for pulsar list updates...")
 
     # Query database for current pulsar list
     new_pulsar_entries = get_champss_fm_sources()
@@ -66,9 +98,7 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, outfile, Tnow)
     # Find new pulsars to add
     pulsars_to_add = new_psr_ids - current_psr_ids
     if pulsars_to_add:
-        print(f"Adding {len(pulsars_to_add)} new pulsar(s): {sorted(pulsars_to_add)}")
-        outfile.write(f"{Tnow.isot} Adding {len(pulsars_to_add)} new pulsar(s): {sorted(pulsars_to_add)}\n")
-        outfile.flush()
+        logger.info(f"Adding {len(pulsars_to_add)} new pulsar(s): {sorted(pulsars_to_add)}")
 
         for entry in new_pulsar_entries:
             psr = entry['psr_id']
@@ -82,14 +112,12 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, outfile, Tnow)
                 current_acq.append(0)
                 processes.append(0)
                 psrs.append(psr)
-                print(f"  Added {psr} (beam {beamrow})")
+                logger.info(f"  Added {psr} (beam {beamrow})")
 
     # Find pulsars to remove (no longer in database)
     pulsars_to_remove = current_psr_ids - new_psr_ids
     if pulsars_to_remove:
-        print(f"Removing {len(pulsars_to_remove)} pulsar(s): {sorted(pulsars_to_remove)}")
-        outfile.write(f"{Tnow.isot} Removing {len(pulsars_to_remove)} pulsar(s): {sorted(pulsars_to_remove)}\n")
-        outfile.flush()
+        logger.info(f"Removing {len(pulsars_to_remove)} pulsar(s): {sorted(pulsars_to_remove)}")
 
         # Remove pulsars by rebuilding all lists without removed pulsars
         indices_to_keep = [i for i, psr in enumerate(psrs) if psr not in pulsars_to_remove]
@@ -99,11 +127,9 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, outfile, Tnow)
         processes = [processes[i] for i in indices_to_keep]
 
     if not pulsars_to_add and not pulsars_to_remove:
-        print("No changes to pulsar list")
-        outfile.write(f"{Tnow.isot} No changes to pulsar list\n")
-        outfile.flush()
+        logger.info("No changes to pulsar list")
 
-    print(f"Updated pulsar count: {len(psrs)}\n")
+    logger.info(f"Updated pulsar count: {len(psrs)}")
 
     return psrs, pointings, current_acq, processes
 
@@ -123,6 +149,8 @@ def is_beam_recording(beam, basepath, source="champss"):
     Returns:
         bool: True if beam is actively recording, False otherwise
     """
+    logger = logging.getLogger("scheduleknownpulsars")
+
     # Convert basepath to local mount path
     local_path = basepath.replace("/sps-archiver2/", "/mnt/beegfs-client/").replace(
         "/sps-archiver1/", "/data/"
@@ -162,7 +190,7 @@ def is_beam_recording(beam, basepath, source="champss"):
         except (FileNotFoundError, OSError):
             pass
     except OSError as e:
-        print(f"Warning: Could not check folder age for beam {beam}: {e}")
+        logger.warning(f"Could not check folder age for beam {beam}: {e}")
 
     # No indicators of active recording found
     return False
@@ -176,10 +204,10 @@ def is_beam_recording(beam, basepath, source="champss"):
     help="Text file with list of pulsar names. If not provided, loads from timing_ops database.",
 )
 @click.option(
-    "--outfile",
-    type=click.File("a"),
+    "--logfile",
+    type=str,
     default="schedknownpsrlog.txt",
-    help="Log file for acquisition messages.",
+    help="Log file for acquisition messages and console output.",
 )
 @click.option(
     "--basepath",
@@ -212,7 +240,7 @@ def is_beam_recording(beam, basepath, source="champss"):
     type=str,
     help="Name used for the mongodb database.",
 )
-def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
+def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
     """
     Record SPS data when known pulsars are transitting.
 
@@ -227,10 +255,14 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
     Prevents interference with externally-controlled beams by checking folder
     modification times before starting/stopping acquisitions.
     """
-    print("Starting scheduleknownpulsars controller")
-    print(f"Basepath: {basepath}")
-    print(f"Source: {source}")
-    print(f"Database: {db_name} at {db_host}:{db_port}")
+    # Setup logger for both console and file output
+    logger = setup_logger(logfile)
+
+    logger.info("Starting scheduleknownpulsars controller")
+    logger.info(f"Logfile: {logfile}")
+    logger.info(f"Basepath: {basepath}")
+    logger.info(f"Source: {source}")
+    logger.info(f"Database: {db_name} at {db_host}:{db_port}")
 
     db_utils.connect(host=db_host, port=db_port, name=db_name)
     pst = PointingStrategist(create_db=False)
@@ -242,7 +274,7 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
     psrs = []
     processes = []
     transit_buffer = 3 * u.min
-    db_check_interval = 1800
+    db_check_interval = 600
     
     # Track last database check time (for periodic updates in database mode)
     last_db_check = Time.now()
@@ -251,12 +283,12 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
     # Load pulsar list from database or text file
     if psrfile is None:
         # Load from timing_ops database
-        print("Loading pulsars from timing_ops database (champss_foldmode=True)")
-        print(f"Database check interval: {db_check_interval} seconds ({db_check_interval/60:.1f} minutes)\n")
+        logger.info("Loading pulsars from timing_ops database (champss_foldmode=True)")
+        logger.info(f"Database check interval: {db_check_interval} seconds ({db_check_interval/60:.1f} minutes)")
         pulsar_entries = get_champss_fm_sources()
-        print(f"Found {len(pulsar_entries)} pulsars in database\n")
+        logger.info(f"Found {len(pulsar_entries)} pulsars in database")
 
-        print("Acquiring pointings for all pulsars in database \n")
+        logger.info("Acquiring pointings for all pulsars in database")
         for entry in pulsar_entries:
             psr = entry['psr_id']
             ra = entry['ra']
@@ -270,13 +302,13 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
                 current_acq.append(0)
                 processes.append(0)
                 psrs.append(psr)
-                print(f"{psr} (beam {beamrow})")
+                logger.info(f"{psr} (beam {beamrow})")
             else:
-                print(f"{psr} duplicated in database")
+                logger.info(f"{psr} duplicated in database")
     else:
         # Load from text file
-        print("Loading pulsars from text file")
-        print("Acquiring pointings for all pulsars in list \n")
+        logger.info("Loading pulsars from text file")
+        logger.info("Acquiring pointings for all pulsars in list")
         for psr in psrfile:
             psr = psr.strip()
             # avoid duplicates
@@ -288,11 +320,11 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
                 current_acq.append(0)
                 processes.append(0)
                 psrs.append(psr)
-                print(f"{psr} (beam {beamrow})")
+                logger.info(f"{psr} (beam {beamrow})")
             else:
-                print(f"{psr} duplicated in list")
+                logger.info(f"{psr} duplicated in list")
 
-    print("Pointings loaded, running dynamic scheduler \n")
+    logger.info("Pointings loaded, running dynamic scheduler")
     while True:
         Tnow = Time.now()
 
@@ -301,7 +333,7 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
             time_since_last_check = (Tnow - last_db_check).to(u.s).value
             if time_since_last_check >= db_check_interval:
                 psrs, pointings, current_acq, processes = update_psr_list(
-                    psrs, pointings, current_acq, processes, pst, outfile, Tnow
+                    psrs, pointings, current_acq, processes, pst, logger
                 )
                 last_db_check = Tnow
 
@@ -322,30 +354,25 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
                     if beamrow not in active_beams:
                         # Check if beam is already recording (e.g., by spsctl or another controller)
                         if is_beam_recording(beamrow, basepath, source):
-                            outfile.write(
-                                f"{Tnow.isot} {psr} transitting row {beamrow}, beam already "
-                                f"recording (possibly spsctl), will not interfere\n"
+                            logger.info(
+                                f"{psr} transitting row {beamrow}, beam already "
+                                f"recording (possibly spsctl), will not interfere"
                             )
-                            outfile.flush()
                             # Mark as externally controlled - don't start spsctl
                             processes[i] = "external"
                         else:
                             # Beam is not recording, safe to start it
-                            outfile.write(
-                                f"{Tnow.isot} Starting acq, {psr} transitting row"
-                                f" {beamrow} \n"
+                            logger.info(
+                                f"Starting acq, {psr} transitting row {beamrow}"
                             )
-                            outfile.flush()
                             processi = subprocess.Popen(
                                 ["spsctl", f"{beamrow}", "--basepath", f"{basepath}", "--source", f"{source}"], shell=False
                             )  # nosec
                             processes[i] = processi
                     else:
-                        outfile.write(
-                            f"{Tnow.isot} {psr} transitting row {beamrow}, continuing"
-                            " acq \n"
+                        logger.info(
+                            f"{psr} transitting row {beamrow}, continuing acq"
                         )
-                        outfile.flush()
                         # logic to include process id for beams with 2+ pulsars
                         processes[i] = beamrow
                     active_beams.append(beamrow)
@@ -356,22 +383,19 @@ def main(psrfile, outfile, basepath, source, db_port, db_host, db_name):
                     processi = processes[i]
                     # Only stop if we control this beam (not externally controlled)
                     if isinstance(processi, subprocess.Popen):
-                        outfile.write(f"{Tnow.isot} Stopping acq, {psr} row {beamrow} \n")
-                        outfile.flush()
+                        logger.info(f"Stopping acq, {psr} row {beamrow}")
                         processi.send_signal(signal.SIGINT)
                     elif processi == "external":
-                        outfile.write(
-                            f"{Tnow.isot} Not stopping {psr} row {beamrow}, "
-                            f"beam controlled externally (possibly spsctl)\n"
+                        logger.info(
+                            f"Not stopping {psr} row {beamrow}, "
+                            f"beam controlled externally (possibly spsctl)"
                         )
-                        outfile.flush()
                     active_beams.remove(beamrow)
                     current_acq[i] = 0
                 elif (activecount > 1) and (activeacq):
-                    outfile.write(
-                        f"{Tnow.isot} continuing acq, removing {psr} row {beamrow} \n"
+                    logger.info(
+                        f"Continuing acq, removing {psr} row {beamrow}"
                     )
-                    outfile.flush()
                     active_beams.remove(beamrow)
                     current_acq[i] = 0
                     # passing process id to next pulsar in same beamrow
