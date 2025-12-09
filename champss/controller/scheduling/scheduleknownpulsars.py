@@ -59,10 +59,10 @@ def get_champss_fm_sources(server_url="mongodb://localhost:27017/", db_name="tim
     # Get sources
     return list(collection.find({'champss_foldmode': True}))
 
-def get_folding_pars(psr):
+def get_pulsar_radec(psr):
     """
     Return ra and dec for a pulsar from the known_source database
-    psr: string, pulsar B name                                                                                                                                                                                                                                   df: Panda of psrqpy query
+    psr: string, B name if it exists following our DB convention                                                                                                                                                                                                                          
     """
     source = db_api.get_known_source_by_name(psr)[0]
     ra = source.pos_ra_deg
@@ -88,7 +88,7 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, logger):
     Returns:
         Tuple of (psrs, pointings, current_acq, processes) with updates applied
     """
-    logger.info("Checking database for pulsar list updates...")
+    logger.debug("Checking database for pulsar list updates...")
 
     # Query database for current pulsar list
     new_pulsar_entries = get_champss_fm_sources()
@@ -112,9 +112,10 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, logger):
                 current_acq.append(0)
                 processes.append(0)
                 psrs.append(psr)
-                logger.info(f"  Added {psr} (beam {beamrow})")
-
-    # Find pulsars to remove (no longer in database)
+                logger.info(f"Added {psr} (beam {beamrow})")
+                logger.info(f"Updated pulsar count: {len(psrs)}")
+                
+    # Find pulsars to remove (champss_foldmode=False in DB)
     pulsars_to_remove = current_psr_ids - new_psr_ids
     if pulsars_to_remove:
         logger.info(f"Removing {len(pulsars_to_remove)} pulsar(s): {sorted(pulsars_to_remove)}")
@@ -125,11 +126,10 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, logger):
         pointings = [pointings[i] for i in indices_to_keep]
         current_acq = [current_acq[i] for i in indices_to_keep]
         processes = [processes[i] for i in indices_to_keep]
+        logger.info(f"Updated pulsar count: {len(psrs)}")
 
     if not pulsars_to_add and not pulsars_to_remove:
-        logger.info("No changes to pulsar list")
-
-    logger.info(f"Updated pulsar count: {len(psrs)}")
+        logger.debug("No changes to pulsar list")
 
     return psrs, pointings, current_acq, processes
 
@@ -151,12 +151,12 @@ def is_beam_recording(beam, basepath, source="champss"):
     """
     logger = logging.getLogger("scheduleknownpulsars")
 
-    # Convert basepath to local mount path
+    # Convert between names between basepath (L1) to local mount path
     local_path = basepath.replace("/sps-archiver2/", "/mnt/beegfs-client/").replace(
         "/sps-archiver1/", "/data/"
     )
 
-    # Construct data folder path for today
+    # Today's
     data_folder = (
         local_path
         + datetime.datetime.utcnow().strftime("/%Y/%m/%d/")
@@ -242,7 +242,7 @@ def is_beam_recording(beam, basepath, source="champss"):
 )
 def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
     """
-    Record SPS data when known pulsars are transitting.
+    Record CHAMPSS data when known pulsars are transitting.
 
     By default, loads pulsars from timing_ops database (champss_foldmode=True).
     Optionally, can load from a text file using --psrfile.
@@ -252,6 +252,8 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
     It checks every minute to start/stop acquisition, with logic in place to
     continue recording as long as there is still one pulsar in the beamrow.
 
+    Periodically checks pulsars to add/remove from the timing_ops DB
+
     Prevents interference with externally-controlled beams by checking folder
     modification times before starting/stopping acquisitions.
     """
@@ -260,7 +262,7 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
 
     logger.info("Starting scheduleknownpulsars controller")
     logger.info(f"Logfile: {logfile}")
-    logger.info(f"Basepath: {basepath}")
+    logger.info(f"L1 Basepath: {basepath}")
     logger.info(f"Source: {source}")
     logger.info(f"Database: {db_name} at {db_host}:{db_port}")
 
@@ -313,7 +315,7 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
             psr = psr.strip()
             # avoid duplicates
             if psr not in psrs:
-                ra, dec = get_folding_pars(psr)
+                ra, dec = get_pulsar_radec(psr)
                 ap = pst.get_single_pointing(ra, dec, Dnow)
                 beamrow = ap[0].max_beams[0]["beam"]
                 pointings.append(ap)
@@ -356,7 +358,7 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
                         if is_beam_recording(beamrow, basepath, source):
                             logger.info(
                                 f"{psr} transitting row {beamrow}, beam already "
-                                f"recording (possibly spsctl), will not interfere"
+                                f"recording, will not interfere"
                             )
                             # Mark as externally controlled - don't start spsctl
                             processes[i] = "external"
@@ -388,7 +390,7 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
                     elif processi == "external":
                         logger.info(
                             f"Not stopping {psr} row {beamrow}, "
-                            f"beam controlled externally (possibly spsctl)"
+                            f"beam controlled externally"
                         )
                     active_beams.remove(beamrow)
                     current_acq[i] = 0
@@ -406,7 +408,7 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
 
                 # update pointing to current time, plan next transit in ~24 hours
                 Dnow = datetime.datetime.now()
-                ra, dec = get_folding_pars(psr)
+                ra, dec = get_pulsar_radec(psr)
                 ap_updated = pst.get_single_pointing(ra, dec, Dnow)
                 pointings[i] = ap_updated
             i += 1
