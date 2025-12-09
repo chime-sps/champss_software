@@ -152,9 +152,12 @@ def is_beam_recording(beam, basepath, source="champss"):
     logger = logging.getLogger("scheduleknownpulsars")
 
     # Convert between names between basepath (L1) to local mount path
-    local_path = basepath.replace("/sps-archiver2/", "/mnt/beegfs-client/").replace(
-        "/sps-archiver1/", "/data/"
-    )
+    local_path = (basepath
+                  .replace("/sps-archiver1/", "/data/")
+                  .replace("/sps-archiver2/", "/mnt/beegfs-client/")
+                  .replace("/sps-archiver3/", "/mnt/beegfs-client/")
+                  .replace("/sps-archiver4/", "/mnt/beegfs-client/")
+                  .replace("/sps-archiver5/", "/mnt/beegfs-client/"))
 
     # Today's
     data_folder = (
