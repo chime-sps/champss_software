@@ -324,7 +324,7 @@ def plot_foldspec(fn):
 def get_SN(profile, return_profile=False):
     """
     Get S/N of 1D pulse profile by smoothing over different pulse widths,
-    in powers of 2 up to 1/2 the pulse width
+    in powers of 2 up to 1/4 the pulse width
 
     Input: 1D array of pulse profile
 
@@ -334,20 +334,25 @@ def get_SN(profile, return_profile=False):
     from scipy.ndimage import uniform_filter
 
     ngate = len(profile)
-    maxbin = int(np.log2(ngate // 2))
+    # More conservative max width - only up to 1/4 of profile
+    maxbin = int(np.log2(ngate // 4))
 
-    binning = 2 ** np.arange(maxbin)
+    # Precompute mean and std dev from bottom 3/4 of sorted profile
+    profsort = np.sort(profile)
+    prof_N = profsort[: int(3 * ngate / 4)]
+    sigma_off = np.std(prof_N)
+    prof_mean = np.mean(prof_N)
+
+    binning = 2 ** np.arange(maxbin + 1)
     SNprofs = np.zeros((len(binning), len(profile)))
 
     SNmax = 0
     for i, b in enumerate(binning):
+        # Scale noise by sqrt(width) to account for boxcar smoothing
+        scaled_sigma = sigma_off / np.sqrt(b)
+
         prof_filtered = uniform_filter(profile, b)
-        profsort = np.sort(prof_filtered)
-        # For S/N computation, compute mean, std dev from bottom 1/2 of profile
-        prof_N = profsort[: ngate // 2]
-        std = np.std(prof_N)
-        mean = np.mean(prof_N)
-        SNprof = (prof_filtered - mean) / std
+        SNprof = (prof_filtered - prof_mean) / scaled_sigma
         SNprofs[i] = SNprof
 
         if np.max(SNprof) > SNmax:
