@@ -321,7 +321,7 @@ def plot_foldspec(fn):
     ax0.set_xticks([])
 
 
-def get_SN(profile, return_profile=False):
+def get_SN(profile, return_profile=False, offpulse=True):
     """
     Get S/N of 1D pulse profile by smoothing over different pulse widths,
     in powers of 2 up to 1/4 the pulse width
@@ -337,11 +337,15 @@ def get_SN(profile, return_profile=False):
     # More conservative max width - only up to 1/4 of profile
     maxbin = int(np.log2(ngate // 4))
 
-    # Precompute mean and std dev from bottom 3/4 of sorted profile
-    profsort = np.sort(profile)
-    prof_N = profsort[: int(3 * ngate / 4)]
-    sigma_off = np.std(prof_N)
-    prof_mean = np.mean(prof_N)
+    if offpulse:
+        # Precompute mean and std dev from bottom 3/4 of sorted profile
+        profsort = np.sort(profile)
+        prof_N = profsort[: int(3 * ngate / 4)]
+        sigma_off = np.std(prof_N)
+        prof_mean = np.mean(prof_N)
+    else:
+        sigma_off = np.std(profile)
+        prof_mean = np.mean(profile)
 
     binning = 2 ** np.arange(maxbin + 1)
     SNprofs = np.zeros((len(binning), len(profile)))

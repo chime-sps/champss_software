@@ -368,8 +368,8 @@ def plot_candidate_archive(
             F0profs[i_f0] = np.nanmean(prof2D_shifted, 0)
 
         # Compute S/N for each F0 trial
-        #F0_SNs = np.array([get_SN(prof) for prof in F0profs])
-        F0_SNs = np.max(F0profs, axis=-1)
+        F0_SNs = np.array([get_SN(prof, offpulse=False) for prof in F0profs])
+        #F0_SNs = np.max(F0profs, axis=-1)
         i_f0_best = np.argmax(F0_SNs)
         f0_best = f0s[i_f0_best]
         F0_prof_best = F0profs[i_f0_best]
@@ -419,8 +419,8 @@ def plot_candidate_archive(
         DMprofs = dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin)
 
         # Compute S/N for each DM trial (before tiling)
-        #DM_SNs = np.array([get_SN(prof) for prof in DMprofs])
-        DM_SNs = np.max(DMprofs, axis=-1)
+        DM_SNs = np.array([get_SN(prof, offpulse=False) for prof in DMprofs])
+        #DM_SNs = np.max(DMprofs, axis=-1)
         i_dm_best = np.argmax(DM_SNs)
         dm_best = dm + DMs[i_dm_best]
 
