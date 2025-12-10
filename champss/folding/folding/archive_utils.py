@@ -368,6 +368,65 @@ def get_SN(profile, return_profile=False, offpulse=True):
     return SNmax
 
 
+def compute_profile_SNs(profiles):
+    """
+    Compute S/N for multiple profiles using the F0-F1 grid search method.
+    This matches the stable S/N computation from phase_aligned_search.py.
+
+    Parameters
+    ----------
+    profiles : ndarray
+        2D array of profiles with shape (n_trials, npbin)
+
+    Returns
+    -------
+    SNs : ndarray
+        S/N values for each profile
+    """
+    npbin = profiles.shape[1]
+
+    # Pre-compute noise from average of all profiles
+    sigma_off = np.std(np.nanmean(profiles, axis=0))
+
+    # Pre-compute boxcar widths and scaled noise
+    max_exp = int(np.log2(npbin // 4))
+    n_widths = max_exp + 1
+    widths = 2 ** np.arange(n_widths)
+    scaled_sigmas = sigma_off / np.sqrt(widths)
+
+    # Compute S/N for each profile
+    SNs = np.zeros(len(profiles))
+    for i_prof, prof in enumerate(profiles):
+        prof_mean = np.nanmean(prof)
+        snmax = 0.0
+
+        # Cumulative sum for efficient boxcar computation
+        cumsum = np.zeros(npbin + 1)
+        for idx in range(npbin):
+            cumsum[idx + 1] = cumsum[idx] + prof[idx]
+
+        for iw in range(n_widths):
+            width = widths[iw]
+            # Find max of boxcar-filtered profile
+            boxcar_max = -1e30
+            for idx in range(npbin):
+                end_idx = idx + width
+                if end_idx <= npbin:
+                    val = (cumsum[end_idx] - cumsum[idx]) / width
+                else:
+                    val = (cumsum[npbin] - cumsum[idx] + cumsum[end_idx - npbin]) / width
+                if val > boxcar_max:
+                    boxcar_max = val
+
+            sn = (boxcar_max - prof_mean) / scaled_sigmas[iw]
+            if sn > snmax:
+                snmax = sn
+
+        SNs[i_prof] = snmax
+
+    return SNs
+
+
 def read_par(parfile):
     """Reads a par file and return a dictionary of parameter names and values."""
     par = {}
