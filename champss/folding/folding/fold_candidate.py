@@ -499,6 +499,7 @@ def main(
 
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
+    num_threads = 4 * nchan // 1024
 
     # set number of turns, roughly equalling 10s
     turns = int(np.ceil(10 * f0))
@@ -524,7 +525,6 @@ def main(
                 )
                 active_pointing.nchan = nchan
 
-            num_threads = 4 * nchan // 1024
             log.info(f"Beamforming sub-pointing {i+1}/{len(ap)} with {num_threads} threads")
 
             skybeam, spectra_shared = beamform.run(
