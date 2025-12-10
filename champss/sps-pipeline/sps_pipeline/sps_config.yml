@@ -353,3 +353,12 @@ ps_cumul_stack:
       use_sparse: True
       group_duplicate_freqs: True
       grouped_freq_dm_scale: 1
+    arc_filter_config:
+      filter_if_kst_active: True
+      default_arc_length: 5
+      arc_psr_min_sigma: 50
+      arc_search_dist: 0.5
+      filtered_pulsars:
+        B0329+54:
+          arc_length: 40
+        B1508+55: {} # If no arc length is given, default distance is used
