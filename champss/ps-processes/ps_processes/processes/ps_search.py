@@ -205,7 +205,6 @@ class PowerSpectraSearch:
             PowerSpectraDetectionClusters object with the properties of all the
             detections clusters from the pointing.
         """
-
         ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         # compute harmonic bins based on power spectra properties
         if not self.precompute_harms:
@@ -269,7 +268,6 @@ class PowerSpectraSearch:
             injection_dicts = []
             log.info("No artificial pulse injected.")
         search_start = time.time()
-
         filtered_sources = []
         if self.known_source_threshold is not np.inf:
             pointing_id = db_api.get_observation(pspec.obs_id[0]).pointing_id
@@ -286,25 +284,43 @@ class PowerSpectraSearch:
 
             # Filter based on arc
             if self.arc_filter_config["filter_if_kst_active"]:
+                # Get psr list from config
                 all_arc_psrs = self.arc_filter_config["filtered_pulsars"]
+                # Get sources based on sigma
                 sigma_sources = db_api.get_nearby_known_sources(
-                    pspec.ra, pspec.dec, self.arc_filter_config.default_arc_length + 5
+                    pspec.ra,
+                    pspec.dec,
+                    self.arc_filter_config["default_arc_length"] + 5,
                 )
+                # Filter out the ones that are already in the config
                 sigma_sources = [
                     source
                     for source in sigma_sources
                     if source.source_name not in all_arc_psrs.keys()
                 ]
-                all_arc_psrs_db = db_api.get_known_source_by_names(all_arc_psrs.keys())
+                all_arc_psrs_db = db_api.get_known_source_by_names(
+                    list(all_arc_psrs.keys())
+                )
                 for index, psr in enumerate(all_arc_psrs.keys()):
                     all_arc_psrs[psr]["db_entry"] = all_arc_psrs_db[index]
                 for psr in sigma_sources:
-                    all_arc_psrs[psr.source_name] = {"db_entry": sigma_sources["psr"]}
+                    if getattr(psr, "detection_history", []):
+                        sigmas = [
+                            d.get("sigma", 0)
+                            for d in psr.detection_history
+                            if isinstance(d, dict)
+                        ]
+                        if (
+                            sigmas
+                            and max(sigmas)
+                            > self.arc_filter_config["arc_psr_min_sigma"]
+                        ):
+                            all_arc_psrs[psr.source_name] = {"db_entry": psr}
                 nearby_arc_psrs = []
                 for psr in all_arc_psrs:
                     psr_entry = all_arc_psrs[psr]
                     used_dist = psr_entry.get(
-                        "arc_length", self.arc_filter_config.default_arc_length
+                        "arc_length", self.arc_filter_config["default_arc_length"]
                     )
                     if np.abs(pspec.ra - psr_entry["db_entry"].pos_ra_deg) < used_dist:
                         nearby_arc_psrs.append(psr)
@@ -323,10 +339,7 @@ class PowerSpectraSearch:
                             psr_entry["db_entry"].pos_ra_deg,
                             psr_entry["db_entry"].pos_dec_deg,
                         )[1]
-                        used_dist = psr_entry.get(
-                            "arc_length", self.arc_filter_config.default_arc_length
-                        )
-                        if arc_dist < used_dist:
+                        if arc_dist < self.arc_filter_config["arc_search_dist"]:
                             filtered_psr_names.append(psr)
                             break
 
