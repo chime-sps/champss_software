@@ -558,7 +558,7 @@ def plot_candidate_archive(
     dm_best_str = f"{dm_best:.2f}" if dm_best is not None else "N/A"
     df0_best_str = f"{f0_best:.2e}" if f0_best is not None else "N/A"
     f0_best_str = f"{f0+f0_best:.5f}" if f0_best is not None else "N/A"
-    f1_best_str = f"{f1_best:.5f}" if f1_best is not None else "N/A"
+    f1_best_str = f"{f1_best:.2e}" if f1_best is not None else "N/A"
     P0_best = 1/(f0+f0_best) if f0_best is not None else "N/A"
     P0_best_str = f"{P0_best:.5f}" if P0_best is not None else "N/A"
 
