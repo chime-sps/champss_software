@@ -370,8 +370,9 @@ def get_SN(profile, return_profile=False, offpulse=True):
 
 def compute_profile_SNs(profiles):
     """
-    Compute S/N for multiple profiles using the F0-F1 grid search method.
-    This matches the stable S/N computation from phase_aligned_search.py.
+    Compute S/N for multiple profiles using statistics computed across the 2D array.
+    This matches the stable S/N computation from phase_aligned_search.py, reducing
+    peaks/divergences from repeated noise estimation of every profile
 
     Parameters
     ----------
@@ -400,7 +401,7 @@ def compute_profile_SNs(profiles):
         prof_mean = np.nanmean(prof)
         snmax = 0.0
 
-        # Cumulative sum for efficient boxcar computation
+        # Cumulative sum for boxcar computation
         cumsum = np.zeros(npbin + 1)
         for idx in range(npbin):
             cumsum[idx + 1] = cumsum[idx] + prof[idx]

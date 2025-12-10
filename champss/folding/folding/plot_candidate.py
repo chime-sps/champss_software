@@ -367,7 +367,7 @@ def plot_candidate_archive(
             # Average over time to get profile
             F0profs[i_f0] = np.nanmean(prof2D_shifted, 0)
 
-        # Compute S/N for each F0 trial using grid search method
+        # Compute S/N for each F0 trial
         F0_SNs = compute_profile_SNs(F0profs)
         i_f0_best = np.argmax(F0_SNs)
         f0_best = f0s[i_f0_best]
@@ -417,7 +417,7 @@ def plot_candidate_archive(
         P_sec = P.to(u.s).value
         DMprofs = dm_shift_loop(fs_fp, DMs, freq, f_ref, P_sec, npbin)
 
-        # Compute S/N for each DM trial using grid search method
+        # Compute S/N for each DM trial
         DM_SNs = compute_profile_SNs(DMprofs)
         i_dm_best = np.argmax(DM_SNs)
         dm_best = dm + DMs[i_dm_best]
