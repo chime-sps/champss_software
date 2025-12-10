@@ -20,6 +20,8 @@ from sps_common.interfaces.utilities import (
     harmonic_sum,
     powersum_at_sigma,
     sigma_sum_powers,
+    get_arc_for_beam,
+    angular_separation,
 )
 from sps_databases import db_api
 
@@ -121,6 +123,7 @@ class PowerSpectraSearch:
     """
 
     cluster_config = attribute(validator=instance_of(dict))
+    arc_filter_config = attribute(validator=instance_of(dict))
     num_harm = attribute(validator=instance_of(int), default=32)
     sigma_min = attribute(validator=instance_of(float), default=5.0)
     padded_length = attribute(validator=instance_of(int), default=1048576)
@@ -280,6 +283,53 @@ class PowerSpectraSearch:
                 for pulsar in previous_detections
                 if previous_detections[pulsar]["sigma"] > self.known_source_threshold
             ]
+
+            # Filter based on arc
+            if self.arc_filter_config["filter_if_kst_active"]:
+                all_arc_psrs = self.arc_filter_config["filtered_pulsars"]
+                sigma_sources = db_api.get_nearby_known_sources(
+                    pspec.ra, pspec.dec, self.arc_filter_config.default_arc_length + 5
+                )
+                sigma_sources = [
+                    source
+                    for source in sigma_sources
+                    if source.source_name not in all_arc_psrs.keys()
+                ]
+                all_arc_psrs_db = db_api.get_known_source_by_names(all_arc_psrs.keys())
+                for index, psr in enumerate(all_arc_psrs.keys()):
+                    all_arc_psrs[psr]["db_entry"] = all_arc_psrs_db[index]
+                for psr in sigma_sources:
+                    all_arc_psrs[psr.source_name] = {"db_entry": sigma_sources["psr"]}
+                nearby_arc_psrs = []
+                for psr in all_arc_psrs:
+                    psr_entry = all_arc_psrs[psr]
+                    used_dist = psr_entry.get(
+                        "arc_length", self.arc_filter_config.default_arc_length
+                    )
+                    if np.abs(pspec.ra - psr_entry["db_entry"].pos_ra_deg) < used_dist:
+                        nearby_arc_psrs.append(psr)
+                arc = get_arc_for_beam(
+                    current_pointing.beam_row,
+                    pspec.datetimes[-1],
+                    delta_x=90,
+                    samples=201,
+                )
+                for psr in nearby_arc_psrs:
+                    for arc_ra, arc_dec in arc:
+                        psr_entry = all_arc_psrs[psr]
+                        arc_dist = angular_separation(
+                            arc_ra,
+                            arc_dec,
+                            psr_entry["db_entry"].pos_ra_deg,
+                            psr_entry["db_entry"].pos_dec_deg,
+                        )[1]
+                        used_dist = psr_entry.get(
+                            "arc_length", self.arc_filter_config.default_arc_length
+                        )
+                        if arc_dist < used_dist:
+                            filtered_psr_names.append(psr)
+                            break
+
             filtered_sources = db_api.get_known_source_by_names(filtered_psr_names)
 
             if len(filtered_sources):

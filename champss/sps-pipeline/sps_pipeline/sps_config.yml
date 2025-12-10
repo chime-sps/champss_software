@@ -164,6 +164,16 @@ ps:
       dbscan_filter_whole_freqs: True
       dbscan_filter_broad_dm: True
       dbscan_filter_broad_threshold: 100
+    arc_filter_config:
+      filter_if_kst_active: True
+      default_arc_length: 5
+      arc_psr_min_sigma: 50
+      filtered_pulsars:
+        B0329+54:
+          arc_length: 40
+        B1508+55: {}
+        B2310+42: {}
+        
 
 ffa:
   run_ffa_search: True

@@ -4,6 +4,16 @@ import logging
 
 import numpy as np
 from scipy.special import chdtrc, chdtri, loggamma, ndtr, ndtri
+import importlib
+import sys
+
+# Import beam model for arc calculation
+if importlib.util.find_spec("cfbm"):
+    import cfbm as beam_model
+
+    bm_config = beam_model.current_config
+    beammod = beam_model.current_model_class(bm_config)
+
 
 log = logging.getLogger(__name__)
 
@@ -525,3 +535,134 @@ def harmonic_sum(numharm, spectrum, partial=None, partial_n=1):
             harm_count += 1
         partial_n = 32
     return partial, harm_bins
+
+
+def angular_separation(ra1, dec1, ra2, dec2):
+    """
+    Calculates the angular separation between two celestial objects.
+
+    Parameters
+    ----------
+    ra1 : float, array
+        Right ascension of the first source in degrees.
+    dec1 : float, array
+        Declination of the first source in degrees.
+    ra2 : float, array
+        Right ascension of the second source in degrees.
+    dec2 : float, array
+        Declination of the second source in degrees.
+
+    Returns
+    -------
+    angle : float, array
+        Angle between the two sources in degrees, where 0 corresponds
+        to the positive Dec axis.
+    angular_separation : float, array
+        Angular separation between the two sources in degrees.
+
+    Notes
+    -----
+    The angle between sources is calculated with the Pythagorean theorem
+    and is used later to calculate the uncertainty in the event position
+    in the direction of the known source.
+    Calculating the angular separation using spherical geometry gives
+    poor accuracy for small (< 1 degree) separations, and using the
+    Pythagorean theorem fails for large separations (> 1 degrees).
+    Transforming the spherical geometry cosine formula into one that
+    uses haversines gives the best results, see e.g. [1]_. This gives:
+    .. math:: \\mathrm{hav} d = \\mathrm{hav} \\Delta\\delta +
+              \\cos\\delta_1 \\cos\\delta_2 \\mathrm{hav} \\Delta\\alpha
+    Where we use the identity
+    :math:`\\mathrm{hav} \\theta = \\sin^2(\\theta/2)` in our
+    calculations.
+    The calculation might give inaccurate results for antipodal
+    coordinates, but we do not expect such calculations here..
+    The source angle (or bearing angle) :math:`\\theta` from a point
+    A(ra1, dec1) to a point B(ra2, dec2), defined as the angle in
+    clockwise direction from the positive declination axis can be
+    calculated using:
+    .. math:: \\tan(\\theta) = (\\alpha_2 - \\alpha_1) /
+              (\\delta_2 - \\delta_1)
+    In NumPy :math:`\\theta` can be calculated using the arctan2
+    function. Note that for negative :math:`\\theta` a factor :math:`2\\pi`
+    needs to be added. See also the documentation for arctan2.
+
+    References
+    ----------
+    .. [1] Sinnott, R. W. 1984, Sky and Telescope, 68, 158
+    Examples
+    --------
+    >>> print(angular_separation(200.478971, 55.185900, 200.806433, 55.247994))
+    (79.262937451490941, 0.19685681276638525)
+    >>> print(angular_separation(0., 20., 180., 20.))
+    (90.0, 140.0)
+    """
+    # convert ra and dec to numpy arrays
+    ra1 = np.array(ra1)
+    ra2 = np.array(ra2)
+    dec1 = np.array(dec1)
+    dec2 = np.array(dec2)
+
+    # convert decimal degrees to radians
+    deg2rad = np.pi / 180
+    ra1 = ra1 * deg2rad
+    dec1 = dec1 * deg2rad
+    ra2 = ra2 * deg2rad
+    dec2 = dec2 * deg2rad
+
+    # delta works
+    dra = ra1 - ra2
+    ddec = dec1 - dec2
+
+    # haversine formula
+    hav = np.sin(ddec / 2.0) ** 2 + np.cos(dec1) * np.cos(dec2) * np.sin(dra / 2.0) ** 2
+    angular_separation = 2 * np.arcsin(np.sqrt(hav))
+
+    # angle in the clockwise direction from the positive dec axis
+    # note the minus signs in front of `dra` and `ddec`
+    source_angle = np.arctan2(-dra, -ddec)
+    if isinstance(source_angle, np.ndarray):
+        source_angle[source_angle < 0] += 2 * np.pi
+    elif source_angle < 0:
+        source_angle += 2 * np.pi
+
+    # convert radians back to decimal degrees
+    return source_angle / deg2rad, angular_separation / deg2rad
+
+
+def get_arc_for_beam(beam_no, time, delta_x=90, samples=101):
+    """
+    Get the EW arc in RA and Dec for a given beam at a given time.
+
+    Parameters
+    ----------
+    beam_no : int
+        Beam number for beam of interest.
+    time : datetime object
+        Time of interest (central transit time).
+    delta_x : float
+        Number of degrees away from meridian that arc subtends. Default
+        is 90 (horizon to horizon).
+    samples : int
+        Number of points in the arc.
+
+    Returns
+    -------
+    eq_positions : ndarray
+        Array of (RA, Dec) positions along the arc.
+    """
+    if "cfbm" not in sys.modules:
+        return None
+
+    eq_positions = []
+    beam_pos = np.squeeze(beammod.get_beam_positions(beam_no, freqs=beammod.clamp_freq))
+    y = beam_pos[1]
+
+    xes = np.linspace(
+        -delta_x * np.cos(np.deg2rad(y)), delta_x * np.cos(np.deg2rad(y)), samples
+    )
+
+    for x in xes:
+        eq_positions.append(beammod.get_equatorial_from_position(x, y, time))
+
+    return np.array(eq_positions)
