@@ -5,7 +5,6 @@ if an event is likely originating from a known source.
 Adapted to SPS 20210204
 """
 
-
 import logging
 import operator
 import os
@@ -18,6 +17,7 @@ from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
 from sps_databases.db_api import get_nearby_known_sources
 from sps_multi_pointing.known_source_sifter import known_source_filters
+from sps_common.interfaces.utilities import angular_separation
 
 logger = logging.getLogger(__name__)
 
@@ -342,7 +342,7 @@ def known_sources_subset(ks_database, pos_filter=False, ra=0, dec=0, radius=5.0)
     """
     if pos_filter:
         # select on angular separation
-        _, separation = known_source_filters.angular_separation(
+        _, separation = angular_separation(
             ks_database["pos_ra_deg"],
             ks_database["pos_dec_deg"],
             ra,

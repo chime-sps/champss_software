@@ -7,58 +7,16 @@ This module provides functions for:
 - Finding and categorizing nearby known sources
 """
 
-import importlib
 import sys
 
 import numpy as np
 from astropy.time import Time
 
 from sps_databases.db_api import get_nearby_known_sources
-from sps_multi_pointing.known_source_sifter import known_source_filters
-
-# Import beam model for arc calculation
-if importlib.util.find_spec("cfbm"):
-    import cfbm as beam_model
-    bm_config = beam_model.current_config
-    beammod = beam_model.current_model_class(bm_config)
-
-
-def get_arc_for_beam(beam_no, time, delta_x=90, samples=101):
-    """
-    Get the EW arc in RA and Dec for a given beam at a given time.
-
-    Parameters
-    ----------
-    beam_no : int
-        Beam number for beam of interest.
-    time : datetime object
-        Time of interest (central transit time).
-    delta_x : float
-        Number of degrees away from meridian that arc subtends. Default
-        is 90 (horizon to horizon).
-    samples : int
-        Number of points in the arc.
-
-    Returns
-    -------
-    eq_positions : ndarray
-        Array of (RA, Dec) positions along the arc.
-    """
-    if "cfbm" not in sys.modules:
-        return None
-
-    eq_positions = []
-    beam_pos = np.squeeze(beammod.get_beam_positions(beam_no, freqs=beammod.clamp_freq))
-    y = beam_pos[1]
-
-    xes = np.linspace(
-        -delta_x * np.cos(np.deg2rad(y)), delta_x * np.cos(np.deg2rad(y)), samples
-    )
-
-    for x in xes:
-        eq_positions.append(beammod.get_equatorial_from_position(x, y, time))
-
-    return np.array(eq_positions)
+from sps_common.interfaces.utilities import (
+    get_arc_for_beam,
+    angular_separation,
+)
 
 
 def check_frequency_alias(f0_cand, f0_known, tolerance=0.001):
@@ -81,11 +39,11 @@ def check_frequency_alias(f0_cand, f0_known, tolerance=0.001):
         or None if no alias match found
     """
     # Integer harmonics and sub-harmonics up to 16
-    alias_factors = [1/n for n in range(16, 0, -1)] + [n for n in range(2, 17)]
+    alias_factors = [1 / n for n in range(16, 0, -1)] + [n for n in range(2, 17)]
     # Half-integer harmonics: 3/2, 5/2, 7/2, ... up to 31/2 (covers up to 15.5)
-    alias_factors += [n/2 for n in range(3, 33, 2)]
+    alias_factors += [n / 2 for n in range(3, 33, 2)]
     # Sub-half-integer: 2/3, 2/5, 2/7, etc.
-    alias_factors += [2/n for n in range(3, 33, 2)]
+    alias_factors += [2 / n for n in range(3, 33, 2)]
 
     for factor in alias_factors:
         expected_f0 = f0_known * factor
@@ -95,9 +53,19 @@ def check_frequency_alias(f0_cand, f0_known, tolerance=0.001):
     return None
 
 
-def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=5,
-                          arc_search_radius=0.5, bright_threshold=50,
-                          bright_radius=5.0, other_radius=1.0):
+def find_matching_sources(
+    ra,
+    dec,
+    f0,
+    T,
+    max_beam=None,
+    radius=5,
+    num_ks=5,
+    arc_search_radius=0.5,
+    bright_threshold=50,
+    bright_radius=5.0,
+    other_radius=1.0,
+):
     """
     Find and categorize nearby known sources for a candidate.
 
@@ -144,9 +112,7 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=5,
     sources = get_nearby_known_sources(ra, dec, radius)
     pos_diffs = []
     for source in sources:
-        pos_diff = known_source_filters.angular_separation(
-            ra, dec, source.pos_ra_deg, source.pos_dec_deg
-        )[1]
+        pos_diff = angular_separation(ra, dec, source.pos_ra_deg, source.pos_dec_deg)[1]
         pos_diffs.append(pos_diff)
     i_order = np.argsort(pos_diffs)
     sources_ordered = [sources[i] for i in i_order]
@@ -158,22 +124,28 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=5,
         # Get central transit time from T array
         T_mid = Time(np.median(T), format="mjd")
         transit_datetime = T_mid.to_datetime()
-        arc_positions = get_arc_for_beam(max_beam, transit_datetime, delta_x=90, samples=201)
+        arc_positions = get_arc_for_beam(
+            max_beam, transit_datetime, delta_x=90, samples=201
+        )
 
         if arc_positions is not None:
             # Search for bright sources along the arc
             for source in sources:
                 # Check if this is a bright source
                 is_bright = False
-                if hasattr(source, 'detection_history') and source.detection_history:
-                    sigmas = [d.get('sigma', 0) for d in source.detection_history if isinstance(d, dict)]
+                if hasattr(source, "detection_history") and source.detection_history:
+                    sigmas = [
+                        d.get("sigma", 0)
+                        for d in source.detection_history
+                        if isinstance(d, dict)
+                    ]
                     if sigmas and max(sigmas) > bright_threshold:
                         is_bright = True
 
                 if is_bright:
                     # Check distance to arc
                     for arc_ra, arc_dec in arc_positions:
-                        arc_dist = known_source_filters.angular_separation(
+                        arc_dist = angular_separation(
                             arc_ra, arc_dec, source.pos_ra_deg, source.pos_dec_deg
                         )[1]
                         if arc_dist < arc_search_radius:
@@ -206,17 +178,19 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=5,
     for source in all_sources:
         # Check if this is a bright source (max sigma in detection_history > threshold)
         is_bright = False
-        if hasattr(source, 'detection_history') and source.detection_history:
-            sigmas = [d.get('sigma', 0) for d in source.detection_history if isinstance(d, dict)]
+        if hasattr(source, "detection_history") and source.detection_history:
+            sigmas = [
+                d.get("sigma", 0)
+                for d in source.detection_history
+                if isinstance(d, dict)
+            ]
             if sigmas and max(sigmas) > bright_threshold:
                 is_bright = True
 
         # Check if source is on the arc
         is_on_arc = source.source_name in arc_source_names
 
-        pos_diff = known_source_filters.angular_separation(
-            ra, dec, source.pos_ra_deg, source.pos_dec_deg
-        )[1]
+        pos_diff = angular_separation(ra, dec, source.pos_ra_deg, source.pos_dec_deg)[1]
 
         # Bright sources: bright_radius threshold or on arc; other sources: other_radius threshold
         if is_on_arc and is_bright:
@@ -275,17 +249,26 @@ def find_matching_sources(ra, dec, f0, T, max_beam=None, radius=5, num_ks=5,
 
     # Merge with likely matches first
     ks_all = ks_likely_matches + ks_other
-    column_labels = ["Name", "RA", "Dec", r"$\Delta$Pos.", "F0", "DM", r"$f_0/f_{psr}$", r"$f_{psr}/f_0$"]
+    column_labels = [
+        "Name",
+        "RA",
+        "Dec",
+        r"$\Delta$Pos.",
+        "F0",
+        "DM",
+        r"$f_0/f_{psr}$",
+        r"$f_{psr}/f_0$",
+    ]
 
     return {
-        'ks_df_data': ks_all,
-        'column_labels': column_labels,
-        'likely_match_count': likely_match_count,
-        'ks_is_psr_scraper': ks_is_psr_scraper,
-        'ks_positions_match': ks_positions_match,
-        'ks_positions_arc': ks_positions_arc,
-        'ks_positions_scraper': ks_positions_scraper,
-        'ks_positions_other': ks_positions_other,
-        'arc_positions': arc_positions,
-        'num_sources_not_displayed': num_sources_not_displayed,
+        "ks_df_data": ks_all,
+        "column_labels": column_labels,
+        "likely_match_count": likely_match_count,
+        "ks_is_psr_scraper": ks_is_psr_scraper,
+        "ks_positions_match": ks_positions_match,
+        "ks_positions_arc": ks_positions_arc,
+        "ks_positions_scraper": ks_positions_scraper,
+        "ks_positions_other": ks_positions_other,
+        "arc_positions": arc_positions,
+        "num_sources_not_displayed": num_sources_not_displayed,
     }
