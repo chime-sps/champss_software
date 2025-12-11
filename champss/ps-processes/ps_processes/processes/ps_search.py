@@ -5,6 +5,7 @@ import time
 from functools import partial
 from multiprocessing import Pool, shared_memory
 import yaml
+import datetime
 
 import numpy as np
 import pandas as pd
@@ -23,6 +24,7 @@ from sps_common.interfaces.utilities import (
     get_arc_for_beam,
     angular_separation,
 )
+from sps_common.constants import TSAMP
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
@@ -205,6 +207,7 @@ class PowerSpectraSearch:
             PowerSpectraDetectionClusters object with the properties of all the
             detections clusters from the pointing.
         """
+        breakpoint()
         ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         # compute harmonic bins based on power spectra properties
         if not self.precompute_harms:
@@ -326,7 +329,8 @@ class PowerSpectraSearch:
                         nearby_arc_psrs.append(psr)
                 arc = get_arc_for_beam(
                     current_pointing.beam_row,
-                    pspec.datetimes[-1],
+                    pspec.datetimes[-1]
+                    + datetime.timedelta(seconds=current_pointing.length * TSAMP / 2),
                     delta_x=90,
                     samples=201,
                 )
