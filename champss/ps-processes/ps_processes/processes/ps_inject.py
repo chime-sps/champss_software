@@ -312,7 +312,7 @@ class Injection:
 
         #apply Van der Klis Eq 2.19 for time-bin windowing effect
         harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
-        B = np.sinc(harmonic_freqs * 4 * TSAMP) #factor of 4 is purely phenomenological
+        B = np.sinc(harmonic_freqs * TSAMP)
         prof_fft *= B
 
         return prof_fft
