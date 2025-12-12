@@ -636,7 +636,6 @@ class Clusterer:
             labels = np.array([0] if len(detections_in) == 1 else [])
             return detections_in, labels, self.sigma_detection_threshold
 
-
         # Set rogue harm powers filtering method
         if self.rogue_harmpow_scheme == "presto":
             filter_rogue_harmpows = rogue_harmpow_filter_presto
@@ -883,150 +882,163 @@ class Clusterer:
             log.info(
                 f"Largest group size for metric computation is {largest_group_size}"
             )
-            grouped_ids = [g for g in list(groups.values()) if len(g) > 1]
-            del groups
+            if largest_group_size > 1:
+                grouped_ids = [g for g in list(groups.values()) if len(g) > 1]
+                del groups
 
-            log.info("Starting harmonic distance metric computation")
-            if scheme not in ["combined", "dmfreq"]:
-                metric_array = np.ones((data.shape[0], data.shape[0]), dtype=np.float32)
-
-            if self.metric_combination == "multiply":
-                threshold_for_new_vals = 1
-            elif self.metric_combination == "replace":
-                threshold_for_new_vals = self.dbscan_eps
-            else:
-                threshold_for_new_vals = np.inf
-
-            # to save on memory should probably alter the DMfreq_dist_metric in-place instead
-            all_indices_0 = []
-            all_indices_1 = []
-            all_metric_vals = []
-            if self.metric_method == "power_overlap_array":
-                chunk_size = 2000
-                index_pairs = [
-                    index_pair
-                    for id_group in grouped_ids
-                    for index_pair in list(itertools.combinations(id_group, 2))
-                ]
-                index_pairs = np.asarray(index_pairs)
-                index_pairs = np.split(
-                    index_pairs, np.arange(chunk_size, index_pairs.shape[0], chunk_size)
-                )
-            else:
-                index_pairs = [
-                    index_pair
-                    for id_group in grouped_ids
-                    for index_pair in list(itertools.combinations(id_group, 2))
-                ]
-            for split in index_pairs:
-                if self.metric_method == "power_overlap_array":
-                    rows_0 = split[:, 0]
-                    rows_1 = split[:, 1]
-                else:
-                    rows_0 = split[0]
-                    rows_1 = split[1]
-                    split = np.array(split).reshape(1, 2)
-                metric_vals = (
-                    calculate_harm_metric(rhps, rows_0, rows_1, detections)
-                    * self.overlap_scale
-                )
-                if np.isscalar(metric_vals):
-                    metric_vals = np.array(metric_vals).reshape(1)
-
-                used_indices = metric_vals < threshold_for_new_vals
-                metric_vals = metric_vals[used_indices]
-                split = split[used_indices]
-                if not len(metric_vals):
-                    continue
-                if self.group_duplicate_freqs:
-                    indices_0 = []
-                    indices_1 = []
-                    group_metric_vals = []
-
-                    for index, row in enumerate(split):
-                        indices_0_part = np.tile(harm[row[0]], len(harm[row[1]]))
-                        indices_1_part = np.repeat(harm[row[1]], len(harm[row[0]]))
-                        indices_0.append(indices_0_part)
-                        indices_1.append(indices_1_part)
-
-                        group_metric_vals.append(
-                            [
-                                metric_vals[index],
-                            ]
-                            * len(indices_0_part)
-                        )
-                    indices_0 = np.concatenate(indices_0)
-                    indices_1 = np.concatenate(indices_1)
-                    metric_vals = np.concatenate(group_metric_vals)
-                else:
-                    indices_0 = split[:, 0]
-                    indices_1 = split[:, 1]
-                if self.add_dm_when_replace and self.metric_combination == "replace":
-                    dm_dists = paired_distances(
-                        data[indices_0, :1], data[indices_1, :1]
+                log.info("Starting harmonic distance metric computation")
+                if scheme not in ["combined", "dmfreq"]:
+                    metric_array = np.ones(
+                        (data.shape[0], data.shape[0]), dtype=np.float32
                     )
-                    metric_vals += dm_dists
-                    used_indices_dm = metric_vals < self.dbscan_eps
-                    metric_vals = metric_vals[used_indices_dm]
-                    indices_0 = indices_0[used_indices_dm]
-                    indices_1 = indices_1[used_indices_dm]
+
+                if self.metric_combination == "multiply":
+                    threshold_for_new_vals = 1
+                elif self.metric_combination == "replace":
+                    threshold_for_new_vals = self.dbscan_eps
+                else:
+                    threshold_for_new_vals = np.inf
+
+                # to save on memory should probably alter the DMfreq_dist_metric in-place instead
+                all_indices_0 = []
+                all_indices_1 = []
+                all_metric_vals = []
+                if self.metric_method == "power_overlap_array":
+                    chunk_size = 2000
+                    index_pairs = [
+                        index_pair
+                        for id_group in grouped_ids
+                        for index_pair in list(itertools.combinations(id_group, 2))
+                    ]
+                    index_pairs = np.asarray(index_pairs)
+                    index_pairs = np.split(
+                        index_pairs,
+                        np.arange(chunk_size, index_pairs.shape[0], chunk_size),
+                    )
+                else:
+                    index_pairs = [
+                        index_pair
+                        for id_group in grouped_ids
+                        for index_pair in list(itertools.combinations(id_group, 2))
+                    ]
+                for split in index_pairs:
+                    if not len(split):
+                        continue
+                    if self.metric_method == "power_overlap_array":
+                        rows_0 = split[:, 0]
+                        rows_1 = split[:, 1]
+                    else:
+                        rows_0 = split[0]
+                        rows_1 = split[1]
+                        split = np.array(split).reshape(1, 2)
+                    metric_vals = (
+                        calculate_harm_metric(rhps, rows_0, rows_1, detections)
+                        * self.overlap_scale
+                    )
+                    if np.isscalar(metric_vals):
+                        metric_vals = np.array(metric_vals).reshape(1)
+
+                    used_indices = metric_vals < threshold_for_new_vals
+                    metric_vals = metric_vals[used_indices]
+                    split = split[used_indices]
                     if not len(metric_vals):
                         continue
+                    if self.group_duplicate_freqs:
+                        indices_0 = []
+                        indices_1 = []
+                        group_metric_vals = []
 
-                all_indices_0.append(indices_0)
-                all_indices_1.append(indices_1)
-                all_metric_vals.append(metric_vals)
+                        for index, row in enumerate(split):
+                            indices_0_part = np.tile(harm[row[0]], len(harm[row[1]]))
+                            indices_1_part = np.repeat(harm[row[1]], len(harm[row[0]]))
+                            indices_0.append(indices_0_part)
+                            indices_1.append(indices_1_part)
 
-            all_indices_0 = np.concatenate(all_indices_0)
-            all_indices_1 = np.concatenate(all_indices_1)
-            all_metric_vals = np.concatenate(all_metric_vals)
+                            group_metric_vals.append(
+                                [
+                                    metric_vals[index],
+                                ]
+                                * len(indices_0_part)
+                            )
+                        indices_0 = np.concatenate(indices_0)
+                        indices_1 = np.concatenate(indices_1)
+                        metric_vals = np.concatenate(group_metric_vals)
+                    else:
+                        indices_0 = split[:, 0]
+                        indices_1 = split[:, 1]
+                    if (
+                        self.add_dm_when_replace
+                        and self.metric_combination == "replace"
+                    ):
+                        dm_dists = paired_distances(
+                            data[indices_0, :1], data[indices_1, :1]
+                        )
+                        metric_vals += dm_dists
+                        used_indices_dm = metric_vals < self.dbscan_eps
+                        metric_vals = metric_vals[used_indices_dm]
+                        indices_0 = indices_0[used_indices_dm]
+                        indices_1 = indices_1[used_indices_dm]
+                        if not len(metric_vals):
+                            continue
 
-            if scheme == "combined":
-                if self.metric_combination == "multiply":
-                    metric_array[all_indices_0, all_indices_1] *= metric_vals
-                    metric_array[indices_1, indices_0] *= metric_array[
-                        all_indices_0, all_indices_1
-                    ]
-                elif self.metric_combination == "replace":
+                    all_indices_0.append(indices_0)
+                    all_indices_1.append(indices_1)
+                    all_metric_vals.append(metric_vals)
+
+                all_indices_0 = np.concatenate(all_indices_0)
+                all_indices_1 = np.concatenate(all_indices_1)
+                all_metric_vals = np.concatenate(all_metric_vals)
+
+                if scheme == "combined":
+                    if self.metric_combination == "multiply":
+                        metric_array[all_indices_0, all_indices_1] *= metric_vals
+                        metric_array[indices_1, indices_0] *= metric_array[
+                            all_indices_0, all_indices_1
+                        ]
+                    elif self.metric_combination == "replace":
+                        metric_array[all_indices_0, all_indices_1] = all_metric_vals
+                        metric_array[all_indices_1, all_indices_0] = all_metric_vals
+                else:
                     metric_array[all_indices_0, all_indices_1] = all_metric_vals
                     metric_array[all_indices_1, all_indices_0] = all_metric_vals
-            else:
-                metric_array[all_indices_0, all_indices_1] = all_metric_vals
-                metric_array[all_indices_1, all_indices_0] = all_metric_vals
-            group_indices_0 = []
-            group_indices_1 = []
-            if self.grouped_freq_dm_scale != 0:
-                all_dm_dists = []
-            for i in range(metric_array.shape[0]):
-                # metric_array[i, i] = 0
-                # No min dist_for sparse array needed because diagonal is set in
-                # sklearn dbscan method
-                if i in idx_to_skip:
-                    continue
-                if self.group_duplicate_freqs:
-                    index_0, index_1 = np.meshgrid(harm[i], harm[i])
-                    index_0 = index_0.flatten()
-                    index_1 = index_1.flatten()
+                group_indices_0 = []
+                group_indices_1 = []
+                if self.grouped_freq_dm_scale != 0:
+                    all_dm_dists = []
+                for i in range(metric_array.shape[0]):
+                    # metric_array[i, i] = 0
+                    # No min dist_for sparse array needed because diagonal is set in
+                    # sklearn dbscan method
+                    if i in idx_to_skip:
+                        continue
+                    if self.group_duplicate_freqs:
+                        index_0, index_1 = np.meshgrid(harm[i], harm[i])
+                        index_0 = index_0.flatten()
+                        index_1 = index_1.flatten()
 
-                    group_indices_0.append(index_0)
-                    group_indices_1.append(index_1)
-                    if self.grouped_freq_dm_scale != 0:
-                        dm_dists = (
-                            paired_distances(data[index_0, :1], data[index_1, :1])
-                            * self.grouped_freq_dm_scale
-                        )
-                        all_dm_dists.append(dm_dists)
-            log.info("Updating grouped frequencies.")
-            group_indices_0 = np.concatenate(group_indices_0)
-            group_indices_1 = np.concatenate(group_indices_1)
-            if self.grouped_freq_dm_scale != 0:
-                metric_array[group_indices_0, group_indices_1] = np.concatenate(
-                    all_dm_dists
-                )
-            else:
-                metric_array[group_indices_0, group_indices_1] = 0
+                        group_indices_0.append(index_0)
+                        group_indices_1.append(index_1)
+                        if self.grouped_freq_dm_scale != 0:
+                            dm_dists = (
+                                paired_distances(data[index_0, :1], data[index_1, :1])
+                                * self.grouped_freq_dm_scale
+                            )
+                            all_dm_dists.append(dm_dists)
+                log.info("Updating grouped frequencies.")
+                group_indices_0 = np.concatenate(group_indices_0)
+                group_indices_1 = np.concatenate(group_indices_1)
+                if self.grouped_freq_dm_scale != 0:
+                    metric_array[group_indices_0, group_indices_1] = np.concatenate(
+                        all_dm_dists
+                    )
+                else:
+                    metric_array[group_indices_0, group_indices_1] = 0
 
-            log.info("Finished harmonic distance metric computation")
+                log.info("Finished harmonic distance metric computation")
+        else:
+            log.info(
+                "Skipping harmonic distance metric computation due to no overlap wteen candidates."
+            )
 
         if self.use_sparse:
             metric_array = sort_graph_by_row_values(

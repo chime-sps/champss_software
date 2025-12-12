@@ -495,9 +495,9 @@ class PowerSpectraSearch:
             [j for sub in detection_list for j in sub], dtype=detection_dtype
         )
         log.info(f"Total number of detections={len(detections)}")
-        if len(detections) == 0:
-            log.warning("No detections made. Further processing will not be completed.")
-            return None
+        # if len(detections) == 0:
+        #     log.warning("No detections made. Further processing will not be completed.")
+        #     return None
         log.info("Clustering the detections")
         clusterer = Clusterer(
             **self.cluster_config,
@@ -518,6 +518,9 @@ class PowerSpectraSearch:
             plot_fname="",
             only_injections=only_injections,
         )
+        # if len(clusters) == 0:
+        #     log.warning("No clusters found. Further processing will not be completed.")
+        #     return None
 
         log.info(f"Total number of candidate clusters={len(clusters)}")
         # Only update db for single day obs, proper stack logging tba
