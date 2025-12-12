@@ -324,11 +324,8 @@ def main(
 
         # Plot alias results
         if alias_results:
-            year = date.year
-            month = date.month
-            day = date.day
             alias_plot_path = os.path.join(
-                folder.coord_path, "aliases", f"alias_plot_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.png"
+                folder.coord_path, "aliases", f"alias_plot_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.png"
             )
             plot_aliases(alias_results, output_path=alias_plot_path)
 
