@@ -1784,6 +1784,7 @@ def start_processing_services(
         # also been manually added to this network
         "networks": ["pipeline-network"],
     }
+
     # docker_service_pipeline_image_clenaup = {
     #     "image": manager_docker_image_name,
     #     "name": "processing-cleanup",
