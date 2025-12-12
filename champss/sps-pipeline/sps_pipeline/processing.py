@@ -855,7 +855,7 @@ def run_all_pipeline_processes(
         if work_index > requested_containers:
             break
 
-    buckets_db = pymongo.MongoClient(port=27018).work.buckets
+    buckets_db = pymongo.MongoClient(host="sps-archiver1", port=27018).work.buckets
     # Get the next work objects. These should be processed in order by workflow
     all_works = list(
         buckets_db.find({"pipeline": workflow_buckets_name})
