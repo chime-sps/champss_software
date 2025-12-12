@@ -13,7 +13,7 @@ import click
 import matplotlib.pyplot as plt
 import numpy as np
 
-from folding.archive_utils import get_SN, readpsrarch
+from folding.utilities.archives import get_SN, readpsrarch
 
 
 def get_alias_factor_from_label(label):

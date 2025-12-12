@@ -13,7 +13,7 @@ from astropy.coordinates import (
 )
 from astropy.time import Time
 from beamformer.utilities.common import find_closest_pointing
-from folding.archive_utils import get_SN
+from folding.utilities.archives import get_SN
 from multiday_search.load_profiles import load_unwrapped_archives, unwrap_profiles
 from numba import njit, prange, set_num_threads
 from numpy import unravel_index

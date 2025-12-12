@@ -138,8 +138,6 @@ def main(
 
     # Setup logging
     config = load_config()
-    config['beamform']['update_db'] = False
-    config['beamform']['flatten_bandpass'] = False
     log_path = foldpath + f"/logs/{date.strftime('%Y/%m/%d')}/"
     log_name = f"fold_pulsar_{psr}_{date.strftime('%Y-%m-%d')}.log"
     log_file = log_path + log_name

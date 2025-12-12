@@ -9,7 +9,7 @@ from astropy.coordinates import SkyCoord
 from beamformer.skybeam import SkyBeamFormer
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import beammod as bm
-from folding.archive_utils import *
+from folding.utilities.archives import *
 from lmfit import Model
 from scipy.ndimage import uniform_filter
 

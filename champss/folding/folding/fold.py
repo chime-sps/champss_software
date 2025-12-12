@@ -69,6 +69,8 @@ class Fold:
         self.foldpath = foldpath
         self.datpath = datpath
         self.config = config
+        self.config['beamform']['update_db'] = False
+        self.config['beamform']['flatten_bandpass'] = False
         self.name = name if name else candidate_name(ra, dec)
         self.filterbank_to_ram = filterbank_to_ram
         self.exact_coords = exact_coords

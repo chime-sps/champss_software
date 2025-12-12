@@ -9,7 +9,7 @@ log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
-from folding.archive_utils import read_par
+from folding.utilities.archives import read_par
 from multiday_search.load_profiles import load_profiles, load_unwrapped_archives
 from multiday_search.phase_aligned_search import ExploreGrid
 from sps_databases import db_api, db_utils

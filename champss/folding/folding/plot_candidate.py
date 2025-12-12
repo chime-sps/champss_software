@@ -9,7 +9,7 @@ from scipy.optimize import curve_fit
 from astropy.time import Time
 from astropy.coordinates import SkyCoord
 
-from folding.archive_utils import clean_foldspec, get_SN, readpsrarch, compute_profile_SNs
+from folding.utilities.archives import clean_foldspec, get_SN, readpsrarch, compute_profile_SNs
 from folding.known_source_matching import find_matching_sources
 from matplotlib.gridspec import GridSpec
 from multiday_search.phase_aligned_search import phase_loop

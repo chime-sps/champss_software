@@ -10,7 +10,7 @@ from astropy.coordinates import (
     get_body_barycentric,
 )
 from astropy.time import Time
-from folding.archive_utils import *
+from folding.utilities.archives import *
 
 
 def get_ssb_delay(raj, decj, times):

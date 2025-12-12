@@ -254,8 +254,6 @@ def main(
         return {}, [], []
 
     config = load_config()
-    config['beamform']['update_db'] = False
-    config['beamform']['flatten_bandpass'] = False
     log_path = foldpath + f"/logs/{date.strftime('%Y/%m/%d')}/"
     log_name = (
         f"fold_candidate{date.strftime('%Y-%m-%d')}_{ra:.02f}_"
