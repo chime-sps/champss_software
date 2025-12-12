@@ -162,7 +162,7 @@ def main(
 
     # Setup paths (use custom dir_suffix to avoid extra subdirectories)
     folder.coord_path = output_dir
-    folder.setup_paths(dir_suffix="")
+    folder.setup_paths(dir_suffix="", archive_basename=psr)
 
     # Beamform
     folder.beamform()

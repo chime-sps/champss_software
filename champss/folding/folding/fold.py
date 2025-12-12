@@ -85,7 +85,7 @@ class Fold:
         self.turns = None
         self.intflag = None
 
-    def setup_paths(self, dir_suffix="candidates"):
+    def setup_paths(self, dir_suffix="candidates", archive_basename=None):
         """
         Setup output directories and file paths.
 
@@ -93,6 +93,9 @@ class Fold:
         ----------
         dir_suffix : str, optional
             Subdirectory suffix under foldpath (default: "candidates")
+        archive_basename : str, optional
+            Base name for archive file without date. If not provided, uses
+            "cand_{f0}_{dm}" format. Date will be appended as "_{year}-{month:02}-{day:02}"
         """
         year = self.date.year
         month = self.date.month
@@ -110,9 +113,10 @@ class Fold:
             log.info(f"Directory '{self.coord_path}' already exists.")
 
         # Set archive filename
-        self.archive_fname = (
-            f"{self.coord_path}/cand_{self.f0:.02f}_{self.dm:.02f}_{year}-{month:02}-{day:02}"
-        )
+        if archive_basename is None:
+            # Default: candidate format with f0 and dm
+            archive_basename = f"cand_{self.f0:.02f}_{self.dm:.02f}"
+        self.archive_fname = f"{self.coord_path}/{archive_basename}_{year}-{month:02}-{day:02}"
 
         # Setup filterbank path
         fname = f"/{self.ra:.02f}_{self.dec:.02f}_{self.f0:.02f}_{self.dm:.02f}_{year}-{month:02}-{day:02}.fil"
