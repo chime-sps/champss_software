@@ -11,7 +11,6 @@ import multiprocessing
 import os
 
 import click
-import pymongo
 
 # set these up before importing any SPS packages
 log_stream = logging.StreamHandler()
@@ -124,10 +123,6 @@ def main(
     log.info(f"Ephemeris parameters: F0={f0:.6f} Hz, DM={dm:.2f} pc/cm^3")
 
     # Setup output paths
-    year = date.year
-    month = date.month
-    day = date.day
-
     output_dir = f"{foldpath}/{psr}"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -135,7 +130,7 @@ def main(
     else:
         log.info(f"Directory '{output_dir}' already exists.")
 
-    archive_fname = f"{output_dir}/{psr}_{year}-{month:02}-{day:02}.ar"
+    archive_fname = f"{output_dir}/{psr}_{date.year}-{date.month:02}-{date.day:02}.ar"
 
     if os.path.isfile(archive_fname) and not overwrite:
         log.info(f"Archive file {archive_fname} already exists, skipping...")
