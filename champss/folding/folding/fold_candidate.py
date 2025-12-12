@@ -269,20 +269,14 @@ def main(
     if not ephem_path:
         if not os.path.exists(coord_path):
             os.makedirs(coord_path)
-        year = date.year
-        month = date.month
-        day = date.day
         ephem_path = (
-            f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.par"
+            f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.par"
         )
         create_ephemeris(name, ra, dec, dm, date, f0, ephem_path, fs_id)
 
     # Check if archive already exists
-    year = date.year
-    month = date.month
-    day = date.day
     archive_fname = (
-        f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.ar"
+        f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.ar"
     )
     if os.path.isfile(archive_fname) and not overwrite_folding:
         log.info(f"Archive file {archive_fname} already exists, skipping folding...")
