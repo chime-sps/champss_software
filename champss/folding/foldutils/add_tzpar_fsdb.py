@@ -1,7 +1,7 @@
 import glob
 
 import click
-from foldutils.database_utils import add_knownsource_to_fsdb, scrape_ephemeris
+from folding.utilities.database import add_knownsource_to_fsdb, scrape_ephemeris
 from sps_databases import db_api, db_utils
 
 

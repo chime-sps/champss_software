@@ -165,7 +165,6 @@ def plot_candidate_archive(
     cand_info : dict, optional
         Dictionary containing optional candidate information:
         - 'sigma': Pipeline sigma of candidate
-        - 'known': Name of known pulsar (empty string if unknown)
         - 'ap': Active pointing list from PointingStrategist
     accel_search : bool
         Whether to perform acceleration search (default True)
@@ -188,7 +187,6 @@ def plot_candidate_archive(
     if cand_info is None:
         cand_info = {}
     sigma = cand_info.get('sigma', None)
-    known = cand_info.get('known', ' ')
     ap = cand_info.get('ap', None)
 
     # Set color scheme based on plot_bw
@@ -669,14 +667,10 @@ def plot_candidate_archive(
             transform=ax_kstext.transAxes
         )
 
-    if not known.strip():
-        plotstring = f"cand_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
-        plotstring_radec = (
-            f"cand_{ra:.02f}_{dec:.02f}_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
-        )
-    else:
-        plotstring = f"{psr}_{T0.isot[:10]}.png"
-        plotstring_radec = f"{psr}_{T0.isot[:10]}.png"
+    plotstring = f"cand_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
+    plotstring_radec = (
+        f"cand_{ra:.02f}_{dec:.02f}_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
+    )
 
     plt.savefig(f'{coord_path}/{plotstring}', dpi=fig.dpi, bbox_inches="tight")
 

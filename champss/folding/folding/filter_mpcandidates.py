@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 import pandas as pd
-from foldutils.database_utils import add_candidate_to_fsdb
+from folding.utilities.database import add_candidate_to_fsdb
 from sps_databases import db_utils
 from pathlib import Path
 import click

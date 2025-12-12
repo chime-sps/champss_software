@@ -3,7 +3,7 @@ import datetime as dt
 import click
 import multiday_search.confirm_cand as confirm_cand
 import multiday_search.fold_multiday as fold_multiday
-from foldutils.database_utils import add_mdcand_from_candpath, add_mdcand_from_psrname
+from folding.utilities.database import add_mdcand_from_candpath, add_mdcand_from_psrname
 from scheduler.workflow import (
     clear_workflow_buckets,
     docker_swarm_running_states,
