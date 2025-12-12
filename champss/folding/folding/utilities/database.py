@@ -12,6 +12,37 @@ from bson.objectid import ObjectId
 from sps_databases import db_api, db_utils
 
 
+def get_pulsar_coords_from_timing_db(psr, server_url="mongodb://sps-archiver1:27017/", db_name="timing_ops"):
+    """
+    Get RA and Dec for a pulsar from the timing_ops database.
+
+    Parameters
+    ----------
+    psr : str
+        Pulsar name (psr_id)
+    server_url : str
+        MongoDB server URL
+    db_name : str
+        Database name
+
+    Returns
+    -------
+    ra : float
+        Right ascension in degrees
+    dec : float
+        Declination in degrees
+    """
+    client = pymongo.MongoClient(server_url)
+    database = client[db_name]
+    collection = database["sources"]
+
+    source = collection.find_one({'psr_id': psr})
+    if not source:
+        raise ValueError(f"Pulsar {psr} not found in timing_ops database")
+
+    return source['ra'], source['dec']
+
+
 def update_folding_history(id, payload):
     """
     Updates a followup_source with the given attribute and values as a dict.

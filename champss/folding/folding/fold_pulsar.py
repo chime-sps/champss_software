@@ -20,37 +20,7 @@ log = logging.getLogger(__name__)
 
 from folding.fold import Fold
 from sps_pipeline.pipeline import default_datpath, load_config, apply_logging_config
-from folding.utilities.database import scrape_ephemeris
-
-def get_pulsar_coords_from_timing_db(psr, server_url="mongodb://localhost:27017/", db_name="timing_ops"):
-    """
-    Get RA and Dec for a pulsar from the timing_ops database.
-
-    Parameters
-    ----------
-    psr : str
-        Pulsar name (psr_id)
-    server_url : str
-        MongoDB server URL
-    db_name : str
-        Database name
-
-    Returns
-    -------
-    ra : float
-        Right ascension in degrees
-    dec : float
-        Declination in degrees
-    """
-    client = pymongo.MongoClient(server_url)
-    database = client[db_name]
-    collection = database["sources"]
-
-    source = collection.find_one({'psr_id': psr})
-    if not source:
-        raise ValueError(f"Pulsar {psr} not found in timing_ops database")
-
-    return source['ra'], source['dec']
+from folding.utilities.database import scrape_ephemeris, get_pulsar_coords_from_timing_db
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -97,7 +67,7 @@ def get_pulsar_coords_from_timing_db(psr, server_url="mongodb://localhost:27017/
 )
 @click.option(
     "--timing-db-url",
-    default="mongodb://localhost:27017/",
+    default="mongodb://sps-archiver1:27017/",
     type=str,
     help="MongoDB URL for timing_ops database.",
 )
