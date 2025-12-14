@@ -985,22 +985,23 @@ class Clusterer:
                     all_indices_1.append(indices_1)
                     all_metric_vals.append(metric_vals)
 
-                all_indices_0 = np.concatenate(all_indices_0)
-                all_indices_1 = np.concatenate(all_indices_1)
-                all_metric_vals = np.concatenate(all_metric_vals)
+                if len(all_indices_0) > 0:
+                    all_indices_0 = np.concatenate(all_indices_0)
+                    all_indices_1 = np.concatenate(all_indices_1)
+                    all_metric_vals = np.concatenate(all_metric_vals)
 
-                if scheme == "combined":
-                    if self.metric_combination == "multiply":
-                        metric_array[all_indices_0, all_indices_1] *= metric_vals
-                        metric_array[indices_1, indices_0] *= metric_array[
-                            all_indices_0, all_indices_1
-                        ]
-                    elif self.metric_combination == "replace":
+                    if scheme == "combined":
+                        if self.metric_combination == "multiply":
+                            metric_array[all_indices_0, all_indices_1] *= metric_vals
+                            metric_array[indices_1, indices_0] *= metric_array[
+                                all_indices_0, all_indices_1
+                            ]
+                        elif self.metric_combination == "replace":
+                            metric_array[all_indices_0, all_indices_1] = all_metric_vals
+                            metric_array[all_indices_1, all_indices_0] = all_metric_vals
+                    else:
                         metric_array[all_indices_0, all_indices_1] = all_metric_vals
                         metric_array[all_indices_1, all_indices_0] = all_metric_vals
-                else:
-                    metric_array[all_indices_0, all_indices_1] = all_metric_vals
-                    metric_array[all_indices_1, all_indices_0] = all_metric_vals
                 group_indices_0 = []
                 group_indices_1 = []
                 if self.grouped_freq_dm_scale != 0:
