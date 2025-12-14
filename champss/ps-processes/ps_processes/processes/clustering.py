@@ -631,10 +631,17 @@ class Clusterer:
                 ' "dmfreq", "harm"'
             )
 
-        if len(detections_in) <= 1:
-            log.info(f"Only {len(detections_in)} detections, no clustering needed")
-            labels = np.array([0] if len(detections_in) == 1 else [])
-            return detections_in, labels, self.sigma_detection_threshold
+        # Could either return all detections when below min sample or none, not sure what would be better
+        # if len(detections_in) <= 1:
+        #     log.info(f"Only {len(detections_in)} detections, no clustering needed")
+        #     labels = np.array([0] if len(detections_in) == 1 else [])
+        #     return detections_in, labels, self.sigma_detection_threshold
+
+        if len(detections_in) < self.dbscan_min_samples:
+            log.info(
+                f"Only {len(detections_in)} detections, Clustering will not cluster anything. Return empty"
+            )
+            return [], [], self.sigma_detection_threshold
 
         # Set rogue harm powers filtering method
         if self.rogue_harmpow_scheme == "presto":
@@ -674,97 +681,106 @@ class Clusterer:
             metric_array = radius_neighbors_graph(
                 data_filter, 1.1 * self.dbscan_eps, p=2, mode="distance"
             )
-            metric_array = sort_graph_by_row_values(
-                metric_array, warn_when_not_sorted=False
-            )
-            db_filter = DBSCAN(
-                eps=self.dbscan_eps,
-                min_samples=self.dbscan_min_samples,
-                metric="precomputed",
-            ).fit(metric_array)
-            bad_freqs = []
-            filtered_labels_low_dm = []
-            filtered_labels_broad_dm = []
-            filtered_indices_low_dm = []
-            filtered_indices_broad_dm = []
-            for i in range(max(db_filter.labels_) + 1):
-                filtered = False
-                current_indices = np.arange(detections_filtered.shape[0])[
-                    db_filter.labels_ == i
-                ]
-                det_sample = detections_filtered[current_indices]
-                det_max_sigma_pos = np.argmax(det_sample["sigma"])
-                det_max_sigma_dm = det_sample["dm"][det_max_sigma_pos]
-                det_dm_ptp = np.ptp(det_sample["dm"])
-                if det_max_sigma_dm <= self.cluster_dm_cut:
-                    filtered_indices_low_dm.extend(current_indices)
-                    filtered_labels_low_dm.append(i)
-                    bad_freqs.append(
-                        (
-                            det_sample["freq"].mean(),
-                            det_sample["freq"].min(),
-                            det_sample["freq"].max(),
-                        )
-                    )
-                    filtered = True
-                if self.dbscan_filter_broad_dm:
-                    if self.dbscan_filter_broad_threshold < det_dm_ptp:
-                        filtered_indices_broad_dm.extend(current_indices)
-                        filtered_labels_broad_dm.append(i)
-                        if not filtered:
-                            bad_freqs.append(
-                                (
-                                    det_sample["freq"].mean(),
-                                    det_sample["freq"].min(),
-                                    det_sample["freq"].max(),
-                                )
-                            )
-                        filtered = True
-
-            filtered_labels = filtered_labels_low_dm + filtered_labels_broad_dm
-            filtered_indices = filtered_indices_low_dm + filtered_indices_broad_dm
-            bad_freqs = np.asarray(bad_freqs)
-            bad_low_dm_freqs = len(filtered_indices)
-            log.info(
-                f"Dbscan filter removed {len(filtered_indices_low_dm)} detections in low DM clusters."
-            )
-            if self.dbscan_filter_broad_dm:
-                log.info(
-                    f"Dbscan filter removed {len(filtered_indices_broad_dm)} detections in broad DM clusters."
+            if metric_array.size:
+                metric_array = sort_graph_by_row_values(
+                    metric_array, warn_when_not_sorted=False
                 )
-                log.info(
-                    f"Filtered {len(set(filtered_indices))} from low or broad clusters."
-                )
-
-            if self.dbscan_filter_whole_freqs:
+                db_filter = DBSCAN(
+                    eps=self.dbscan_eps,
+                    min_samples=self.dbscan_min_samples,
+                    metric="precomputed",
+                ).fit(metric_array)
+                bad_freqs = []
+                filtered_labels_low_dm = []
+                filtered_labels_broad_dm = []
+                filtered_indices_low_dm = []
+                filtered_indices_broad_dm = []
                 for i in range(max(db_filter.labels_) + 1):
-                    if i not in filtered_labels:
-                        current_indices = np.arange(detections_filtered.shape[0])[
-                            db_filter.labels_ == i
-                        ]
-                        det_sample = detections_filtered[current_indices]
-                        mean_freq = det_sample["freq"].mean()
-                        for row in bad_freqs:
-                            if mean_freq > row[1] and mean_freq < row[2]:
-                                filtered_indices.extend(current_indices)
-                                break
-                bad_all_freqs = len(filtered_indices)
-                log.info(
-                    "Dbscan filter removed additonal"
-                    f" {bad_all_freqs - bad_low_dm_freqs} detection with same"
-                    " frequencies as already filtered DM clusters."
-                )
-            mask = np.full(detections_filtered.shape[0], True)
-            mask[filtered_indices] = False
-            detections_filtered = detections_filtered[mask]
+                    filtered = False
+                    current_indices = np.arange(detections_filtered.shape[0])[
+                        db_filter.labels_ == i
+                    ]
+                    det_sample = detections_filtered[current_indices]
+                    det_max_sigma_pos = np.argmax(det_sample["sigma"])
+                    det_max_sigma_dm = det_sample["dm"][det_max_sigma_pos]
+                    det_dm_ptp = np.ptp(det_sample["dm"])
+                    if det_max_sigma_dm <= self.cluster_dm_cut:
+                        filtered_indices_low_dm.extend(current_indices)
+                        filtered_labels_low_dm.append(i)
+                        bad_freqs.append(
+                            (
+                                det_sample["freq"].mean(),
+                                det_sample["freq"].min(),
+                                det_sample["freq"].max(),
+                            )
+                        )
+                        filtered = True
+                    if self.dbscan_filter_broad_dm:
+                        if self.dbscan_filter_broad_threshold < det_dm_ptp:
+                            filtered_indices_broad_dm.extend(current_indices)
+                            filtered_labels_broad_dm.append(i)
+                            if not filtered:
+                                bad_freqs.append(
+                                    (
+                                        det_sample["freq"].mean(),
+                                        det_sample["freq"].min(),
+                                        det_sample["freq"].max(),
+                                    )
+                                )
+                            filtered = True
 
-            del data_filter
-            del metric_array
-            del db_filter
+                filtered_labels = filtered_labels_low_dm + filtered_labels_broad_dm
+                filtered_indices = filtered_indices_low_dm + filtered_indices_broad_dm
+                bad_freqs = np.asarray(bad_freqs)
+                bad_low_dm_freqs = len(filtered_indices)
+                log.info(
+                    f"Dbscan filter removed {len(filtered_indices_low_dm)} detections in low DM clusters."
+                )
+                if self.dbscan_filter_broad_dm:
+                    log.info(
+                        f"Dbscan filter removed {len(filtered_indices_broad_dm)} detections in broad DM clusters."
+                    )
+                    log.info(
+                        f"Filtered {len(set(filtered_indices))} from low or broad clusters."
+                    )
+
+                if self.dbscan_filter_whole_freqs:
+                    for i in range(max(db_filter.labels_) + 1):
+                        if i not in filtered_labels:
+                            current_indices = np.arange(detections_filtered.shape[0])[
+                                db_filter.labels_ == i
+                            ]
+                            det_sample = detections_filtered[current_indices]
+                            mean_freq = det_sample["freq"].mean()
+                            for row in bad_freqs:
+                                if mean_freq > row[1] and mean_freq < row[2]:
+                                    filtered_indices.extend(current_indices)
+                                    break
+                    bad_all_freqs = len(filtered_indices)
+                    log.info(
+                        "Dbscan filter removed additonal"
+                        f" {bad_all_freqs - bad_low_dm_freqs} detection with same"
+                        " frequencies as already filtered DM clusters."
+                    )
+                mask = np.full(detections_filtered.shape[0], True)
+                mask[filtered_indices] = False
+                detections_filtered = detections_filtered[mask]
+
+                del data_filter
+                del metric_array
+                del db_filter
+            else:
+                log.info("No neighbouring points identified in dbscan filter.")
 
         detections = detections_filtered[
             detections_filtered["sigma"] > self.sigma_detection_threshold
         ]
+
+        if len(detections) < self.dbscan_min_samples:
+            log.info(
+                f"Only {len(detections_in)} detections, Clustering will not cluster anything. Return empty"
+            )
+            return [], [], self.sigma_detection_threshold
 
         # thin down detections if there are too many
         log.info(
@@ -1042,9 +1058,10 @@ class Clusterer:
             )
 
         if self.use_sparse:
-            metric_array = sort_graph_by_row_values(
-                metric_array, warn_when_not_sorted=False
-            )
+            if metric_array.size:
+                metric_array = sort_graph_by_row_values(
+                    metric_array, warn_when_not_sorted=False
+                )
         if self.clustering_method == "DBSCAN":
             log.info("Starting DBSCAN")
             db = DBSCAN(
