@@ -778,7 +778,7 @@ class Clusterer:
 
         if len(detections) < self.dbscan_min_samples:
             log.info(
-                f"Only {len(detections_in)} detections, Clustering will not cluster anything. Return empty"
+                f"Only {len(detections)} detections, Clustering will not cluster anything. Return empty"
             )
             return [], [], self.sigma_detection_threshold
 
