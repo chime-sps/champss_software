@@ -13,7 +13,10 @@ from sps_databases import db_api, db_utils
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 import matplotlib.pyplot as plt
 from scipy.special import erf
-
+from pygdsm import HaslamSkyModel
+from astropy.coordinates import SkyCoord
+import healpy as hp
+import astropy.units as u
 log = logging.getLogger(__name__)
 
 import numpy.random as rand
@@ -168,10 +171,28 @@ class Injection:
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
         self.W = self.get_fwhm()
+        self.Tsky = self.get_tsky()
         if flux is not None:
             self.use_sigma = False
         else:
             self.use_sigma = True
+
+    def get_tsky(self):
+        haslam = HaslamSkyModel(freq_unit='MHz', spectral_index=-2.6)
+        # Generate the sky map at 600 MHz
+        # (extrapolated from 408MHz where it is measured)
+        sky_map = haslam.generate(600)
+        # Convert your RA/Dec to a healpix pixel
+        ra = self.pspec_obj.ra  # degrees
+        dec = self.pspec_obj.dec  # degrees
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
+        gal_coord = coord.galactic
+        # Get the temperature, at the healpix pixel index
+        nside = haslam.nside  # 512 for Haslam
+        pix_idx = hp.ang2pix(nside, gal_coord.l.deg, gal_coord.b.deg, lonlat=True)
+        temperature = sky_map[pix_idx]
+        print(f"Sky temperature at RA={ra}, Dec={dec}: {temperature:.2f} K")
+        return temperature
 
     def get_width(self):
 
@@ -288,11 +309,11 @@ class Injection:
         delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
         tau = 2 * self.pspec.shape[1] * TSAMP
         Nbin = len(self.phase_prof)
-
+        Tsky = 
         #calculate input signal
         
         RMS = np.sqrt(1 / Nbin)
-        signal = self.flux * RMS * np.sqrt(Npol * delta_f * tau / Nbin) * GAIN / TSYS / BETA 
+        signal = self.flux * RMS * np.sqrt(Npol * delta_f * tau / Nbin) * GAIN / (TSYS +self.tsky) / BETA 
         signal *= np.sqrt(((1 / self.f) - self.W) / self.W)
         prof = self.phase_prof
         prof *= signal / np.mean(prof)
