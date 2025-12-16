@@ -1,9 +1,3 @@
-"""
-Fold class for folding pulsars and candidates.
-
-This module contains the Fold class used by both fold_candidate and fold_pulsar scripts.
-"""
-
 import logging
 import os
 import subprocess
@@ -44,19 +38,19 @@ class Fold:
         date : datetime
             Observation date
         ephem_path : str
-            Path to ephemeris file
+            Path to parfile
         foldpath : str
             Base path for fold outputs
         datpath : str
             Path to raw data
         config : dict
-            Pipeline configuration
+            Pipeline configuration, used for beamforming config
         name : str, optional
             Source name (default: creates J-name from coordinates)
         filterbank_to_ram : bool, optional
             Whether to use RAM for filterbank (default: True)
         exact_coords : bool, optional
-            Use exact coordinates without grid snapping (default: False)
+            Use exact coordinates, otherwise spaps to pointing grid (default: False)
         coord_path : str, optional
             Custom coordinate path for outputs (auto-generated if not provided)
         """
@@ -130,10 +124,7 @@ class Fold:
 
     def beamform(self):
         """
-        Beamform data to create filterbank.
-
-        This method sets up the pointing, calculates beamforming parameters,
-        and creates the filterbank file.
+        This function sets up the pointing, beamforms, and writes as a filterbank.
 
         Returns
         -------
@@ -148,7 +139,7 @@ class Fold:
         pst = PointingStrategist(create_db=False, split_long_pointing=True)
         self.ap = pst.get_single_pointing(self.ra, self.dec, self.date, use_grid=not self.exact_coords)
 
-        # If multiple sub-pointings, force to disk (too large for RAM)
+        # If multiple sub-pointings (at high dec), always write to disk (too large for RAM)
         if len(self.ap) > 1:
             log.info(f"Multiple sub-pointings ({len(self.ap)}), writing filterbank to disk")
             self.filterbank_to_ram = False
@@ -220,6 +211,7 @@ class Fold:
             True if folding succeeded and archive was created
         """
         # Set number of turns, roughly equalling 10s
+        # Currently hardcoded, may want to allow more dspsr options
         self.turns = int(np.ceil(10 * self.f0))
         if self.turns <= 2:
             self.intflag = "-turns"
@@ -299,7 +291,7 @@ class Fold:
 
     def plot(self, sigma=None, foldpath_plots=None):
         """
-        Create plots for the folded candidate.
+        Create plots for the folded candidate, using plot_candidate.py
 
         Parameters
         ----------

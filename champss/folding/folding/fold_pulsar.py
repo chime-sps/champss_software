@@ -1,9 +1,7 @@
 """
-Script for folding known pulsars.
-
 This script is designed specifically for folding known pulsars, as part of 
 the regular timing follow-up. It queries the timing_ops database for pulsar 
-coordinates, folda at exact RA, using a user-specified parfile.
+coordinates, folds at exact RA, using a user-specified parfile.
 """
 
 import logging
@@ -100,7 +98,7 @@ def main(
     """
     multiprocessing.set_start_method("forkserver", force=True)
 
-    # Verify ephemeris file exists
+    # Verify parfile exists
     if not os.path.exists(parfile):
         log.error(f"Ephemeris file {parfile} not found")
         return
@@ -160,7 +158,7 @@ def main(
         coord_path=output_dir,
     )
 
-    # Setup paths (use custom dir_suffix to avoid extra subdirectories)
+    # Setup paths, use pulsar name instead of candidates/
     folder.coord_path = output_dir
     folder.setup_paths(dir_suffix="", archive_basename=psr)
 

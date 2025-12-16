@@ -129,7 +129,7 @@ def main(
     The main automated processing will use FollowUpSource ID, and update the database with the folding history.
 
     Use cases:
-    1. --fs_id: Read from database using FollowUpSource ID, fold, and optionally write results back
+    1. --fs_id: Read from database using FollowUpSource ID
     2. --foldvalues: Fold with explicit ra, dec, f0, dm values
     3. --parfile: Fold using an explicit ephemeris file
     4. --candpath: Fold from a candidate file
@@ -137,16 +137,16 @@ def main(
     Args:
         date (str or datetime.datetime): The date of the observation.
         foldvalues (str): Space-separated "ra dec f0 dm" values.
-        parfile (str): Path to ephemeris file.
+        parfile (str): Path to parfile.
         fs_id (str): FollowUpSource ID from the database.
         db_port (int): The port number for the database connection.
         db_host (str): The hostname of the database.
         db_name (str): The name of the database.
-        foldpath (str): The base path for fold outputs.
-        datpath (str): The base path for raw data.
+        foldpath (str): The basepath for fold outputs.
+        datpath (str): The basepath for raw data.
         candpath (str): Path to candidate file.
         write_to_db (bool, optional): Whether to write the results to the database (only with --fs_id).
-        using_workflow (bool, optional): Whether the function is run with Workflow.
+        using_workflow (bool, optional): Whether to run the function through Workflow.
         overwrite_folding (bool, optional): Re-run folding even if already done.
         filterbank_to_ram (bool, optional): Use ramdisk for filterbank files.
         fold_aliases (bool, optional): Fold at multiple frequency aliases.
@@ -346,6 +346,7 @@ def main(
         "path_to_plot": plot_fname,
     }
 
+    # Update database
     if fs_id and write_to_db:
         log.info("Updating FollowUpSource with folding history")
         folding_history = source.folding_history

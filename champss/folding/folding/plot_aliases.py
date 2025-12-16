@@ -1,10 +1,3 @@
-"""
-Plot profiles and S/N for frequency alias folding results.
-
-This script reads archive files from alias folding and creates
-diagnostic plots showing the profile at each alias factor and S/N vs alias.
-"""
-
 import glob
 import os
 import re

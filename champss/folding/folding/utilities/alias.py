@@ -1,8 +1,8 @@
 """
 Utilities for handling frequency aliases in folding.
 
-This module contains functions for folding at different frequency aliases
-to detect harmonics and sub-harmonics.
+This module contains functions for folding at different frequency aliases,
+to detect the true rotation perios of a new pulsar.
 """
 
 import logging
