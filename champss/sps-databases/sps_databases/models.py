@@ -875,12 +875,7 @@ class Process:
 
     @property
     def ram_requirement(self):
-        # Very long processes will be split into multiple processing runs
-        ntime = min(self.ntime, 2**22)
-        return min(
-            100.0,
-            (4 + (self.maxdm * 0.04 + ntime * 6e-6) * 2 ** (ntime // 2**20)) * 2,
-        )
+        return min(100.0, (4 + self.maxdm * 0.05 + ntime * 1.35e-5))
 
     @property
     def tier(self):
