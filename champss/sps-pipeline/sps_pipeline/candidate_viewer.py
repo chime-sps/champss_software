@@ -23,11 +23,12 @@ class CandidateViewerRegistrar:
         self.cursor = mysql.connector.connect(
             host=db_config['host'],
             user=db_config['user'],
+            port=db_config['port'],
             password=db_config['password'],
             database=db_config['database']
         )
 
-    def register_metadata(self, survey, folder, file, input_file, ra_deg, dec_deg, p0_ms, dm_pc_cc, snr):
+    def register_metadata(self, survey, folder, file, input_file, ra_deg, dec_deg, p0_ms, dm_pc_cc, snr, commit=True):
         # Convert coordinates 
         coord = SkyCoord(ra=ra_deg, dec=dec_deg, unit='deg')
         ra_hms = coord.ra.to_string(unit='hourangle', sep=':', pad=True)
@@ -93,7 +94,9 @@ class CandidateViewerRegistrar:
 
         val = tuple(data.values())
         self.cursor.cursor().execute(sql, val)
-        self.cursor.commit()
+
+        if commit:
+            self.cursor.commit()
 
     def generate_survey_config(self):
         config = {}
@@ -111,6 +114,10 @@ class CandidateViewerRegistrar:
         return surve_config
 
     def append_survey_config(self):
+        """
+        Append new candidates to existing survey config.
+        """
+
         # Generate new survey config
         new_config = self.generate_survey_config()
 
@@ -137,6 +144,21 @@ class CandidateViewerRegistrar:
             json.dump(existing_config, f, indent=4)
 
     def add_candidate(self, candname, ra, dec, f0, dm, snr, stack_plot, fold_plot, combined_plot, input_file=""):
+        """
+        Add a candidate to the registrar.
+        
+        Parameters:
+        - candname: Candidate name
+        - ra: Right Ascension in degrees
+        - dec: Declination in degrees
+        - f0: Frequency in Hz
+        - dm: Dispersion Measure in pc/cm^3
+        - snr: Signal-to-noise ratio
+        - stack_plot: Path to stack plot
+        - fold_plot: Path to fold plot
+        - combined_plot: Path to combined plot
+        - input_file: Original input file path
+        """
         candidate = {
             'candname': candname,
             'ra': ra,
@@ -152,6 +174,13 @@ class CandidateViewerRegistrar:
         self.candidates.append(candidate)
 
     def add_candidates(self, df):
+        """
+        Add multiple candidates from a DataFrame.
+        
+        Parameters:
+        - df: pandas DataFrame with candidate data
+        """
+
         for row in df.to_dict(orient='records'):
             candname = row['file_name'].split('/')[-1].replace('.npz', '')
             ra = float(row['best_ra'])
@@ -178,7 +207,11 @@ class CandidateViewerRegistrar:
             )
 
     def commit(self):
-        # Commit candidates into database
+        """
+        Commit all registered candidates to the database and update survey config.
+        """
+
+        # Add candidates into database
         for cand in tqdm.tqdm(self.candidates, desc="Registering candidates"):
             self.register_metadata(
                 survey=self.survey,
@@ -189,11 +222,15 @@ class CandidateViewerRegistrar:
                 dec_deg=cand['dec'],
                 p0_ms=1000.0 / cand['f0'] if cand['f0'] != 0 else 0,
                 dm_pc_cc=cand['dm'],
-                snr=cand['snr']
+                snr=cand['snr'], 
+                commit=False
             )
 
         # Append survey config
         self.append_survey_config()
+
+        # Commit all at once
+        self.cursor.commit()
 
     def close(self):
         self.cursor.close()
