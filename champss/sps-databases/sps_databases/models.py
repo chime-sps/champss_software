@@ -875,7 +875,7 @@ class Process:
 
     @property
     def ram_requirement(self):
-        return min(100.0, (4 + self.maxdm * 0.05 + ntime * 1.35e-5))
+        return min(100.0, (4 + self.maxdm * 0.05 + self.ntime * 1.35e-5))
 
     @property
     def tier(self):
