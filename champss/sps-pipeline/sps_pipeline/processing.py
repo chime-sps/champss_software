@@ -902,19 +902,24 @@ def run_all_pipeline_processes(
             .sort("creation", pymongo.ASCENDING)
             .limit(requested_containers)
         )
-
+    log.info(
+        "No work scheduled anymore, will scale all services down and remove them once tey are finished."
+    )
     for i, tier in enumerate(processing_tier_names):
         docker_client.services.get(services[i]).scale(0)
+    log.info("Scaled down services.")
+
     for i, tier in enumerate(processing_tier_names):
-        service_tasks = docker_client.services.get(services[i]).tasks()
         running_tasks_per_tier = 1
         while running_tasks_per_tier:
+            service_tasks = docker_client.services.get(services[i]).tasks()
             running_tasks_per_tier = sum(
                 1 for task in service_tasks if task["Status"]["State"] == "running"
             )
             if running_tasks_per_tier == 0:
                 try:
                     docker_client.services.get(services[i]).remove()
+                    log.info(f"Removed service {services[i]}.")
                 except docker.errors.NotFound:
                     log.info("Could not remove processing service {services[i]}.")
             else:
