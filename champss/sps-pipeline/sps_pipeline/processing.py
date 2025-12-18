@@ -1622,7 +1622,8 @@ def start_processing_manager(
                             {"folding_result": {"fold_count": len(processes)}},
                         )
                 except Exception as error:
-                    log.error("Could not update daily candidates due to {error}")
+                    log.error("Could not update daily candidates due to f{error}")
+                    log.error(traceback.format_exc())
             # End of folding phase
 
             number_of_days_processed = number_of_days_processed + 1
