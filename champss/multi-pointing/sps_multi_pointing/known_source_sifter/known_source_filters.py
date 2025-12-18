@@ -131,16 +131,12 @@ def compare_dm(candidate, known_sources, weight, use_sp_fit_in_delta_dm=True, **
     else:
         used_delta_dm = candidate.delta_dm
     if use_sp_fit_in_delta_dm:
-        if candidate.best_candidate_features is not None and np.isfinite(
-            candidate.best_candidate_features["dm_sigma_FitGaussWidth_gauss_sigma"]
-        ):
-            used_delta_dm = np.sqrt(
-                used_delta_dm**2
-                + candidate.best_candidate_features[
-                    "dm_sigma_FitGaussWidth_gauss_sigma"
-                ]
-                ** 2
-            )
+        if candidate.best_candidate_features is not None:
+            cand_width = candidate.best_candidate_features[
+                "dm_sigma_FitGaussWidth_gauss_sigma"
+            ]
+            if np.isfinite(cand_width):
+                used_delta_dm = np.sqrt(used_delta_dm**2 + cand_width**2)
     # calculate Bayes factor for all fine-grained steps and take the maximum
     bayes_factor = gaussian_bayes(
         candidate.best_dm,
@@ -237,16 +233,12 @@ def compare_frequency(
     else:
         used_delta_freq = candidate.delta_freq
     if use_sp_fit_in_delta_freq:
-        if candidate.best_candidate_features is not None and np.isfinite(
-            candidate.best_candidate_features["freq_sigma_FitGaussWidth_gauss_sigma"]
-        ):
-            used_delta_freq = np.sqrt(
-                used_delta_freq**2
-                + candidate.best_candidate_features[
-                    "freq_sigma_FitGaussWidth_gauss_sigma"
-                ]
-                ** 2
-            )
+        if candidate.best_candidate_features is not None:
+            cand_width = candidate.best_candidate_features[
+                "freq_sigma_FitGaussWidth_gauss_sigma"
+            ]
+            if np.isfinite(cand_width):
+                used_delta_freq = np.sqrt(used_delta_freq**2 + cand_width**2)
 
     current_period = known_sources["current_spin_period_s"]
     for harm in harms:
