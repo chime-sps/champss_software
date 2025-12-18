@@ -1608,7 +1608,9 @@ def start_processing_manager(
                     with (
                         CandidateViewerRegistrar(
                             survey="dailycands",  # the project name under top-right corner of the website
-                            folder=date_string,  # the folder name on the website
+                            folder=date_to_process.strftime(
+                                "%Y-%m-%d"
+                            ),  # the folder name on the website
                             db_config=db_config,
                             survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
                         ) as sd
