@@ -300,6 +300,7 @@ class SinglePointingCandidateGroup:
             "all_spcc_indices": all_spcc_indices,
             "all_date_ranges": all_date_ranges,
             "all_num_days": all_num_days,
+            "best_candidate_features": max_sigma_cand["features"],
         }
 
         self.group_summary.update(reduced_summary)
@@ -338,6 +339,8 @@ class SinglePointingCandidateGrouper:
     ra_scale = attrib(default=0.0)
     dec_scale = attrib(default=0.0)
     metric = attrib(default="euclidean")
+    use_sp_fit_in_delta_freq = attrib(default=True)
+    use_sp_fit_in_delta_dm = attrib(default=True)
 
     def group(
         self, cands: List[EasyDict], num_threads: int = 16

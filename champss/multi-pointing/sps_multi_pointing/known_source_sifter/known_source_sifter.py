@@ -67,6 +67,8 @@ class KnownSourceSifter:
     ks_database = attr.ib(init=False)
     ks_filter_names = attr.ib(init=False)
     ks_filter_weights = attr.ib(init=False)
+    use_sp_fit_in_delta_freq = attr.ib(default=True, validator=instance_of(bool))
+    use_sp_fit_in_delta_dm = attr.ib(default=True, validator=instance_of(bool))
 
     def __attrs_post_init__(self):
         self.config_init = False
@@ -285,6 +287,9 @@ class KnownSourceSifter:
                     candidate,
                     ks_sub_database,
                     self.ks_filter_weights[i],
+                    # Giving these possibly superfluous arguments does not hurt as long **kwargs is used
+                    use_sp_fit_in_delta_freq=self.use_sp_fit_in_delta_freq,
+                    use_sp_fit_in_delta_dm=self.use_sp_fit_in_delta_dm,
                 )
             else:
                 # Btot = B1 * B2 * ... * Bn

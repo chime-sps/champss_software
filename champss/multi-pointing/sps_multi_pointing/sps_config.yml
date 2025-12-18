@@ -39,6 +39,8 @@ sifter:
     best_harmonic_sum:
       threshold: 2
       operator: lt
+  use_sp_fit_in_delta_freq: True
+  use_sp_fit_in_delta_dm: True
 
 classifier:
   active_classifiers:

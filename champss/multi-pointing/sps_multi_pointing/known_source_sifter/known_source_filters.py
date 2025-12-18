@@ -88,7 +88,7 @@ def compare_position(candidate, known_sources, weight, **kwargs):
     return bayes_factor
 
 
-def compare_dm(candidate, known_sources, weight, **kwargs):
+def compare_dm(candidate, known_sources, weight, use_sp_fit_in_delta_dm=True, **kwargs):
     """
     Compare the dispersion measures (DMs) of `event` with the DMs of the sources in
     `known_sources` using the Bayes factor. The function first calculates the DM offsets
@@ -130,6 +130,19 @@ def compare_dm(candidate, known_sources, weight, **kwargs):
         used_delta_dm = 1.0
     else:
         used_delta_dm = candidate.delta_dm
+    if use_sp_fit_in_delta_dm:
+        if candidate.best_candidate_features is not None and np.isfinite(
+            candidate.best_candidate_features["dm_sigma_FitGaussWidth_gauss_sigma"]
+        ):
+            used_delta_dm = np.sqrt(
+                used_delta_dm**2
+                + np.isfinite(
+                    candidate.best_candidate_features[
+                        "dm_sigma_FitGaussWidth_gauss_sigma"
+                    ]
+                )
+                ** 2
+            )
     # calculate Bayes factor for all fine-grained steps and take the maximum
     bayes_factor = gaussian_bayes(
         candidate.best_dm,
@@ -159,7 +172,13 @@ def compare_dm(candidate, known_sources, weight, **kwargs):
 
 
 def compare_frequency(
-    candidate, known_sources, weight, frac_harm=4, max_harm=16, **kwargs
+    candidate,
+    known_sources,
+    weight,
+    frac_harm=4,
+    max_harm=16,
+    use_sp_fit_in_delta_freq=True,
+    **kwargs,
 ):
     """
     Compare the dispersion measures (DMs) of `event` with the DMs of the sources in
@@ -219,6 +238,20 @@ def compare_frequency(
         used_delta_freq = 9.70127682e-04 / cand_nharm
     else:
         used_delta_freq = candidate.delta_freq
+    if use_sp_fit_in_delta_freq:
+        if candidate.best_candidate_features is not None and np.isfinite(
+            candidate.best_candidate_features["freq_sigma_FitGaussWidth_gauss_sigma"]
+        ):
+            used_delta_freq = np.sqrt(
+                used_delta_freq**2
+                + np.isfinite(
+                    candidate.best_candidate_features[
+                        "freq_sigma_FitGaussWidth_gauss_sigma"
+                    ]
+                )
+                ** 2
+            )
+
     current_period = known_sources["current_spin_period_s"]
     for harm in harms:
         bayes_factor_harm = gaussian_bayes(
