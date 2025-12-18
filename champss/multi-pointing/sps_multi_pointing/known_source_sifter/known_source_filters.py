@@ -136,11 +136,9 @@ def compare_dm(candidate, known_sources, weight, use_sp_fit_in_delta_dm=True, **
         ):
             used_delta_dm = np.sqrt(
                 used_delta_dm**2
-                + np.isfinite(
-                    candidate.best_candidate_features[
-                        "dm_sigma_FitGaussWidth_gauss_sigma"
-                    ]
-                )
+                + candidate.best_candidate_features[
+                    "dm_sigma_FitGaussWidth_gauss_sigma"
+                ]
                 ** 2
             )
     # calculate Bayes factor for all fine-grained steps and take the maximum
@@ -244,11 +242,9 @@ def compare_frequency(
         ):
             used_delta_freq = np.sqrt(
                 used_delta_freq**2
-                + np.isfinite(
-                    candidate.best_candidate_features[
-                        "freq_sigma_FitGaussWidth_gauss_sigma"
-                    ]
-                )
+                + candidate.best_candidate_features[
+                    "freq_sigma_FitGaussWidth_gauss_sigma"
+                ]
                 ** 2
             )
 
