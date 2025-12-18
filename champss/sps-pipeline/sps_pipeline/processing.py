@@ -1607,7 +1607,7 @@ def start_processing_manager(
                 try:
                     with (
                         CandidateViewerRegistrar(
-                            survey="daily_candidates",  # the project name under top-right corner of the website
+                            survey="dailycands",  # the project name under top-right corner of the website
                             folder=date_string,  # the folder name on the website
                             db_config=db_config,
                             survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
@@ -1810,7 +1810,7 @@ def start_processing_services(
             f"{foldpath}:{foldpath}",
             # Need this mount so container can access host machine's Docker Client
             "/var/run/docker.sock:/var/run/docker.sock",
-            "/data/candidate_viewer/champss_candidate_viewer/:/data/candidate_viewer/champss_candidate_viewer/"
+            "/data/candidate_viewer/champss_candidate_viewer/:/data/candidate_viewer/champss_candidate_viewer/",
         ],
         # An externally created Docker Network that allows these spawned containers
         # to communicate with other containers (MongoDB, Prometheus, etc) that have
