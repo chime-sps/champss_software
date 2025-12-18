@@ -1600,7 +1600,7 @@ def start_processing_manager(
                 db_config = {
                     "user": "automation",
                     "password": "",  # no password for automation user
-                    "host": "localhost",
+                    "host": "sps-archiver1",
                     "database": "champss",
                     "port": 3306,
                 }
