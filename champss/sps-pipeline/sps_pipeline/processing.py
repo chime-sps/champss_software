@@ -34,6 +34,8 @@ from workflow.http.context import HTTPContext
 from sps_databases import db_api, db_utils, models
 from sps_pipeline.pipeline import default_datpath
 from sps_pipeline.utils import get_pointings_from_list, merge_images
+from sps_pipeline.candidate_viewer import CandidateViewerRegistrar
+
 
 log = logging.getLogger()
 
@@ -1550,6 +1552,7 @@ def start_processing_manager(
                 )
 
                 # Merge candidates
+                # breakpoint()
                 log.info("Creating merged candidate plots.")
                 merged_candidate_path = (
                     basepath + "/combined_candidates/" + date_string + "/"
@@ -1593,10 +1596,33 @@ def start_processing_manager(
                     # Might fail due to permission
                     pass
 
-                message_slack(f"Candidate folding for {date_string} complete")
-                daily_run = db_api.update_daily_run(
-                    date_to_process, {"folding_result": {"fold_count": len(processes)}}
-                )
+                # Add to candidate viewer site
+                db_config = {
+                    "user": "automation",
+                    "password": "",  # no password for automation user
+                    "host": "localhost",
+                    "database": "champss",
+                    "port": 3306,
+                }
+                try:
+                    with (
+                        CandidateViewerRegistrar(
+                            survey="daily_candidates",  # the project name under top-right corner of the website
+                            folder=date_string,  # the folder name on the website
+                            db_config=db_config,
+                            survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
+                        ) as sd
+                    ):
+                        sd.add_candidates(df_mp)  # add candidates from dataframe
+                        sd.commit()  # commit to database and update survey config
+
+                        message_slack(f"Candidate folding for {date_string} complete")
+                        daily_run = db_api.update_daily_run(
+                            date_to_process,
+                            {"folding_result": {"fold_count": len(processes)}},
+                        )
+                except Exception as error:
+                    log.error("Could not update daily candidates due to {error}")
             # End of folding phase
 
             number_of_days_processed = number_of_days_processed + 1
@@ -1783,6 +1809,7 @@ def start_processing_services(
             f"{foldpath}:{foldpath}",
             # Need this mount so container can access host machine's Docker Client
             "/var/run/docker.sock:/var/run/docker.sock",
+            "/data/candidate_viewer/champss_candidate_viewer/:/data/candidate_viewer/champss_candidate_viewer/"
         ],
         # An externally created Docker Network that allows these spawned containers
         # to communicate with other containers (MongoDB, Prometheus, etc) that have
