@@ -1,6 +1,7 @@
 import os
 import json
 import tqdm
+import shutil
 import datetime
 import mysql.connector
 from astropy.coordinates import SkyCoord
@@ -139,9 +140,19 @@ class CandidateViewerRegistrar:
         # Update the "Updated" field
         existing_config["config"]["Updated"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        # Save updated config
-        with open(self.survey_config_path, 'w') as f:
+        # Check if output json is valid
+        tmp_config_path = "/tmp/" + os.path.basename(self.survey_config_path) + f".{os.getpid()}.tmp"
+        with open(tmp_config_path, 'w') as f:
             json.dump(existing_config, f, indent=4)
+        try:
+            with open(tmp_config_path, 'r') as f:
+                _ = json.load(f)
+        except json.JSONDecodeError as e:
+            os.remove(tmp_config_path)
+            raise Exception(f"Generated survey config JSON is invalid: {e}.Is there any None or NaN values in the condidate data?")
+        
+        # Save updated config
+        shutil.move(tmp_config_path, self.survey_config_path)
 
     def add_candidate(self, candname, ra, dec, f0, dm, snr, stack_plot, fold_plot, combined_plot, input_file=""):
         """
@@ -160,16 +171,16 @@ class CandidateViewerRegistrar:
         - input_file: Original input file path
         """
         candidate = {
-            'candname': candname,
-            'ra': ra,
-            'dec': dec,
-            'f0': f0,
-            'dm': dm,
-            'snr': snr,
-            'stack_plot': stack_plot,
-            'fold_plot': fold_plot,
-            'combined_plot': combined_plot, 
-            'input_file': input_file
+            'candname': str(candname),
+            'ra': float(ra),
+            'dec': float(dec),
+            'f0': float(f0),
+            'dm': float(dm),
+            'snr': float(snr),
+            'stack_plot': str(stack_plot),
+            'fold_plot': str(fold_plot),
+            'combined_plot': str(combined_plot), 
+            'input_file': str(input_file)
         }
         self.candidates.append(candidate)
 
