@@ -1451,7 +1451,7 @@ def start_processing_manager(
                 )
                 class_timeout = 60 * 60 * 60
                 work_id = schedule_workflow_job(
-                    docker_image="sps-archiver1.chime:5000/champss_classification:load_as_you_go",
+                    docker_image="sps-archiver1.chime:5000/champss_classification:test",
                     docker_mounts=[
                         f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
@@ -1558,7 +1558,7 @@ def start_processing_manager(
                     basepath + "/combined_candidates/" + date_string + "/"
                 )
                 replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
-                
+
                 os.makedirs(merged_candidate_path, exist_ok=True)
                 os.makedirs(replotted_mp_path, exist_ok=True)
 
