@@ -30,6 +30,7 @@ def read_multi_pointing_candidates(filepath):
     """
     files = glob.glob(os.path.join(filepath, "*.npz"))
     mp_cands = []
+
     for f in files:
         mp_cands.append(MultiPointingCandidate.read(f))
     return mp_cands

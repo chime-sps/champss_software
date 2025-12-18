@@ -1558,8 +1558,10 @@ def start_processing_manager(
                     basepath + "/combined_candidates/" + date_string + "/"
                 )
                 replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
+                
                 os.makedirs(merged_candidate_path, exist_ok=True)
                 os.makedirs(replotted_mp_path, exist_ok=True)
+
                 for index, row in df_mp.iterrows():
                     plot_path = row["plot_path"]
                     fs_db_entry = db_api.get_followup_source(row["fs_id"])
@@ -1595,7 +1597,6 @@ def start_processing_manager(
                     log.error("Could not write out csv containing combined candidates.")
                     # Might fail due to permission
                     pass
-
                 # Add to candidate viewer site
                 db_config = {
                     "user": "automation",
