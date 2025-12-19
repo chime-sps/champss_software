@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from attr import ib as attribute
 from attr import s as attrs
+from attr import converters
 from attr.validators import instance_of
 from ps_processes.processes import ps_inject
 from ps_processes.processes.clustering import Clusterer
@@ -137,10 +138,14 @@ class PowerSpectraSearch:
     skip_first_n_bins: int = attribute(default=2)
     injection_overlap_threshold: bool = attribute(default=0.5)
     injection_dm_threshold: int = attribute(default=10.0)
-    known_source_threshold: float = attribute(default=np.inf)
+    known_source_threshold: float = attribute(
+        default=np.inf,
+        validator=instance_of(float),
+        converter=converters.optional(float),
+    )
     filter_birdies: bool = attribute(default=False)
     mean_bin_sigma_threshold: float = attribute(default=0)
-    use_stack_threshold = attribute(validator=instance_of(bool), default=False)
+    only_use_stack_threshold = attribute(validator=instance_of(bool), default=False)
     full_harm_bins = attribute(init=False)
     update_db = attribute(default=True, validator=instance_of(bool))
     max_search_frequency: float = attribute(default=np.inf)
@@ -277,10 +282,15 @@ class PowerSpectraSearch:
             )
             pointing_id = db_api.get_observation(pspec.obs_id[0]).pointing_id
             current_pointing = db_api.get_pointing(pointing_id)
-            if self.use_stack_threshold:
+            if self.only_use_stack_threshold:
                 previous_detections = current_pointing.strongest_pulsar_detections_stack
             else:
-                previous_detections = current_pointing.strongest_pulsar_detections
+                # This will merge the two fields with the stack taking precedece on overlap
+                previous_detections = (
+                    current_pointing.strongest_pulsar_detections
+                    | current_pointing.strongest_pulsar_detections_stack
+                )
+
             filtered_psr_names = [
                 pulsar
                 for pulsar in previous_detections
