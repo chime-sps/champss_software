@@ -63,6 +63,9 @@ def compare_position(candidate, known_sources, weight, **kwargs):
         TELESCOPE_ROTATION_ANGLE,
         angle,
     )
+    # Estimate uncertainty based on standard deviation of mp_cand
+    sigma_event2 = position_uncertainty(candidate.position_features["delta_ra"], candidate.position_features["delta_dec"], 90.0, angle)
+    sigma_event = np.sqrt(sigma_event ** 2 + sigma_event2 ** 2)
 
     # if the angle between source A and source B is x degrees,
     # the angle between source B and source A is (x + 180) % 360 degrees
