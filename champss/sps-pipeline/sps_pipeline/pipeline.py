@@ -261,7 +261,7 @@ def dbexcepthook(type, value, tb):
 @click.option(
     "--known-source-threshold",
     "--kst",
-    default=np.inf,
+    default=10,
     type=float,
     help=(
         "Threshold under which known sources are filtered based on the previously"

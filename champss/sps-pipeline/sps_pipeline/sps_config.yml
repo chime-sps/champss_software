@@ -167,7 +167,7 @@ ps:
     arc_filter_config:
       filter_if_kst_active: True
       default_arc_length: 5
-      arc_psr_min_sigma: 1000
+      arc_psr_min_sigma: 100
       arc_search_dist: 0.5
       filtered_pulsars:
         B0329+54:
