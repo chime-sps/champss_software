@@ -306,6 +306,7 @@ class PowerSpectraSearch:
                 all_arc_psrs_db = db_api.get_known_source_by_names(
                     list(all_arc_psrs.keys())
                 )
+                # UNSAFE When psr not in known sources
                 for index, psr in enumerate(all_arc_psrs.keys()):
                     all_arc_psrs[psr]["db_entry"] = all_arc_psrs_db[index]
                 for psr in sigma_sources:
