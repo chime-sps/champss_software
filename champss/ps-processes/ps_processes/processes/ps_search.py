@@ -272,6 +272,9 @@ class PowerSpectraSearch:
         search_start = time.time()
         filtered_sources = []
         if self.known_source_threshold is not np.inf:
+            log.info(
+                f"Will remove known pulsars based on a threshold of {self.known_source_threshold} sigma."
+            )
             pointing_id = db_api.get_observation(pspec.obs_id[0]).pointing_id
             current_pointing = db_api.get_pointing(pointing_id)
             if self.use_stack_threshold:
@@ -292,7 +295,7 @@ class PowerSpectraSearch:
                 sigma_sources = db_api.get_nearby_known_sources(
                     pspec.ra,
                     pspec.dec,
-                    self.arc_filter_config["default_arc_length"] + 5,
+                    self.arc_filter_config["default_arc_length"] + 10,
                 )
                 # Filter out the ones that are already in the config
                 sigma_sources = [
