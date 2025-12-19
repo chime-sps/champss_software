@@ -748,9 +748,11 @@ def run_all_pipeline_processes(
             arg_string = arg_string.strip()
             if arg_string != "":
                 arg_count = len(arg_string.split(" "))
-                if arg_count > 1:
+                if arg_count > 2:
                     argument, value = arg_string.split(" ", 1)
                     workflow_params[argument] = (value,)
+                elif arg_count == 1:
+                    workflow_params[argument] = value
                 else:
                     log.error(
                         "Flags not implimented yet. Reformated your option to --option_python_name True"
