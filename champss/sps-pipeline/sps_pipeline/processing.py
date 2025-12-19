@@ -1821,25 +1821,25 @@ def start_processing_services(
         "networks": ["pipeline-network"],
     }
 
-    # docker_service_pipeline_image_clenaup = {
-    #     "image": manager_docker_image_name,
-    #     "name": "processing-cleanup",
-    #     "command": "start-processing-cleanup",
-    #     "mode": docker.types.ServiceMode("global"),
-    #     # Labels allow for easy filtering with Docker CLI
-    #     "labels": {"type": "processing"},
-    #     "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
-    #     "mounts": [
-    #         # Need this mount so container can access host machine's Docker Client
-    #         "/var/run/docker.sock:/var/run/docker.sock"
-    #     ],
-    # }
+    docker_service_pipeline_image_clenaup = {
+        "image": manager_docker_image_name,
+        "name": "processing-cleanup",
+        "command": "start-processing-cleanup",
+        "mode": docker.types.ServiceMode("global"),
+        # Labels allow for easy filtering with Docker CLI
+        "labels": {"type": "processing"},
+        "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
+        "mounts": [
+            # Need this mount so container can access host machine's Docker Client
+            "/var/run/docker.sock:/var/run/docker.sock"
+        ],
+    }
 
     log.info(f"Creating Docker Service: \n{docker_service_manager}")
     docker_client.services.create(**docker_service_manager)
 
-    # log.info(f"Creating Docker Service: \n{docker_service_pipeline_image_clenaup}")
-    # docker_client.services.create(**docker_service_pipeline_image_clenaup)
+    log.info(f"Creating Docker Service: \n{docker_service_pipeline_image_clenaup}")
+    docker_client.services.create(**docker_service_pipeline_image_clenaup)
 
 
 def remove_processing_services(signal, frame):
