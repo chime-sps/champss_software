@@ -57,7 +57,7 @@ ps_creation:
   remove_rednoise: True
   nbit: 32
   save_medians: True
-  write_medians: False
+  write_medians: True
   write_zero_dm_medians: True
 ps:
   run_ps_search: True
