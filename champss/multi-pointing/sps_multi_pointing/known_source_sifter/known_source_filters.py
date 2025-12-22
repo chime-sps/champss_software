@@ -57,9 +57,21 @@ def compare_position(candidate, known_sources, weight, **kwargs):
 
     # in SPS, the position uncertainty is calculated assuming a gaussian ellipsoid beam of EW FWHM of
     # 0.4 degree and NS FWHM of 0.4 / cos(zenith angle) and an angle of from true North from sps_common.
+    ini_error_1 = (
+        0.4 / (2 * np.sqrt(2 * np.log(2))) / np.cos(np.abs(candidate.dec - 49.32))
+    )
+    ini_error_2 = 0.4 / (2 * np.sqrt(2 * np.log(2)))
+    cand_sigma = candidate.best_sigma
+    min_search_sigma = 6
     sigma_event = position_uncertainty(
-        0.4 / (2 * np.sqrt(2 * np.log(2))) / np.cos(np.abs(candidate.dec - 49.32)),
-        0.4 / (2 * np.sqrt(2 * np.log(2))),
+        max(
+            np.sqrt(-np.log(min_search_sigma / cand_sigma) * (2 * ini_error_1**2)),
+            ini_error_1,
+        ),
+        max(
+            np.sqrt(-np.log(min_search_sigma / cand_sigma) * (2 * ini_error_2**2)),
+            ini_error_2,
+        ),
         TELESCOPE_ROTATION_ANGLE,
         angle,
     )
@@ -133,6 +145,7 @@ def compare_dm(candidate, known_sources, weight, use_sp_fit_in_delta_dm=True, **
     """
     mu_min = 0.0
     mu_max = 4357  # maximum of all pointins, may also only want the maximum of used pointings
+    max_cand_width = 10
 
     if candidate.delta_dm == 0:
         used_delta_dm = 1.0
@@ -140,15 +153,17 @@ def compare_dm(candidate, known_sources, weight, use_sp_fit_in_delta_dm=True, **
         used_delta_dm = candidate.delta_dm
     if use_sp_fit_in_delta_dm:
         if candidate.best_candidate_features is not None:
-            max_cand_width = 10
-            cand_width = min(
-                candidate.best_candidate_features[
-                    "dm_sigma_FitGaussWidth_gauss_sigma"
-                ].item(),
-                max_cand_width,
+            cand_width = np.nanmin(
+                [
+                    candidate.best_candidate_features[
+                        "dm_sigma_FitGaussWidth_gauss_sigma"
+                    ].item(),
+                    max_cand_width,
+                ]
             )
-            if np.isfinite(cand_width):
-                used_delta_dm = np.sqrt(used_delta_dm**2 + cand_width**2)
+        else:
+            cand_width = max_cand_width
+        used_delta_dm = np.sqrt(used_delta_dm**2 + cand_width**2)
     # calculate Bayes factor for all fine-grained steps and take the maximum
     bayes_factor = gaussian_bayes(
         candidate.best_dm,
@@ -229,6 +244,7 @@ def compare_frequency(
     # dc is deprecated in simple ps search
     # mu_min, mu_max = search_freq_range_from_dc(candidate.best_dc)
     mu_min, mu_max = search_freq_range_from_dc(0)
+    max_cand_width = 0.005
 
     # calculate Bayes factor for all fine-grained steps and take the maximum
     if frac_harm < 1:
@@ -246,16 +262,18 @@ def compare_frequency(
         used_delta_freq = candidate.delta_freq
     if use_sp_fit_in_delta_freq:
         if candidate.best_candidate_features is not None:
-            # Fit sometime fails if
-            max_cand_width = 0.005
-            cand_width = min(
-                candidate.best_candidate_features[
-                    "freq_sigma_FitGaussWidth_gauss_sigma"
-                ].item(),
-                max_cand_width,
+            # Fit sometime fails
+            cand_width = np.nanmin(
+                [
+                    candidate.best_candidate_features[
+                        "freq_sigma_FitGaussWidth_gauss_sigma"
+                    ].item(),
+                    max_cand_width,
+                ]
             )
-            if np.isfinite(cand_width):
-                used_delta_freq = np.sqrt(used_delta_freq**2 + cand_width**2)
+        else:
+            cand_width = max_cand_width
+        used_delta_freq = np.sqrt(used_delta_freq**2 + cand_width**2)
 
     current_period = known_sources["current_spin_period_s"]
     for harm in harms:
