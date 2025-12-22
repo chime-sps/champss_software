@@ -895,10 +895,16 @@ def run_all_pipeline_processes(
                 )
                 running_tasks += running_tasks_per_tier
                 running_tiers[tier] = f"{running_tasks_per_tier}/{upcoming_tags[tier]}"
+                # Sometimes can get stuck, where only a a few big containers remain which do no start.
+                # As a fix try to scale down all jobs for a moment which are not running.
+                if (running_tasks_per_tier == 0) and (upcoming_tags[tier] != 0):
+                    docker_client.services.get(services[i]).scale(0)
             log.info(
                 f"Currently running distribution with {running_tasks} containers: {running_tiers}"
             )
-            requested_containers = running_tasks + surplus_replicas
+            requested_containers = max(
+                running_tasks + surplus_replicas, 2 * surplus_replicas
+            )
         else:
             first_loop = False
         all_works = list(
