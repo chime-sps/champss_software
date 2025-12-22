@@ -726,7 +726,7 @@ def run_all_pipeline_processes(
         "stack": run_stacking,
         "fdmt": True,
         "rfi_beamform": True,
-        "plot": True,
+        "plot": False,
         "plot_threshold": 8.0,
         # "ra": process.ra,
         # "dec": f" {process.dec}",
@@ -1508,7 +1508,7 @@ def start_processing_manager(
                 df_mp = fold_schedule_output["df"]
                 try:
                     df_mp.to_csv(df_folded_name)
-                except:
+                except Exception as error:
                     # Might fail due to permission
                     pass
                 processes = fold_schedule_output["info"]
@@ -1576,7 +1576,7 @@ def start_processing_manager(
                     df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
                     if not os.path.exists(last_fold["path_to_plot"]):
                         continue
-                    if type(row["plot_path"]) != str:
+                    if type(row["plot_path"]) is str:
                         if not os.path.exists(row["file_name"]):
                             continue
                         mp_cand = MultiPointingCandidate.read(row["file_name"])
@@ -1595,7 +1595,7 @@ def start_processing_manager(
                 # Could get work results, alternatively can query fs db
                 try:
                     df_mp.to_csv(df_folded_name)
-                except:
+                except Exception as error:
                     log.error("Could not write out csv containing combined candidates.")
                     # Might fail due to permission
                     pass
