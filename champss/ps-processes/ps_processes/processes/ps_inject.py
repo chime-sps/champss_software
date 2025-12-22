@@ -191,7 +191,7 @@ class Injection:
         nside = haslam.nside  # 512 for Haslam
         pix_idx = hp.ang2pix(nside, gal_coord.l.deg, gal_coord.b.deg, lonlat=True)
         temperature = sky_map[pix_idx]
-        print(f"Sky temperature at RA={ra}, Dec={dec}: {temperature:.2f} K")
+        log.info(f"Sky temperature at RA={ra}, Dec={dec}: {temperature:.2f} K")
         return temperature
 
     def get_width(self):
@@ -360,11 +360,9 @@ class Injection:
         # find the starting index, where the DM scale is -2
 
         i_min = np.argmin(np.abs((self.true_dm - 2 * self.deltaDM) - self.trial_dms))
-        log.info(f"Starting DM: {self.trial_dms[i_min]}")
         i0 = np.argmin(np.abs(self.true_dm - self.trial_dms))
         # find the stopping index, where the DM scale is +2
         i_max = np.argmin(np.abs((self.true_dm + 2 * self.deltaDM) - self.trial_dms))
-        log.info(f"Stopping DM: {self.trial_dms[i_max]}")
 
         # reminder; we are inclusive of i_max because that's the last index into which we want to inject
         target_dm_idx = np.arange(i_min, i_max + 1)
@@ -562,12 +560,8 @@ class Injection:
         
         if self.use_sigma:
             scaled_prof_fft, phases = self.sigma_to_power(n_harm, df)
-            log.info('Using sigma as input quantity.')
-            log.info(f'Sigma = {self.sigma}.')
         else:
             scaled_prof_fft, phases = self.flux_to_power()
-            log.info('Using flux as input quantity.')
-            log.info(f'Flux = {self.flux} mJy.')
         
         
         if len(scaled_prof_fft) > n_harm:
