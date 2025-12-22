@@ -259,7 +259,8 @@ def Filter(
 
 
 def filter_mp_df(df, sigma_min=6, class_min=0.9, only_use_strongest_in_cluster=True):
-    df_filtered = df[df["prediction"] > class_min]
+    df_filtered = df[df["known_source_label"] == 0]
+    df_filtered = df_filtered[df_filtered["prediction"] > class_min]
     df_filtered = df_filtered[df_filtered["sigma"] > sigma_min]
     if only_use_strongest_in_cluster:
         df_filtered = df_filtered[df_filtered["strongest_in_cluster"] == 1]
