@@ -184,10 +184,12 @@ class PowerSpectraSearch:
             whether or not to inject an artificial pulse into the power spectrum
 
         injection_path: str
-            Path to injection file or string describing default injection type
+            Path to injection file or string describing default injection type.
+            If 'random', then an integer may be sent in following the string to
+            clarify the number of random profiles to inject. Ex: random4
 
         injection_indices: list
-            Indices of injection file entries that are injected
+            Indices of injection file entries that are injected.
 
         only_injections: bool
             Whether non-injections are filtered out. Default: False
@@ -215,9 +217,13 @@ class PowerSpectraSearch:
 
         if injection_path is not None:
             injection_dicts = []
-            if injection_path == 'random':
+            if 'random' in injection_path:
+                if injection_path == 'random':
+                    n_injections = 1
+                else:
+                    n_injections = int(injection_path[-1])
 
-                for i in range(5):
+                for i in range(n_injections):
                     injection_dict = ps_inject.main(
                         pspec,
                         self.full_harm_bins,

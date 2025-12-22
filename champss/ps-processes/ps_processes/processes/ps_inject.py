@@ -657,7 +657,6 @@ def main(
     pspec,
     full_harm_bins,
     injection_dict="random",
-    num_injections=1,
     remove_spectra=False,
     scale_injections=False,
     only_predict=False,
@@ -671,8 +670,6 @@ def main(
                                               profile in the dictionary defaults, or a dict with
                                               custom injection profile keys
                                               (profile, sigma, frequency, DM)
-            num_injections (int)            : provided if injection_profile == 'random.' How
-                                              many profiles to randomly generate.
             remove_spectra (bool)           : Whether to remove the spectra. Replaced by static value
             scale_injections (bool)         : Whether to scale the injection so that the
                                             detected sigma should be
