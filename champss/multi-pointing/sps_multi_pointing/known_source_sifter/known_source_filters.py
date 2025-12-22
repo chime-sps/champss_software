@@ -181,8 +181,8 @@ def compare_frequency(
     candidate,
     known_sources,
     weight,
-    frac_harm=4,
-    max_harm=16,
+    frac_harm=8,
+    max_harm=32,
     use_sp_fit_in_delta_freq=True,
     **kwargs,
 ):
@@ -237,7 +237,7 @@ def compare_frequency(
         max_harm = 1
     frac_harms = 1 / np.arange(2, frac_harm + 1)
     num_harms = np.arange(1, max_harm + 1)
-    harms = np.concatenate((frac_harms, num_harms))
+    harms = np.concatenate((frac_harms, num_harms, [2 / 3]))
     bayes_factor = np.zeros(len(known_sources))
     cand_nharm = candidate.best_nharm
     if candidate.delta_freq == 0:
@@ -247,7 +247,7 @@ def compare_frequency(
     if use_sp_fit_in_delta_freq:
         if candidate.best_candidate_features is not None:
             # Fit sometime fails if
-            max_cand_width = 0.01
+            max_cand_width = 0.005
             cand_width = min(
                 candidate.best_candidate_features[
                     "freq_sigma_FitGaussWidth_gauss_sigma"
@@ -265,7 +265,7 @@ def compare_frequency(
             1 / current_period * harm,
             mu_min,
             mu_max,
-            sigma_mu=known_sources["spin_period_s_error"] * harm,
+            sigma_mu=harm * known_sources["spin_period_s_error"] / current_period**2,
         )
         bayes_factor = np.max((bayes_factor, bayes_factor_harm), axis=0)
 
