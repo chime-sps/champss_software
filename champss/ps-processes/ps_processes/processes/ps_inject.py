@@ -78,7 +78,6 @@ def generate_injection(pspec, f_nyquist = 508):
     prof_idx = np.random.choice(range(len(TPA_profiles)))
     prof = TPA_profiles[prof_idx]
 
-    log.info(f'Injecting TPA profile {prof_idx} at f = {f:.2f} Hz, DM = {dm:.2f} pc / cm^3, and S = {S:.2f} mJy.')
     injection_dict = {
                 "TPA_idx": prof_idx,
                 "profile": prof,
@@ -560,8 +559,10 @@ class Injection:
         
         if self.use_sigma:
             scaled_prof_fft, phases = self.sigma_to_power(n_harm, df)
+            log.info(f'Injecting at f = {self.f:.2f} Hz, DM = {self.true_dm:.2f} pc / cm^3, and sigma = {self.sigma}.')
         else:
             scaled_prof_fft, phases = self.flux_to_power()
+            log.info(f'Injecting at f = {self.f:.2f} Hz, DM = {self.true_dm:.2f} pc / cm^3, and S = {self.flux:.2f} mJy.')
         
         
         if len(scaled_prof_fft) > n_harm:
