@@ -56,6 +56,7 @@ def compare_position(candidate, known_sources, weight, **kwargs):
     )
     # in SPS, the position uncertainty is calculated assuming a gaussian ellipsoid beam of EW FWHM of
     # 0.4 degree and NS FWHM of 0.4 / cos(zenith angle) and an angle of from true North from sps_common.
+
     ini_error_1 = (
         0.4 / (2 * np.sqrt(2 * np.log(2))) / np.cos(np.abs(candidate.dec - 49.32))
     )
