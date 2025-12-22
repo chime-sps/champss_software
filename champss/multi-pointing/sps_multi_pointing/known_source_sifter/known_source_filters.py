@@ -64,8 +64,13 @@ def compare_position(candidate, known_sources, weight, **kwargs):
         angle,
     )
     # Estimate uncertainty based on standard deviation of mp_cand
-    sigma_event2 = position_uncertainty(candidate.position_features["delta_ra"], candidate.position_features["delta_dec"], 90.0, angle)
-    sigma_event = np.sqrt(sigma_event ** 2 + sigma_event2 ** 2)
+    sigma_event2 = position_uncertainty(
+        candidate.position_features["delta_ra"],
+        candidate.position_features["delta_dec"],
+        90.0,
+        angle,
+    )
+    sigma_event = np.sqrt(sigma_event**2 + sigma_event2**2)
 
     # if the angle between source A and source B is x degrees,
     # the angle between source B and source A is (x + 180) % 360 degrees
@@ -135,9 +140,13 @@ def compare_dm(candidate, known_sources, weight, use_sp_fit_in_delta_dm=True, **
         used_delta_dm = candidate.delta_dm
     if use_sp_fit_in_delta_dm:
         if candidate.best_candidate_features is not None:
-            cand_width = candidate.best_candidate_features[
-                "dm_sigma_FitGaussWidth_gauss_sigma"
-            ]
+            max_cand_width = 10
+            cand_width = min(
+                candidate.best_candidate_features[
+                    "dm_sigma_FitGaussWidth_gauss_sigma"
+                ].item(),
+                max_cand_width,
+            )
             if np.isfinite(cand_width):
                 used_delta_dm = np.sqrt(used_delta_dm**2 + cand_width**2)
     # calculate Bayes factor for all fine-grained steps and take the maximum
@@ -237,21 +246,26 @@ def compare_frequency(
         used_delta_freq = candidate.delta_freq
     if use_sp_fit_in_delta_freq:
         if candidate.best_candidate_features is not None:
-            cand_width = candidate.best_candidate_features[
-                "freq_sigma_FitGaussWidth_gauss_sigma"
-            ]
+            # Fit sometime fails if
+            max_cand_width = 0.01
+            cand_width = min(
+                candidate.best_candidate_features[
+                    "freq_sigma_FitGaussWidth_gauss_sigma"
+                ].item(),
+                max_cand_width,
+            )
             if np.isfinite(cand_width):
                 used_delta_freq = np.sqrt(used_delta_freq**2 + cand_width**2)
 
     current_period = known_sources["current_spin_period_s"]
     for harm in harms:
         bayes_factor_harm = gaussian_bayes(
-            candidate.best_freq * harm,
-            used_delta_freq * harm,
-            1 / current_period,
+            candidate.best_freq,
+            used_delta_freq,
+            1 / current_period * harm,
             mu_min,
             mu_max,
-            sigma_mu=known_sources["spin_period_s_error"] / current_period**2,
+            sigma_mu=known_sources["spin_period_s_error"] * harm,
         )
         bayes_factor = np.max((bayes_factor, bayes_factor_harm), axis=0)
 
