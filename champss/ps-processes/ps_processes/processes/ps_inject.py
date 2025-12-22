@@ -63,7 +63,7 @@ def generate_injection(pspec, f_nyquist = 508):
     '''
     f_log = np.logspace(-3, 2.7, int((4/6)*len(f_dist)))
     f_choices = np.concatenate([f_dist, f_log]) 
-    f_choices[f_choices > f_nyquist] = f_nyquist
+    f_choices = f_choices[f_choices < f_nyquist]
     f = np.random.choice(f_choices)
 
     dm_spread = np.linspace(0, pspec.dms[-1], 10000)
