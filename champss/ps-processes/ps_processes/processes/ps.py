@@ -492,6 +492,7 @@ class PowerSpectraCreation:
             # normalise power spectrum
             if clean_rfi:
                 power_spectrum[bad_freq_indices] = np.nan
+
             if remove_rednoise:
                 log.debug("Normalising power spectrum with rednoise removal")
                 power_spectrum[1:], medians, scale = rednoise_normalise(
