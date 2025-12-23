@@ -741,6 +741,7 @@ def run_all_pipeline_processes(
         "using_pyroscope": False,
         "using_docker": True,
         "config_options": pipeline_config_options,
+        "known_source_threshold": 10,
     }
     if pipeline_arguments != "":
         split_args = pipeline_arguments.split("--")
