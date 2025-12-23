@@ -498,10 +498,6 @@ class PowerSpectraCreation:
                     power_spectrum[1:], **rednoise_config
                 )
                 all_medians.append(medians)
-                #REMOVE BELOW, DEBUGGING ONLY
-                if np.inf in medians:
-                    print(len(bad_freq_indices))
-                    print(power_spectrum[1:10])
                 all_scales.append(scale)
 
             else:
