@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.14.0](https://github.com/chime-sps/champss_software/compare/v0.13.0...v0.14.0) (2025-12-23)
+
+
+### Features
+
+* Allow controller to write fixed nchan and use multiple mounts ([#159](https://github.com/chime-sps/champss_software/issues/159)) ([717d28f](https://github.com/chime-sps/champss_software/commit/717d28f2df5f910619e871e712517d064b3ae10f))
+* Allow setting datpath in multiday folding ([#163](https://github.com/chime-sps/champss_software/issues/163)) ([57b7b59](https://github.com/chime-sps/champss_software/commit/57b7b590a7a0f00c3e5bf718974c59d69e86e51d))
+* change default database server to sps-archiver1 ([#171](https://github.com/chime-sps/champss_software/issues/171)) ([a3d002d](https://github.com/chime-sps/champss_software/commit/a3d002db74a56bafdddcf93a7055bddbabc2bc72))
+* Changed search parameters for holiday processing run ([#199](https://github.com/chime-sps/champss_software/issues/199)) ([af6b674](https://github.com/chime-sps/champss_software/commit/af6b674dc7c73d9c6f484a568a5c9a789add75dd))
+* enable saving medians to database ([#160](https://github.com/chime-sps/champss_software/issues/160)) ([4fdd3ae](https://github.com/chime-sps/champss_software/commit/4fdd3aeaa7a207c53b03da942e68fbdfad6f6b8f))
+* Enable saving rednoise ([#149](https://github.com/chime-sps/champss_software/issues/149)) ([e62f672](https://github.com/chime-sps/champss_software/commit/e62f672a6c6956b1253102dbc1a4a984a34fa00e))
+* Faster loading of injection files, stricter injection identification and loading of empty candidate files ([#158](https://github.com/chime-sps/champss_software/issues/158)) ([595cddd](https://github.com/chime-sps/champss_software/commit/595cddd069ed0466bed03d8e6041fb730e6ca49c))
+* Filter known pulsars along arc ([#193](https://github.com/chime-sps/champss_software/issues/193)) ([e0775fb](https://github.com/chime-sps/champss_software/commit/e0775fbc3fe5fbf6f20f3cdb7cf8adf0e9972bd1))
+* Filter known source f0 nan in sifter ([#194](https://github.com/chime-sps/champss_software/issues/194)) ([88641b5](https://github.com/chime-sps/champss_software/commit/88641b56d0d01166ea6c906242f335af8c6bf00a))
+* Injection patches and cleaning for realtime processing ([#198](https://github.com/chime-sps/champss_software/issues/198)) ([f10a9cd](https://github.com/chime-sps/champss_software/commit/f10a9cd6e3df5f845a060f586743ab2d0e58cf67))
+* New scheduling and other changes ([#188](https://github.com/chime-sps/champss_software/issues/188)) ([cf46388](https://github.com/chime-sps/champss_software/commit/cf463886981ad627d40b2658c2babd1dbd12815b))
+* Rewrite frequency ranges ([#162](https://github.com/chime-sps/champss_software/issues/162)) ([c183586](https://github.com/chime-sps/champss_software/commit/c1835860118ef7152777ab94da552ea3851f38ce))
+
+
+### Bug Fixes
+
+* Allow sps-common to be installed as a dependency ([#165](https://github.com/chime-sps/champss_software/issues/165)) ([06f0218](https://github.com/chime-sps/champss_software/commit/06f02187847595934add5ddc0f87d2b8bbcb9ee9))
+* Change build node ([#187](https://github.com/chime-sps/champss_software/issues/187)) ([543cfec](https://github.com/chime-sps/champss_software/commit/543cfec7e04785a0e6cedd974d74abd83b18ea41))
+
 ## [0.13.0](https://github.com/chime-sps/champss_software/compare/v0.12.1...v0.13.0) (2025-05-16)
 
 
