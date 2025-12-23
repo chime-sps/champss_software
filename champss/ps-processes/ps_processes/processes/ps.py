@@ -17,6 +17,7 @@ from prometheus_client import Summary
 from ps_processes.utilities.utilities import rednoise_normalise
 from rfi_mitigation.cleaners.periodic import DynamicPeriodicFilter, StaticPeriodicFilter
 from scipy.interpolate import interp1d
+from scipy.fft import rfftfreq
 from sps_common.barycenter import (
     bary_from_topo_freq,
     barycenter_timeseries,
@@ -151,7 +152,7 @@ class PowerSpectraCreation:
     nbit = attribute(validator=instance_of(int), default=32)
     num_threads = attribute(validator=instance_of(int), default=8)
     mp_chunk_size: bool = attribute(default=10)
-    save_medians: bool = attribute(default=False)
+    save_medians: bool = attribute(default=True)
     write_medians: bool = attribute(default=False)
     write_zero_dm_medians: bool = attribute(default=False)
     static_filter = attribute(init=False)
@@ -313,14 +314,15 @@ class PowerSpectraCreation:
 
                 medians = np.asarray(medians)
                 median_dm_indices = np.asarray(median_dm_indices)
-                scales = np.asarray(scales)
-
+                scales = np.asarray(scales[0]) #same for each DM
+                #this is the jankiest way of getting the freq_labels but I'm not sure how else to do it
+                rn_all_freqs = rfftfreq(2 * (power_spectra.shape[1] - 1), d = TSAMP)
+                rn_freq_labels = rn_all_freqs[np.cumsum(scales)]
+            
             if self.save_medians:
                 rn_medians = medians[np.newaxis, :]
                 rn_dm_indices = median_dm_indices[np.newaxis, :]
-                # note that scales are saved iteratively over DM but are identical at each DM
-                # so we only need one row of scales
-                rn_scales = scales[np.newaxis, 0, :]
+                rn_scales = scales[np.newaxis, :]
             else:
                 rn_medians = None
                 rn_scales = None
@@ -331,8 +333,10 @@ class PowerSpectraCreation:
                 log.info(f"Saving rednoise information to {medians_path}.")
                 np.savez(
                     medians_path,
-                    medians=medians,
-                    scales=scales,
+                    medians=medians[np.newaxis, :],
+                    scales=scales[np.newaxis, :],
+                    freq_labels=rn_freq_labels[np.newaxis, :],
+                    dms=dedisp_time_series.dms,
                 )
             else:
                 medians_path = None
@@ -353,7 +357,7 @@ class PowerSpectraCreation:
         datetimes = Time(dedisp_time_series.start_mjd, format="mjd").datetime.replace(
             tzinfo=pytz.utc
         )
-
+        
         return PowerSpectra(
             power_spectra=power_spectra,
             dms=dedisp_time_series.dms,
@@ -488,6 +492,7 @@ class PowerSpectraCreation:
             # normalise power spectrum
             if clean_rfi:
                 power_spectrum[bad_freq_indices] = np.nan
+
             if remove_rednoise:
                 log.debug("Normalising power spectrum with rednoise removal")
                 power_spectrum[1:], medians, scale = rednoise_normalise(

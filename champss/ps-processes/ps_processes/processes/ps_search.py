@@ -194,10 +194,12 @@ class PowerSpectraSearch:
             whether or not to inject an artificial pulse into the power spectrum
 
         injection_path: str
-            Path to injection file or string describing default injection type
+            Path to injection file or string describing default injection type.
+            If 'random', then an integer may be sent in following the string to
+            clarify the number of random profiles to inject. Ex: random4
 
         injection_indices: list
-            Indices of injection file entries that are injected
+            Indices of injection file entries that are injected.
 
         only_injections: bool
             Whether non-injections are filtered out. Default: False
@@ -223,26 +225,21 @@ class PowerSpectraSearch:
             ).astype(np.int32)
 
         if injection_path is not None:
-            presets = [
-                "gaussian",
-                "subpulse",
-                "interpulse",
-                "faint",
-                "high-DM",
-                "slow",
-                "fast",
-            ]
-            if injection_path in presets:
-                profile = injection_path
-                injection_dict = ps_inject.main(
-                    pspec,
-                    self.full_harm_bins,
-                    profile,
-                    scale_injections=scale_injections,
-                )
-                injection_dicts = injection_dict
+            injection_dicts = []
+            if 'random' in injection_path:
+                if injection_path == 'random':
+                    n_injections = 1
+                else:
+                    n_injections = int(injection_path[-1])
+
+                for i in range(n_injections):
+                    injection_dict = ps_inject.main(
+                        pspec,
+                        self.full_harm_bins,
+                        scale_injections=scale_injections,
+                    )
+                    injection_dicts.append(injection_dict)
             else:
-                injection_dicts = []
                 try:
                     with open(injection_path) as file:
                         injection_list = yaml.safe_load(file)
@@ -268,7 +265,7 @@ class PowerSpectraSearch:
                         injection_dict,
                         scale_injections=scale_injections,
                     )
-                    injection_dicts.extend(injection_dict)
+                    injection_dicts.append(injection_dict)
             for injection_index, injection_dict in enumerate(injection_dicts):
                 injection_dict["injection_index"] = injection_index
         else:
