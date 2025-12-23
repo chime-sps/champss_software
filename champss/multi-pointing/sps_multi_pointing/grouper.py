@@ -159,7 +159,7 @@ class SinglePointingCandidateGroup:
         std_ra = scipy.stats.circstd(all_ra_dec[:, 0] / 180 * math.pi) * 180 / math.pi
         std_dec = np.std(all_ra_dec[:, 1])
 
-        delta_ra = min(np.ptp(ra_dec[:, 1]), 360 - np.ptp(ra_dec[:, 1]))
+        delta_ra = min(np.ptp(ra_dec[:, 0]), 360 - np.ptp(ra_dec[:, 0]))
         delta_dec = np.ptp(ra_dec[:, 1])
 
         self.position_sigmas = np.array(
@@ -172,7 +172,7 @@ class SinglePointingCandidateGroup:
         )
         self.group_attributes.update({"ra": centroid_ra, "dec": centroid_dec})
         self.position_based_features = np.array(
-            (mean_ra, std_ra, delta_ra, mean_dec, delta_dec, std_dec),
+            (mean_ra, std_ra, delta_ra, mean_dec, std_dec, delta_dec),
             dtype=[
                 ("mean_ra", float),
                 ("std_ra", float),
@@ -189,7 +189,7 @@ class SinglePointingCandidateGroup:
         """
         # summaries = [spc.summary for spc in self.group_members]
 
-        # Sort by sigma
+        # Sort by sigma, Removing sorting will break some of the properties of the resulting candidate
         sorted_members = sorted(self.group_members, key=lambda d: d.sigma, reverse=True)
 
         # this is dumb, but for now, the summary is reduced to the summary of
@@ -293,7 +293,7 @@ class SinglePointingCandidateGroup:
             "obs_id": obs_id,
             "datetimes": datetimes,
             "summed_raw_harmonic_powers": summed_raw_harmonic_powers,
-            "all_summaries": [],  # Disabled for now to make candidates lighter
+            "all_summaries": sorted_members,  # Disabled for now to make candidates lighter
             "best_nharm": max_sigma_cand["nharm"],
             "best_harmonic_sum": max_sigma_cand["best_harmonic_sum"],
             "all_spcc_files": all_spcc_files,

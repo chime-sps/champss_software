@@ -107,6 +107,13 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     )
 
     if config.logging.get("file_logging", False):
+        # Remove possibly pre-existing file handler
+        handlers_to_be_removed = []
+        for log_handler in log.root.handlers:
+            if isinstance(log_handler, logging.FileHandler):
+                handlers_to_be_removed.append(log_handler)
+        for handler in handlers_to_be_removed:
+            log.root.removeHandler(handler)
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(
@@ -194,7 +201,9 @@ def dbexcepthook(type, value, tb):
 @click.argument("dec", type=click.FloatRange(-90, 90))
 @click.argument(
     "components",
-    type=click.Choice(["all", "rfi", "beamform", "dedisp", "ps", "ffa", "search", "cleanup"]),
+    type=click.Choice(
+        ["all", "rfi", "beamform", "dedisp", "ps", "ffa", "search", "cleanup"]
+    ),
     nargs=-1,
 )
 @click.option(
@@ -353,6 +362,7 @@ def main(
     E.g. If you want to produce filterbank files only from scratch,
     you can do run-pipeline --date 20200701 317.86 20.96 rfi beamform
     """
+    log.info("START")
     # Logging in multiprocessing child processes with Linux default
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
@@ -591,7 +601,9 @@ def main(
                     spectra_shared.unlink()
 
             # Run FFA search if requested
-            if "ffa" in components and config.get("ffa", {}).get("run_ffa_search", False):
+            if "ffa" in components and config.get("ffa", {}).get(
+                "run_ffa_search", False
+            ):
                 log.info(
                     "FFA Search"
                     f" ({active_pointing.ra:.2f} {active_pointing.dec:.2f}) @"

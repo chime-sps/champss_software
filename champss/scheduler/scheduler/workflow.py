@@ -46,10 +46,10 @@ def message_slack(
 ):
     log.setLevel(logging.INFO)
     log.info(f"Sending to Slack: \n{slack_message}")
-    
+
     if not slack_token:
         slack_token = os.getenv("SLACK_APP_TOKEN", "")
-    
+
     slack_client = WebClient(token=slack_token)
     try:
         slack_request = slack_client.chat_postMessage(
@@ -505,7 +505,7 @@ def get_work_from_buckets(workflow_buckets_name, work_id, failover_to_results):
     workflow_buckets_list = workflow_buckets_api.view(
         query={"pipeline": workflow_buckets_name, "id": work_id},
         limit=1,
-        projection={"results": 1},
+        # projection={"results": 1},
     )
 
     log.info(f"Workflow Buckets for Work ID {work_id}: \n{workflow_buckets_list}")
@@ -515,7 +515,7 @@ def get_work_from_buckets(workflow_buckets_name, work_id, failover_to_results):
             type(workflow_buckets_list[0]) == dict
             and "results" in workflow_buckets_list[0]
         ):
-            workflow_buckets_dict = workflow_buckets_list[0]["results"]
+            workflow_buckets_dict = workflow_buckets_list[0]  # ["results"]
             return workflow_buckets_dict
 
     if failover_to_results:
@@ -546,7 +546,7 @@ def get_work_from_results(workflow_results_name, work_id, failover_to_buckets):
         query={"id": work_id},
         pipeline=workflow_results_name,
         limit=1,
-        projection={"results": 1},
+        # projection={"results": 1},
     )
 
     log.info(f"Workflow Results for Work ID {work_id}: \n{workflow_results_list}")
@@ -556,7 +556,7 @@ def get_work_from_results(workflow_results_name, work_id, failover_to_buckets):
             type(workflow_results_list[0]) == dict
             and "results" in workflow_results_list[0]
         ):
-            workflow_results_dict = workflow_results_list[0]["results"]
+            workflow_results_dict = workflow_results_list[0]  # ["results"]
             return workflow_results_dict
 
     if failover_to_buckets:

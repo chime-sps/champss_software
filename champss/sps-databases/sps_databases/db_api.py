@@ -19,6 +19,7 @@ from sps_databases.models import (
     Process,
     ProcessStatus,
     PsStack,
+    DailyRun,
 )
 
 
@@ -1308,3 +1309,58 @@ def update_pulsars_in_pointing(pointing_id, pulsar_name, pulsar_dict, stack=Fals
             else:
                 updated_pointing = initial_pointing
     return updated_pointing
+
+
+def update_daily_run(date, payload, upsert=True):
+    """
+    Updates a power spectra stack entry of a given pointing.
+
+    The PS stack entry is updated with the given attribute
+    and values as a dict.
+
+    Parameters
+    -------
+    date: datetime.datetime
+        The date that should be updated
+
+    payload: dict
+        The dict of the attributes and values to be updated
+
+    upsert: bool
+        If daily run object should eb created if not pre-existing.
+        For now always create, to simplify.
+
+    Returns
+    -------
+    DailyRun: dict
+        The dict of the updated DailyRun entry
+    """
+    db = db_utils.connect()
+    payload["last_changed"] = dt.datetime.now()
+    return db.daily_runs.find_one_and_update(
+        {"date": date.replace(tzinfo=None)},
+        {"$set": payload},
+        return_document=pymongo.ReturnDocument.AFTER,
+        upsert=upsert,
+    )
+
+
+def get_daily_run(date):
+    """
+    Updates a power spectra stack entry of a given pointing.
+
+    The PS stack entry is updated with the given attribute
+    and values as a dict.
+
+    Parameters
+    -------
+    date: datetime.datetime
+        The date that should be updated
+
+    Returns
+    -------
+    DailyRun: DailyRun
+        The DailyRun object for the database entry
+    """
+    db = db_utils.connect()
+    return DailyRun.from_db(db.daily_runs.find_one({"date": date.replace(tzinfo=None)}))

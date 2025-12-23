@@ -5,9 +5,9 @@ template function is defined below.
 Adpated from frb-l2l3 on 20200202.
 """
 
-
 import numpy as np
 from astropy.time import Time
+from sps_common.interfaces.utilities import angular_separation
 
 # from sps_common.constants import TELESCOPE_ROTATION_ANGLE
 # from sps_common.config import search_freq_range_from_dc
@@ -247,99 +247,6 @@ def compare_frequency(
     #        )
 
     return bayes_factor
-
-
-def angular_separation(ra1, dec1, ra2, dec2):
-    """
-    Calculates the angular separation between two celestial objects.
-
-    Parameters
-    ----------
-    ra1 : float, array
-        Right ascension of the first source in degrees.
-    dec1 : float, array
-        Declination of the first source in degrees.
-    ra2 : float, array
-        Right ascension of the second source in degrees.
-    dec2 : float, array
-        Declination of the second source in degrees.
-
-    Returns
-    -------
-    angle : float, array
-        Angle between the two sources in degrees, where 0 corresponds
-        to the positive Dec axis.
-    angular_separation : float, array
-        Angular separation between the two sources in degrees.
-
-    Notes
-    -----
-    The angle between sources is calculated with the Pythagorean theorem
-    and is used later to calculate the uncertainty in the event position
-    in the direction of the known source.
-    Calculating the angular separation using spherical geometry gives
-    poor accuracy for small (< 1 degree) separations, and using the
-    Pythagorean theorem fails for large separations (> 1 degrees).
-    Transforming the spherical geometry cosine formula into one that
-    uses haversines gives the best results, see e.g. [1]_. This gives:
-    .. math:: \\mathrm{hav} d = \\mathrm{hav} \\Delta\\delta +
-              \\cos\\delta_1 \\cos\\delta_2 \\mathrm{hav} \\Delta\\alpha
-    Where we use the identity
-    :math:`\\mathrm{hav} \\theta = \\sin^2(\\theta/2)` in our
-    calculations.
-    The calculation might give inaccurate results for antipodal
-    coordinates, but we do not expect such calculations here..
-    The source angle (or bearing angle) :math:`\\theta` from a point
-    A(ra1, dec1) to a point B(ra2, dec2), defined as the angle in
-    clockwise direction from the positive declination axis can be
-    calculated using:
-    .. math:: \\tan(\\theta) = (\\alpha_2 - \\alpha_1) /
-              (\\delta_2 - \\delta_1)
-    In NumPy :math:`\\theta` can be calculated using the arctan2
-    function. Note that for negative :math:`\\theta` a factor :math:`2\\pi`
-    needs to be added. See also the documentation for arctan2.
-
-    References
-    ----------
-    .. [1] Sinnott, R. W. 1984, Sky and Telescope, 68, 158
-    Examples
-    --------
-    >>> print(angular_separation(200.478971, 55.185900, 200.806433, 55.247994))
-    (79.262937451490941, 0.19685681276638525)
-    >>> print(angular_separation(0., 20., 180., 20.))
-    (90.0, 140.0)
-    """
-    # convert ra and dec to numpy arrays
-    ra1 = np.array(ra1)
-    ra2 = np.array(ra2)
-    dec1 = np.array(dec1)
-    dec2 = np.array(dec2)
-
-    # convert decimal degrees to radians
-    deg2rad = np.pi / 180
-    ra1 = ra1 * deg2rad
-    dec1 = dec1 * deg2rad
-    ra2 = ra2 * deg2rad
-    dec2 = dec2 * deg2rad
-
-    # delta works
-    dra = ra1 - ra2
-    ddec = dec1 - dec2
-
-    # haversine formula
-    hav = np.sin(ddec / 2.0) ** 2 + np.cos(dec1) * np.cos(dec2) * np.sin(dra / 2.0) ** 2
-    angular_separation = 2 * np.arcsin(np.sqrt(hav))
-
-    # angle in the clockwise direction from the positive dec axis
-    # note the minus signs in front of `dra` and `ddec`
-    source_angle = np.arctan2(-dra, -ddec)
-    if isinstance(source_angle, np.ndarray):
-        source_angle[source_angle < 0] += 2 * np.pi
-    elif source_angle < 0:
-        source_angle += 2 * np.pi
-
-    # convert radians back to decimal degrees
-    return source_angle / deg2rad, angular_separation / deg2rad
 
 
 def position_uncertainty(semi_major, semi_minor, ellipse_angle, source_angle):

@@ -31,8 +31,21 @@ class ProcessStatus(enum.Enum):
     blocked = 5
 
 
+class DailyStatus(enum.Enum):
+    created = 0
+    scheduled = 1
+    finishedPipeline = 2
+    finishedMultiPointing = 3
+    finishedClassification = 4
+    finishedFolding = 5
+
+
 class DatabaseError(Exception):
     pass
+
+
+processing_tier_limits = range(10, 110, 10)
+processing_tier_names = [f"max-{max_limit}GB" for max_limit in processing_tier_limits]
 
 
 @attrs
@@ -322,7 +335,7 @@ class Observation:
                 try:
                     birdie_info = np.load(birdie_file)
                     doc.update(birdie_info.items())
-                except FileNotFoundError as e:
+                except (FileNotFoundError, OSError) as e:
                     log.warning(f"Could not load birdie_file at {birdie_file}.")
                     log.warning(e)
             rn_file = doc.get("rn_file", None)
@@ -331,7 +344,7 @@ class Observation:
                     rn_arrays = np.load(rn_file)
                     doc["rn_medians"] = rn_arrays["medians"]
                     doc["rn_scales"] = rn_arrays["scales"]
-                except FileNotFoundError as e:
+                except (FileNotFoundError, OSError) as e:
                     log.warning(f"Could not load dm0 red noise file at {rn_file}.")
                     log.warning(e)
             dm0_rn_file = doc.get("dm0_rn_file", None)
@@ -340,7 +353,7 @@ class Observation:
                     dm0_rn_arrays = np.load(dm0_rn_file)
                     doc["dm0_rn_medians"] = dm0_rn_arrays["medians"]
                     doc["dm0_rn_scales"] = dm0_rn_arrays["scales"]
-                except FileNotFoundError as e:
+                except (FileNotFoundError, OSError) as e:
                     log.warning(f"Could not load dm0 red noise file at {dm0_rn_file}.")
                     log.warning(e)
             filtered_doc = filter_class_dict(cls, doc)
@@ -862,12 +875,22 @@ class Process:
 
     @property
     def ram_requirement(self):
+        # Very long processes will be split into multiple processing runs
+        ntime = min(self.ntime, 2**22)
         return min(
-            100,
-            int(
-                4 + (self.maxdm * 0.04 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20)
-            ),
+            100.0,
+            4 + (self.maxdm * 0.04 + ntime * 6e-6) * 2 ** (ntime // 2**20),
         )
+
+    @property
+    def tier(self):
+        ram_requirement = self.ram_requirement
+        for index, mem_limit in enumerate(processing_tier_limits):
+            if ram_requirement < mem_limit:
+                break
+        tier_name = processing_tier_names[index]
+        tier_limit = processing_tier_limits[index]
+        return tier_name, tier_limit
 
     @classmethod
     def from_db(cls, doc):
@@ -886,3 +909,64 @@ class Process:
         doc["status"] = self.status.value
         doc["obs_status"] = self.obs_status.value
         return doc
+
+
+@attrs
+class DailyRun:
+    date = attrib(validator=validators.instance_of(dt.date))
+    # status = attrib(validator=validators.in_(DailyStatus), type=DailyStatus)
+    schedule_result = attrib(
+        default={},
+        converter=dict,
+    )
+    pipeline_result = attrib(
+        default={},
+        converter=dict,
+    )
+    multipointing_result = attrib(
+        default={},
+        converter=dict,
+    )
+    classification_result = attrib(
+        default={},
+        converter=dict,
+    )
+    folding_result = attrib(
+        default={},
+        converter=dict,
+    )
+    last_changed = attrib(
+        validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
+    )
+    plots = attrib(
+        default={},
+        converter=dict,
+    )
+
+    @property
+    def id(self):
+        return self._id
+
+    @classmethod
+    def from_db(cls, doc):
+        """Create a `DailyRun` instance from a MongoDB document."""
+        filtered_doc = filter_class_dict(cls, doc)
+        obj = cls(**filtered_doc)
+        return obj
+
+    def to_db(self):
+        """Return a MongoDB document version of this instance."""
+        doc = asdict(self)
+        doc["_id"] = ObjectId(self.id)
+        return doc
+
+    @property
+    def status(self):
+        steps = ["schedule", "pipeline", "multipointing", "classification", "folding"]
+        status = 0
+        for step in steps:
+            if getattr(self, f"{step}_result", {}) != {}:
+                status += 1
+            else:
+                break
+        return status

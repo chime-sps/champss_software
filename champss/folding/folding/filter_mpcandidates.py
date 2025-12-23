@@ -53,6 +53,7 @@ def Filter(
     write_to_db=False,
     basepath="/data/chime/sps/sps_processing",
     foldpath="/data/chime/sps/archives",
+    class_threshold=0,
 ):
     """
     Read a day's worth of multi-pointing candidates, retrieve a set of the most
@@ -79,144 +80,147 @@ def Filter(
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
 
     date_str = cand_obs_date.strftime("%Y%m%d")
-    fname = f"{basepath}/mp_runs/daily_{date_str}/all_mp_cands.csv"
+    fname = f"{basepath}/mp_runs/daily_{date_str}/all_mp_cands_predicted.csv"
     df = pd.read_csv(fname)
+    if class_threshold == 0.0:
+        SNthresh = min_sigma
+        DMthresh = min_dm
+        F0cut = min_f0
 
-    SNthresh = min_sigma
-    DMthresh = min_dm
-    F0cut = min_f0
+        i_SNcutabove = np.flatnonzero(df["sigma"] > SNthresh)
+        i_DMcutabove = np.flatnonzero(df["mean_dm"] > DMthresh)
 
-    i_SNcutabove = np.flatnonzero(df["sigma"] > SNthresh)
-    i_DMcutabove = np.flatnonzero(df["mean_dm"] > DMthresh)
+        # Filter on known_sources
+        ra = df["best_ra"]
+        dec = df["best_dec"]
 
-    # Filter on known_sources
-    ra = df["best_ra"]
-    dec = df["best_dec"]
+        i_ks = np.flatnonzero(df["known_source_label"] > 0.5)
+        dDMtol = 0.1
+        i_ksclusters = []
 
-    i_ks = np.flatnonzero(df["known_source_label"] > 0.5)
-    dDMtol = 0.1
-    i_ksclusters = []
+        for j in range(len(i_ks)):
+            rai = ra[i_ks[j]]
+            deci = dec[i_ks[j]]
 
-    for j in range(len(i_ks)):
-        rai = ra[i_ks[j]]
-        deci = dec[i_ks[j]]
+            i_nearks = get_indices_within_radius(rai, deci, ra, dec, rad_deg=1)
+            dm_ks = df["known_source_dm"][i_ks[j]]
+            f0_ks = 1 / df["known_source_p0"][i_ks[j]]
+            source = df["known_source_name"][i_ks[j]]
+            print(source, dm_ks, f0_ks)
 
-        i_nearks = get_indices_within_radius(rai, deci, ra, dec, rad_deg=1)
-        dm_ks = df["known_source_dm"][i_ks[j]]
-        f0_ks = 1 / df["known_source_p0"][i_ks[j]]
-        source = df["known_source_name"][i_ks[j]]
-        print(source, dm_ks, f0_ks)
+            i_dmmatch = np.flatnonzero(np.abs(df["mean_dm"] - dm_ks) / dm_ks < dDMtol)
+            i_ksmatch = np.intersect1d(i_nearks, i_dmmatch)
+            i_ksclusters = np.concatenate((i_ksclusters, i_ksmatch))
 
-        i_dmmatch = np.flatnonzero(np.abs(df["mean_dm"] - dm_ks) / dm_ks < dDMtol)
-        i_ksmatch = np.intersect1d(i_nearks, i_dmmatch)
-        i_ksclusters = np.concatenate((i_ksclusters, i_ksmatch))
+        i_ksclusters = np.unique(np.array(i_ksclusters))
 
-    i_ksclusters = np.unique(np.array(i_ksclusters))
+        # Filter on position spread.
+        # Currently only filtering on weighted RA spread, since we have limited beams
+        dra = df["std_ra"]
 
-    # Filter on position spread.
-    # Currently only filtering on weighted RA spread, since we have limited beams
-    dra = df["std_ra"]
+        # Arbitrary, but tested that only RFI and extremely bright known sources
+        # (e.g. B0329+54, B2217+47) are above this threshold
+        i_posspread = np.flatnonzero(dra > 5)
+        i_posspread = np.intersect1d(i_posspread, i_SNcutabove)
+        i_sndmposcut = np.intersect1d(i_posspread, i_DMcutabove)
+        fsub = df["mean_freq"][i_sndmposcut].values
+        dmsub = df["mean_dm"][i_sndmposcut].values
 
-    # Arbitrary, but tested that only RFI and extremely bright known sources
-    # (e.g. B0329+54, B2217+47) are above this threshold
-    i_posspread = np.flatnonzero(dra > 5)
-    i_posspread = np.intersect1d(i_posspread, i_SNcutabove)
-    i_sndmposcut = np.intersect1d(i_posspread, i_DMcutabove)
-    fsub = df["mean_freq"][i_sndmposcut].values
-    dmsub = df["mean_dm"][i_sndmposcut].values
-
-    # Uniform bins of .5%
-    # perhaps better to do iteratively?
-    bins = []
-    bini = 10 ** (-2)
-    bins.append(bini)
-    binmax = 1e2
-    stepsize = 0.01
-    step = 1 + stepsize
-
-    while bini < binmax:
-        bini = bini * step
+        # Uniform bins of .5%
+        # perhaps better to do iteratively?
+        bins = []
+        bini = 10 ** (-2)
         bins.append(bini)
+        binmax = 1e2
+        stepsize = 0.01
+        step = 1 + stepsize
 
-    hist_f0clusters = np.histogram(fsub, bins=bins)
-    histbins = hist_f0clusters[1]
-    bincounts = hist_f0clusters[0]
+        while bini < binmax:
+            bini = bini * step
+            bins.append(bini)
 
-    i_f0cluster = np.flatnonzero(bincounts > 2)
-    birdie_cands = []
+        hist_f0clusters = np.histogram(fsub, bins=bins)
+        histbins = hist_f0clusters[1]
+        bincounts = hist_f0clusters[0]
 
-    # Flag narrow freq bins with large DM spread of candidates
-    for i in i_f0cluster:
-        bclow = histbins[i]
-        bchigh = histbins[i + 1]
-        bcmid = (bchigh + bclow) / 2.0
-        bcwidth = (bchigh - bclow) / 2.0
+        i_f0cluster = np.flatnonzero(bincounts > 2)
+        birdie_cands = []
 
-        isub = np.flatnonzero(np.abs(fsub - bcmid) <= bcwidth)
-        dDM = np.std(dmsub[isub]) / np.mean(dmsub[isub])
-        if dDM > dDMtol:
-            birdie = (bcmid, bcwidth)
-            birdie_cands.append(birdie)
+        # Flag narrow freq bins with large DM spread of candidates
+        for i in i_f0cluster:
+            bclow = histbins[i]
+            bchigh = histbins[i + 1]
+            bcmid = (bchigh + bclow) / 2.0
+            bcwidth = (bchigh - bclow) / 2.0
 
-    # Zap these bins for all candidates
-    birdie_cands = np.array(birdie_cands)
-    i_birdies = []
-    if birdie_cands.shape[0] > 0:
-        for i in range(birdie_cands.shape[0]):
-            birdie = birdie_cands[i]
-            f0 = birdie[0]
-            fwidth = birdie[1]
-            i_birdie = np.flatnonzero(np.abs(df["mean_freq"] - f0) < fwidth)
-            i_birdies = np.concatenate((i_birdies, i_birdie))
-        i_birdies = i_birdies.astype("int")
+            isub = np.flatnonzero(np.abs(fsub - bcmid) <= bcwidth)
+            dDM = np.std(dmsub[isub]) / np.mean(dmsub[isub])
+            if dDM > dDMtol:
+                birdie = (bcmid, bcwidth)
+                birdie_cands.append(birdie)
 
-    # Combine all filters, indeces of candidates to remove
-    i_SNcutbelow = np.flatnonzero(df["sigma"] < SNthresh)
-    i_DMcutbelow = np.flatnonzero(df["mean_dm"] < DMthresh)
-    i_F0cut = np.flatnonzero(df["mean_freq"] < F0cut)
+        # Zap these bins for all candidates
+        birdie_cands = np.array(birdie_cands)
+        i_birdies = []
+        if birdie_cands.shape[0] > 0:
+            for i in range(birdie_cands.shape[0]):
+                birdie = birdie_cands[i]
+                f0 = birdie[0]
+                fwidth = birdie[1]
+                i_birdie = np.flatnonzero(np.abs(df["mean_freq"] - f0) < fwidth)
+                i_birdies = np.concatenate((i_birdies, i_birdie))
+            i_birdies = i_birdies.astype("int")
 
-    i_bad = np.concatenate(
-        [
-            i_SNcutbelow,
-            i_DMcutbelow,
-            i_F0cut,
-            i_ksclusters,
-            i_ks,
-            i_birdies,
-            i_posspread,
-        ]
-    )
+        # Combine all filters, indeces of candidates to remove
+        i_SNcutbelow = np.flatnonzero(df["sigma"] < SNthresh)
+        i_DMcutbelow = np.flatnonzero(df["mean_dm"] < DMthresh)
+        i_F0cut = np.flatnonzero(df["mean_freq"] < F0cut)
 
-    i_bad = np.unique(i_bad).astype("int")
-    i_good = np.arange(len(df["mean_freq"].values))
-    i_good = np.delete(i_good, i_bad)
+        i_bad = np.concatenate(
+            [
+                i_SNcutbelow,
+                i_DMcutbelow,
+                i_F0cut,
+                i_ksclusters,
+                i_ks,
+                i_birdies,
+                i_posspread,
+            ]
+        )
 
-    # New dataframe for Candidates that pass all filters
-    df1 = df.iloc[i_good]
+        i_bad = np.unique(i_bad).astype("int")
+        i_good = np.arange(len(df["mean_freq"].values))
+        i_good = np.delete(i_good, i_bad)
 
-    # Restrict to only one candidate per pointing
-    cand_ra = df1["best_ra"].values
-    cand_dec = df1["best_dec"].values
-    cand_sigma = df1["sigma"].values
-    i_matched = []
-    for i in range(len(cand_ra)):
-        rai = cand_ra[i]
-        deci = cand_dec[i]
-        i_match = np.flatnonzero((cand_ra == rai) & (cand_dec == deci))
-        if len(i_match) > 1:
-            sigma_sub = cand_sigma[i_match]
-            isub_brightest = np.argmax(sigma_sub)
-            i_matched.append(i_match[isub_brightest])
-        else:
-            i_matched.append(i_match[0])
-    i_matched = np.unique(i_matched)
+        # New dataframe for Candidates that pass all filters
+        df1 = df.iloc[i_good]
 
-    # Final dataframe
-    print(
-        f"{len(i_matched)} candidates after filtering, from {len(df)} candidates before"
-        " filtering."
-    )
-    df_filtered = df1.iloc[i_matched]
+        # Restrict to only one candidate per pointing
+        cand_ra = df1["best_ra"].values
+        cand_dec = df1["best_dec"].values
+        cand_sigma = df1["sigma"].values
+        i_matched = []
+        for i in range(len(cand_ra)):
+            rai = cand_ra[i]
+            deci = cand_dec[i]
+            i_match = np.flatnonzero((cand_ra == rai) & (cand_dec == deci))
+            if len(i_match) > 1:
+                sigma_sub = cand_sigma[i_match]
+                isub_brightest = np.argmax(sigma_sub)
+                i_matched.append(i_match[isub_brightest])
+            else:
+                i_matched.append(i_match[0])
+        i_matched = np.unique(i_matched)
+
+        # Final dataframe
+        print(
+            f"{len(i_matched)} candidates after filtering, from {len(df)} candidates before"
+            " filtering."
+        )
+        df_filtered = df1.iloc[i_matched]
+    else:
+        df_filtered = df[df["prediction"] > class_threshold]
+        df_filtered = df_filtered[df_filtered["sigma"] > min_sigma]
     ras = df_filtered["best_ra"].values
     decs = df_filtered["best_dec"].values
     f0s = df_filtered["mean_freq"].values
@@ -252,6 +256,31 @@ def Filter(
             f0s=f0s,
             known=known,
         )
+
+
+def filter_mp_df(df, sigma_min=6, class_min=0.9, only_use_strongest_in_cluster=True):
+    df_filtered = df[df["prediction"] > class_min]
+    df_filtered = df_filtered[df_filtered["sigma"] > sigma_min]
+    if only_use_strongest_in_cluster:
+        df_filtered = df_filtered[df_filtered["strongest_in_cluster"] == 1]
+    df_filtered["folded"] = True
+    return df_filtered
+
+
+def write_df_to_fsdb(df, date):
+    for index, row in df.iterrows():
+        fs = add_candidate_to_fsdb(
+            date.strftime("%Y%m%d"),
+            row["best_ra"],
+            row["best_dec"],
+            row["mean_freq"],
+            row["mean_dm"],
+            row["sigma"],
+            row["file_name"],
+            "sd_candidate",
+        )
+        df.loc[index, "fs_id"] = str(fs["_id"])
+    return df
 
 
 @click.command()

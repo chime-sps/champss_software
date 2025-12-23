@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 
 from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import find_closest_pointing, get_data_list
+from folding.plot_aliases import plot_aliases
 from folding.plot_candidate import plot_candidate_archive
 from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
@@ -88,6 +89,128 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
 
     if fs_id:
         db_api.update_followup_source(fs_id, {"path_to_ephemeris": ephem_path})
+
+
+def create_alias_ephemeris(base_ephem_path, alias_factor, output_path):
+    """
+    Create a modified ephemeris file with F0 scaled by the alias factor.
+
+    Parameters
+    ----------
+    base_ephem_path : str
+        Path to the base ephemeris file
+    alias_factor : float
+        Factor to multiply F0 by (e.g., 2 for 2nd harmonic, 0.5 for sub-harmonic)
+    output_path : str
+        Path to save the modified ephemeris file
+
+    Returns
+    -------
+    output_path : str
+        Path to the created ephemeris file
+    """
+    with open(base_ephem_path, 'r') as f:
+        lines = f.readlines()
+
+    modified_lines = []
+    for line in lines:
+        if line.strip().startswith('F0'):
+            parts = line.split()
+            original_f0 = float(parts[1])
+            new_f0 = original_f0 * alias_factor
+            modified_lines.append(f"F0\t{new_f0}\n")
+        else:
+            modified_lines.append(line)
+
+    with open(output_path, 'w') as f:
+        f.writelines(modified_lines)
+
+    return output_path
+
+
+def get_alias_factors():
+    """
+    Return the list of alias factors to fold at.
+
+    Returns
+    -------
+    alias_factors : list
+        List of (factor, label) tuples for folding
+    """
+    factors = [
+        (1/16, "1_16"),
+        (1/8, "1_8"),
+        (1/4, "1_4"),
+        (1/3, "1_3"),
+        (1/2, "1_2"),
+        (1, "1"),
+        (2, "2"),
+        (3, "3"),
+        (4, "4"),
+        (8, "8"),
+        (16, "16"),
+    ]
+    return factors
+
+
+def fold_at_alias(fil, ephem_path, alias_dir, alias_factor, alias_label, num_threads):
+    """
+    Fold a filterbank at a specific alias factor.
+
+    Parameters
+    ----------
+    fil : str
+        Path to the filterbank file
+    ephem_path : str
+        Path to the base ephemeris file
+    alias_dir : str
+        Directory path for alias parfiles and archives
+    alias_factor : float
+        Factor to multiply F0 by
+    alias_label : str
+        Label for the alias (e.g., "1_2", "2")
+    num_threads : int
+        Number of threads for dspsr
+
+    Returns
+    -------
+    archive_fname : str
+        Path to the created archive file, or None if folding failed
+    """
+    # Create ephemeris with modified F0 in aliases directory
+    alias_ephem_path = f"{alias_dir}/alias_{alias_label}.par"
+    create_alias_ephemeris(ephem_path, alias_factor, alias_ephem_path)
+
+    # Create archive filename in aliases directory
+    archive_fname = f"{alias_dir}/alias_{alias_label}"
+
+    log.info(f"Folding at alias {alias_label} (factor={alias_factor})...")
+    result = subprocess.run(
+        [
+            "dspsr",
+            "-t",
+            f"{num_threads}",
+            "-k",
+            "chime",
+            "-E",
+            f"{alias_ephem_path}",
+            "-O",
+            f"{archive_fname}",
+            f"{fil}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    archive_fname_full = archive_fname + ".ar"
+    if os.path.isfile(archive_fname_full):
+        # Create frequency and time scrunched version
+        create_FT = f"pam -T -F {archive_fname_full} -e FT"
+        subprocess.run(create_FT, shell=True, capture_output=True, text=True)
+        return archive_fname_full
+    else:
+        log.warning(f"Failed to create archive for alias {alias_label}")
+        return None
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -168,6 +291,16 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     default=True,
     help="Use ramdisk for filterbank files, default True.",
 )
+@click.option(
+    "--fold-aliases",
+    is_flag=True,
+    help="Fold at multiple frequency aliases (1/16, 1/8, 1/4, 1/3, 1/2, 1, 2, 3, 4, 8, 16).",
+)
+@click.option(
+    "--exact-coords",
+    is_flag=True,
+    help="Use exact RA/Dec coordinates without snapping to pointing map grid (for known pulsars).",
+)
 def main(
     date,
     sigma,
@@ -188,6 +321,8 @@ def main(
     using_workflow=False,
     overwrite_folding=False,
     filterbank_to_ram=True,
+    fold_aliases=False,
+    exact_coords=False,
 ):
     """
     Perform the main processing steps for folding a candidate or known source.  It can
@@ -222,7 +357,6 @@ def main(
 
     multiprocessing.set_start_method("forkserver", force=True)
     db_utils.connect(host=db_host, port=db_port, name=db_name)
-    pst = PointingStrategist(create_db=False)
 
     # fs_id known_source, md_candidate, sd_candidate, ra+dec, psr
     ephem_path = None
@@ -258,9 +392,10 @@ def main(
         f0 = 1 / source.spin_period_s
         known = psr
     elif ra and dec:
-        coords = find_closest_pointing(ra, dec)
-        ra = coords.ra
-        dec = coords.dec
+        if not exact_coords:
+            coords = find_closest_pointing(ra, dec)
+            ra = coords.ra
+            dec = coords.dec
         dir_suffix = "candidates"
         name = candidate_name(ra, dec)
     elif candpath and write_to_db:
@@ -339,6 +474,20 @@ def main(
         log.error(f"Ephemeris file {ephem_path} not found")
         return {}, [], []
 
+    if exact_coords:
+        log.info(f"Using exact coordinates (RA={ra:.6f}, Dec={dec:.6f}) without grid snapping")
+    else:
+        log.info(f"Using coordinates from pointing map (RA={ra:.2f}, Dec={dec:.2f})")
+
+    pst = PointingStrategist(create_db=False, split_long_pointing=True)
+    ap = pst.get_single_pointing(ra, dec, date, use_grid=not exact_coords)
+
+    # If multiple sub-pointings, force to disk (too large for RAM)
+    if len(ap) > 1:
+        log.info(f"Multiple sub-pointings ({len(ap)}), writing filterbank to disk")
+        filterbank_to_ram = False
+        config.beamform.beam_to_normalise = None
+
     fname = f"/{ra:.02f}_{dec:.02f}_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.fil"
     if filterbank_to_ram:
         log.info("Using ram for filterbank file")
@@ -348,19 +497,9 @@ def main(
         fildir = coord_path
     fil = fildir + fname
 
-    pst = PointingStrategist(create_db=False)
-    ap = pst.get_single_pointing(ra, dec, date)
-
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    if nchan < ap[0].nchan:
-        log.info(
-            f"only need nchan = {nchan} for dm = {dm}, beamforming with"
-            f" {nchan} channels"
-        )
-        ap[0].nchan = nchan
     num_threads = 4 * nchan // 1024
-    log.info(f"using {num_threads} threads")
 
     # set number of turns, roughly equalling 10s
     turns = int(np.ceil(10 * f0))
@@ -371,23 +510,43 @@ def main(
         turns = 10
 
     if not os.path.isfile(fil):
-        log.info("Beamforming...")
+        log.info(f"Beamforming {len(ap)} sub-pointing(s)...")
         fdmt = True
-        beamformer = beamform.initialise(config, rfi_beamform=True, 
+        beamformer = beamform.initialise(config, rfi_beamform=True,
                                          basepath=foldpath, datpath=datpath)
-        skybeam, spectra_shared = beamform.run(
-            ap[0], beamformer, fdmt, num_threads, foldpath
-        )
-        if skybeam is None:
-            log.info(
-                "Insufficient unmasked data to form skybeam, exiting before filterbank creation"
+
+        # Loop through all active pointings and append them into one filterbank
+        for i, active_pointing in enumerate(ap):
+            # Adjust nchan if needed
+            if nchan < active_pointing.nchan:
+                log.info(
+                    f"only need nchan = {nchan} for dm = {dm}, beamforming with"
+                    f" {nchan} channels"
+                )
+                active_pointing.nchan = nchan
+
+            log.info(f"Beamforming sub-pointing {i+1}/{len(ap)} with {num_threads} threads")
+
+            skybeam, spectra_shared = beamform.run(
+                active_pointing, beamformer, fdmt, num_threads, foldpath
             )
-            spectra_shared.close()
-            spectra_shared.unlink()
-            return
-        else:
-            log.info(f"Writing to {fil}")
-            skybeam.write(fil)
+
+            if skybeam is None:
+                log.warning(
+                    f"Insufficient unmasked data to form skybeam for sub-pointing {i+1}, skipping"
+                )
+                spectra_shared.close()
+                spectra_shared.unlink()
+                continue
+
+            # Write first sub-pointing to create the file, append subsequent ones
+            if i == 0:
+                log.info(f"Writing sub-pointing {i+1} to {fil}")
+                skybeam.write(fil)
+            else:
+                log.info(f"Appending sub-pointing {i+1} to {fil}")
+                skybeam.append(fil)
+
             spectra_shared.close()
             spectra_shared.unlink()
             del skybeam
@@ -410,34 +569,53 @@ def main(
             f"{fil}",
         ]
     )
-    log.info(f"Finished, deleting {fil}")
-    if os.path.isfile(fil):
-        os.remove(fil)
 
     archive_fname = archive_fname + ".ar"
     create_FT = f"pam -T -F {archive_fname} -e FT"
     subprocess.run(create_FT, shell=True, capture_output=True, text=True)
 
+    # Alias folding if requested
+    alias_results = {}
+    if fold_aliases:
+        log.info("Folding at frequency aliases...")
+        alias_dir = f"{coord_path}/aliases"
+        if not os.path.exists(alias_dir):
+            os.makedirs(alias_dir)
+
+        alias_factors = get_alias_factors()
+        for factor, label in alias_factors:
+            alias_archive = fold_at_alias(
+                fil, ephem_path, alias_dir, factor, label, num_threads
+            )
+            if alias_archive:
+                alias_results[label] = alias_archive
+
+        log.info(f"Completed alias folding: {len(alias_results)} of {len(alias_factors)} successful")
+
+        # Plot alias results
+        if alias_results:
+            alias_plot_path = os.path.join(
+                alias_dir, f"alias_plot_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.png"
+            )
+            plot_aliases(alias_results, output_path=alias_plot_path)
+
+    log.info(f"Finished, deleting {fil}")
+    if os.path.isfile(fil):
+        os.remove(fil)
+
+    cand_info = {
+        'sigma': sigma,
+        'known': known,
+        'ap': ap,
+    }
     SNprof, SN_arr, plot_fname = plot_candidate_archive(
         archive_fname,
-        sigma,
-        dm,
-        f0,
-        ra,
-        dec,
         coord_path,
-        known=known,
+        cand_info=cand_info,
         foldpath=foldpath + "/plots/folded_candidate_plots/",
     )
 
     log.info(f"SN of folded profile: {SN_arr}")
-    fold_details = {
-        "date": date,
-        "archive_fname": archive_fname,
-        "SN": float(SN_arr),
-        "path_to_plot": plot_fname,
-    }
-
     fold_details = {
         "date": date,
         "archive_fname": archive_fname,

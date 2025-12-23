@@ -428,6 +428,14 @@ class MultiPointingCandidate:
         """
         return self.single_candidate(0)
 
+    @property
+    def best_ra(self):
+        return self.position_sigmas[np.argmax(self.position_sigmas[:, 2]), 0]
+
+    @property
+    def best_dec(self):
+        return self.position_sigmas[np.argmax(self.position_sigmas[:, 2]), 1]
+
     def get_all_summaries(self):
         """Load a SinglePointingCandidate based on an index."""
         all_summaries = [
@@ -461,8 +469,8 @@ class MultiPointingCandidate:
             class_value = self.classification.label.name
         else:
             class_value = "none"
-        filename = file_prefix + "_f_{:.3f}_DM_{:.3f}_class_{}.npz".format(
-            self.best_freq, self.best_dm, class_value
+        filename = file_prefix + "_f_{:.3f}_DM_{:.3f}_{}.npz".format(
+            self.best_freq, self.best_dm, self.obs_id[-1]
         )
         cand_dict = self.__dict__.copy()
         # Prevent all summaries from being written if they have been loaded

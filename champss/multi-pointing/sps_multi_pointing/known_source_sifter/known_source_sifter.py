@@ -5,7 +5,6 @@ if an event is likely originating from a known source.
 Adapted to SPS 20210204
 """
 
-
 import logging
 import operator
 import os
@@ -18,6 +17,7 @@ from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
 from sps_databases.db_api import get_nearby_known_sources
 from sps_multi_pointing.known_source_sifter import known_source_filters
+from sps_common.interfaces.utilities import angular_separation
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ class KnownSourceSifter:
     threshold = attr.ib(default=1.0, validator=instance_of(float))
     rfi_check = attr.ib(default={}, validator=instance_of(dict))
     use_unknown_freq = attr.ib(default=False, validator=instance_of(bool))
+    filter_scraper_and_f1_nan = attr.ib(default=True, validator=instance_of(bool))
     config_init = attr.ib(init=False)
     ks_database = attr.ib(init=False)
     ks_filter_names = attr.ib(init=False)
@@ -77,6 +78,14 @@ class KnownSourceSifter:
     def load_ks_database(self):
         # get nearby known sources and make it a numpy array
         ks_collection = get_nearby_known_sources(0, 0, np.infty)  # get all sources
+        # Filter scraper sources and sources with no errors
+        if self.filter_scraper_and_f1_nan:
+            ks_collection = [
+                ks
+                for ks in ks_collection
+                if np.isfinite(ks.spin_period_s_error)
+                and "psr_scraper" not in ks.survey
+            ]
         ks_database = np.empty(
             shape=len(ks_collection),
             dtype=[
@@ -342,7 +351,7 @@ def known_sources_subset(ks_database, pos_filter=False, ra=0, dec=0, radius=5.0)
     """
     if pos_filter:
         # select on angular separation
-        _, separation = known_source_filters.angular_separation(
+        _, separation = angular_separation(
             ks_database["pos_ra_deg"],
             ks_database["pos_dec_deg"],
             ra,

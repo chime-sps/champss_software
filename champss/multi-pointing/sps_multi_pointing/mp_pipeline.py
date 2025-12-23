@@ -15,7 +15,13 @@ from omegaconf import OmegaConf
 from scheduler.utils import convert_date_to_datetime
 from sps_common.interfaces.multi_pointing import KnownSourceLabel
 from sps_databases import db_api, db_utils
-from sps_multi_pointing import classifier, data_reader, grouper, utilities
+from sps_multi_pointing import (
+    classifier,
+    data_reader,
+    grouper,
+    utilities,
+    harmonic_clusterer,
+)
 from sps_multi_pointing.known_source_sifter.known_source_sifter import KnownSourceSifter
 import tqdm
 
@@ -133,6 +139,12 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 @click.option("--db/--no-db", default=False, help="Whether to write to database")
 @click.option("--csv/--no-csv", default=True, help="Whether to write summary csv.")
 @click.option(
+    "--sigma-threshold",
+    default=6.0,
+    type=float,
+    help="Sigma threshold under which the single pointing candidates are discarded.",
+)
+@click.option(
     "--plot-threshold",
     default=0.0,
     type=float,
@@ -179,6 +191,11 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     type=str,
     help="Name of the output folder inside the output/mp_runs folder.",
 )
+@click.option(
+    "--cluster-harmonics/--no-cluster_harmonics",
+    default=True,
+    help="Cluster harmonics in the resulting multi_pointing candidates. Currently only written to output csv.",
+)
 def cli(
     output,
     file_path,
@@ -190,6 +207,7 @@ def cli(
     plot_all_pulsars,
     db,
     csv,
+    sigma_threshold,
     plot_threshold,
     plot_dm_threshold,
     db_port,
@@ -197,6 +215,7 @@ def cli(
     db_name,
     num_threads,
     run_name,
+    cluster_harmonics,
 ):
     """Slow Pulsar Search multiple-pointing candidate processing."""
     date = convert_date_to_datetime(date)
@@ -211,6 +230,7 @@ def cli(
     if os.path.isdir(out_folder):
         log.error(f"Found existing folder {out_folder}. Will delete that folder.")
         shutil.rmtree(out_folder)
+
     os.makedirs(out_folder, exist_ok=False)
     os.makedirs(out_folder + "/candidates/", exist_ok=False)
     log_file = out_folder + "/run.log"
@@ -243,18 +263,31 @@ def cli(
         log.error("No files found. Will exit.")
         return
     sp_cands = list(
-        tqdm.tqdm(pool.imap(data_reader.read_cands_summaries, files), total=len(files))
+        tqdm.tqdm(
+            pool.imap(
+                partial(
+                    data_reader.read_cands_summaries, sigma_threshold=sigma_threshold
+                ),
+                files,
+            ),
+            total=len(files),
+        )
     )
     # Filter out None
-    sp_cands = [sp_cand_list for sp_cand_list in sp_cands if sp_cand_list is not None]
+    sp_cands = [
+        sp_cand_list
+        for sp_cand_list in sp_cands
+        if sp_cand_list is not None and sp_cand_list != []
+    ]
     # Get dates if not already done. Only needed for old candidates prior 2024/03
-    for sp_cand_list in sp_cands:
-        old_dates = sp_cand_list[0].get("datetimes", None)
-        if len(old_dates) == 0:
-            datetimes = db_api.get_dates(sp_cand_list[0].obs_id)
-            for cand in sp_cand_list:
-                cand.datetimes = datetimes
+    # for sp_cand_list in sp_cands:
+    #     old_dates = sp_cand_list[0].get("datetimes", None)
+    #     if len(old_dates) == 0:
+    #         datetimes = db_api.get_dates(sp_cand_list[0].obs_id)
+    #         for cand in sp_cand_list:
+    #             cand.datetimes = datetimes
     # Transform list of lists to list
+    log.info("Creating list of lists.")
     sp_cands = [sp_cand for sp_cand_list in sp_cands for sp_cand in sp_cand_list]
     log.info(f"Number of single-pointing candidates: {len(sp_cands)}")
     # np.save("all_cands.npy", sp_cands)
@@ -266,6 +299,7 @@ def cli(
     )
     mp_cands = sp_grouper.group(sp_cands, num_threads=num_threads)
     log.info(f"Number of multi-pointing candidates: {len(mp_cands)}")
+
     try:
         db_client = db_utils.connect(host=db_host, port=db_port, name=db_name)
         kss = KnownSourceSifter(**OmegaConf.to_container(config.sifter))
@@ -366,6 +400,9 @@ def cli(
                             "freq": summary["freq"],
                             "dm": summary["dm"],
                         }
+                        log.info(
+                            f"Added {pulsar} with {pointing_dict} to pointing {pointing_id}"
+                        )
                         if len(cand.obs_id) <= 1:
                             pointing_dict["obs_id"] = obs_id
                             update_stack = False
@@ -376,6 +413,7 @@ def cli(
                         updated_pointing = db_api.update_pulsars_in_pointing(
                             pointing_id, pulsar, pointing_dict, stack=update_stack
                         )
+                        # breakpoint()
         """
         I don't think  in the current state without filtering
         we want to write candidates to the database.
@@ -403,8 +441,14 @@ def cli(
         """
     if csv:
         df = pd.DataFrame(summary_dicts)
+        if cluster_harmonics:
+            clusterer = harmonic_clusterer.MultiPointingHarmonicClusterer(
+                **OmegaConf.to_container(config.harmonic_clusterer)
+            )
+            df = clusterer.cluster(df)
         csv_name = f"{out_folder}/all_mp_cands.csv"
         df.to_csv(csv_name)
+        log.info(f"csv file written to {csv_name}")
     else:
         csv_name = ""
 

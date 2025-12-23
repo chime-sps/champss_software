@@ -3,6 +3,7 @@
 import datetime as dt
 
 import pytz
+import PIL
 
 
 def transit_time(pointing):
@@ -79,3 +80,21 @@ def get_pointings_from_list(datlist):
         last_end = end_time
 
     return start_times, end_times
+
+
+def merge_images(image_list, output_path):
+    # Based on https://stackoverflow.com/a/30228308
+
+    images = [PIL.Image.open(x) for x in image_list]
+    widths, heights = zip(*(i.size for i in images))
+
+    total_width = sum(widths)
+    max_height = max(heights)
+
+    new_im = PIL.Image.new("RGBA", (total_width, max_height))
+
+    x_offset = 0
+    for im in images:
+        new_im.paste(im, (x_offset, 0))
+        x_offset += im.size[0]
+    new_im.save(output_path)

@@ -91,14 +91,12 @@ def append_spectra(outfile, spectra, nbits=32, verbose=False):
     dtype_max = tinfo.max
 
     # CHIME/FRB spectra have shape (channels, time_samples) so tranpose
-    data = spectra.T
-    nspec, nchans = data.shape
-    # first channel in filterbank should be highest frequency so flip band
-    fil_data = np.fliplr(data).ravel()
+    fil_data = spectra.T
+    # Removed flipping of band, matching create_filterbank_file
     np.clip(fil_data, dtype_min, dtype_max, out=fil_data)
     # outfile.seek(0, os.SEEK_END)
-    outfile.write(fil_data.astype(dtype))
-
+    #outfile.write(fil_data.astype(dtype))
+    fil_data.astype(dtype).tofile(outfile)
 
 def is_float(nbits):
     """

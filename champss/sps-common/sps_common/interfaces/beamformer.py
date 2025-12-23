@@ -377,3 +377,17 @@ class SkyBeam:
             srcdec,
             oname,
         )
+
+    def append(self, oname):
+        """
+        Append spectra to an existing filterbank file.
+
+        Parameters
+        =======
+        oname: str
+            The output filename of the filterbank to append to.
+        """
+        from sps_common.filterbank import append_spectra
+
+        with open(oname, "ab") as fb_out:
+            append_spectra(fb_out, self.spectra, nbits=self.nbits, verbose=False)
