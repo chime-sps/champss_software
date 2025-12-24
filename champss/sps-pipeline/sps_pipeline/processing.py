@@ -1583,12 +1583,13 @@ def start_processing_manager(
                     df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
                     if not os.path.exists(last_fold["path_to_plot"]):
                         continue
-                    if type(row["plot_path"]) is str:
+                    if type(row["plot_path"]) is not str:
                         if not os.path.exists(row["file_name"]):
                             continue
                         mp_cand = MultiPointingCandidate.read(row["file_name"])
                         plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
                         df_mp.at[index, "plot_path"] = plot_path
+
                     output_path = (
                         merged_candidate_path
                         + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
