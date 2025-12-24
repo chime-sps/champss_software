@@ -355,7 +355,7 @@ ps_cumul_stack:
     precompute_harms: True
     use_nsum_per_bin: True
     skip_first_n_bins: 5
-    use_stack_threshold: True
+    only_use_stack_threshold: False
     cluster_config:
       dbscan_eps: 1
       dm_scale_factor: 0.02
