@@ -1615,6 +1615,7 @@ def start_processing_manager(
                     "database": "champss",
                     "port": 3306,
                 }
+                min_sigma_folded = 9
                 try:
                     with (
                         CandidateViewerRegistrar(
@@ -1626,7 +1627,10 @@ def start_processing_manager(
                             survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
                         ) as sd
                     ):
-                        sd.add_candidates(df_mp)  # add candidates from dataframe
+                        df_mp_filtered = df_mp[df_mp["fs_sigma"] > min_sigma_folded]
+                        sd.add_candidates(
+                            df_mp_filtered
+                        )  # add candidates from dataframe
                         sd.commit()  # commit to database and update survey config
 
                         message_slack(f"Candidate folding for {date_string} complete")
