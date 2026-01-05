@@ -21,6 +21,7 @@ class ObservationStatus(enum.Enum):
     complete = 2
     failed = 3
     incomplete = 4
+    insufficient_data = 5
 
 
 class ProcessStatus(enum.Enum):

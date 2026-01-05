@@ -576,7 +576,10 @@ def main(
                     spectra_shared.close()
                     spectra_shared.unlink()
                     components = ["cleanup"]
-                    processing_failed = True
+                    # processing_failed = True
+                    insufficient_data = True
+                else:
+                    insufficient_data = False
             if "dedisp" in components:
                 if fdmt:
                     from sps_pipeline import dedisp
@@ -695,10 +698,13 @@ def main(
                 clean_up = cleanup.CleanUp(**OmegaConf.to_container(config.cleanup))
                 clean_up.remove_files(active_pointing)
             # finishing the observation -- update its status to completed
-            if processing_failed:
-                final_status = models.ObservationStatus.failed.value
+            if insufficient_data:
+                final_status = models.ObservationStatus.insufficient_data.value
             else:
-                final_status = models.ObservationStatus.complete.value
+                if processing_failed:
+                    final_status = models.ObservationStatus.failed.value
+                else:
+                    final_status = models.ObservationStatus.complete.value
             obs_final_dict = db_api.update_observation(
                 active_pointing.obs_id,
                 {"status": final_status},
