@@ -664,6 +664,11 @@ class Clusterer:
         log.info(
             f"Duplicate freq,dm filter reduced detections to {len(detections_filtered)}"
         )
+        if len(detections_filtered) < self.dbscan_min_samples:
+            log.info(
+                f"Only {len(detections_filtered)} detections, Clustering will not cluster anything. Return empty"
+            )
+            return [], [], self.sigma_detection_threshold
 
         if self.use_dbscan_filter:
             log.info("Running dbscan filter")
