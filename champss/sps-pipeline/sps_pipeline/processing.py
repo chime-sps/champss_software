@@ -12,6 +12,7 @@ from multiprocessing import Pool
 import pymongo
 import atexit
 import pandas as pd
+from bson.objectid import ObjectId
 
 import click
 import docker
@@ -1308,7 +1309,7 @@ def start_processing_manager(
                         {"date": date_string, "status": 2, "is_in_stack": False}
                     )
 
-                    obs_ids = [proc["obs_id"] for proc in completed_processes]
+                    obs_ids = [ObjectId(proc["obs_id"]) for proc in completed_processes]
                     observations = list(db.observations.find({"_id": {"$in": obs_ids}}))
                     mean_detections = np.nanmean(
                         [obs["num_detections"] for obs in observations]
