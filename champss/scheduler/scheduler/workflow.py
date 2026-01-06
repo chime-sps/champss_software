@@ -3,13 +3,13 @@ import json
 import logging
 import os
 import re
-import time
 
 import click
 import docker
 from slack_sdk import WebClient
 from workflow.definitions.work import Work
 from workflow.http.context import HTTPContext
+from bson.objectid import ObjectId
 
 log = logging.getLogger()
 
@@ -316,6 +316,9 @@ def schedule_workflow_job(
 
     workflow_site = "chime"
 
+    tag_id = ObjectId().__str__()
+    workflow_tags.append(tag_id)
+
     try:
         work = Work(
             pipeline=workflow_buckets_name, site=workflow_site, user=workflow_user
@@ -329,8 +332,6 @@ def schedule_workflow_job(
         work.config.archive.products = "bypass"
         work.retries = 1
         work.timeout = timeout
-
-        wait_for_no_tasks_in_states(docker_swarm_pending_states)
 
         work_id = work.deposit(return_ids=True)
 
@@ -361,17 +362,17 @@ def schedule_workflow_job(
                     target=mount_target, source=mount_source, type="bind"
                 )
             )
-
+        service_name = f"processing-{docker_name.replace('.', '_').replace('/', '')}"
         docker_service = {
             "image": docker_image,
             # Can't have dots or slashes in Docker Service names
             # All Docker Services made with this function will be prefixed with "processing-"
-            "name": f"processing-{docker_name.replace('.', '_').replace('/', '')}",
+            "name": service_name,
             # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
                 "workflow run"
-                f" {workflow_buckets_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
+                f" {workflow_buckets_name} --tag {tag_id} --site"
                 f" {workflow_site} --lives 1 --sleep 1"
             ),
             # Using template Docker variables as in-container environment variables
@@ -405,11 +406,13 @@ def schedule_workflow_job(
 
         # Wait a few seconds because Workflow Work might still not have propogated
         # to Buckets, and Workflow runner can pickup nothing and just quietly exit
-        time.sleep(2)
+        # time.sleep(2)
 
         docker_client.services.create(**docker_service)
 
-        wait_for_no_tasks_in_states(docker_swarm_pending_states)
+        wait_for_no_tasks_in_states(
+            docker_swarm_pending_states, docker_service_name_prefix=service_name
+        )
 
         return work_id[0]
     except Exception as error:
