@@ -972,6 +972,7 @@ def run_all_pipeline_processes(
 )
 @click.option(
     "--number-of-days",
+    "--ndays",
     default=-1,
     type=int,
     help="Number of days to perform continuous processing on. -1 (default) for forever",
