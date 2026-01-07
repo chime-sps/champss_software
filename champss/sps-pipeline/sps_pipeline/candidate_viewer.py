@@ -19,6 +19,12 @@ class CandidateViewerRegistrar:
         self.db_config = db_config
         self.survey_dir = survey_dir
 
+        # Sanity check for survey and folder names
+        if " " in self.survey or "/" in self.survey or "\\" in self.survey or "\t" in self.survey:
+            raise ValueError("Survey name cannot contain spaces, slashes, backslashes, or tabs.")
+        if " " in self.folder or "/" in self.folder or "\\" in self.folder or "\t" in self.folder:
+            raise ValueError("Folder name cannot contain spaces, slashes, backslashes, or tabs.")
+
         # Sanity check if survey config exists
         self.survey_config_path = f"{self.survey_dir}/{self.survey}.json"
         if not os.path.exists(self.survey_config_path):
@@ -202,7 +208,7 @@ class CandidateViewerRegistrar:
         """
 
         for row in df.to_dict(orient='records'):
-            candname = row['file_name'].split('/')[-1].replace('.npz', '')
+            candname = row['file_name'].split('/')[-1].replace('.npz', '').replace(" ", "_").replace("\t", "_").replace("/", "_").replace("\\", "_")
             ra = float(row['best_ra'])
             dec = float(row['best_dec'])
             f0 = float(row['mean_freq'])
