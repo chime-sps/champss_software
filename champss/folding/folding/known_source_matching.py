@@ -65,6 +65,7 @@ def find_matching_sources(
     bright_threshold=50,
     bright_radius=5.0,
     other_radius=1.0,
+    arc_filter_config=None,
 ):
     """
     Find and categorize nearby known sources for a candidate.
@@ -93,6 +94,9 @@ def find_matching_sources(
         Angular threshold for bright sources (default 5.0 degrees)
     other_radius : float
         Angular threshold for other sources (default 1.0 degrees)
+    arc_filter_config : dict, optional
+        Arc filter configuration from pipeline config containing filtered_pulsars
+        with arc_length parameters for scaling search radii
 
     Returns
     -------
@@ -108,8 +112,21 @@ def find_matching_sources(
         - 'arc_positions': Array of arc positions or None
         - 'num_sources_not_displayed': Number of sources beyond num_ks
     """
+    # Extract arc_length overrides for filtered pulsars
+    pulsar_arc_lengths = {}
+    max_arc_length = radius
+    if arc_filter_config is not None:
+        default_arc_length = arc_filter_config.get('default_arc_length', 5)
+        filtered_pulsars = arc_filter_config.get('filtered_pulsars', {})
+        for pulsar_name, pulsar_config in filtered_pulsars.items():
+            if pulsar_config and 'arc_length' in pulsar_config:
+                arc_length = pulsar_config['arc_length']
+                pulsar_arc_lengths[pulsar_name] = arc_length
+                max_arc_length = max(max_arc_length, arc_length)
+
     # Get nearby sources and sort by distance
-    sources = get_nearby_known_sources(ra, dec, radius)
+    # Expand search radius to capture pulsars with larger arc_length
+    sources = get_nearby_known_sources(ra, dec, max_arc_length)
     pos_diffs = []
     for source in sources:
         pos_diff = angular_separation(ra, dec, source.pos_ra_deg, source.pos_dec_deg)[1]
@@ -193,11 +210,15 @@ def find_matching_sources(
         pos_diff = angular_separation(ra, dec, source.pos_ra_deg, source.pos_dec_deg)[1]
 
         # Bright sources: bright_radius threshold or on arc; other sources: other_radius threshold
+        # Use arc_length override if available for this pulsar
         if is_on_arc and is_bright:
             # Arc sources are included regardless of angular distance
             pass
         else:
             angular_threshold = bright_radius if is_bright else other_radius
+            # Override with arc_length if this pulsar is in filtered_pulsars
+            if source.source_name in pulsar_arc_lengths:
+                angular_threshold = pulsar_arc_lengths[source.source_name]
             if pos_diff > angular_threshold:
                 continue
 

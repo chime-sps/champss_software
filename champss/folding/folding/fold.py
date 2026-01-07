@@ -324,6 +324,7 @@ class Fold:
             self.coord_path,
             cand_info=cand_info,
             foldpath=foldpath_plots,
+            config=self.config,
         )
 
         log.info(f"SN of folded profile: {SN_arr}")

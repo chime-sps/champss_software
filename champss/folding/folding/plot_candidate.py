@@ -152,6 +152,7 @@ def plot_candidate_archive(
     f0search=True,
     foldpath="/data/chime/sps/archives/plots/folded_candidate_plots",
     plot_bw=False,
+    config=None,
 ):
     """
     Plot a folded candidate archive.
@@ -183,6 +184,9 @@ def plot_candidate_archive(
     plot_bw : bool
         If True, use black/white color scheme (black lines, Greys colormap).
         If False (default), use color scheme (tab:blue lines, viridis colormap).
+    config : dict, optional
+        Pipeline configuration dictionary containing arc_filter_config for
+        adjusting search radii for specific known sources.
     """
     if cand_info is None:
         cand_info = {}
@@ -452,8 +456,14 @@ def plot_candidate_archive(
     vtmin = np.nanmean(fs_bin) - 1 * np.nanstd(np.nanmean(fs_bin, 1))
     vtmax = np.nanmean(fs_bin) + 3 * np.nanstd(np.nanmean(fs_bin, 1))
 
+    # Extract arc_filter_config from pipeline config if available
+    arc_filter_config = None
+    if config is not None:
+        arc_filter_config = config['ps']['ps_search_config']['cluster_config'].get('arc_filter_config')
+
     # Find and categorize nearby known sources
-    ks_result = find_matching_sources(ra, dec, f0, T, max_beam=max_beam)
+    ks_result = find_matching_sources(ra, dec, f0, T, max_beam=max_beam,
+                                     arc_filter_config=arc_filter_config)
     ks_df = pd.DataFrame(ks_result['ks_df_data'], columns=ks_result['column_labels'])
     likely_match_count = ks_result['likely_match_count']
     ks_is_psr_scraper = ks_result['ks_is_psr_scraper']
