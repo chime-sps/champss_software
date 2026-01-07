@@ -57,7 +57,7 @@ ps_creation:
   remove_rednoise: True
   nbit: 32
   save_medians: True
-  write_medians: False
+  write_medians: True
   write_zero_dm_medians: True
 ps:
   run_ps_search: True
@@ -140,7 +140,7 @@ ps:
     readout_stack: True
   ps_search_config:
     num_harm: 32
-    sigma_min: 5.0
+    sigma_min: 6.0
     precompute_harms: True
     use_nsum_per_bin: True
     skip_first_n_bins: 5
@@ -167,13 +167,31 @@ ps:
     arc_filter_config:
       filter_if_kst_active: True
       default_arc_length: 5
-      arc_psr_min_sigma: 50
+      arc_psr_min_sigma: 100
       arc_search_dist: 0.5
       filtered_pulsars:
         B0329+54:
           arc_length: 40
         B1508+55: {} # If no arc length is given, default distance is used
-        
+        B0136+57: {}
+        B0138+59: {}
+        B0355+54: {}
+        B0823+26: {}
+        B0834+06: {}
+        B0950+08: {}
+        B1642-03: {}
+        B1919+21: {}
+        B1933+16: {}
+        B1946+35: {}
+        B2016+28: {}
+        B2020+28: {}
+        B2021+51: {}
+        B2111+46: {}
+        B2154+40: {}
+        B2217+47: {}
+        B2255+58: {}
+        B2310+42: {}
+
 
 ffa:
   run_ffa_search: True
@@ -337,7 +355,7 @@ ps_cumul_stack:
     precompute_harms: True
     use_nsum_per_bin: True
     skip_first_n_bins: 5
-    use_stack_threshold: True
+    only_use_stack_threshold: False
     cluster_config:
       dbscan_eps: 1
       dm_scale_factor: 0.02
@@ -361,4 +379,4 @@ ps_cumul_stack:
       filtered_pulsars:
         B0329+54:
           arc_length: 40
-        B1508+55: {} # If no arc length is given, default distance is used
+        # B1508+55: {} # If no arc length is given, default distance is used

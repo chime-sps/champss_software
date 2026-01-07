@@ -140,7 +140,7 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 @click.option("--csv/--no-csv", default=True, help="Whether to write summary csv.")
 @click.option(
     "--sigma-threshold",
-    default=6.0,
+    default=7.0,
     type=float,
     help="Sigma threshold under which the single pointing candidates are discarded.",
 )

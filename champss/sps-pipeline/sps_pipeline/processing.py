@@ -12,6 +12,7 @@ from multiprocessing import Pool
 import pymongo
 import atexit
 import pandas as pd
+from bson.objectid import ObjectId
 
 import click
 import docker
@@ -34,6 +35,8 @@ from workflow.http.context import HTTPContext
 from sps_databases import db_api, db_utils, models
 from sps_pipeline.pipeline import default_datpath
 from sps_pipeline.utils import get_pointings_from_list, merge_images
+from sps_pipeline.candidate_viewer import CandidateViewerRegistrar
+
 
 log = logging.getLogger()
 
@@ -724,7 +727,7 @@ def run_all_pipeline_processes(
         "stack": run_stacking,
         "fdmt": True,
         "rfi_beamform": True,
-        "plot": True,
+        "plot": False,
         "plot_threshold": 8.0,
         # "ra": process.ra,
         # "dec": f" {process.dec}",
@@ -739,6 +742,7 @@ def run_all_pipeline_processes(
         "using_pyroscope": False,
         "using_docker": True,
         "config_options": pipeline_config_options,
+        "known_source_threshold": 10,
     }
     if pipeline_arguments != "":
         split_args = pipeline_arguments.split("--")
@@ -746,9 +750,11 @@ def run_all_pipeline_processes(
             arg_string = arg_string.strip()
             if arg_string != "":
                 arg_count = len(arg_string.split(" "))
-                if arg_count > 1:
+                if arg_count > 2:
                     argument, value = arg_string.split(" ", 1)
                     workflow_params[argument] = (value,)
+                elif arg_count == 1:
+                    workflow_params[argument] = value
                 else:
                     log.error(
                         "Flags not implimented yet. Reformated your option to --option_python_name True"
@@ -855,7 +861,7 @@ def run_all_pipeline_processes(
         if work_index > requested_containers:
             break
 
-    buckets_db = pymongo.MongoClient(port=27018).work.buckets
+    buckets_db = pymongo.MongoClient(host="sps-archiver1", port=27018).work.buckets
     # Get the next work objects. These should be processed in order by workflow
     all_works = list(
         buckets_db.find({"pipeline": workflow_buckets_name})
@@ -863,6 +869,7 @@ def run_all_pipeline_processes(
         .limit(requested_containers)
     )
     first_loop = True
+    running_tiers = {}
     while len(all_works) > 0:
         # Count how many services should be created
         upcoming_tags = {tier: 0 for tier in processing_tier_names}
@@ -877,6 +884,10 @@ def run_all_pipeline_processes(
 
         # Scale services
         for i, tier in enumerate(processing_tier_names):
+            # Sometime old services get stuck.
+            # Momentarily scale to running jobs to fix that
+            if tier in running_tiers.keys():
+                docker_client.services.get(services[i]).scale(running_tiers[tier])
             docker_client.services.get(services[i]).scale(upcoming_tags[tier])
         time.sleep(update_time)
         # Check how many services are running
@@ -884,17 +895,23 @@ def run_all_pipeline_processes(
         if not first_loop:
             running_tasks = 0
             running_tiers = {tier: 0 for tier in processing_tier_names}
+            running_tiers_string = {}
             for i, tier in enumerate(processing_tier_names):
                 service_tasks = docker_client.services.get(services[i]).tasks()
                 running_tasks_per_tier = sum(
                     1 for task in service_tasks if task["Status"]["State"] == "running"
                 )
                 running_tasks += running_tasks_per_tier
-                running_tiers[tier] = f"{running_tasks_per_tier}/{upcoming_tags[tier]}"
+                running_tiers_string[tier] = (
+                    f"{running_tasks_per_tier}/{upcoming_tags[tier]}"
+                )
+                running_tiers[tier] = running_tasks_per_tier
             log.info(
-                f"Currently running distribution with {running_tasks} containers: {running_tiers}"
+                f"Currently running distribution with {running_tasks} containers: {running_tiers_string}"
             )
-            requested_containers = running_tasks + surplus_replicas
+            requested_containers = max(
+                running_tasks + surplus_replicas, 2 * surplus_replicas
+            )
         else:
             first_loop = False
         all_works = list(
@@ -902,19 +919,24 @@ def run_all_pipeline_processes(
             .sort("creation", pymongo.ASCENDING)
             .limit(requested_containers)
         )
-
+    log.info(
+        "No work scheduled anymore, will scale all services down and remove them once tey are finished."
+    )
     for i, tier in enumerate(processing_tier_names):
         docker_client.services.get(services[i]).scale(0)
+    log.info("Scaled down services.")
+
     for i, tier in enumerate(processing_tier_names):
-        service_tasks = docker_client.services.get(services[i]).tasks()
         running_tasks_per_tier = 1
         while running_tasks_per_tier:
+            service_tasks = docker_client.services.get(services[i]).tasks()
             running_tasks_per_tier = sum(
                 1 for task in service_tasks if task["Status"]["State"] == "running"
             )
             if running_tasks_per_tier == 0:
                 try:
                     docker_client.services.get(services[i]).remove()
+                    log.info(f"Removed service {services[i]}.")
                 except docker.errors.NotFound:
                     log.info("Could not remove processing service {services[i]}.")
             else:
@@ -951,6 +973,7 @@ def run_all_pipeline_processes(
 )
 @click.option(
     "--number-of-days",
+    "--ndays",
     default=-1,
     type=int,
     help="Number of days to perform continuous processing on. -1 (default) for forever",
@@ -1286,7 +1309,7 @@ def start_processing_manager(
                         {"date": date_string, "status": 2, "is_in_stack": False}
                     )
 
-                    obs_ids = [proc["obs_id"] for proc in completed_processes]
+                    obs_ids = [ObjectId(proc["obs_id"]) for proc in completed_processes]
                     observations = list(db.observations.find({"_id": {"$in": obs_ids}}))
                     mean_detections = np.nanmean(
                         [obs["num_detections"] for obs in observations]
@@ -1444,7 +1467,7 @@ def start_processing_manager(
                 )
                 class_timeout = 60 * 60 * 60
                 work_id = schedule_workflow_job(
-                    docker_image="sps-archiver1.chime:5000/champss_classification:load_as_you_go",
+                    docker_image="sps-archiver1.chime:5000/champss_classification:test",
                     docker_mounts=[
                         f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
@@ -1499,7 +1522,7 @@ def start_processing_manager(
                 df_mp = fold_schedule_output["df"]
                 try:
                     df_mp.to_csv(df_folded_name)
-                except:
+                except Exception as error:
                     # Might fail due to permission
                     pass
                 processes = fold_schedule_output["info"]
@@ -1545,13 +1568,16 @@ def start_processing_manager(
                 )
 
                 # Merge candidates
+                # breakpoint()
                 log.info("Creating merged candidate plots.")
                 merged_candidate_path = (
                     basepath + "/combined_candidates/" + date_string + "/"
                 )
                 replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
+
                 os.makedirs(merged_candidate_path, exist_ok=True)
                 os.makedirs(replotted_mp_path, exist_ok=True)
+
                 for index, row in df_mp.iterrows():
                     plot_path = row["plot_path"]
                     fs_db_entry = db_api.get_followup_source(row["fs_id"])
@@ -1564,12 +1590,13 @@ def start_processing_manager(
                     df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
                     if not os.path.exists(last_fold["path_to_plot"]):
                         continue
-                    if type(row["plot_path"]) != str:
+                    if type(row["plot_path"]) is not str:
                         if not os.path.exists(row["file_name"]):
                             continue
                         mp_cand = MultiPointingCandidate.read(row["file_name"])
                         plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
                         df_mp.at[index, "plot_path"] = plot_path
+
                     output_path = (
                         merged_candidate_path
                         + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
@@ -1583,15 +1610,44 @@ def start_processing_manager(
                 # Could get work results, alternatively can query fs db
                 try:
                     df_mp.to_csv(df_folded_name)
-                except:
+                except Exception as error:
                     log.error("Could not write out csv containing combined candidates.")
                     # Might fail due to permission
                     pass
+                # Add to candidate viewer site
+                db_config = {
+                    "user": "automation",
+                    "password": "",  # no password for automation user
+                    "host": "sps-archiver1",
+                    "database": "champss",
+                    "port": 3306,
+                }
+                min_sigma_folded = 9
+                try:
+                    with (
+                        CandidateViewerRegistrar(
+                            survey="dailycands",  # the project name under top-right corner of the website
+                            folder=date_to_process.strftime(
+                                "%Y-%m-%d"
+                            ),  # the folder name on the website
+                            db_config=db_config,
+                            survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
+                        ) as sd
+                    ):
+                        df_mp_filtered = df_mp[df_mp["fs_sigma"] > min_sigma_folded]
+                        sd.add_candidates(
+                            df_mp_filtered
+                        )  # add candidates from dataframe
+                        sd.commit()  # commit to database and update survey config
 
-                message_slack(f"Candidate folding for {date_string} complete")
-                daily_run = db_api.update_daily_run(
-                    date_to_process, {"folding_result": {"fold_count": len(processes)}}
-                )
+                        message_slack(f"Candidate folding for {date_string} complete")
+                        daily_run = db_api.update_daily_run(
+                            date_to_process,
+                            {"folding_result": {"fold_count": len(processes)}},
+                        )
+                except Exception as error:
+                    log.error(f"Could not update daily candidates due to {error}")
+                    log.error(traceback.format_exc())
             # End of folding phase
 
             number_of_days_processed = number_of_days_processed + 1
@@ -1778,25 +1834,27 @@ def start_processing_services(
             f"{foldpath}:{foldpath}",
             # Need this mount so container can access host machine's Docker Client
             "/var/run/docker.sock:/var/run/docker.sock",
+            "/data/candidate_viewer/champss_candidate_viewer/:/data/candidate_viewer/champss_candidate_viewer/",
         ],
         # An externally created Docker Network that allows these spawned containers
         # to communicate with other containers (MongoDB, Prometheus, etc) that have
         # also been manually added to this network
         "networks": ["pipeline-network"],
     }
-    # docker_service_pipeline_image_clenaup = {
-    #     "image": manager_docker_image_name,
-    #     "name": "processing-cleanup",
-    #     "command": "start-processing-cleanup",
-    #     "mode": docker.types.ServiceMode("global"),
-    #     # Labels allow for easy filtering with Docker CLI
-    #     "labels": {"type": "processing"},
-    #     "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
-    #     "mounts": [
-    #         # Need this mount so container can access host machine's Docker Client
-    #         "/var/run/docker.sock:/var/run/docker.sock"
-    #     ],
-    # }
+
+    docker_service_pipeline_image_clenaup = {
+        "image": manager_docker_image_name,
+        "name": "processing-cleanup",
+        "command": "start-processing-cleanup",
+        "mode": docker.types.ServiceMode("global"),
+        # Labels allow for easy filtering with Docker CLI
+        "labels": {"type": "processing"},
+        "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
+        "mounts": [
+            # Need this mount so container can access host machine's Docker Client
+            "/var/run/docker.sock:/var/run/docker.sock"
+        ],
+    }
 
     log.info(f"Creating Docker Service: \n{docker_service_manager}")
     docker_client.services.create(**docker_service_manager)

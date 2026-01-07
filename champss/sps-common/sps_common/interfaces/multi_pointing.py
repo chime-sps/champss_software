@@ -253,6 +253,7 @@ class MultiPointingCandidate:
         default=np.array([]),
         converter=converters.optional(np.array),
     )
+    best_candidate_features = attrib(type=np.ndarray, default=None)
     # I want best_candidate to be a SinglePointingCandidate, but when loading a file I get a dict
     # I fix this in post_init. A custom converter would also work probabaly.
 

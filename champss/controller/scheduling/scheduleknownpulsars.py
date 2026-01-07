@@ -411,7 +411,9 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
 
                 # update pointing to current time, plan next transit in ~24 hours
                 Dnow = datetime.datetime.now()
-                ra, dec = ap[0].ra, ap[0].dec
+                #ra, dec = get_pulsar_radec(psr)
+                ra  = ap[0].ra
+                dec = ap[0].dec
                 ap_updated = pst.get_single_pointing(ra, dec, Dnow, use_grid=False)
                 pointings[i] = ap_updated
             i += 1

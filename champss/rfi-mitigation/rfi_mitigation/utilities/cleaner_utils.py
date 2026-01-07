@@ -49,6 +49,9 @@ def known_bad_channels(nchan: int = 16384) -> list:
             range(12924, 12980),
             range(13534, 13554),
             range(16319, 16383),
+            range(1728, 1792),
+            range(2896, 2960),
+            range(7504, 7728)
         )
     )
     badchans_16k = sorted(badchans_16k)

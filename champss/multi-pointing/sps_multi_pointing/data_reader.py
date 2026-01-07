@@ -30,6 +30,7 @@ def read_multi_pointing_candidates(filepath):
     """
     files = glob.glob(os.path.join(filepath, "*.npz"))
     mp_cands = []
+
     for f in files:
         mp_cands.append(MultiPointingCandidate.read(f))
     return mp_cands
@@ -56,31 +57,21 @@ def read_cands_summaries(file, sigma_threshold=0):
     try:
         spcc = SinglePointingCandidateCollection.read(file, verbose=False)
 
-        # datetimes may not be included in the candidates already
-        datetimes = spcc.candidates[0].datetimes
-        """
-        This is commented out for now because reading the database from a
-        multiprocessing call seems to be troublesome.
+        if len(spcc.candidates):
+            datetimes = spcc.candidates[0].datetimes
+            for cand_index, candidate in enumerate(spcc.candidates):
+                if candidate.sigma < sigma_threshold:
+                    continue
+                cand_summary = EasyDict(candidate.summary)
+                cand_summary["file_name"] = file
+                cand_summary["cand_index"] = cand_index
+                cand_summary["features"] = candidate.features
+                cand_summary["datetimes"] = datetimes
+                cand_summary["nharm"] = candidate.nharm
+                cand_summary["best_harmonic_sum"] = candidate.best_harmonic_sum
 
-        if not datetimes:
-            try:
-                datetimes = db_api.get_dates(spcc.candidates[0].obs_id)
-            except Exception as e:
-                log.error(f"Could not grab datetimes. May not have access to db. {e}")
-                datetimes = []
-        """
-        for cand_index, candidate in enumerate(spcc.candidates):
-            if candidate.sigma < sigma_threshold:
-                continue
-            cand_summary = EasyDict(candidate.summary)
-            cand_summary["file_name"] = file
-            cand_summary["cand_index"] = cand_index
-            cand_summary["features"] = candidate.features
-            cand_summary["datetimes"] = datetimes
-            cand_summary["nharm"] = candidate.nharm
-            cand_summary["best_harmonic_sum"] = candidate.best_harmonic_sum
-
-            all_cands.append(cand_summary)
-        return all_cands
+                all_cands.append(cand_summary)
+            return all_cands
+        return None
     except Exception as e:
         log.error(f"Can't process file {file} because of {e}.")

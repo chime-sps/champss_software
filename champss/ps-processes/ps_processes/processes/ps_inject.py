@@ -12,7 +12,11 @@ from sps_common.interfaces.utilities import sigma_sum_powers
 from sps_databases import db_api, db_utils
 from beamformer.utilities.common import find_closest_pointing, get_data_list
 import matplotlib.pyplot as plt
-
+from scipy.special import erf
+from pygdsm import HaslamSkyModel
+from astropy.coordinates import SkyCoord
+import healpy as hp
+import astropy.units as u
 log = logging.getLogger(__name__)
 
 import numpy.random as rand
@@ -29,6 +33,8 @@ mean_ones = 0.40298
 mean_twos = 0.064676
 mean_threes = 0.00995
 
+TPA_profiles = np.load(os.path.dirname(__file__) + "/smoothed_baselined_TPA_pulses.npy")
+f_dist = np.loadtxt(os.path.dirname(__file__) + "/atnf_freqs.txt", usecols = [1])
 kernels = np.load(os.path.dirname(__file__) + "/kernels.npy")
 kernel_scaling = np.load(os.path.dirname(__file__) + "/kernels.meta.npy")
 
@@ -45,53 +51,42 @@ def gaussian(mu, sig):
 def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
 
+def dm_distribution(x, mu, sig, l):
+    gauss = l*np.exp(l*(2*mu + l*sig**2 - 2*x)/2)/2
+    tail = 1 - erf((mu + l*sig**2 - x) / np.sqrt(2) / sig) #complimentary error function
 
-def generate_pulse(noise=False):
-    """
-    This function generates a random pulse profile to inject.
+    return gauss*tail / np.sum(gauss*tail)
 
-    Inputs:
-    -------
-            noise: bool
-                whether or not the pulse should be distorted by white noise
-    """
-    u = rand.uniform(0.01, 0.99)
-    # inverse sampling theorem for an exponential distribution with lambda = 1/15
-    gamma = -15 * np.log(1 - u) / 2 / 360
-    prof = lorentzian(phis, gamma)
-    prof /= max(prof)
-    subpulses = rand.choice(range(4), p=(mean_zeros, mean_ones, mean_twos, mean_threes))
+def generate_injection(pspec, f_nyquist = 508):
+    '''
+    This function generates a random injection and its parameters.
+    '''
+    f_log = np.logspace(-3, 2.7, int((4/6)*len(f_dist)))
+    f_choices = np.concatenate([f_dist, f_log]) 
+    f_choices = f_choices[f_choices < f_nyquist]
+    f = np.random.choice(f_choices)
 
-    # interpulse?
-    # the chances of having an interpulse are approximately 23/(1208 - 23), as in TPA
-    roll = rand.choice(range(1208 - 23))
-    if roll < 23:
-        u = rand.choice(np.linspace(0.01, 0.99, 1000))
-        # inverse sampling theorem for an exponential distribution with lambda = 1/15
-        gamma_interpulse = -15 * np.log(1 - u) / 2 / 360
-        x0_inter = rand.normal(0.5, 10 / 360)
-        interpulse = lorentzian(phis, gamma_interpulse, x0_inter)
-        interpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(interpulse)
-        # roll interpulse to correct location at ~180 deg from main pulse
-        np.roll(interpulse, 512)
-        prof += interpulse
+    dm_spread = np.linspace(0, pspec.dms[-1], 10000)
+    dm_weights = 0.6*dm_distribution(dm_spread, 24, 24, 0.02)
+    dm_weights += 0.4 / len(dm_spread)
+    #24 is chosen as the maximum DM value at b = 90 deg from NE2001
+    dm = np.random.choice(dm_spread, p = dm_weights)
+    
+    S_choices = np.logspace(-2, 1, 10000)
+    S = np.random.choice(S_choices)
 
-    # subpulses
-    for i in range(subpulses):
-        u = rand.choice(np.linspace(0.01, 0.99, 1000))
-        # inverse sampling theorem for an exponential distribution with lambda = 1/15
-        gamma_sub = -15 * np.log(1 - u) / 2 / 360
-        x0_sub = 0.5 + rand.normal(0, 0.1)
-        subpulse = lorentzian(phis, gamma_sub, x0_sub)
-        subpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(subpulse)
-        prof += subpulse
+    prof_idx = np.random.choice(range(len(TPA_profiles)))
+    prof = TPA_profiles[prof_idx]
 
-    # working on this-- the standard deviation isn't correct
-    if noise:
-        prof += rand.normal(0, 1, len(phis))
+    injection_dict = {
+                "TPA_idx": prof_idx,
+                "profile": prof,
+                "flux": S,
+                "frequency": f,
+                "DM": dm,
+            }
 
-    return prof
-
+    return injection_dict
 
 def x_to_chi2(x, df):
     """
@@ -156,6 +151,7 @@ class Injection:
         scale_injections=False,
         flux = None,
         sigma = None,
+        TPA_idx = None, #for bookkeeping
     ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
@@ -174,10 +170,28 @@ class Injection:
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
         self.W = self.get_fwhm()
+        self.Tsky = self.get_tsky()
         if flux is not None:
             self.use_sigma = False
         else:
             self.use_sigma = True
+
+    def get_tsky(self):
+        haslam = HaslamSkyModel(freq_unit='MHz', spectral_index=-2.6)
+        # Generate the sky map at 600 MHz
+        # (extrapolated from 408MHz where it is measured)
+        sky_map = haslam.generate(600)
+        # Convert your RA/Dec to a healpix pixel
+        ra = self.pspec_obj.ra  # degrees
+        dec = self.pspec_obj.dec  # degrees
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
+        gal_coord = coord.galactic
+        # Get the temperature, at the healpix pixel index
+        nside = haslam.nside  # 512 for Haslam
+        pix_idx = hp.ang2pix(nside, gal_coord.l.deg, gal_coord.b.deg, lonlat=True)
+        temperature = sky_map[pix_idx]
+        log.info(f"Sky temperature at RA={ra}, Dec={dec}: {temperature:.2f} K")
+        return temperature
 
     def get_width(self):
 
@@ -294,11 +308,10 @@ class Injection:
         delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
         tau = 2 * self.pspec.shape[1] * TSAMP
         Nbin = len(self.phase_prof)
-
         #calculate input signal
         
         RMS = np.sqrt(1 / Nbin)
-        signal = self.flux * RMS * np.sqrt(Npol * delta_f * tau / Nbin) * GAIN / TSYS / BETA 
+        signal = self.flux * RMS * np.sqrt(Npol * delta_f * tau / Nbin) * GAIN / (TSYS +self.Tsky) / BETA 
         signal *= np.sqrt(((1 / self.f) - self.W) / self.W)
         prof = self.phase_prof
         prof *= signal / np.mean(prof)
@@ -318,7 +331,7 @@ class Injection:
 
         #apply Van der Klis Eq 2.19 for time-bin windowing effect
         harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
-        B = np.sinc(harmonic_freqs * 4 * TSAMP) #factor of 4 is purely phenomenological
+        B = np.sinc(harmonic_freqs * TSAMP)
         prof_fft *= B
 
         return prof_fft
@@ -346,11 +359,9 @@ class Injection:
         # find the starting index, where the DM scale is -2
 
         i_min = np.argmin(np.abs((self.true_dm - 2 * self.deltaDM) - self.trial_dms))
-        log.info(f"Starting DM: {self.trial_dms[i_min]}")
         i0 = np.argmin(np.abs(self.true_dm - self.trial_dms))
         # find the stopping index, where the DM scale is +2
         i_max = np.argmin(np.abs((self.true_dm + 2 * self.deltaDM) - self.trial_dms))
-        log.info(f"Stopping DM: {self.trial_dms[i_max]}")
 
         # reminder; we are inclusive of i_max because that's the last index into which we want to inject
         target_dm_idx = np.arange(i_min, i_max + 1)
@@ -442,29 +453,6 @@ class Injection:
                 day_normalizer[i] /= rn_interpolated
             normalizer += day_normalizer
         return normalizer
-
-    def retrieve_flux(self, harms, bins, best_nharm, true_dm_in_pspec, true_dm_in_harms, phases):
-        #not that harms are power, not amplitude
-        tau = 2 * self.pspec.shape[1] * TSAMP
-        Npol = 2
-        delta_f = 200e6 #need more precise way of grabbing this but right now this is not stored.
-        N = len(self.phase_prof)
-
-        main_harms = harms[true_dm_in_harms, :4*best_nharm] * best_nharm + self.pspec[true_dm_in_pspec, bins[:4*best_nharm]]
-        retrieved_powers = np.zeros(best_nharm)
-        for i in range(best_nharm):
-            retrieved_powers[i] = np.sum(main_harms[4*i : 4*(i+1)])
-        retrieved_powers /= self.ndays
-        retrieved_fft = np.sqrt(retrieved_powers) * np.exp(1j * phases[:best_nharm])
-        retrieved_prof = -1 * irfft(retrieved_fft) 
-        RMS = np.sqrt(1 / 2 / best_nharm)
-        A = np.mean(retrieved_prof)
-
-        flux = A * TSYS * BETA / GAIN / np.sqrt(Npol * delta_f * tau / best_nharm) / RMS
-
-
-        return flux
-
 
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
@@ -571,12 +559,10 @@ class Injection:
         
         if self.use_sigma:
             scaled_prof_fft, phases = self.sigma_to_power(n_harm, df)
-            log.info('Using sigma as input quantity.')
-            log.info(f'Sigma = {self.sigma}.')
+            log.info(f'Injecting at f = {self.f:.2f} Hz, DM = {self.true_dm:.2f} pc / cm^3, and sigma = {self.sigma}.')
         else:
             scaled_prof_fft, phases = self.flux_to_power()
-            log.info('Using flux as input quantity.')
-            log.info(f'Flux = {self.flux} mJy.')
+            log.info(f'Injecting at f = {self.f:.2f} Hz, DM = {self.true_dm:.2f} pc / cm^3, and S = {self.flux:.2f} mJy.')
         
         
         if len(scaled_prof_fft) > n_harm:
@@ -618,8 +604,6 @@ class Injection:
             rescale_factor,
         ) = self.predict_sigma(harms, bins, dm_indices, n_harm, True)
 
-        retrieved_flux = self.retrieve_flux(harms, bins, predicted_nharm, true_dm_in_pspec, true_dm_in_harms, phases)
-        log.info(f'Retrieved flux: {retrieved_flux} mJy.')
 
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
@@ -667,8 +651,7 @@ class Injection:
 def main(
     pspec,
     full_harm_bins,
-    injection_profile="random",
-    num_injections=1,
+    injection_dict="random",
     remove_spectra=False,
     scale_injections=False,
     only_predict=False,
@@ -682,8 +665,6 @@ def main(
                                               profile in the dictionary defaults, or a dict with
                                               custom injection profile keys
                                               (profile, sigma, frequency, DM)
-            num_injections (int)            : provided if injection_profile == 'random.' How
-                                              many profiles to randomly generate.
             remove_spectra (bool)           : Whether to remove the spectra. Replaced by static value
             scale_injections (bool)         : Whether to scale the injection so that the
                                             detected sigma should be
@@ -694,79 +675,11 @@ def main(
     --------
             injection_profiles (list(dict)) : List containing dict describing the injection.
     """
-    default_freq = rand.choice(
-        np.linspace(0.1, 100, 10000), num_injections, replace=False
-    )
-    default_dm = rand.choice(np.linspace(10, 200, 10000), num_injections, replace=False)
-    default_sigma = rand.choice(np.linspace(5, 20, 1000), num_injections, replace=False)
-
-    defaults = {
-        "gaussian": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "subpulse": {
-            "profile": gaussian(0.5, 0.025) + 0.5 * gaussian(0.6, 0.015),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "interpulse": {
-            "profile": gaussian(0.5, 0.025) + 0.8 * gaussian(0.1, 0.02),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "faint": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 10,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "high-DM": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 212.3,
-        },
-        "slow": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": 3.27,
-            "DM": 121.4375,
-        },
-        "fast": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": 70.26,
-            "DM": 121.4375,
-        },
-    }
-
-    injection_profiles = []
-
-    if type(injection_profile) == str and injection_profile != "random":
-        injection_profile = defaults[injection_profile]
-        injection_profiles.append(injection_profile)
-        if injection_profile != "slow" and injection_profile != "fast":
-            log.info(f"Your randomly assigned frequency is {default_freq} Hz.")
-
-    elif injection_profile == "random":
-        for i in range(num_injections):
-            pulse = generate_pulse()
-            injection_profiles.append(
-                {
-                    "profile": pulse,
-                    "sigma": default_sigma[i],
-                    "frequency": default_freq[i],
-                    "DM": default_dm[i],
-                }
-            )
-
-    else:
-        injection_profiles.append(injection_profile)
+    if injection_dict == "random":
+        injection_dict = generate_injection(pspec)
+    
+    else: 
+        injection_dict['TPA_idx'] = None
 
     if remove_spectra:
         log.info("Replacing spectra with expected mean value.")
@@ -778,39 +691,35 @@ def main(
     # There are probably easier ways to do this
     zero_bins = pspec.power_spectra[0, :] == 0
 
-    i = 0
-    for injection_dict in injection_profiles:
-        injection_output_dict = Injection(
-            pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
-        ).injection()
-        if len(injection_output_dict["injected_powers"]) == 0:
-            log.info("Pulsar too weak.")
-            continue
+    injection_output_dict = Injection(
+        pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
+    ).injection()
+    if len(injection_output_dict["injected_powers"]) == 0:
+        log.info("Pulsar too weak.")
+        
+    injection_dict["dms"] = injection_output_dict["dm_indices"]
+    injection_dict["bins"] = injection_output_dict["freq_indices"]
+    injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
+    injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
+    injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
+    injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
+    injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
 
-        injection_dict["dms"] = injection_output_dict["dm_indices"]
-        injection_dict["bins"] = injection_output_dict["freq_indices"]
-        injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
-        injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
-        injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
-        injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
-        injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
+    if isinstance(injection_dict["profile"], (np.ndarray, list)):
+        injection_dict["profile"] = "custom_profile"
 
-        if isinstance(injection_dict["profile"], (np.ndarray, list)):
-            injection_dict["profile"] = "custom_profile"
+    if not only_predict:
+        # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
+        # not change the object
+        injected_indices = np.ix_(
+            injection_output_dict["dm_indices"],
+            injection_output_dict["freq_indices"],
+        )
 
-        if not only_predict:
-            # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
-            # not change the object
-            injected_indices = np.ix_(
-                injection_output_dict["dm_indices"],
-                injection_output_dict["freq_indices"],
-            )
+        pspec.power_spectra[injected_indices] += injection_output_dict[
+            "injected_powers"
+        ].astype(pspec.power_spectra.dtype)
 
-            pspec.power_spectra[injected_indices] += injection_output_dict[
-                "injected_powers"
-            ].astype(pspec.power_spectra.dtype)
-
-        i += 1
     pspec.power_spectra[:, zero_bins] = 0
-
-    return injection_profiles
+    
+    return injection_dict
