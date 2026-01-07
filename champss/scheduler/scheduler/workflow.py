@@ -285,7 +285,6 @@ def wait_until_service_not_pending(service_id, docker_client, timeout=0.5):
     while pending:
         try:
             service_tasks = docker_client.services.get(service_id).tasks()
-
             pending = service_tasks[0]["Status"]["State"] in docker_swarm_pending_states
             if pending:
                 time.sleep(timeout)
