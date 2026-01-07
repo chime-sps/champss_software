@@ -814,8 +814,6 @@ def run_all_pipeline_processes(
             # Can't have dots or slashes in Docker Service names
             # All Docker Services made with this function will be prefixed with "processing-"
             "name": service_name,
-            # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
-            # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
                 "workflow run"
                 f" champss-pipeline --site"
@@ -856,7 +854,7 @@ def run_all_pipeline_processes(
     requested_containers = 100
     update_time = 60
     surplus_replicas = 20
-    # This checks if enough work objects have been deopisted. More work objects are scheduled in the background
+    # This checks if enough work objects have been deposited. More work objects are scheduled in the background
     for work_index, work in enumerate(work_ids):
         if work_index > requested_containers:
             break
@@ -920,7 +918,7 @@ def run_all_pipeline_processes(
             .limit(requested_containers)
         )
     log.info(
-        "No work scheduled anymore, will scale all services down and remove them once tey are finished."
+        "No work scheduled anymore, will scale all services down and remove them once they are finished."
     )
     for i, tier in enumerate(processing_tier_names):
         docker_client.services.get(services[i]).scale(0)
