@@ -28,6 +28,7 @@ from scheduler.workflow import (  # docker_swarm_pending_states,
     message_slack,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
+    remove_finished_service,
 )
 from sps_common.interfaces import MultiPointingCandidate
 from workflow.definitions.work import Work
@@ -814,8 +815,6 @@ def run_all_pipeline_processes(
             # Can't have dots or slashes in Docker Service names
             # All Docker Services made with this function will be prefixed with "processing-"
             "name": service_name,
-            # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
-            # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
                 "workflow run"
                 f" champss-pipeline --site"
@@ -856,7 +855,7 @@ def run_all_pipeline_processes(
     requested_containers = 100
     update_time = 60
     surplus_replicas = 20
-    # This checks if enough work objects have been deopisted. More work objects are scheduled in the background
+    # This checks if enough work objects have been deposited. More work objects are scheduled in the background
     for work_index, work in enumerate(work_ids):
         if work_index > requested_containers:
             break
@@ -920,7 +919,7 @@ def run_all_pipeline_processes(
             .limit(requested_containers)
         )
     log.info(
-        "No work scheduled anymore, will scale all services down and remove them once tey are finished."
+        "No work scheduled anymore, will scale all services down and remove them once they are finished."
     )
     for i, tier in enumerate(processing_tier_names):
         docker_client.services.get(services[i]).scale(0)
@@ -1383,7 +1382,7 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
                 mp_timeout = 60 * 60 * 6
-                work_id = schedule_workflow_job(
+                work_id, mp_service_id = schedule_workflow_job(
                     docker_image=docker_image_name,
                     docker_mounts=[
                         f"{datpath}:{datpath}",
@@ -1414,13 +1413,15 @@ def start_processing_manager(
                     },
                     workflow_tags=["mp", date_string],
                     timeout=mp_timeout,
+                    return_service_id=True,
                 )
 
-                wait_for_no_tasks_in_states(
-                    docker_swarm_running_states,
-                    docker_service_name_prefix,
-                    timeout=mp_timeout,
-                )
+                # wait_for_no_tasks_in_states(
+                #     docker_swarm_running_states,
+                #     docker_service_name_prefix,
+                #     timeout=mp_timeout,
+                # )
+                remove_finished_service(mp_service_id)
 
                 # Need to wait a few seconds for results to propogate to Workflow
                 time.sleep(5)
@@ -1465,8 +1466,8 @@ def start_processing_manager(
                     args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
-                class_timeout = 60 * 60 * 60
-                work_id = schedule_workflow_job(
+                class_timeout = 60 * 60 * 5
+                work_id, class_service_id = schedule_workflow_job(
                     docker_image="sps-archiver1.chime:5000/champss_classification:test",
                     docker_mounts=[
                         f"{datpath}:{datpath}",
@@ -1481,13 +1482,15 @@ def start_processing_manager(
                     },
                     workflow_tags=["class", date_string],
                     timeout=class_timeout,
+                    return_service_id=True,
                 )
-
-                wait_for_no_tasks_in_states(
-                    docker_swarm_running_states,
-                    docker_service_name_prefix,
-                    timeout=class_timeout,
-                )
+                remove_finished_service(class_service_id)
+                time.sleep(5)
+                # wait_for_no_tasks_in_states(
+                #     docker_swarm_running_states,
+                #     docker_service_name_prefix,
+                #     timeout=class_timeout,
+                # )
                 work_result = get_work_from_results(
                     workflow_results_name=workflow_buckets_name,
                     work_id=work_id,
