@@ -447,7 +447,7 @@ def schedule_workflow_job(
         service_id = service.attrs["ID"]
         status = wait_until_service_not_pending(service_id)
         remove_service_thread = threading.Thread(
-            target=remove_finished_service, args=(service_id)
+            target=remove_finished_service, args=(service_id,)
         )
         remove_service_thread.start()
         if return_service_id:
