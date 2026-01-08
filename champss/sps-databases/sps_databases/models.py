@@ -876,7 +876,7 @@ class Process:
 
     @property
     def ram_requirement(self):
-        return min(100.0, (4 + self.maxdm * 0.05 + self.ntime * 1.35e-5))
+        return ram_requirement(self.maxdm, self.ntime)
 
     @property
     def tier(self):
@@ -905,6 +905,10 @@ class Process:
         doc["status"] = self.status.value
         doc["obs_status"] = self.obs_status.value
         return doc
+
+
+def ram_requirement(maxdm, ntime):
+    return min(100.0, (4 + maxdm * 0.05 + ntime * 1.35e-5))
 
 
 @attrs
