@@ -75,12 +75,19 @@ def initialise(configuration, rfi_beamform, basepath, datpath):
     class Wrapper:
         def __init__(self, config):
             self.config = config
+            # Get global_masking_dict from config if it exists, otherwise use empty dict
+            global_masking_dict = (
+                OmegaConf.to_container(config.rfi_global)
+                if "rfi_global" in config
+                else {}
+            )
             self.bf = SkyBeamFormer(
                 **OmegaConf.to_container(config.beamform),
                 basepath=basepath,
                 extn=extn,
                 run_rfi_mitigation=rfi_beamform,
                 masking_dict=OmegaConf.to_container(config.rfi),
+                global_masking_dict=global_masking_dict,
             )
 
     return Wrapper(configuration)

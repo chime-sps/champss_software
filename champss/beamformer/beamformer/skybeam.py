@@ -14,7 +14,7 @@ from astropy.time import Time, TimeDelta
 from attr.validators import deep_iterable, instance_of
 from beamformer.utilities.common import get_data_list
 from numpy._typing import ArrayLike
-from rfi_mitigation.pipeline import RFIPipeline
+from rfi_mitigation.pipeline import RFIPipeline, RFIGlobalPipeline
 from scipy import linalg
 from scipy.signal import detrend
 from sps_common.constants import TSAMP
@@ -245,6 +245,10 @@ class SkyBeamFormer:
     masking_dict: dict
         The dictionary of the configuration for the RFI mitigation process. Default = {}
 
+    global_masking_dict: dict
+        The dictionary of the configuration for the global RFI mitigation process
+        (runs on full dataset after filling). Default = {}
+
     active_beams: List[int]
         The list of beam columns to be used for beamforming from 0 to 3. Default [0, 1, 2, 3]
     """
@@ -266,6 +270,7 @@ class SkyBeamFormer:
     min_data_frac = attr.ib(default=0.0, validator=instance_of(float))
     run_rfi_mitigation = attr.ib(default=True, validator=instance_of(bool))
     masking_dict = attr.ib(default={}, validator=instance_of(dict), type=dict)
+    global_masking_dict = attr.ib(default={}, validator=instance_of(dict), type=dict)
     active_beams = attr.ib(
         default=[0, 1, 2, 3],
         validator=deep_iterable(
@@ -273,6 +278,7 @@ class SkyBeamFormer:
         ),
     )
     rfi_pipeline = attr.ib(init=False)
+    rfi_global_pipeline = attr.ib(init=False)
     max_mask_frac = attr.ib(default=1.0, validator=instance_of(float))
 
     @extn.validator
@@ -320,9 +326,15 @@ class SkyBeamFormer:
             assert v in [0, 1, 2, 3], "the active beams must be either 0, 1, 2 or 3"
 
     def __attrs_post_init__(self):
-        """Create RFIPipeline instance."""
+        """Create RFIPipeline instances."""
         if self.run_rfi_mitigation:
             self.rfi_pipeline = RFIPipeline(self.masking_dict, make_plots=False)
+            # Create global pipeline for post-fill cleaning on full dataset
+            # Only create if global_masking_dict has any True values
+            if self.global_masking_dict and any(self.global_masking_dict.values()):
+                self.rfi_global_pipeline = RFIGlobalPipeline(self.global_masking_dict, make_plots=False)
+            else:
+                self.rfi_global_pipeline = None
 
     def form_skybeam(self, active_pointing, num_threads=1):
         """
@@ -536,6 +548,48 @@ class SkyBeamFormer:
             ),
             nsub_slices,
         )
+
+        # Global RFI pass: run on full dataset after zero replacement
+        # This allows cleaner statistics since masked regions are now filled
+        if self.run_rfi_mitigation and self.rfi_global_pipeline is not None:
+            log.info("Starting global RFI cleaning on zero-filled dataset.")
+            log.info(
+                "Pre-global-clean masking Fraction:"
+                f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+            )
+            self.rfi_global_pipeline.clean(
+                spectra_shared.name,
+                mask_shared.name,
+                spectra_shape,
+                spec_dtype,
+            )
+            log.info(
+                "Global RFI cleaning finished. New masking Fraction:"
+                f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+            )
+
+            # Apply the updated mask to the spectra (zero out newly masked regions)
+            log.info("Applying global RFI mask to spectra")
+            spectra[rfi_mask] = 0
+
+            # Re-run zero replacement to fill newly masked regions
+            log.info("Re-running zero replacement after global RFI cleaning")
+            pool = Pool(num_threads)
+            pool.map(
+                partial(
+                    self.zero_replace_shared_spectra,
+                    spectra_shared.name,
+                    mask_shared.name,
+                    spectra_shape,
+                    spec_dtype,
+                    flatten_bandpass=self.flatten_bandpass,
+                ),
+                nsub_slices,
+            )
+            pool.close()
+            pool.join()
+            log.info("Zero replacement complete")
+
         completely_masked_channels = rfi_mask.min(axis=1).sum()
         log.info(
             "Fraction of completely masked channels:"
