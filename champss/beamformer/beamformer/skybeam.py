@@ -249,6 +249,11 @@ class SkyBeamFormer:
         The dictionary of the configuration for the global RFI mitigation process
         (runs on full dataset after filling). Default = {}
 
+    subtract_incoh_beam: str or None
+        Path to incoherent beam .npz file to subtract from data, or None to disable.
+        The incoherent beam should contain 'data', 'unix_start', and 'unix_end' fields.
+        Default = None
+
     active_beams: List[int]
         The list of beam columns to be used for beamforming from 0 to 3. Default [0, 1, 2, 3]
     """
@@ -280,6 +285,7 @@ class SkyBeamFormer:
     rfi_pipeline = attr.ib(init=False)
     rfi_global_pipeline = attr.ib(init=False)
     max_mask_frac = attr.ib(default=1.0, validator=instance_of(float))
+    subtract_incoh_beam = attr.ib(default=None)
 
     @extn.validator
     def _validate_extension(self, attribute, value):
@@ -439,6 +445,82 @@ class SkyBeamFormer:
             for slice in raw_spec_slice_list
         ]
         log.info("Finished loading.")
+
+        # Subtract incoherent beam if specified
+        if self.subtract_incoh_beam is not None:
+            log.info(f"Subtracting incoherent beam from {self.subtract_incoh_beam}")
+            incoh_data = np.load(self.subtract_incoh_beam)
+            incoh_beam = incoh_data['data']
+            incoh_unix_start = float(incoh_data['unix_start'])
+            incoh_unix_end = float(incoh_data['unix_end'])
+
+            # Check if this is achromatic (1D) or old format (2D)
+            is_achromatic = incoh_data.get('achromatic', False) or incoh_beam.ndim == 1
+
+            # Calculate observation time range
+            obs_unix_end = utc_start + spectra_shape[1] * TSAMP
+
+            # Check if incoherent beam fully covers observation
+            if incoh_unix_start > utc_start or incoh_unix_end < obs_unix_end:
+                mask_shared.close()
+                mask_shared.unlink()
+                raise ValueError(
+                    f"Incoherent beam does not fully cover observation time range. "
+                    f"Observation: {utc_start} to {obs_unix_end}, "
+                    f"Incoherent beam: {incoh_unix_start} to {incoh_unix_end}"
+                )
+
+            # Calculate time offset between incoherent beam and current observation
+            time_offset_samples = round((utc_start - incoh_unix_start) / TSAMP)
+
+            if is_achromatic:
+                # Achromatic subtraction: 1D time series I(time)
+                # Subtract the same value from all channels at each time
+                log.info(f"Subtracting achromatic incoherent beam (offset by {time_offset_samples} samples)")
+                log.info("  Method: Subtracting same value from all channels (achromatic)")
+
+                # Extract the relevant time slice
+                incoh_slice = incoh_beam[time_offset_samples:time_offset_samples + spectra_shape[1]]
+
+                # Ensure we have the right length
+                if len(incoh_slice) < spectra_shape[1]:
+                    log.warning(f"Incoherent beam shorter than needed: {len(incoh_slice)} < {spectra_shape[1]}")
+                    # Pad with zeros
+                    padded = np.zeros(spectra_shape[1], dtype=incoh_beam.dtype)
+                    padded[:len(incoh_slice)] = incoh_slice
+                    incoh_slice = padded
+
+                # Subtract achromatically: same value from all channels
+                # Broadcasting: spectra (nchan, ntime) -= incoh_slice (ntime,)
+                spectra[:, :] -= incoh_slice[np.newaxis, :]
+
+            else:
+                # Old format: 2D (nchan, ntime) - per-channel subtraction
+                log.info(f"Subtracting 2D incoherent beam (offset by {time_offset_samples} samples)")
+                log.info("  Method: Per-channel subtraction (old format)")
+
+                # Check channel count matches
+                if incoh_beam.shape[0] != spectra_shape[0]:
+                    mask_shared.close()
+                    mask_shared.unlink()
+                    raise ValueError(
+                        f"Channel mismatch: incoherent beam has {incoh_beam.shape[0]} channels, "
+                        f"spectra has {spectra_shape[0]} channels"
+                    )
+
+                spectra[:, :] -= incoh_beam[:, time_offset_samples:time_offset_samples + spectra_shape[1]]
+
+            # Handle any invalid values created by subtraction (NaN, Inf)
+            # Note: Negative values are valid after subtraction (noise fluctuations)
+            invalid_mask = ~np.isfinite(spectra)
+            if np.any(invalid_mask):
+                num_invalid = invalid_mask.sum()
+                frac_invalid = num_invalid / spectra.size
+                log.warning(f"Incoherent beam subtraction created {num_invalid} NaN/Inf values "
+                           f"({frac_invalid:.4f} of data). Masking these.")
+                spectra[invalid_mask] = 0
+                rfi_mask[invalid_mask] = True
+
         # For now separate the spectrum that each thread gets one part
         # Splitting it too small might increase memory usage
         # Can set minimal length here
@@ -572,9 +654,8 @@ class SkyBeamFormer:
             log.info("Applying global RFI mask to spectra")
             spectra[rfi_mask] = 0
 
-            # Re-run zero replacement to fill newly masked regions
+            # Re-run zero replacement to fill newly masked regions using the existing pool
             log.info("Re-running zero replacement after global RFI cleaning")
-            pool = Pool(num_threads)
             pool.map(
                 partial(
                     self.zero_replace_shared_spectra,
@@ -586,8 +667,6 @@ class SkyBeamFormer:
                 ),
                 nsub_slices,
             )
-            pool.close()
-            pool.join()
             log.info("Zero replacement complete")
 
         completely_masked_channels = rfi_mask.min(axis=1).sum()

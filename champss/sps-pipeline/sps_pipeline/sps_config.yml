@@ -28,6 +28,7 @@ beamform:
   beam_to_normalise: 1
   flatten_bandpass: True
   max_mask_frac: 0.9
+  subtract_incoh_beam: null  # Path to incoherent beam .npz file, or null to disable
 dedisp:
   numdms: 40
   maxdm: 1700
