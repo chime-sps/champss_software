@@ -280,7 +280,8 @@ def wait_for_no_tasks_in_states(
                 break
 
 
-def wait_until_service_not_pending(service_id, docker_client, timeout=0.5):
+def wait_until_service_not_pending(service_id, timeout=0.5):
+    docker_client = docker.from_env()
     pending = True
     while pending:
         try:
@@ -293,7 +294,8 @@ def wait_until_service_not_pending(service_id, docker_client, timeout=0.5):
     return service_tasks[0]["Status"]["State"]
 
 
-def remove_finished_service(service_id, docker_client, timeout=10):
+def remove_finished_service(service_id, timeout=10):
+    docker_client = docker.from_env()
     finished = False
     while not finished:
         time.sleep(timeout)
@@ -323,6 +325,7 @@ def schedule_workflow_job(
     workflow_tags,
     workflow_user="CHAMPSS",
     timeout=task_timeout_seconds,
+    return_service_id=False,
 ):
     """
     Deposit Work and scale Docker Service, as node resources are free.
@@ -340,6 +343,8 @@ def schedule_workflow_job(
     workflow_params (dict): Parameters to your function, in form {"param1": "value1", "param2": "value2"}.
     workflow_tags (list): Custom  tags for your Workflow job to be filtered by.
     workflow_user (str): Name of the user who shall own the Workflow job.
+    timeout (int): Timeout of the workflow task
+    return_service_id (bool): Also return service id and not only work id
 
     Returns:
     str: The ID of the deposited Workflow job if successful, otherwise an empty string.
@@ -440,13 +445,15 @@ def schedule_workflow_job(
 
         service = docker_client.services.create(**docker_service)
         service_id = service.attrs["ID"]
-        status = wait_until_service_not_pending(service_id, docker_client)
+        status = wait_until_service_not_pending(service_id)
         remove_service_thread = threading.Thread(
-            target=remove_finished_service, args=(service_id, docker_client)
+            target=remove_finished_service, args=(service_id)
         )
         remove_service_thread.start()
-
-        return work_id[0]
+        if return_service_id:
+            return work_id[0], service_id
+        else:
+            return work_id[0]
     except Exception as error:
         log.info(
             f"Failed to deposit Work or create Docker Service: {error}. "
@@ -458,7 +465,10 @@ def schedule_workflow_job(
         except Exception as error:
             log.info(f"Failed to delete dangling Work: {error}.")
 
-        return ""
+        if return_service_id:
+            return "", ""
+        else:
+            return ""
 
 
 @click.command()
