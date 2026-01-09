@@ -46,31 +46,38 @@ from sps_databases import db_utils, models
 #     type=str,
 #     help="Name of the run",
 # )
-def find_monthly_search_commands(db_port, db_host, db_name, day_threshold, options):
+def find_monthly_search_commands(db_port, db_host, db_name, basepath, day_threshold=10):
     db = db_utils.connect(port=db_port, host=db_host, name=db_name)
     all_stacks = list(db.ps_stacks.find({"num_days_month": {"$gte": day_threshold}}))
 
     all_commands = []
-    options_dict = json.loads(options)
+    # options_dict = json.loads(options)
     for stack in all_stacks:
         stack_obj = models.PsStack.from_db(stack)
         pointing = stack_obj.pointing(db)
+        ram_requirement = pointing.ram_requirement
+        tier_name, tier_limit = pointing.tier
+        threads_reserved = int(tier_limit / 3)
         arguments = {
             "ra": pointing.ra,
-            "dec": pointing.dec,
+            "dec": f" {pointing.dec}",
             "components": "search-monthly",
             "db_port": db_port,
             "db_name": db_name,
             "db_host": db_host,
-            **options_dict,
+            "num_threads": threads_reserved,
+            "components": ["search-monthly"],
+            "known_source_threshold": 10,
+            "cand_path": basepath,
         }
         all_commands.append(
             {
                 "arguments": arguments,
-                "scheduled": False,
                 "maxdm": pointing.maxdm,
                 "stackpath": stack_obj.datapath_month,
                 "length": pointing.length,
+                "ram_requirement": ram_requirement,
+                "tier_name": tier_name,
             }
         )
 

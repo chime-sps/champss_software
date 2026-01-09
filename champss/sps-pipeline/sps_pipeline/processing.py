@@ -531,36 +531,15 @@ def deposit_pipeline_work(
     return work_id
 
 
-def deposit_stack_work(workflow_buckets_name, httpcontext, basepath, stack_parameters):
-    ram_requirement = models.ram_requirement(
-        stack_parameters["maxdm"], stack_parameters["length"]
-    )
-    # tier computation is a propert of processes, whic currently is only intended for single day processes.
-    # WIll copy paste the code for that here for the moment as a quick solution
-    for index, mem_limit in enumerate(models.processing_tier_limits):
-        if ram_requirement < mem_limit:
-            break
-    tier_name = models.processing_tier_names[index]
-    tier_limit = models.processing_tier_limits[index]
-    threads_reserved = int(tier_limit / 3)
+def deposit_stack_work(workflow_buckets_name, httpcontext, stack_parameters):
     work = Work(
         pipeline=workflow_buckets_name, site="chime", user="CHAMPSS", http=httpcontext
     )
-    workflow_params = stack_parameters["arguments"]
-    workflow_params.update(
-        {
-            "dec": f" {workflow_params['dec']}",
-            "num_threads": threads_reserved,
-            "components": ["search-monthly"],
-            "known_source_threshold": 10,
-            "cand_path": basepath,
-        }
-    )
-    work.function = "sps_pipeline.pipeline.main"
-    work.parameters = workflow_params
+    work.function = "sps_pipeline.pipeline.stack_and_search"
+    work.parameters = stack_parameters["arguments"]
     work.tags = [
         "stack-search",
-        tier_name,
+        stack_parameters["tier_name"],
     ]
     work.config.archive.results = True
     work.config.archive.plots = "bypass"
@@ -732,6 +711,7 @@ def run_all_pipeline_processes(
 
     log.setLevel(logging.INFO)
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+    http = HTTPContext()
     if mode == "pipeline":
         if run_stacking:
             query = {
@@ -776,16 +756,12 @@ def run_all_pipeline_processes(
         )
 
         workflow_params = {
-            # "date": process.date,
             "stack": run_stacking,
             "fdmt": True,
             "rfi_beamform": True,
             "plot": False,
             "plot_threshold": 8.0,
-            # "ra": process.ra,
-            # "dec": f" {process.dec}",
             "components": ["all"],
-            # "num_threads": docker_threads_needed,
             "db_port": db_port,
             "db_host": db_host,
             "db_name": db_name,
@@ -813,10 +789,10 @@ def run_all_pipeline_processes(
                             "Flags not implimented yet. Reformated your option to --option_python_name True"
                         )
         process_ids = [process["_id"] for process in all_processes]
-        http = HTTPContext()
         pool = Pool(4)
         # First deposit all process in workflow bucket
         # Imap will perform these jobs in the background, a single process can deposit ~4 jobs per second
+        workflow_buckets_name = "champss-pipeline"
         work_ids = pool.imap(
             partial(
                 deposit_pipeline_work, workflow_params, workflow_buckets_name, http
@@ -824,22 +800,24 @@ def run_all_pipeline_processes(
             all_processes,
         )
     elif mode == "stack":
-        all_processes = find_monthly_search_commands(db_port, db_host, db_name, 10, "")
+        all_processes = find_monthly_search_commands(
+            db_port, db_host, db_name, basepath, 10
+        )
         pool = Pool(4)
         # First deposit all process in workflow bucket
         # Imap will perform these jobs in the background, a single process can deposit ~4 jobs per second
+        workflow_buckets_name = "champss-stack-search"
         work_ids = pool.imap(
             partial(
-                deposit_pipeline_work,
-                workflow_params,
+                deposit_stack_work,
                 workflow_buckets_name,
                 http,
-                basepath,
             ),
             all_processes,
         )
     else:
         log.error("Unrecognized mode.")
+        sys.exit()
 
     docker_client = docker.from_env()
     services = []
@@ -888,7 +866,7 @@ def run_all_pipeline_processes(
             "name": service_name,
             "command": (
                 "workflow run"
-                f" champss-pipeline --site"
+                f" {workflow_buckets_name} --site"
                 f" chime --lives -1 --sleep 1"
                 f" --tag {tier_name}"
             ),
@@ -1157,7 +1135,7 @@ def run_all_pipeline_processes(
     help="Skip finding processes when this is not necessary anymore (during debugging for example).",
 )
 @click.option(
-    "--run-stack-searck/--no-run-stack-search",
+    "--run-stack-search/--no-run-stack-search",
     default=False,
     type=bool,
     help="Run stack search only. Will later implement to run stack every n days.",

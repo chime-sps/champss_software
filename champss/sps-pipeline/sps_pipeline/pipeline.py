@@ -935,6 +935,7 @@ def stack_and_search(
     - search: run the searching of the cumulative stack
     - search-monthly: run the searching of the monthly stack
     """
+    log.info("START")
 
     multiprocessing.set_start_method("forkserver")
     sys.excepthook = dbexcepthook
