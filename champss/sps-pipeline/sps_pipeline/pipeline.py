@@ -944,6 +944,7 @@ def stack_and_search(
     config = load_config(config_file, config_options)
     now = dt.datetime.now()
     log_path = str(cand_path) + f"./stack_logs/{now.strftime('%Y/%m/%d')}/"
+    print("1")
     if not file:
         log_name = (
             f"run_stack_search_{ra:.02f}_"
@@ -956,6 +957,7 @@ def stack_and_search(
         )
     log_file = log_path + log_name
     apply_logging_config(config, log_file)
+    print("2")
     if path_cumul_stack:
         config.ps_cumul_stack.ps_stack_config.basepath = path_cumul_stack
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -978,6 +980,7 @@ def stack_and_search(
         config.ps_cumul_stack.ps_search_config.update_db = False
     if not components or "all" in components:
         components = set(components) | {"search-monthly", "stack", "search"}
+    print("3")
     to_search_monthly = False
     to_stack = False
     to_search = False
