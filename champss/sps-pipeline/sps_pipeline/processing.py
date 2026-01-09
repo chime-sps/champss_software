@@ -1204,9 +1204,14 @@ def start_processing_manager(
     while loop_condition():
         try:
             present_date = dt.datetime.now(dt.timezone.utc)
+            present_date_string = present_date.strftime("%Y/%m/%d")
             yesterday_date = present_date - dt.timedelta(days=1)
 
             date_string = date_to_process.strftime("%Y/%m/%d")
+            if run_stack_search:
+                mode = "stack-search"
+            else:
+                "mode" = "pipeline"
 
             if date_to_process <= yesterday_date:
                 log.info(
@@ -1228,7 +1233,7 @@ def start_processing_manager(
 
             # Start of pipeline phase
             if run_pipeline:
-                if not skip_finding_processes and not run_stack_search:
+                if not skip_finding_processes and not (mode=="stack-search"):
                     processes, [], [] = find_all_pipeline_processes.main(
                         args=[
                             "--db-host",
@@ -1450,16 +1455,7 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
                 mp_timeout = 60 * 60 * 6
-                work_id, mp_service_id = schedule_workflow_job(
-                    docker_image=docker_image_name,
-                    docker_mounts=[
-                        f"{datpath}:{datpath}",
-                        f"{basepath}:{basepath}",
-                    ],
-                    docker_name=f"{docker_service_name_prefix}-{date_string}",
-                    docker_memory_reservation=200,
-                    workflow_buckets_name=workflow_buckets_name,
-                    workflow_function="sps_multi_pointing.mp_pipeline.cli",
+                if mode == "pipeline":
                     workflow_params={
                         "output": basepath,
                         "file_path": None,
@@ -1478,8 +1474,43 @@ def start_processing_manager(
                         "db_name": db_name,
                         "num_threads": 64,
                         "run_name": f"daily_{date_string}",
-                    },
-                    workflow_tags=["mp", date_string],
+                    }
+                    docker_name=f"{docker_service_name_prefix}-{date_string}"
+                    workflow_tags=["mp", date_string]
+                else:
+                    date_string
+                    workflow_params={
+                        "output": basepath,
+                        "file_path": None,
+                        "get_from_db": False,
+                        "date": date_string,
+                        "plot": True,
+                        "plot_cands": True,
+                        "plot_all_pulsars": True,
+                        "db": True,
+                        "csv": True,
+                        "plot_threshold": 8,
+                        "plot_dm_threshold": 3,
+                        "db_port": db_port,
+                        "db_host": db_host,
+                        "db_name": db_name,
+                        "num_threads": 64,
+                        "run_name": f"stack_{present_date_string}",
+                    }
+                    docker_name=f"{docker_service_name_prefix}-{date_string}"
+                    workflow_tags=["mp", "stack", present_date_string]                    
+                work_id, mp_service_id = schedule_workflow_job(
+                    docker_image=docker_image_name,
+                    docker_mounts=[
+                        f"{datpath}:{datpath}",
+                        f"{basepath}:{basepath}",
+                    ],
+                    docker_name=docker_name,
+                    docker_memory_reservation=200,
+                    workflow_buckets_name=workflow_buckets_name,
+                    workflow_function="sps_multi_pointing.mp_pipeline.cli",
+                    workflow_params=workflow_params,
+                    workflow_tags=workflow_tags,
                     timeout=mp_timeout,
                     return_service_id=True,
                 )
@@ -1515,14 +1546,16 @@ def start_processing_manager(
                         "No results from multi-pointing. See Workfklow Web for errors,"
                         f" with filter: ALL_tags=['mp', '{date_string}']"
                     )
-                daily_run = db_api.update_daily_run(
-                    date_to_process, {"multipointing_result": work_result}
-                )
+                if mode == "pipeline":
+                    daily_run = db_api.update_daily_run(
+                        date_to_process, {"multipointing_result": work_result}
+                    )
             # End of multi-pointing phase
 
             # Start of classification phase
             if run_classification:
-                daily_run = db_api.get_daily_run(date_to_process)
+                if mode == "pipeline":
+                    daily_run = db_api.get_daily_run(date_to_process)
                 message_slack(f"Running classfication for {date_string}")
 
                 docker_service_name_prefix = "class"
@@ -1535,6 +1568,10 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
                 class_timeout = 60 * 60 * 5
+                if mode == "pipeline":
+                    input_csv = daily_run.multipointing_result["csv_file"]
+                else:
+                    input_csv = f"{basepath}/stack_{present_date_string}/all_mp_cands.csv"
                 work_id, class_service_id = schedule_workflow_job(
                     docker_image="sps-archiver1.chime:5000/champss_classification:test",
                     docker_mounts=[
@@ -1546,7 +1583,7 @@ def start_processing_manager(
                     workflow_buckets_name=workflow_buckets_name,
                     workflow_function="champss_classification.pytorch_model.classify_lazy.load_model_and_classify_mp_csv_lazy",
                     workflow_params={
-                        "csv": daily_run.multipointing_result["csv_file"],
+                        "csv": input_csv,
                     },
                     workflow_tags=["class", date_string],
                     timeout=class_timeout,
@@ -1564,19 +1601,23 @@ def start_processing_manager(
                     work_id=work_id,
                     failover_to_buckets=True,
                 )["results"]
-                daily_run = db_api.update_daily_run(
-                    date_to_process,
-                    {"classification_result": work_result},
-                )
+                if mode == "pipeline":
+                    daily_run = db_api.update_daily_run(
+                        date_to_process,
+                        {"classification_result": work_result},
+                    )
             # End of classification phase
 
             # Start of folding phase
             if run_folding:
-                daily_run = db_api.get_daily_run(date_to_process)
-                df_folded_name = (
-                    daily_run.classification_result["output_file"].rsplit("_", 1)[0]
-                    + "_folded.csv"
-                )
+                if mode == "pipeline":
+                    daily_run = db_api.get_daily_run(date_to_process)
+                    df_folded_name = (
+                        daily_run.classification_result["output_file"].rsplit("_", 1)[0]
+                        + "_folded.csv"
+                    )
+                else:
+                    df_folded_name = f"{basepath}/stack_{present_date_string}/all_mp_cands_folded.csv"
                 fold_schedule_output, [], [] = find_all_folding_processes.main(
                     args=[
                         "--date",
