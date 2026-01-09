@@ -225,6 +225,7 @@ def run_interface(
         injection_performance = spcc.test_injection_performance()
     if update_db:
         # For now don't write to db by default, I'll think later about how to turn this on and off
+        # Turned it on again
         payload = {
             "path_candidate_file": path.abspath(ps_candidates),
             "num_total_candidates": len(spcc.candidates),

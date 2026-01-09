@@ -196,6 +196,11 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     default=True,
     help="Cluster harmonics in the resulting multi_pointing candidates. Currently only written to output csv.",
 )
+@click.option(
+    "--use-stacks/--no-use-stacks",
+    default=True,
+    help="When getting canddiates from teh db, use the latest stack candidates.",
+)
 def cli(
     output,
     file_path,
@@ -216,6 +221,7 @@ def cli(
     num_threads,
     run_name,
     cluster_harmonics,
+    use_stacks,
 ):
     """Slow Pulsar Search multiple-pointing candidate processing."""
     date = convert_date_to_datetime(date)
@@ -249,12 +255,20 @@ def cli(
         files = glob(file_path + "/*_candidates.npz")
     elif get_from_db:
         log.info("Getting files from database")
-        query = {
-            "datetime": {"$gte": date, "$lte": date + dt.timedelta(days=ndays)},
-            "path_candidate_file": {"$ne": None},
-        }
-        all_obs = list(db_client.observations.find(query))
-        files = [obs["path_candidate_file"] for obs in all_obs]
+        if use_stacks:
+            all_stacks = list(db.ps_stacks.find({}))
+            files = [
+                stack["path_candidate_files"][-1]
+                for stack in all_stacks
+                if len(stack["path_candidate_files"])
+            ]
+        else:
+            query = {
+                "datetime": {"$gte": date, "$lte": date + dt.timedelta(days=ndays)},
+                "path_candidate_file": {"$ne": None},
+            }
+            all_obs = list(db_client.observations.find(query))
+            files = [obs["path_candidate_file"] for obs in all_obs]
     else:
         log.error("Need to use either --file-path or --get-from-db")
 

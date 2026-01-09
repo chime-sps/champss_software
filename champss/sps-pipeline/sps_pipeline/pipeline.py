@@ -1029,7 +1029,7 @@ def stack_and_search(
                 plot,
                 plot_threshold,
                 config.cands.get("write_harmonically_related_clusters", False),
-                False,
+                True,
                 injection_path,
                 injection_idx,
                 only_injections,
