@@ -122,6 +122,14 @@ def extract_data_trange(file_list, tstart, nsamp):
     # Concatenate in time
     data = np.concatenate(data_blocks, axis=1)
 
+    # Set fully-zero time bins to NaN to avoid jumps in median from data dropouts
+    # Check which time samples are all zeros across all channels
+    zero_time_bins = np.all(data == 0, axis=0)
+    if np.any(zero_time_bins):
+        num_zero_bins = np.sum(zero_time_bins)
+        log.debug(f"Found {num_zero_bins} fully-zero time bins ({num_zero_bins/data.shape[1]*100:.2f}%), setting to NaN")
+        data[:, zero_time_bins] = np.nan
+
     # Ensure we have exactly nsamp samples
     if data.shape[1] < nsamp:
         log.warning(f"Requested {nsamp} samples, but only {data.shape[1]} available")
@@ -272,7 +280,7 @@ def process_beam_to_shared(
     return beam_id
 
 
-def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, num_processes=1, nchan=1024):
+def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, beam_fraction=None, num_processes=1, nchan=1024):
     """
     Extract and process data from all beams in parallel, creating I(beam, time) array.
 
@@ -285,7 +293,9 @@ def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, num_process
     nsamp : int
         Number of samples to extract
     beam_range : tuple or None
-        (min_beam, max_beam) to filter beams, or None for all
+        (min_beam, max_beam) to filter beams by last 3 digits, or None
+    beam_fraction : int or None
+        Use 1/N of beams, regularly spaced (e.g., 8 for 1/8), or None for all
     num_processes : int
         Number of parallel processes
     nchan : int
@@ -310,13 +320,25 @@ def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, num_process
     log.info(f"Found {len(beam_ids)} beams in total")
 
     # Filter by beam range if specified
+    # Beam structure: XYYY where X=0-3 (beam column), YYY=000-255 (beam within column)
+    # E.g., 0120 = column 0, beam 120; 2255 = column 2, beam 255
+    # When filtering by range, we filter by the last 3 digits (YYY) across all columns
     if beam_range is not None:
         beam_min, beam_max = beam_range
-        beam_ids = [bid for bid in beam_ids if beam_min <= bid <= beam_max]
-        log.info(f"Filtered to {len(beam_ids)} beams in range [{beam_min}, {beam_max}]")
+        # Extract last 3 digits (beam number within column) and filter
+        beam_ids = [bid for bid in beam_ids if beam_min <= (bid % 1000) <= beam_max]
+        log.info(f"Filtered to {len(beam_ids)} beams with beam number (last 3 digits) in range [{beam_min}, {beam_max}]")
+
+    # Filter by beam fraction if specified (regularly spaced sampling)
+    # E.g., beam_fraction=8 means use every 8th beam
+    if beam_fraction is not None:
+        original_count = len(beam_ids)
+        # Take every Nth beam for regular spacing
+        beam_ids = beam_ids[::beam_fraction]
+        log.info(f"Sampled 1/{beam_fraction} of beams: {len(beam_ids)}/{original_count} beams (regularly spaced)")
 
     if len(beam_ids) == 0:
-        log.error("No beams found in specified range")
+        log.error("No beams found after filtering")
         return None, []
 
     log.info(f"Processing {len(beam_ids)} beams: {min(beam_ids)} to {max(beam_ids)}")
@@ -435,13 +457,14 @@ def get_datfiles_for_date_and_time(date_str, unix_start, unix_end, datpath='/mnt
 @click.option('--unix-start', type=float, required=True, help='Start time in Unix seconds')
 @click.option('--unix-end', type=float, required=True, help='End time in Unix seconds')
 @click.option('--nsamp', type=int, default=None, help='Number of samples to extract (overrides unix-end if specified)')
-@click.option('--beam-min', type=int, default=None, help='Minimum beam ID to include (optional)')
-@click.option('--beam-max', type=int, default=None, help='Maximum beam ID to include (optional)')
+@click.option('--beam-min', type=int, default=None, help='Minimum beam ID to include (optional, last 3 digits)')
+@click.option('--beam-max', type=int, default=None, help='Maximum beam ID to include (optional, last 3 digits)')
+@click.option('--beam-fraction', type=int, default=None, help='Use 1/N of beams, regularly spaced (e.g., 8 for 1/8, 16 for 1/16). Alternative to --beam-min/--beam-max.')
 @click.option('--output', '-o', required=True, help='Output file path for incoherent beam (.npz)')
 @click.option('--datpath', default='/mnt/beegfs-client/raw', help='Root directory for raw data (default: /mnt/beegfs-client/raw)')
 @click.option('--nchan', type=int, default=1024, help='Number of frequency channels (default: 1024)')
 @click.option('--num-processes', type=int, default=32, help='Number of parallel processes (default: 32)')
-def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max,
+def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max, beam_fraction,
                           output, datpath, nchan, num_processes):
     """
     Create and save an incoherent beam from CHIME SPS data.
@@ -454,8 +477,13 @@ def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max
     5. Result: 1D time series I(time) for achromatic subtraction
 
     Example usage:
+        # Use specific beam range (last 3 digits, across all 4 columns)
         python create_incoherent_beam.py --date 20250806 --unix-start 1754438500
-               --unix-end 1754438600 --beam-min 0 --beam-max 100 -o incoh_beam.npz
+               --unix-end 1754438600 --beam-min 120 --beam-max 150 -o incoh_beam.npz
+
+        # Use 1/8 of all beams (regularly spaced) for faster processing
+        python create_incoherent_beam.py --date 20250806 --unix-start 1754438500
+               --unix-end 1754438600 --beam-fraction 8 -o incoh_beam.npz
     """
     # Setup logging
     logging.basicConfig(
@@ -475,13 +503,21 @@ def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max
     else:
         log.info(f"Using specified nsamp = {nsamp}")
 
+    # Validate beam selection options
+    if beam_fraction is not None and (beam_min is not None or beam_max is not None):
+        raise click.BadParameter("Cannot specify both --beam-fraction and --beam-min/--beam-max")
+
     # Get beam range
     beam_range = None
     if beam_min is not None and beam_max is not None:
         beam_range = (beam_min, beam_max)
-        log.info(f"Beam range: {beam_min} to {beam_max}")
+        log.info(f"Beam range: {beam_min} to {beam_max} (last 3 digits)")
     elif beam_min is not None or beam_max is not None:
         raise click.BadParameter("Must specify both --beam-min and --beam-max or neither")
+    elif beam_fraction is not None:
+        if beam_fraction < 1:
+            raise click.BadParameter("--beam-fraction must be >= 1")
+        log.info(f"Using 1/{beam_fraction} of beams (regularly spaced)")
     else:
         log.info("Using all available beams")
 
@@ -514,6 +550,7 @@ def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max
         tstart=unix_start,
         nsamp=nsamp,
         beam_range=beam_range,
+        beam_fraction=beam_fraction,
         num_processes=num_processes,
         nchan=nchan
     )
