@@ -198,7 +198,7 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 )
 @click.option(
     "--use-stacks/--no-use-stacks",
-    default=True,
+    default=False,
     help="When getting canddiates from teh db, use the latest stack candidates.",
 )
 def cli(

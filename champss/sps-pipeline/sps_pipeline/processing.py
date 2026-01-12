@@ -1495,7 +1495,8 @@ def start_processing_manager(
                         "db_host": db_host,
                         "db_name": db_name,
                         "num_threads": 64,
-                        "run_name": f"stack_{present_date_string}",
+                        "run_name": f"stack_0",
+                        "use_stacks": True,
                     }
                     docker_name=f"{docker_service_name_prefix}-{date_string}"
                     workflow_tags=["mp", "stack", present_date_string]                    
