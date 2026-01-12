@@ -1495,7 +1495,7 @@ def start_processing_manager(
                         "db_host": db_host,
                         "db_name": db_name,
                         "num_threads": 64,
-                        "run_name": f"stack_0",
+                        "run_name": f"stack_1",
                         "use_stacks": True,
                     }
                     docker_name=f"{docker_service_name_prefix}-{date_string}"
@@ -1572,7 +1572,7 @@ def start_processing_manager(
                 if mode == "pipeline":
                     input_csv = daily_run.multipointing_result["csv_file"]
                 else:
-                    input_csv = f"{basepath}/stack_0/all_mp_cands.csv"
+                    input_csv = f"{basepath}/stack_1/all_mp_cands.csv"
                 work_id, class_service_id = schedule_workflow_job(
                     docker_image="sps-archiver1.chime:5000/champss_classification:test",
                     docker_mounts=[
