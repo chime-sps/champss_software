@@ -450,65 +450,82 @@ class SkyBeamFormer:
         if self.subtract_incoh_beam is not None:
             log.info(f"Subtracting incoherent beam from {self.subtract_incoh_beam}")
             incoh_data = np.load(self.subtract_incoh_beam)
-            incoh_beam = incoh_data['data']
+            incoh_beam = incoh_data['data']  # Shape: [nfreq, ntime]
             incoh_unix_start = float(incoh_data['unix_start'])
             incoh_unix_end = float(incoh_data['unix_end'])
+            incoh_nchan = int(incoh_data['nchan'])
 
-            # Check if this is achromatic (1D) or old format (2D)
-            is_achromatic = incoh_data.get('achromatic', False) or incoh_beam.ndim == 1
+            # Validate that incoherent beam is 2D
+            if incoh_beam.ndim != 2:
+                mask_shared.close()
+                mask_shared.unlink()
+                raise ValueError(
+                    f"Incoherent beam must be 2D [nfreq, ntime], got shape {incoh_beam.shape}"
+                )
+
+            log.info(f"Incoherent beam shape: {incoh_beam.shape} (nfreq={incoh_nchan}, ntime={incoh_beam.shape[1]})")
 
             # Calculate observation time range
             obs_unix_end = utc_start + spectra_shape[1] * TSAMP
 
-            # Check if incoherent beam fully covers observation
-            if incoh_unix_start > utc_start or incoh_unix_end < obs_unix_end:
+            # Check if incoherent beam covers observation time range
+            # NOTE: Incoherent beam can be longer than observation, we'll read only the overlapping part
+            if incoh_unix_end < obs_unix_end:
                 mask_shared.close()
                 mask_shared.unlink()
                 raise ValueError(
-                    f"Incoherent beam does not fully cover observation time range. "
-                    f"Observation: {utc_start} to {obs_unix_end}, "
-                    f"Incoherent beam: {incoh_unix_start} to {incoh_unix_end}"
+                    f"Incoherent beam ends before observation ends. "
+                    f"Observation end: {obs_unix_end}, Incoherent beam end: {incoh_unix_end}"
                 )
 
-            # Calculate time offset between incoherent beam and current observation
+            if incoh_unix_start > utc_start:
+                mask_shared.close()
+                mask_shared.unlink()
+                raise ValueError(
+                    f"Incoherent beam starts after observation starts. "
+                    f"Observation start: {utc_start}, Incoherent beam start: {incoh_unix_start}"
+                )
+
+            # Calculate time offset and extract only the overlapping time range
             time_offset_samples = round((utc_start - incoh_unix_start) / TSAMP)
+            time_end_sample = time_offset_samples + spectra_shape[1]
 
-            if is_achromatic:
-                # Achromatic subtraction: 1D time series I(time)
-                # Subtract the same value from all channels at each time
-                log.info(f"Subtracting achromatic incoherent beam (offset by {time_offset_samples} samples)")
-                log.info("  Method: Subtracting same value from all channels (achromatic)")
+            log.info(f"Reading incoherent beam time range: samples {time_offset_samples} to {time_end_sample}")
 
-                # Extract the relevant time slice
-                incoh_slice = incoh_beam[time_offset_samples:time_offset_samples + spectra_shape[1]]
+            # Extract the overlapping time slice
+            incoh_slice = incoh_beam[:, time_offset_samples:time_end_sample]
 
-                # Ensure we have the right length
-                if len(incoh_slice) < spectra_shape[1]:
-                    log.warning(f"Incoherent beam shorter than needed: {len(incoh_slice)} < {spectra_shape[1]}")
-                    # Pad with zeros
-                    padded = np.zeros(spectra_shape[1], dtype=incoh_beam.dtype)
-                    padded[:len(incoh_slice)] = incoh_slice
-                    incoh_slice = padded
+            # Ensure we have the right time length
+            if incoh_slice.shape[1] < spectra_shape[1]:
+                log.warning(f"Incoherent beam shorter than needed: {incoh_slice.shape[1]} < {spectra_shape[1]}")
+                # Pad with NaN (will be masked later)
+                padded = np.full((incoh_slice.shape[0], spectra_shape[1]), np.nan, dtype=incoh_beam.dtype)
+                padded[:, :incoh_slice.shape[1]] = incoh_slice
+                incoh_slice = padded
 
-                # Subtract achromatically: same value from all channels
-                # Broadcasting: spectra (nchan, ntime) -= incoh_slice (ntime,)
-                spectra[:, :] -= incoh_slice[np.newaxis, :]
-
-            else:
-                # Old format: 2D (nchan, ntime) - per-channel subtraction
-                log.info(f"Subtracting 2D incoherent beam (offset by {time_offset_samples} samples)")
-                log.info("  Method: Per-channel subtraction (old format)")
-
-                # Check channel count matches
-                if incoh_beam.shape[0] != spectra_shape[0]:
+            # Handle channel tiling for finer channelization
+            # Incoherent beam is always 1024 channels, but spectra can have finer channelization
+            if spectra_shape[0] != incoh_nchan:
+                if spectra_shape[0] % incoh_nchan != 0:
                     mask_shared.close()
                     mask_shared.unlink()
                     raise ValueError(
-                        f"Channel mismatch: incoherent beam has {incoh_beam.shape[0]} channels, "
-                        f"spectra has {spectra_shape[0]} channels"
+                        f"Spectra channel count ({spectra_shape[0]}) must be a multiple of "
+                        f"incoherent beam channel count ({incoh_nchan})"
                     )
 
-                spectra[:, :] -= incoh_beam[:, time_offset_samples:time_offset_samples + spectra_shape[1]]
+                tile_factor = spectra_shape[0] // incoh_nchan
+                log.info(f"Tiling incoherent beam by factor {tile_factor} to match finer channelization")
+                log.info(f"  Incoherent beam: {incoh_nchan} channels -> Spectra: {spectra_shape[0]} channels")
+
+                # Tile along channel axis: repeat each channel tile_factor times
+                incoh_slice = np.tile(incoh_slice, (tile_factor, 1))
+
+            log.info(f"Subtracting 2D incoherent beam (shape: {incoh_slice.shape})")
+            log.info("  Method: Channelized subtraction with tiling support")
+
+            # Subtract the incoherent beam
+            spectra[:, :] -= incoh_slice
 
             # Handle any invalid values created by subtraction (NaN, Inf)
             # Note: Negative values are valid after subtraction (noise fluctuations)

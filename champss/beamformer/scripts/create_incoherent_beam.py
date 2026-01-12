@@ -187,19 +187,17 @@ def process_beam_to_shared(
     beam_id,
     file_list,
     tstart,
-    nsamp,
-    bad_channels
+    nsamp
 ):
     """
-    Process a single beam: read data, apply bad channel mask, frequency-average,
-    and write to shared memory array at sequential index.
+    Process a single beam: read data and write full 2D (nchan, ntime) to shared memory.
 
     Parameters
     ----------
     data_shared_name : str
         Name of shared memory for data array
     shape : tuple
-        Shape of shared array (nbeams, nsamp)
+        Shape of shared array (nbeams, nchan, nsamp)
     beam_index : int
         Sequential index in array (0, 1, 2, ..., nbeams-1)
     beam_id : int
@@ -210,8 +208,6 @@ def process_beam_to_shared(
         Start time (Unix seconds)
     nsamp : int
         Number of samples
-    bad_channels : list
-        List of bad channel indices to mask
 
     Returns
     -------
@@ -229,50 +225,29 @@ def process_beam_to_shared(
         if beam_data is None:
             log.warning(f"Beam {beam_id}: No data extracted")
             # Fill with NaN to indicate no data
-            data_array[beam_index, :] = np.nan
+            data_array[beam_index, :, :] = np.nan
             shared_data.close()
             return beam_id
 
-        nchan = beam_data.shape[0]
+        nchan, ntime = beam_data.shape
 
-        # Apply bad channel mask
-        channel_mask = np.ones(nchan, dtype=bool)
-        if len(bad_channels) > 0:
-            # Ensure bad channel indices are within bounds
-            valid_bad_chans = [ch for ch in bad_channels if 0 <= ch < nchan]
-            channel_mask[valid_bad_chans] = False
-            log.debug(f"Beam {beam_id}: Masking {len(valid_bad_chans)} bad channels")
-
-        # Frequency-average: I(time) = mean over frequency (excluding bad channels)
-        # Use nanmean to handle any NaN values in the data
-        if np.sum(channel_mask) > 0:
-            freq_avg = np.nanmean(beam_data[channel_mask, :], axis=0)
+        # Pad or trim to match nsamp
+        if ntime < nsamp:
+            # Pad with NaN if too short
+            padded = np.full((nchan, nsamp), np.nan, dtype=np.float32)
+            padded[:, :ntime] = beam_data
+            data_array[beam_index, :, :] = padded
+            log.debug(f"Beam {beam_id}: Padded from {ntime} to {nsamp} time samples")
         else:
-            log.warning(f"Beam {beam_id}: All channels masked!")
-            freq_avg = np.full(beam_data.shape[1], np.nan)
+            data_array[beam_index, :, :] = beam_data[:, :nsamp]
 
-        # Handle case where all channels are bad or data is all NaN
-        if np.all(np.isnan(freq_avg)):
-            log.warning(f"Beam {beam_id}: All NaN after frequency averaging")
-            data_array[beam_index, :] = np.nan
-        else:
-            # Pad or trim to match nsamp
-            if len(freq_avg) < nsamp:
-                # Pad with NaN if too short
-                padded = np.full(nsamp, np.nan, dtype=np.float32)
-                padded[:len(freq_avg)] = freq_avg
-                data_array[beam_index, :] = padded
-                log.debug(f"Beam {beam_id}: Padded from {len(freq_avg)} to {nsamp} samples")
-            else:
-                data_array[beam_index, :] = freq_avg[:nsamp]
-
-        log.info(f"Beam {beam_id} (index {beam_index}): Processed successfully ({len(file_list)} files, {nchan} channels)")
+        log.info(f"Beam {beam_id} (index {beam_index}): Processed successfully ({len(file_list)} files, {nchan} channels, {min(ntime, nsamp)} time samples)")
 
     except Exception as e:
         log.error(f"Beam {beam_id}: Error processing - {str(e)}")
         import traceback
         log.debug(traceback.format_exc())
-        data_array[beam_index, :] = np.nan
+        data_array[beam_index, :, :] = np.nan
 
     finally:
         shared_data.close()
@@ -282,7 +257,7 @@ def process_beam_to_shared(
 
 def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, beam_fraction=None, num_processes=1, nchan=1024):
     """
-    Extract and process data from all beams in parallel, creating I(beam, time) array.
+    Extract and process data from all beams in parallel, creating incoherent beam via median.
 
     Parameters
     ----------
@@ -299,14 +274,14 @@ def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, beam_fracti
     num_processes : int
         Number of parallel processes
     nchan : int
-        Number of frequency channels (for bad channel mask)
+        Number of frequency channels
 
     Returns
     -------
-    data_array : np.ndarray
-        Array of shape (nbeams, nsamp) containing I(beam, time)
+    incoh_beam : np.ndarray
+        Incoherent beam array of shape (nchan, nsamp)
     beam_ids : list[int]
-        List of beam IDs corresponding to rows in data_array
+        List of beam IDs used in median calculation
     """
     # Group files by beam
     log.info("Grouping files by beam...")
@@ -344,11 +319,6 @@ def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, beam_fracti
     log.info(f"Processing {len(beam_ids)} beams: {min(beam_ids)} to {max(beam_ids)}")
     log.info(f"  Example beam IDs: {beam_ids[:5]}..." if len(beam_ids) > 5 else f"  Beam IDs: {beam_ids}")
 
-    # Get bad channels from pipeline
-    log.info(f"Loading bad channel mask for {nchan} channels...")
-    bad_channels = known_bad_channels(nchan=nchan)
-    log.info(f"Masking {len(bad_channels)} bad channels")
-
     # Create beam_id to sequential index mapping
     # beam_ids are like [0, 1, 2, ..., 255, 1255, 2255, 3255]
     # We map them to sequential indices [0, 1, 2, ..., len(beam_ids)-1]
@@ -359,9 +329,8 @@ def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, beam_fracti
     log.info(f"  Beam ID range: {min(beam_ids)} to {max(beam_ids)}")
     log.info(f"  Array index range: 0 to {nbeams-1}")
 
-    # Create shared memory for data array: I(beam, time)
-    # Use sequential indices, so array size is (nbeams, nsamp)
-    shape = (nbeams, nsamp)
+    # Create shared memory for 3D data array: (nbeams, nchan, nsamp)
+    shape = (nbeams, nchan, nsamp)
     buffer_size = int(np.prod(shape) * np.dtype(np.float32).itemsize)
 
     log.info(f"Creating shared memory array: shape={shape}, size={buffer_size/(1024**2):.1f} MB")
@@ -378,7 +347,7 @@ def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, beam_fracti
             data_shared.name,
             shape,
         ),
-        [(beam_id_to_index[beam_id], beam_id, grouped[beam_id], tstart, nsamp, bad_channels)
+        [(beam_id_to_index[beam_id], beam_id, grouped[beam_id], tstart, nsamp)
          for beam_id in beam_ids]
     )
     pool.close()
@@ -387,14 +356,46 @@ def extract_data_allbeams(file_list, tstart, nsamp, beam_range=None, beam_fracti
     log.info(f"Finished processing all {nbeams} beams")
 
     # Copy to regular array before cleaning up shared memory
-    data_beams = np.array(data_array)
+    data_3d = np.array(data_array)  # Shape: (nbeams, nchan, nsamp)
 
     # Clean up shared memory
     data_shared.close()
     data_shared.unlink()
 
-    # data_beams is already in the right order (rows correspond to beam_ids in order)
-    return data_beams, beam_ids
+    log.info(f"Loaded 3D array: shape={data_3d.shape} (nbeams, nchan, nsamp)")
+
+    # Mask fully-zero time bins and fully-zero frequency channels before taking median
+    log.info("Masking fully-zero time bins and frequency channels...")
+
+    # For each beam, mask fully-zero time samples
+    # A time bin is fully zero if all channels are zero (across all beams we consider each separately)
+    # A frequency channel is fully zero if all time samples are zero
+    for beam_idx in range(nbeams):
+        beam_data = data_3d[beam_idx, :, :]  # Shape: (nchan, nsamp)
+
+        # Mask fully-zero time bins (all channels = 0 for this time)
+        zero_time_bins = np.all(beam_data == 0, axis=0)
+        if np.any(zero_time_bins):
+            beam_data[:, zero_time_bins] = np.nan
+
+        # Mask fully-zero frequency channels (all times = 0 for this channel)
+        zero_freq_channels = np.all(beam_data == 0, axis=1)
+        if np.any(zero_freq_channels):
+            beam_data[zero_freq_channels, :] = np.nan
+
+        data_3d[beam_idx, :, :] = beam_data
+
+    total_masked = np.isnan(data_3d).sum()
+    total_elements = data_3d.size
+    log.info(f"Masked {total_masked}/{total_elements} values ({total_masked/total_elements*100:.2f}%) as NaN")
+
+    # Take median along beam axis (axis=0) to create incoherent beam
+    log.info("Computing median over beam axis to create incoherent beam...")
+    incoh_beam = np.nanmedian(data_3d, axis=0)  # Shape: (nchan, nsamp)
+
+    log.info(f"Incoherent beam shape: {incoh_beam.shape} (nchan, nsamp)")
+
+    return incoh_beam, beam_ids
 
 
 def get_datfiles_for_date_and_time(date_str, unix_start, unix_end, datpath='/mnt/beegfs-client/raw'):
@@ -470,11 +471,10 @@ def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max
     Create and save an incoherent beam from CHIME SPS data.
 
     The incoherent beam is formed by:
-    1. Reading data from multiple beams
-    2. Applying bad channel mask to each beam (same as pipeline)
-    3. Frequency-averaging each beam to get I(time)
-    4. Taking the MEDIAN over beams (robust to outliers)
-    5. Result: 1D time series I(time) for achromatic subtraction
+    1. Reading data from multiple beams to create [nbeam, nfreq, ntime] array
+    2. Masking fully-zero time bins and frequency channels as NaN in each beam
+    3. Taking the MEDIAN over beam axis (robust to outliers)
+    4. Result: 2D array [nfreq, ntime] for channelized subtraction
 
     Example usage:
         # Use specific beam range (last 3 digits, across all 4 columns)
@@ -492,7 +492,7 @@ def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max
     )
 
     log.info("=" * 60)
-    log.info("Creating Incoherent Beam (Median-based, Achromatic)")
+    log.info("Creating Incoherent Beam (Median-based, 2D [nfreq, ntime])")
     log.info("=" * 60)
 
     # Calculate number of samples if not specified
@@ -543,9 +543,9 @@ def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max
 
     log.info(f"Found {len(datfiles_range)} data files in time range")
 
-    # Extract data from all beams -> I(beam, time)
-    log.info("Extracting and frequency-averaging data from beams...")
-    data_beams, beam_ids = extract_data_allbeams(
+    # Extract data from all beams -> [nchan, ntime]
+    log.info("Creating 3D array [nbeam, nfreq, ntime] and computing median...")
+    incoh_beam, beam_ids = extract_data_allbeams(
         datfiles_range,
         tstart=unix_start,
         nsamp=nsamp,
@@ -555,32 +555,16 @@ def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max
         nchan=nchan
     )
 
-    if data_beams is None:
+    if incoh_beam is None:
         log.error("Failed to extract data")
         return
 
-    log.info(f"Data shape: {data_beams.shape} (nbeams, ntime)")
-    log.info(f"Number of beams: {len(beam_ids)}")
+    log.info(f"Incoherent beam shape: {incoh_beam.shape} (nfreq, ntime)")
+    log.info(f"Number of beams used: {len(beam_ids)}")
     log.info(f"Beam IDs: min={min(beam_ids)}, max={max(beam_ids)}")
 
-    # Check how many beams have valid data
-    valid_beams = ~np.all(np.isnan(data_beams), axis=1)
-    num_valid = np.sum(valid_beams)
-    log.info(f"Valid beams (with data): {num_valid}/{len(beam_ids)}")
-
-    if num_valid == 0:
-        log.error("No beams have valid data")
-        return
-
-    if num_valid < 3:
-        log.warning(f"Only {num_valid} valid beams - median may not be robust")
-
-    # Take median over beam axis -> I(time)
-    log.info("Computing median over beam axis (robust to outliers)...")
-    # Use nanmedian to ignore NaN values (beams with no data)
-    incoh_beam = np.nanmedian(data_beams, axis=0)
-
-    log.info(f"Incoherent beam shape: {incoh_beam.shape} (1D time series)")
+    # Check for valid data in the incoherent beam
+    # Note: extract_data_allbeams already computed the median and returned [nchan, ntime]
 
     # Check for NaN values in final result
     nan_frac = np.isnan(incoh_beam).mean()
@@ -600,30 +584,30 @@ def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max
         log.info(f"Created directory: {output_dir}")
 
     # Save with metadata
-    # NOTE: 'data' is now 1D time series, not 2D (nchan, ntime)
+    # NOTE: 'data' is now 2D array [nfreq, ntime]
     np.savez(
         output,
-        data=incoh_beam.astype(np.float32),  # 1D time series I(time)
+        data=incoh_beam.astype(np.float32),  # 2D array [nfreq, ntime]
         unix_start=unix_start,
         unix_end=unix_end,
         nsamp=nsamp,
         beam_ids=beam_ids,
-        num_beams=num_valid,
+        num_beams=len(beam_ids),
         beam_range=beam_range,
         date=date,
-        ntime=len(incoh_beam),
-        nchan=nchan,  # Store nchan used for bad channel mask
-        achromatic=True,  # Flag indicating this is for achromatic subtraction
+        ntime=incoh_beam.shape[1],
+        nchan=incoh_beam.shape[0],
+        achromatic=False,  # Flag indicating this is NOT for achromatic subtraction
     )
 
     log.info("=" * 60)
     log.info("SUCCESS: Incoherent beam created and saved")
     log.info("=" * 60)
     log.info(f"File: {output}")
-    log.info(f"Shape: {incoh_beam.shape} (1D time series)")
-    log.info(f"Number of beams used: {num_valid}")
+    log.info(f"Shape: {incoh_beam.shape} (nfreq, ntime)")
+    log.info(f"Number of beams used: {len(beam_ids)}")
     log.info(f"Method: Median over beams (robust to outliers)")
-    log.info(f"Usage: Achromatic subtraction (same value from all channels)")
+    log.info(f"Usage: Channelized subtraction with tiling support for finer channelization")
 
     # Print some statistics
     log.info("Statistics:")
