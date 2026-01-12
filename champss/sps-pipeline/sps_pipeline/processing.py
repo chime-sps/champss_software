@@ -1211,7 +1211,7 @@ def start_processing_manager(
             if run_stack_search:
                 mode = "stack-search"
             else:
-                "mode" = "pipeline"
+                mode = "pipeline"
 
             if date_to_process <= yesterday_date:
                 log.info(
@@ -1482,7 +1482,7 @@ def start_processing_manager(
                     workflow_params={
                         "output": basepath,
                         "file_path": None,
-                        "get_from_db": False,
+                        "get_from_db": True,
                         "date": date_string,
                         "plot": True,
                         "plot_cands": True,
@@ -1572,7 +1572,7 @@ def start_processing_manager(
                 if mode == "pipeline":
                     input_csv = daily_run.multipointing_result["csv_file"]
                 else:
-                    input_csv = f"{basepath}/stack_{present_date_string}/all_mp_cands.csv"
+                    input_csv = f"{basepath}/stack_0/all_mp_cands.csv"
                 work_id, class_service_id = schedule_workflow_job(
                     docker_image="sps-archiver1.chime:5000/champss_classification:test",
                     docker_mounts=[

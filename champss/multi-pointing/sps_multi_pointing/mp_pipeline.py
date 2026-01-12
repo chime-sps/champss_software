@@ -256,7 +256,7 @@ def cli(
     elif get_from_db:
         log.info("Getting files from database")
         if use_stacks:
-            all_stacks = list(db.ps_stacks.find({}))
+            all_stacks = list(db_client.ps_stacks.find({}))
             files = [
                 stack["path_candidate_files"][-1]
                 for stack in all_stacks
