@@ -597,7 +597,6 @@ def create_incoherent_beam(date, unix_start, unix_end, nsamp, beam_min, beam_max
         date=date,
         ntime=incoh_beam.shape[1],
         nchan=incoh_beam.shape[0],
-        achromatic=False,  # Flag indicating this is NOT for achromatic subtraction
     )
 
     log.info("=" * 60)
