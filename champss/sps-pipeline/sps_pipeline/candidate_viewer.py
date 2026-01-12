@@ -213,10 +213,10 @@ class CandidateViewerRegistrar:
             dec = float(row['best_dec'])
             f0 = float(row['mean_freq'])
             dm = float(row['mean_dm'])
-            snr = float(row['fs_sigma'])
-            stack_plot = row['plot_path']
-            fold_plot = row['fold_plot']
-            combined_plot = row['combined_plot_path']
+            snr = float(row['sigma'])
+            stack_plot = row.get('plot_path', "")
+            fold_plot = row.get('fold_plot', "")
+            combined_plot = row.get('combined_plot_path', "")
             input_file = row.get('file_name', "")
             fs_id = row.get('fs_id', "unknown")
             fs_sigma = row.get('fs_sigma', "unknown")
