@@ -430,6 +430,13 @@ class SinglePointingCandidateGrouper:
                     total=len(grouped_cands),
                 )
             )
+        if None in mp_cands:
+            ini_cand_count = len(mp_cands)
+            mp_cands = [cand for cand in mp_cands if cand is not None]
+            new_cand_count = len(mp_cands)
+            log.info(
+                f"MP cand creation failed for {ini_cand_count - new_cand_count} candidates."
+            )
 
         # Could also get from data
         #
