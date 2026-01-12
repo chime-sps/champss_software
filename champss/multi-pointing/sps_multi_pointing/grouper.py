@@ -450,6 +450,9 @@ class SinglePointingCandidateGrouper:
 
 
 def create_mp_candidate_from_cand_group(cands_group):
-    group = SinglePointingCandidateGroup(cands_group)
-    mp_cand = group.as_candidate()
-    return mp_cand
+    try:
+        group = SinglePointingCandidateGroup(cands_group)
+        mp_cand = group.as_candidate()
+        return mp_cand
+    except:
+        return None

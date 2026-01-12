@@ -304,6 +304,7 @@ def remove_finished_service(service_id, timeout=10):
             finished = (
                 service_tasks[0]["Status"]["State"] in docker_swarm_finished_states
             )
+            print(finished)
             if finished:
                 try:
                     docker_client.services.get(service_id).remove()
