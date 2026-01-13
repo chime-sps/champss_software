@@ -1233,7 +1233,7 @@ def start_processing_manager(
 
             # Start of pipeline phase
             if run_pipeline:
-                if not skip_finding_processes and not (mode=="stack-search"):
+                if not skip_finding_processes and not (mode == "stack-search"):
                     processes, [], [] = find_all_pipeline_processes.main(
                         args=[
                             "--db-host",
@@ -1384,7 +1384,11 @@ def start_processing_manager(
                             db.observations.find({"_id": {"$in": obs_ids}})
                         )
                         mean_detections = np.nanmean(
-                            [obs["num_detections"] for obs in observations]
+                            [
+                                obs["num_detections"]
+                                for obs in observations
+                                if obs["num_detections"] is not None
+                            ]
                         )
 
                         # Get the execution time and nchan per process for the day
@@ -1456,7 +1460,7 @@ def start_processing_manager(
                 )
                 mp_timeout = 60 * 60 * 6
                 if mode == "pipeline":
-                    workflow_params={
+                    workflow_params = {
                         "output": basepath,
                         "file_path": None,
                         "get_from_db": True,
@@ -1475,11 +1479,11 @@ def start_processing_manager(
                         "num_threads": 64,
                         "run_name": f"daily_{date_string}",
                     }
-                    docker_name=f"{docker_service_name_prefix}-{date_string}"
-                    workflow_tags=["mp", date_string]
+                    docker_name = f"{docker_service_name_prefix}-{date_string}"
+                    workflow_tags = ["mp", date_string]
                 else:
                     date_string
-                    workflow_params={
+                    workflow_params = {
                         "output": basepath,
                         "file_path": None,
                         "get_from_db": True,
@@ -1495,11 +1499,11 @@ def start_processing_manager(
                         "db_host": db_host,
                         "db_name": db_name,
                         "num_threads": 64,
-                        "run_name": f"stack_1",
+                        "run_name": "stack_1",
                         "use_stacks": True,
                     }
-                    docker_name=f"{docker_service_name_prefix}-{date_string}"
-                    workflow_tags=["mp", "stack", present_date_string]                    
+                    docker_name = f"{docker_service_name_prefix}-{date_string}"
+                    workflow_tags = ["mp", "stack", present_date_string]
                 work_id, mp_service_id = schedule_workflow_job(
                     docker_image=docker_image_name,
                     docker_mounts=[
