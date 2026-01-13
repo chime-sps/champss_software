@@ -258,8 +258,67 @@ def Filter(
         )
 
 
-def filter_mp_df(df, sigma_min=6, class_min=0.9, only_use_strongest_in_cluster=True):
+def filter_df_with_freq_histogram(
+    df, binmax=1e2, bini=10 ** (-2), stepsize=0.01, dDMtol=0.1
+):
+    fsub = df["mean_freq"].values
+    dmsub = df["mean_dm"].values
+    dDMtol = 0.1
+
+    bins = []
+    bins.append(bini)
+    step = 1 + stepsize
+
+    while bini < binmax:
+        bini = bini * step
+        bins.append(bini)
+
+    hist_f0clusters = np.histogram(fsub, bins=bins)
+    histbins = hist_f0clusters[1]
+    bincounts = hist_f0clusters[0]
+
+    i_f0cluster = np.flatnonzero(bincounts > 2)
+    birdie_cands = []
+
+    # Flag narrow freq bins with large DM spread of candidates
+    for i in i_f0cluster:
+        bclow = histbins[i]
+        bchigh = histbins[i + 1]
+        bcmid = (bchigh + bclow) / 2.0
+        bcwidth = (bchigh - bclow) / 2.0
+
+        isub = np.flatnonzero(np.abs(fsub - bcmid) <= bcwidth)
+        dDM = np.std(dmsub[isub]) / np.mean(dmsub[isub])
+        if dDM > dDMtol:
+            birdie = (bcmid, bcwidth)
+            birdie_cands.append(birdie)
+
+    birdie_cands = np.array(birdie_cands)
+    i_birdies = []
+    if birdie_cands.shape[0] > 0:
+        for i in range(birdie_cands.shape[0]):
+            birdie = birdie_cands[i]
+            f0 = birdie[0]
+            fwidth = birdie[1]
+            i_birdie = np.flatnonzero(np.abs(df["mean_freq"] - f0) < fwidth)
+            i_birdies = np.concatenate((i_birdies, i_birdie))
+        i_birdies = i_birdies.astype("int")
+    i_good = np.arange(len(df["mean_freq"].values))
+    i_good = np.delete(i_good, i_birdies)
+    df_output = df.iloc[i_good]
+    return df_output
+
+
+def filter_mp_df(
+    df,
+    sigma_min=6,
+    class_min=0.9,
+    only_use_strongest_in_cluster=True,
+    filter_with_histogram=True,
+):
     df_filtered = df[df["known_source_label"] == 0]
+    if filter_with_histogram:
+        df_filtered = filter_df_with_freq_histogram(df_filtered)
     df_filtered = df_filtered[df_filtered["prediction"] > class_min]
     df_filtered = df_filtered[df_filtered["sigma"] > sigma_min]
     if only_use_strongest_in_cluster:
