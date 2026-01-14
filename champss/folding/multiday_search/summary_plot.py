@@ -36,15 +36,24 @@ def create_summary_pdf(source, plot_name, output_dir):
 
     # Add original candidate plots from NPZ files
     if source.path_to_candidates:
+        # Save current rcParams to restore later
+        original_rcParams = plt.rcParams.copy()
+
         for i, cand_path in enumerate(source.path_to_candidates):
             if os.path.exists(cand_path):
                 try:
+                    # Reset matplotlib font size to default before plotting candidate
+                    plt.rcParams.update({"font.size": 10})
+
                     # Load and plot the candidate
                     mpc = MultiPointingCandidate.read(cand_path)
-                    plot_path = mpc.plot_candidate(path=output_dir + "/candidate_plots/")
+                    plot_path = mpc.plot_candidate(path=output_dir)
                     plot_paths.append(plot_path)
                 except Exception as e:
                     log.warning(f"Could not plot candidate from {cand_path}: {e}")
+
+        # Restore original rcParams
+        plt.rcParams.update(original_rcParams)
 
     # Add phase search plot
     if plot_name and os.path.exists(plot_name):
