@@ -45,7 +45,7 @@ from sps_databases import db_api, db_utils
     "--phase_accuracy",
     type=float,
     default=1.0 / 64,
-    help="Required accuracy in pulse phase, which determines step size.",
+    help="Required accuracy in pulse phase, which determines step sizes.",
 )
 @click.option(
     "--nday",
