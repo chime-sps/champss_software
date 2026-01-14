@@ -39,6 +39,8 @@ def create_summary_pdf(source, plot_name, output_dir):
         # Save current rcParams to restore later
         original_rcParams = plt.rcParams.copy()
 
+        log.info(f"Generating candidate plots from {len(source.path_to_candidates)} NPZ file(s)...")
+
         for i, cand_path in enumerate(source.path_to_candidates):
             if os.path.exists(cand_path):
                 try:
@@ -49,6 +51,7 @@ def create_summary_pdf(source, plot_name, output_dir):
                     mpc = MultiPointingCandidate.read(cand_path)
                     plot_path = mpc.plot_candidate(path=output_dir)
                     plot_paths.append(plot_path)
+                    log.info(f"  Generated candidate plot: {plot_path}")
                 except Exception as e:
                     log.warning(f"Could not plot candidate from {cand_path}: {e}")
 
