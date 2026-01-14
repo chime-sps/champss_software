@@ -51,7 +51,7 @@ from sps_databases import db_api, db_utils
     "--nday",
     default=0,
     type=int,
-    help="Number of days to search. Default is to search all available archives."
+    help="Number of days to search. Default is to search all available archives.",
 )
 @click.option(
     "--foldpath",
