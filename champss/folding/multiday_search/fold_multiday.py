@@ -1,5 +1,6 @@
 import datetime as dt
 from glob import glob
+import time
 
 import click
 import folding.fold_candidate as fold_candidate
@@ -186,6 +187,7 @@ def main(
                 workflow_params,
                 workflow_tags,
             )
+            time.sleep(1)
         else:
             args = [
             "--date", str(date),
