@@ -917,3 +917,61 @@ class DailyRun:
             else:
                 break
         return status
+
+
+@attrs
+class StackSearchRun:
+    date = attrib(validator=validators.instance_of(dt.date))
+    # status = attrib(validator=validators.in_(DailyStatus), type=DailyStatus)
+    name = attrib(converter=str)
+    pipeline_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    multipointing_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    classification_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    folding_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    last_changed = attrib(
+        validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
+    )
+    plots = attrib(
+        default={},
+        converter=dict,
+    )
+
+    @property
+    def id(self):
+        return self._id
+
+    @classmethod
+    def from_db(cls, doc):
+        """Create a `DailyRun` instance from a MongoDB document."""
+        filtered_doc = filter_class_dict(cls, doc)
+        obj = cls(**filtered_doc)
+        return obj
+
+    def to_db(self):
+        """Return a MongoDB document version of this instance."""
+        doc = asdict(self)
+        doc["_id"] = ObjectId(self.id)
+        return doc
+
+    @property
+    def status(self):
+        steps = ["pipeline", "multipointing", "classification", "folding"]
+        status = 0
+        for step in steps:
+            if getattr(self, f"{step}_result", {}) != {}:
+                status += 1
+            else:
+                break
+        return status
