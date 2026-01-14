@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 from folding.utilities.archives import read_par
 from multiday_search.load_profiles import load_profiles, load_unwrapped_archives
 from multiday_search.phase_aligned_search import ExploreGrid
+from multiday_search.summary_plot import create_summary_pdf
 from sps_databases import db_api, db_utils
 
 
@@ -68,6 +69,11 @@ from sps_databases import db_api, db_utils
     is_flag=True,
     help="Output possible candidates.",
 )
+@click.option(
+    "--create-summary/--no-create-summary",
+    default=True,
+    help="Create a summary PDF with all plots (default: True).",
+)
 def main(
     fs_id,
     db_port,
@@ -78,6 +84,7 @@ def main(
     foldpath,
     write_to_db=False,
     check_cands=False,
+    create_summary=True,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     if check_cands:
@@ -243,6 +250,11 @@ def main(
                     output.write(line)
 
     explore_grid.plot(fullplot=True)
+
+    # Create summary PDF if requested
+    if create_summary:
+        summary_pdf_path = create_summary_pdf(source, plot_name, data["directory"])
+        log.info(f"Summary PDF saved to: {summary_pdf_path}")
 
     return coherentsearch_summary, [plot_name], [plot_name]
 
