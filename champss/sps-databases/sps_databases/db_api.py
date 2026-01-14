@@ -1005,6 +1005,40 @@ def delete_followup_source(fs_id):
     return db.followup_sources.find_one_and_delete({"_id": fs_id})
 
 
+def activate_sd_candidate_for_followup(fs_id, followup_duration=10):
+    """
+    Activates an sd_candidate for followup by setting active=True and
+    followup_duration to the specified value (default: 10 days).
+
+    Parameters
+    ----------
+    fs_id: str or ObjectId
+        The objectid of the FollowUpSource (sd_candidate) to be activated
+    followup_duration: int, optional
+        The number of days to follow up this candidate (default: 10)
+
+    Returns
+    -------
+    followup_source: dict
+        The dict of the updated followup source
+    """
+    db = db_utils.connect()
+    if isinstance(fs_id, str):
+        fs_id = ObjectId(fs_id)
+
+    payload = {
+        "active": True,
+        "followup_duration": followup_duration,
+        "last_changed": dt.datetime.now()
+    }
+
+    return db.followup_sources.find_one_and_update(
+        {"_id": fs_id},
+        {"$set": payload},
+        return_document=pymongo.ReturnDocument.AFTER,
+    )
+
+
 def create_process(payload, assume_new=False):
     """
     Create an `Process` instance and inserts it into the database.

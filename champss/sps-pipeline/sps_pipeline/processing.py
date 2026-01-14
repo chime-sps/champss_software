@@ -137,6 +137,7 @@ def find_all_folding_processes(date, db_host, db_port, db_name):
                 "ra": source["ra"],
                 "dec": source["dec"],
                 "dm": source["dm"],
+                "source_type": source["source_type"],
             }
         )
     # Outputting the df will probably break, if this function is run by workflow.
@@ -220,7 +221,15 @@ def run_all_folding_processes(
 
     date_string = date.strftime("%Y/%m/%d")
 
-    message_slack(f"Folding {len(processes)} candidates for {date_string}")
+    # Count sources by type
+    sd_count = sum(1 for p in processes if p.get("source_type") == "sd_candidate")
+    md_count = sum(1 for p in processes if p.get("source_type") == "md_candidate")
+    known_count = sum(1 for p in processes if p.get("source_type") == "known_source")
+
+    message_slack(
+        f"Folding {len(processes)} candidates for {date_string}: "
+        f"{sd_count} single day, {md_count} multiday, {known_count} known sources"
+    )
 
     work_ids = []
     for process in processes:
@@ -1566,6 +1575,38 @@ def start_processing_manager(
                 wait_for_no_tasks_in_states(
                     docker_swarm_running_states, docker_service_name_prefix
                 )
+
+                # Check for failed folding jobs
+                failed_count = 0
+                for process in processes:
+                    fs_id = process["fs_id"]
+                    source_type = process.get("source_type", "")
+
+                    try:
+                        fs_db_entry = db_api.get_followup_source(fs_id)
+
+                        # Check if folding succeeded by looking for today's entry in folding_history
+                        fold_dates = [entry["date"].date() for entry in fs_db_entry.folding_history]
+                        if date_to_process.date() not in fold_dates:
+                            # Folding job failed
+                            failed_count += 1
+                            log.warning(f"Folding job failed for fs_id {fs_id}")
+
+                            # For sd_candidates with followup_duration=1, set active=False
+                            if (source_type == "sd_candidate" and
+                                fs_db_entry.followup_duration == 1 and
+                                fs_db_entry.active):
+                                log.info(f"Setting active=False for failed sd_candidate {fs_id}")
+                                db_api.update_followup_source(fs_id, {"active": False})
+                    except Exception as error:
+                        log.error(f"Error checking folding status for fs_id {fs_id}: {error}")
+                        failed_count += 1
+
+                # Send slack message about failed jobs
+                if failed_count > 0:
+                    message_slack(
+                        f"Folding for {date_string}: {failed_count} of {len(processes)} jobs failed to complete"
+                    )
 
                 # Merge candidates
                 # breakpoint()
