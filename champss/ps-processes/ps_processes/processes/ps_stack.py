@@ -694,8 +694,8 @@ class PowerSpectraStack:
                     **metric_parameters,
                 )
                 quality_metrics[current_metric_name] = {
-                    "ksdist": current_ksstat,
-                    "pval": current_pval,
+                    "ksdist": float(current_ksstat),
+                    "pval": float(current_pval),
                 }
             elif current_metric["type"] == "kstest_chi2_fit":
                 # this method allows fitting the number of days
@@ -718,7 +718,7 @@ class PowerSpectraStack:
                         **metric_parameters,
                     )
                     day_vals.append(days)
-                    ksdists.append(current_ksstat)
+                    ksdists.append(float(current_ksstat))
                 min_val = min(ksdists)
                 min_days = day_vals[np.argmin(ksdists)]
                 fraction = min_days / expected_days
