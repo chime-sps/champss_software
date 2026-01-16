@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.0](https://github.com/chime-sps/champss_software/compare/v0.14.0...v0.15.0) (2026-01-16)
+
+
+### Features
+
+* filter at 9 sigma for website ([#203](https://github.com/chime-sps/champss_software/issues/203)) ([3a8b8ca](https://github.com/chime-sps/champss_software/commit/3a8b8ca9435c2c74d298fd9d12beaec2769fe956))
+* Run stack search ([#208](https://github.com/chime-sps/champss_software/issues/208)) ([09468c2](https://github.com/chime-sps/champss_software/commit/09468c2bf6722aaca4fc8e421a00ce3e208a1b71))
+
+
+### Bug Fixes
+
+* Fix processing bugs ([#201](https://github.com/chime-sps/champss_software/issues/201)) ([5f55277](https://github.com/chime-sps/champss_software/commit/5f55277c960a2ff9070dae3e5608ccd728b9ce01))
+
 ## [0.14.0](https://github.com/chime-sps/champss_software/compare/v0.13.0...v0.14.0) (2025-12-23)
 
 
