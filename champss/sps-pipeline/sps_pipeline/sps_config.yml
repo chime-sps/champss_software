@@ -79,7 +79,7 @@ ps:
             upper_percentile_cut: null
           qc_tests:
             - metric: ksdist # This defined which value in the output of the qc_test is used
-              upper_limit: 0.0049 # Based on March 2024 data this would exclude 5 percent
+              upper_limit: 0.0044 # Based on November 2025 data this would exclude 5 percent
               upper_limit_dynamic: 3 # This defines how many median absolute deviations above the median the limit is
 # The final limits are max(upper_limit, upper_limit_dynamic) and min(lower_limit, lower_limit_dynamic)
         ks_test_chan10:
@@ -132,7 +132,7 @@ ps:
             - num_clusters
           qc_tests:
             - metric: num_detections
-              upper_limit: 30000 # In March 2024 data this would exclude 4%
+              upper_limit: 10000 # In November 2025 this would exlude about 6%, but another RFI filter was added later
               upper_limit_dynamic: 3
             - metric: num_clusters
     stack_nbit: 16
