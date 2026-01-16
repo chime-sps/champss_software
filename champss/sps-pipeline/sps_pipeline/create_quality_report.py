@@ -82,8 +82,14 @@ def create_report_pdf(date, db_host, db_port, db_name, basepath):
                 axs[index, status_hist_index].bar_label(hist[2])
                 axs[index, status_hist_index].set_yscale("log")
                 axs[index, status_hist_index].set_xlabel(f"{source}:{quant}")
-                axs[index, status_hist_index].set_title(f"Total: {len(all_vals)}")
                 axs[index, ra_dec_index].set_title(f"{source}: {quant}")
+                axs[index, status_hist_index].set_title(f"Total: {len(all_vals)}")
+                if quant == "status":
+                    axs[index, status_hist_index].set_title(f"Total: {len(all_vals)}")
+                else:
+                    axs[index, status_hist_index].set_title(
+                        f"Total: {len(all_vals)}, Median: {np.nanmedian(all_vals):.2f}, Mean: {np.nanmean(all_vals):.2f}"
+                    )
             plt.tight_layout()
 
             pdf.savefig(fig1)
