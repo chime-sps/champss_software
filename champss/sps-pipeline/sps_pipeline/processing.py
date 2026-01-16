@@ -30,6 +30,7 @@ from scheduler.workflow import (  # docker_swarm_pending_states,
     wait_for_no_tasks_in_states,
     remove_finished_service,
 )
+from sps_pipeline.create_quality_report import create_report_pdf
 from sps_common.interfaces import MultiPointingCandidate
 from workflow.definitions.work import Work
 from workflow.http.context import HTTPContext
@@ -1766,6 +1767,7 @@ def start_processing_manager(
                     log.error(f"Could not update daily candidates due to {error}")
                     log.error(traceback.format_exc())
             # End of folding phase
+            create_report_pdf(date_to_process, db_host, db_port, db_name, basepath)
 
             number_of_days_processed = number_of_days_processed + 1
             date_to_process = date_to_process + dt.timedelta(days=1)
