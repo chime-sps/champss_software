@@ -1138,7 +1138,7 @@ def run_all_pipeline_processes(
     "--run-stack-search/--no-run-stack-search",
     default=False,
     type=bool,
-    help="Run stack search only. Will later implement to run stack every n days.",
+    help="Run stack search only. Will later implement to run stack every n days. INCOMPLETE: WILL ADD BETTER CONTROL LATER.",
 )
 def start_processing_manager(
     db_host,
@@ -1368,7 +1368,7 @@ def start_processing_manager(
                         completed_processes = [
                             proc for proc in processed if proc["status"] == 2
                         ]
-                        rfi_processeses = [
+                        rfi_processes = [
                             proc
                             for proc in completed_processes
                             if proc["quality_label"] is False
@@ -1411,7 +1411,7 @@ def start_processing_manager(
                         slack_message = (
                             f"For {date_string}:\n{len(completed_processes)} /"
                             f" {len(processed)} finished successfully for the day\nOf those,"
-                            f" {len(rfi_processeses)} were rejected by quality metrics\nMean number"
+                            f" {len(rfi_processes)} were rejected by quality metrics\nMean number"
                             f" of detections: {mean_detections}\nOverall processing time for"
                             f" current run: {overall_time_of_processing:.2f} minutes\n(/"
                             f" {len(processed)} jobs run ="
@@ -1437,7 +1437,7 @@ def start_processing_manager(
                             "completed_processes": len(completed_processes),
                             "overall_time_of_processing": overall_time_of_processing,
                             "time_per_nchan": time_per_nchan,
-                            "rfi_processeses": rfi_processeses,
+                            "rfi_processes": len(rfi_processes),
                             "average_time_of_processing": average_time_of_processing,
                         }
                         daily_run = db_api.update_daily_run(
