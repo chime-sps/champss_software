@@ -71,6 +71,7 @@ ps:
       red_noise_nbins: 2048 # This value can be overwritten in the individual metrics
       dynamic_max_obs: 100 # How many observations are used at most for the dynamic threshold
       dynamic_min_obs: 5 # How many observations are used at least for the dynamic threshold
+      oldest_date_for_comparison: "2025/01/15"
       qc_metrics:
         ks_test:
           type: kstest

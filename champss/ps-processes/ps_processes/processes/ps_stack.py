@@ -806,15 +806,27 @@ class PowerSpectraStack:
                     ):
                         if self.mode == "month":
                             if not looked_for_compared_obs:
+                                oldest_date_to_compare_against = (
+                                    datetime.datetime.strptime(
+                                        self.qc_config["oldest_date_for_comparison"],
+                                        "%Y/%m/%d",
+                                    ).replace(tzinfo=datetime.timezone.utc)
+                                )
                                 compared_obs = db_api.get_observations(obs.pointing_id)
                                 # Remove the observation itself if it wa already processed
                                 compared_obs = [
                                     obs
                                     for obs in compared_obs
-                                    if obs._id != pspec.obs_id[-1]
+                                    if (obs._id != pspec.obs_id[-1])
+                                    and (
+                                        obs.last_changed
+                                        > oldest_date_to_compare_against
+                                    )
                                 ][-self.qc_config.get("dynamic_max_obs", 10000) :]
-
                                 looked_for_compared_obs = True
+                                log.info(
+                                    f"Loaded {len(compared_obs)} observations for dynamic thresholds."
+                                )
                             if len(compared_obs) >= self.qc_config.get(
                                 "dynamic_min_obs", 2
                             ):
