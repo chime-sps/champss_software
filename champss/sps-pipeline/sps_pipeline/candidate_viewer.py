@@ -200,6 +200,14 @@ class CandidateViewerRegistrar:
                 f"Generated survey config JSON is invalid: {e}.Is there any None or NaN values in the condidate data?"
             )
 
+        # Check if config file has write permission
+        if os.path.exists(self.survey_config_path):
+            if not os.access(self.survey_config_path, os.W_OK):
+                os.remove(tmp_config_path)
+                raise PermissionError(
+                    f"No write permission for survey config file: {self.survey_config_path}"
+                )
+
         # Save updated config
         shutil.move(tmp_config_path, self.survey_config_path)
 
