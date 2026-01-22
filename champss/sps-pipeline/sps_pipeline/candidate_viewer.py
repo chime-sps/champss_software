@@ -142,12 +142,11 @@ class CandidateViewerRegistrar:
     def generate_survey_config(self):
         config = {}
         for cand in self.candidates:
-            config[cand["candname"]] = {
-                "plot_combined": cand["combined_plot"],
-                "plot_stack": cand["stack_plot"],
-                "plot_fold": cand["fold_plot"],
-                "filename": cand["candname"],
-            }
+            config[cand["candname"]] = {}
+            for attach_key in cand["attachments"]:
+                config[cand["candname"]][attach_key] = str(
+                    cand["attachments"][attach_key]
+                )
 
         surve_config = {"files": {}}
         surve_config["files"][self.folder] = config
@@ -212,13 +211,11 @@ class CandidateViewerRegistrar:
         f0,
         dm,
         snr,
-        stack_plot,
-        fold_plot,
-        combined_plot,
         input_file="",
         fs_id="not_specified",
         fs_sigma="not_specified",
         fs_file="not_specified",
+        **attachments,
     ):
         """
         Add a candidate to the registrar.
@@ -230,9 +227,6 @@ class CandidateViewerRegistrar:
         - f0: Frequency in Hz
         - dm: Dispersion Measure in pc/cm^3
         - snr: Signal-to-noise ratio
-        - stack_plot: Path to stack plot
-        - fold_plot: Path to fold plot
-        - combined_plot: Path to combined plot
         - input_file: Original input file path
         """
         candidate = {
@@ -242,11 +236,9 @@ class CandidateViewerRegistrar:
             "f0": float(f0),
             "dm": float(dm),
             "snr": float(snr),
-            "stack_plot": str(stack_plot),
-            "fold_plot": str(fold_plot),
-            "combined_plot": str(combined_plot),
             "input_file": str(input_file),
             "notes": {"fs_id": fs_id, "fs_sigma": fs_sigma, "fs_file": fs_file},
+            "attachments": attachments,
         }
         self.candidates.append(candidate)
 
@@ -288,9 +280,9 @@ class CandidateViewerRegistrar:
                 f0=f0,
                 dm=dm,
                 snr=snr,
-                stack_plot=stack_plot,
-                fold_plot=fold_plot,
-                combined_plot=combined_plot,
+                plot_stack=stack_plot,
+                plot_fold=fold_plot,
+                plot_combined=combined_plot,
                 input_file=input_file,
                 fs_id=fs_id,
                 fs_sigma=fs_sigma,
@@ -406,7 +398,7 @@ class CandidateViewerQuery:
             if "notes" in results[i]:
                 try:
                     results[i]["notes"] = json.loads(results[i]["notes"])
-                except:
+                except json.JSONDecodeError:
                     results[i]["notes"] = {
                         "fs_id": "unknown",
                         "fs_sigma": "unknown",
@@ -453,7 +445,6 @@ class CandidateViewerQuery:
                 query += " AND result = %s"
                 params.append(classification)
 
-        print(query, params)
         this_cursor = self.cursor.cursor(dictionary=True)
         this_cursor.execute(query, params)
         results = this_cursor.fetchall()
