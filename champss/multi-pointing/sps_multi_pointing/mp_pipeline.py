@@ -24,10 +24,19 @@ from sps_multi_pointing import (
 )
 from sps_multi_pointing.known_source_sifter.known_source_sifter import KnownSourceSifter
 import tqdm
+import signal
+import traceback
 
 log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
+
+
+def handle_sigterm(signum, frame):
+    log.critical("Received SIGTERM")
+    log.critical("PID: %s", os.getpid())
+    log.critical("Stack:\n%s", "".join(traceback.format_stack(frame)))
+    exit(0)
 
 
 def load_config():
@@ -241,6 +250,8 @@ def cli(
     os.makedirs(out_folder + "/candidates/", exist_ok=False)
     log_file = out_folder + "/run.log"
     apply_logging_config(config, log_file=log_file)
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
     pool = Pool(num_threads)
     if plot_cands:
         os.makedirs(out_folder + "/plots/", exist_ok=False)
