@@ -15,6 +15,7 @@ import trio
 from controller.l1_rpc import get_beam_ip, get_node_beams
 from controller.pointer import generate_pointings
 from controller.updater import pointing_beam_control, timeout
+from scheduling.scheduleknownpulsars import is_beam_recording
 
 log = logging.getLogger("spsctl")
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
@@ -49,11 +50,7 @@ async def announce_pointing_done(pointing_done_listen):
             print(f"  Row {beam_row} / pointing {pointing_id} DONE")
 
 
-async def entry_point(
-    active_beams,
-    basepath,
-    source="champss"
-):
+async def entry_point(active_beams, basepath, source="champss"):
     """
     Parent for the pointer and updater tasks.
 
@@ -78,7 +75,7 @@ async def entry_point(
                     new_pointing_listen,
                     pointing_done_announce.clone(),
                     basepath,
-                    source
+                    source,
                 )
                 beam_schedule_channels[beam_id] = new_pointing_announce
 
@@ -183,8 +180,10 @@ def stop_all_beams(active_beams, basepath, source="champss", batchsize=20):
     "--source",
     type=str,
     default="champss",
-    help=("The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'. "
-          "Do not use 'slow' before consulting with the Slow team"),
+    help=(
+        "The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'. "
+        "Do not use 'slow' before consulting with the Slow team"
+    ),
 )
 @click.option(
     "--nocleanup",
@@ -265,11 +264,16 @@ def cli(
         if channels == -1:
             trio.run(entry_point, active_beams, basepath, source)
         else:
-            for beam in active_beams:
-                proc = start_beam(beam, basepath, source, channels, ntime)
-            log.info("Started all beams.")
+            first_loop = True
             while True:
-                time.sleep(10)
+                for beam in active_beams:
+                    is_recording = is_beam_recording(beam, basepath)
+                    if not is_recording:
+                        proc = start_beam(beam, basepath, source, channels, ntime)
+                    if first_loop:
+                        log.info("Started all beams.")
+                        first_loop = False
+                    time.sleep(100)
     except KeyboardInterrupt:
         log.info("Keyboard interrupt received. Exiting...")
     except Exception as err:
@@ -313,8 +317,10 @@ def cli(
     "--source",
     type=str,
     default="champss",
-    help=("The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'. "
-          "Do not use 'slow' before consulting with the Slow team"),
+    help=(
+        "The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'. "
+        "Do not use 'slow' before consulting with the Slow team"
+    ),
 )
 @click.option(
     "--batchsize",
@@ -388,7 +394,9 @@ def cli_batched(
             except ProcessLookupError:
                 pass
         # Make sure that all rpc-clients are stopped
-        stop_acq.callback(host=host, rows=rows, debug=False, basepath=basepath[0], source=source)
+        stop_acq.callback(
+            host=host, rows=rows, debug=False, basepath=basepath[0], source=source
+        )
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -413,10 +421,14 @@ def cli_batched(
     "--source",
     type=str,
     default="champss",
-    help=("The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'. "
-          "Do not use 'slow' before consulting with the Slow team"),
+    help=(
+        "The chime_slow_pulsar_writer object to use on L1, must be either 'champss' or 'slow'. "
+        "Do not use 'slow' before consulting with the Slow team"
+    ),
 )
-def stop_acq(host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str, source: str):
+def stop_acq(
+    host: Tuple[str], rows: Tuple[int], debug: bool, basepath: str, source: str
+):
     if debug:
         # Set logging level to debug
         log.setLevel(logging.DEBUG)
