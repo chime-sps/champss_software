@@ -1778,6 +1778,13 @@ def start_processing_manager(
                 date_to_process,
                 payload,
             )
+            db_config = {
+                "user": "automation",
+                "password": "",  # no password for automation user
+                "host": "sps-archiver1",
+                "database": "champss",
+                "port": 3306,
+            }
             with (
                 CandidateViewerRegistrar(
                     survey="reports",  # the project name under top-right corner of the website
