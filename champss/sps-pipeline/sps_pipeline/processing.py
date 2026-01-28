@@ -13,6 +13,7 @@ import pymongo
 import atexit
 import pandas as pd
 from bson.objectid import ObjectId
+from pathlib import Path
 
 import click
 import docker
@@ -1767,7 +1768,34 @@ def start_processing_manager(
                     log.error(f"Could not update daily candidates due to {error}")
                     log.error(traceback.format_exc())
             # End of folding phase
-            create_report_pdf(date_to_process, db_host, db_port, db_name, basepath)
+            report_file_name = create_report_pdf(
+                date_to_process, db_host, db_port, db_name, basepath
+            )
+            daily_run = db_api.get_daily_run(date_to_process)
+            payload = {"plots": daily_run.plots}
+            payload["plots"]["daily_report"] = report_file_name
+            daily_run = db_api.update_daily_run(
+                date_to_process,
+                payload,
+            )
+            with (
+                CandidateViewerRegistrar(
+                    survey="reports",  # the project name under top-right corner of the website
+                    folder="daily",  # the folder name on the website
+                    db_config=db_config,
+                    survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
+                ) as sd
+            ):
+                sd.add_candidate(
+                    candname=Path(report_file_name).stem,
+                    ra=0,
+                    dec=0,
+                    f0=0,
+                    dm=0,
+                    snr=0,
+                    report_pdf=report_file_name,
+                )
+                sd.commit()
 
             number_of_days_processed = number_of_days_processed + 1
             date_to_process = date_to_process + dt.timedelta(days=1)
