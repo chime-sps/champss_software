@@ -1778,6 +1778,7 @@ def start_processing_manager(
                 date_to_process,
                 payload,
             )
+
             db_config = {
                 "user": "automation",
                 "password": "",  # no password for automation user
