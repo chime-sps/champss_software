@@ -1702,11 +1702,7 @@ def start_processing_manager(
                 )
                 remove_finished_service(class_service_id)
                 time.sleep(5)
-                # wait_for_no_tasks_in_states(
-                #     docker_swarm_running_states,
-                #     docker_service_name_prefix,
-                #     timeout=class_timeout,
-                # )
+
                 work_result = get_work_from_results(
                     workflow_results_name=workflow_buckets_name,
                     work_id=work_id,
