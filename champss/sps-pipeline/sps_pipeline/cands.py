@@ -103,7 +103,7 @@ def run(
                 [f"{inj['frequency']:.2f}" for inj in spcc.injections]
             )
             ps_candidates = (
-                f"{file_path}/candidates/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_"
+                f"{file_path}/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_"
                 f"{injection_path.split('/')[-1]}_{str(injection_idx).replace(' ', '')}_{period_string}_injection_candidates.npz"
             )
         else:
