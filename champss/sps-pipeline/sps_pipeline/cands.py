@@ -79,9 +79,10 @@ def run(
         file_path = path.join(
             basepath,
             "injections",
+            date.strftime("%Y/%m/%d"),
         )
         os.makedirs(
-            file_path + "/candidates/",
+            file_path,
             exist_ok=True,
         )
     else:
@@ -93,17 +94,20 @@ def run(
     if not psdc:
         ps_detection_clusters = f"{file_path}/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra_detection_clusters.hdf5"
         psdc = PowerSpectraDetectionClusters.read(ps_detection_clusters)
-    if only_injections:
-        ps_candidates = (
-            f"{file_path}/candidates/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_"
-            f"{injection_path.split('/')[-1]}_{str(injection_idx).replace(' ', '')}_power_spectra_candidates.npz"
-        )
-    else:
-        ps_candidates = f"{file_path}/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra_candidates.npz"
     with cand_ps_processing_time.labels(pointing.pointing_id, pointing.beam_row).time():
         spcc = cands_processor.fg.make_single_pointing_candidate_collection(
             psdc, power_spectra
         )
+        if only_injections:
+            period_string = "_".join(
+                [f"{inj['frequency']:.2f}" for inj in spcc.injections]
+            )
+            ps_candidates = (
+                f"{file_path}/candidates/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_"
+                f"{injection_path.split('/')[-1]}_{str(injection_idx).replace(' ', '')}_{period_string}_injection_candidates.npz"
+            )
+        else:
+            ps_candidates = f"{file_path}/{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}_power_spectra_candidates.npz"
         spcc.write(ps_candidates)
         if injection_path:
             injection_performance = spcc.test_injection_performance()
@@ -144,6 +148,7 @@ def run_interface(
     injection_path=None,
     injection_idx=[],
     only_injections=False,
+    closest_pointing_id=None,
 ):
     """
     Search a `pointing` for periodicity candidates. Candidates will be written out in a
@@ -223,14 +228,14 @@ def run_interface(
     spcc.write(ps_candidates)
     if injection_path:
         injection_performance = spcc.test_injection_performance()
-    if update_db:
+    if update_db and closest_pointing_id:
         # For now don't write to db by default, I'll think later about how to turn this on and off
         # Turned it on again
         payload = {
             "path_candidate_file": path.abspath(ps_candidates),
             "num_total_candidates": len(spcc.candidates),
         }
-        db_api.append_ps_stack(pointing._id, payload)
+        db_api.append_ps_stack(closest_pointing_id, payload)
     if plot:
         if not cand_path:
             plot_folder = f"{stack_root_folder}/plots"

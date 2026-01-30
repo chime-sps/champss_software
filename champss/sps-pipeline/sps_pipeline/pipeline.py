@@ -1033,6 +1033,7 @@ def stack_and_search(
                 injection_path,
                 injection_idx,
                 only_injections,
+                closest_pointing_id,
             )
     else:
         power_spectra_monthly = None
@@ -1070,6 +1071,7 @@ def stack_and_search(
                         injection_path,
                         injection_idx,
                         only_injections,
+                        closest_pointing_id,
                     )
     try:
         power_spectra_monthly.unlink_shared_memory()
