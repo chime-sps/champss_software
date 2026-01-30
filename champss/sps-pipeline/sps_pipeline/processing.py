@@ -1662,6 +1662,26 @@ def start_processing_manager(
                     input_csv = daily_run.multipointing_result["csv_file"]
                 else:
                     input_csv = f"{basepath}/mp_runs/{stack_name}/all_mp_cands.csv"
+                output_csv = input_csv.rsplit(".", 1)[0] + "_predicted.csv"
+                work_id, class_service_id = schedule_workflow_job(
+                    docker_image="sps-archiver1.chime:5000/champss_classification:add_sklearn",
+                    docker_mounts=[
+                        f"{datpath}:{datpath}",
+                        f"{basepath}:{basepath}",
+                    ],
+                    docker_name=f"{docker_service_name_prefix}-{date_string}",
+                    docker_memory_reservation=300,
+                    workflow_buckets_name=workflow_buckets_name,
+                    workflow_function="champss_classification.classify_sklearn_model.load_sklearn_model_and_classify_mp_csv",
+                    workflow_params={
+                        "csv": input_csv,
+                        "output": output_csv,
+                    },
+                    workflow_tags=["class", date_string, "sklearn"],
+                    timeout=class_timeout,
+                    return_service_id=True,
+                )
+                remove_finished_service(class_service_id)
                 work_id, class_service_id = schedule_workflow_job(
                     docker_image="sps-archiver1.chime:5000/champss_classification:test",
                     docker_mounts=[
@@ -1673,9 +1693,10 @@ def start_processing_manager(
                     workflow_buckets_name=workflow_buckets_name,
                     workflow_function="champss_classification.pytorch_model.classify_lazy.load_model_and_classify_mp_csv_lazy",
                     workflow_params={
-                        "csv": input_csv,
+                        "csv": output_csv,
+                        "output": output_csv,
                     },
-                    workflow_tags=["class", date_string],
+                    workflow_tags=["class", date_string, "pytorch"],
                     timeout=class_timeout,
                     return_service_id=True,
                 )
