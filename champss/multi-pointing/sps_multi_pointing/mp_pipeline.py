@@ -7,6 +7,7 @@ import shutil
 from functools import partial
 from glob import glob
 from multiprocessing import Pool
+import multiprocessing
 
 import click
 import numpy as np
@@ -224,6 +225,7 @@ def cli(
     use_stacks,
 ):
     """Slow Pulsar Search multiple-pointing candidate processing."""
+    multiprocessing.set_start_method("forkserver", force=True)
     date = convert_date_to_datetime(date)
 
     config = load_config()
