@@ -683,6 +683,12 @@ def deposit_stack_work(workflow_buckets_name, httpcontext, stack_parameters):
     type=str,
     help="Which mode to use. Available: [pipeline, stack]",
 )
+@click.option(
+    "--stack-name",
+    default=None,
+    type=str,
+    help="Name of the stack run.",
+)
 def run_all_pipeline_processes(
     db_host,
     db_port,
@@ -706,6 +712,7 @@ def run_all_pipeline_processes(
     pipeline_config_options,
     alert_slack,
     mode,
+    stack_name,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -802,7 +809,7 @@ def run_all_pipeline_processes(
         )
     elif mode == "stack":
         all_processes = find_monthly_search_commands(
-            db_port, db_host, db_name, basepath, 10
+            db_port, db_host, db_name, basepath + f"/stack_runs/{stack_name}/", 10
         )
         pool = Pool(4)
         # First deposit all process in workflow bucket
@@ -1139,7 +1146,13 @@ def run_all_pipeline_processes(
     "--run-stack-search/--no-run-stack-search",
     default=False,
     type=bool,
-    help="Run stack search only. Will later implement to run stack every n days. INCOMPLETE: WILL ADD BETTER CONTROL LATER.",
+    help="Run stack search only. Currenlty controlled by also giving a stack-name for the run.",
+)
+@click.option(
+    "--stack-name",
+    default=None,
+    type=str,
+    help="Name of the stack-run",
 )
 def start_processing_manager(
     db_host,
@@ -1165,6 +1178,7 @@ def start_processing_manager(
     pipeline_config_options,
     skip_finding_processes,
     run_stack_search,
+    stack_name,
 ):
     """Manager function containing the multiple processing steps."""
     # atexit.register(remove_processing_services, None, None)
@@ -1190,6 +1204,10 @@ def start_processing_manager(
     date_to_process = start_date
 
     number_of_days_processed = 0
+    if run_stack_search:
+        if not stack_name:
+            log.info("Please define --stack-name when using --run-stack-search")
+            sys.exit()
 
     def loop_condition():
         # For now just enale running h stack search once.
@@ -1338,7 +1356,9 @@ def start_processing_manager(
                         "--alert-slack",
                     ]
                     if run_stack_search:
-                        pipeline_args.extend(["--mode", "stack"])
+                        pipeline_args.extend(
+                            ["--mode", "stack", "--stack-name", stack_name]
+                        )
                     else:
                         pipeline_args.extend(["--mode", "pipeline"])
                     process_ids = run_all_pipeline_processes.main(
@@ -1500,7 +1520,7 @@ def start_processing_manager(
                         "db_host": db_host,
                         "db_name": db_name,
                         "num_threads": 64,
-                        "run_name": "stack_1",
+                        "run_name": stack_name,
                         "use_stacks": True,
                     }
                     docker_name = f"{docker_service_name_prefix}-{date_string}"
@@ -1577,7 +1597,7 @@ def start_processing_manager(
                 if mode == "pipeline":
                     input_csv = daily_run.multipointing_result["csv_file"]
                 else:
-                    input_csv = f"{basepath}/mp_runs/stack_1/all_mp_cands.csv"
+                    input_csv = f"{basepath}/mp_runs/{stack_name}/all_mp_cands.csv"
                 work_id, class_service_id = schedule_workflow_job(
                     docker_image="sps-archiver1.chime:5000/champss_classification:test",
                     docker_mounts=[
@@ -1623,7 +1643,9 @@ def start_processing_manager(
                         + "_folded.csv"
                     )
                 else:
-                    df_folded_name = f"{basepath}/stack_{present_date_string}/all_mp_cands_folded.csv"
+                    df_folded_name = (
+                        f"{basepath}/mp_runs/{stack_name}/all_mp_cands_folded.csv"
+                    )
                 fold_schedule_output, [], [] = find_all_folding_processes.main(
                     args=[
                         "--date",

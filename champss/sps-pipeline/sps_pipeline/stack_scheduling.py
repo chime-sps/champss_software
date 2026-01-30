@@ -46,7 +46,7 @@ from sps_databases import db_utils, models
 #     type=str,
 #     help="Name of the run",
 # )
-def find_monthly_search_commands(db_port, db_host, db_name, basepath, day_threshold=10):
+def find_monthly_search_commands(db_port, db_host, db_name, candpath, day_threshold=10):
     db = db_utils.connect(port=db_port, host=db_host, name=db_name)
     all_stacks = list(db.ps_stacks.find({"num_days_month": {"$gte": day_threshold}}))
 
@@ -61,14 +61,13 @@ def find_monthly_search_commands(db_port, db_host, db_name, basepath, day_thresh
         arguments = {
             "ra": pointing.ra,
             "dec": f" {pointing.dec}",
-            "components": "search-monthly",
             "db_port": db_port,
             "db_name": db_name,
             "db_host": db_host,
             "num_threads": threads_reserved,
             "components": ["search-monthly"],
             "known_source_threshold": 10,
-            "cand_path": basepath,
+            "cand_path": candpath,
         }
         all_commands.append(
             {
