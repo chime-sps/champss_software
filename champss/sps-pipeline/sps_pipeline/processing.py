@@ -811,6 +811,7 @@ def run_all_pipeline_processes(
         all_processes = find_monthly_search_commands(
             db_port, db_host, db_name, basepath + f"/stack_runs/{stack_name}/", 10
         )
+        process_ids = []
         pool = Pool(4)
         # First deposit all process in workflow bucket
         # Imap will perform these jobs in the background, a single process can deposit ~4 jobs per second
