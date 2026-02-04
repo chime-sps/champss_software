@@ -190,14 +190,14 @@ known_bad_frequencies:
     note: Multi-pointing candidates from 20251031
     width: 0.01
 
-  b23:
+  b24:
     frac_nharm: 0
     frequency: 4.988
     int_nharm: 2
     note: Multi-pointing candidates from 20251031
     width: 0.01
 
-  b24:
+  b25:
     frac_nharm: 0
     frequency: 167.25292274107537
     int_nharm: 1
@@ -205,7 +205,7 @@ known_bad_frequencies:
       and 20251101.
     width: 0.01
 
-  b25:
+  b26:
     frac_nharm: 0
     frequency: 482.74717604120576
     int_nharm: 1
@@ -213,7 +213,7 @@ known_bad_frequencies:
       and 20251101.
     width: 0.01
 
-  b26:
+  b27:
     frac_nharm: 0
     frequency: 484.5050474007925
     int_nharm: 1
@@ -221,7 +221,7 @@ known_bad_frequencies:
       and 20251101.
     width: 0.01
 
-  b27:
+  b28:
     frac_nharm: 0
     frequency: 504.7525822495421
     int_nharm: 1
