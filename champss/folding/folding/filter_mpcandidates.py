@@ -259,7 +259,7 @@ def Filter(
 
 
 def filter_df_with_freq_histogram(
-    df, binmax=1e2, bini=10 ** (-2), stepsize=0.01, dDMtol=0.1
+    df, binmax=1e2, bini=10 ** (-2), stepsize=0.001, dDMtol=0.1, min_count=5
 ):
     fsub = df["mean_freq"].values
     dmsub = df["mean_dm"].values
@@ -289,7 +289,7 @@ def filter_df_with_freq_histogram(
 
         isub = np.flatnonzero(np.abs(fsub - bcmid) <= bcwidth)
         dDM = np.std(dmsub[isub]) / np.mean(dmsub[isub])
-        if dDM > dDMtol:
+        if dDM > dDMtol and (len(isub) >= min_count):
             birdie = (bcmid, bcwidth)
             birdie_cands.append(birdie)
 
