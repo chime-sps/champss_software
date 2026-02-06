@@ -1708,6 +1708,7 @@ def start_processing_manager(
                         f"{basepath}/mp_runs/{stack_name}/all_mp_cands_folded.csv"
                     )
                     args = []
+
                 args += [
                     "--csv",
                     df_folded_name,
