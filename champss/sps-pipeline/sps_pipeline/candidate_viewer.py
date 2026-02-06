@@ -272,7 +272,14 @@ class CandidateViewerRegistrar:
             dec = float(row["best_dec"])
             f0 = float(row["mean_freq"])
             dm = float(row["mean_dm"])
-            snr = float(row["fs_sigma"]) if row.get("fs_sigma") else float(row["sigma"])
+            if row.get("mdf_SN"):
+                snr = float(row["mdf_SN"])
+            else:
+                snr = (
+                    float(row["fs_sigma"])
+                    if row.get("fs_sigma")
+                    else float(row["sigma"])
+                )
             stack_plot = row.get("plot_path", "")
             fold_plot = row.get("fold_plot", "")
             combined_plot = row.get("combined_plot_path", "")

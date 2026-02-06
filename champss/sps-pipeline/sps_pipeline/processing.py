@@ -13,6 +13,7 @@ import pymongo
 import atexit
 import pandas as pd
 from bson.objectid import ObjectId
+from os import path
 
 import click
 import docker
@@ -39,6 +40,7 @@ from sps_pipeline.pipeline import default_datpath
 from sps_pipeline.utils import get_pointings_from_list, merge_images
 from sps_pipeline.candidate_viewer import CandidateViewerRegistrar
 from sps_pipeline.stack_scheduling import find_monthly_search_commands
+from multiday_search import multidayfold_pipeline
 
 
 log = logging.getLogger()
@@ -60,6 +62,12 @@ def scale_down_service(service_name):
     "--date",
     type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
     help="Date to find folding processes for.",
+    required=True,
+)
+@click.option(
+    "--csv",
+    type=str,
+    help="CSV file that should be inspected",
 )
 @click.option(
     "--db-host",
@@ -79,70 +87,56 @@ def scale_down_service(service_name):
     type=str,
     help="Name used for the mongodb database.",
 )
-def find_all_folding_processes(date, db_host, db_port, db_name):
+@click.option(
+    "--mode",
+    default="pipeline",
+    type=str,
+    help="Mode used for the function [pipeline, stack-search].",
+)
+def find_all_folding_processes(date, csv, db_host, db_port, db_name, mode):
     """Find all available folding processes for a given date."""
     log.setLevel(logging.INFO)
 
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
 
-    log.info(f"Filtering candidates for {date}")
+    log.info(f"Filtering candidates for {csv}")
 
-    date = convert_date_to_datetime(date)
-    daily_run = db_api.get_daily_run(date)
-    csv_input_name = daily_run.classification_result["output_file"]
-    candidate_df = pd.read_csv(csv_input_name, index_col=0)
+    # date = convert_date_to_datetime(date)
+    # daily_run = db_api.get_daily_run(date)
+    # csv_input_name = daily_run.classification_result["output_file"]
+    candidate_df = pd.read_csv(csv, index_col=0)
 
     filtered_df = filter_mp_df(candidate_df, sigma_min=6.5, class_min=0.9)
-    filtered_df = write_df_to_fsdb(filtered_df, date)
-    # output_file = csv.rsplit("_", 1)[0] + "_folded.csv"
+    if mode == "pipeline":
+        filtered_df = write_df_to_fsdb(filtered_df, date)
 
-    # filtered_df.to_csv(output_file)
+        log.info("Candidate filtering complete")
 
-    # Filter(
-    #     cand_obs_date=date,
-    #     db_host=db_host,
-    #     db_port=db_port,
-    #     db_name=db_name,
-    #     write_to_db=True,
-    #     basepath=basepath,
-    #     foldpath=foldpath,
-    # )
-    # Filter(
-    #     cand_obs_date=date,
-    #     db_host=db_host,
-    #     db_port=db_port,
-    #     db_name=db_name,
-    #     write_to_db=True,
-    #     basepath=basepath,
-    #     foldpath=foldpath,
-    #     class_threshold=0.5,
-    # )
+        # Update FollowUpSources database, then get all ids where active is True
+        IDs = []
+        ras = []
+        decs = []
+        dms = []
 
-    log.info("Candidate filtering complete")
+        info = []
 
-    # Update FollowUpSources database, then get all ids where active is True
-    IDs = []
-    ras = []
-    decs = []
-    dms = []
+        for source in db.followup_sources.find({"active": True}):
+            IDs.append(source["_id"])
+            ras.append(source["ra"])
+            decs.append(source["dec"])
+            dms.append(source["dm"])
 
-    info = []
-
-    for source in db.followup_sources.find({"active": True}):
-        IDs.append(source["_id"])
-        ras.append(source["ra"])
-        decs.append(source["dec"])
-        dms.append(source["dm"])
-
-        info.append(
-            {
-                "fs_id": source["_id"],
-                "ra": source["ra"],
-                "dec": source["dec"],
-                "dm": source["dm"],
-            }
-        )
-    # Outputting the df will probably break, if this function is run by workflow.
+            info.append(
+                {
+                    "fs_id": source["_id"],
+                    "ra": source["ra"],
+                    "dec": source["dec"],
+                    "dm": source["dm"],
+                }
+            )
+        # Outputting the df will probably break, if this function is run by workflow.
+    else:
+        info = {}
     return {"info": info, "df": filtered_df}, [], []
 
 
@@ -286,6 +280,51 @@ def run_all_folding_processes(
             )
         )
     return work_ids
+
+
+def run_all_multi_day_folds(
+    df_mp,
+    db_host,
+    db_port,
+    db_name,
+    foldpath,
+    docker_image_name,
+    docker_service_name_prefix,
+    datpath,
+):
+    message_slack(f"Folding {len(df_mp)} stack candidates")
+
+    # results = []
+    for index, row in df_mp.iterrows():
+        mdf_args = [
+            "--candpath",
+            row["file_name"],
+            "--foldpath",
+            foldpath,
+            "--datpath",
+            datpath,
+            "--db-host",
+            db_host,
+            "--db-port",
+            db_port,
+            "--db-name",
+            db_name,
+            "--nday",
+            0,
+            "--start_date",
+            "2025/06/01--use-workflow",
+            "--docker-image-name",
+            docker_image_name,
+        ]
+        results, product, plots = multidayfold_pipeline.main(
+            args=mdf_args,
+            standalone_mode=False,
+        )
+        # results.append(result)
+        for field in results:
+            df_mp.at[index, f"mdf_{field}"] = results["field"]
+        df_mp["fold_plot"] = df_mp["mdf_path_to_plot"]
+    return df_mp
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -807,7 +846,7 @@ def run_all_pipeline_processes(
             ),
             all_processes,
         )
-    elif mode == "stack":
+    elif mode == "stack-search":
         all_processes = find_monthly_search_commands(
             db_port, db_host, db_name, basepath + f"/stack_runs/{stack_name}/", 10
         )
@@ -1227,29 +1266,30 @@ def start_processing_manager(
             present_date_string = present_date.strftime("%Y/%m/%d")
             yesterday_date = present_date - dt.timedelta(days=1)
 
-            date_string = date_to_process.strftime("%Y/%m/%d")
             if run_stack_search:
                 mode = "stack-search"
+                date_string = stack_name
             else:
                 mode = "pipeline"
+                date_string = date_to_process.strftime("%Y/%m/%d")
 
-            if date_to_process <= yesterday_date:
-                log.info(
-                    f"{date_string} should be done recording data (24 hours have"
-                    " passed)."
-                )
-            else:
-                time_left = date_to_process - yesterday_date
-                seconds_left = time_left.total_seconds()
-                hours_left = seconds_left / 3600
+                if date_to_process <= yesterday_date:
+                    log.info(
+                        f"{date_string} should be done recording data (24 hours have"
+                        " passed)."
+                    )
+                else:
+                    time_left = date_to_process - yesterday_date
+                    seconds_left = time_left.total_seconds()
+                    hours_left = seconds_left / 3600
 
-                log.info(
-                    f"{date_string} is not at least 24 hours before"
-                    " the present date. Data may not be ready. Sleeping for"
-                    f" {hours_left} (that's the hours left until its ready)..."
-                )
+                    log.info(
+                        f"{date_string} is not at least 24 hours before"
+                        " the present date. Data may not be ready. Sleeping for"
+                        f" {hours_left} (that's the hours left until its ready)..."
+                    )
 
-                time.sleep(seconds_left)
+                    time.sleep(seconds_left)
 
             # Start of pipeline phase
             if run_pipeline:
@@ -1358,7 +1398,7 @@ def start_processing_manager(
                     ]
                     if run_stack_search:
                         pipeline_args.extend(
-                            ["--mode", "stack", "--stack-name", stack_name]
+                            ["--mode", mode, "--stack-name", stack_name]
                         )
                     else:
                         pipeline_args.extend(["--mode", "pipeline"])
@@ -1504,11 +1544,12 @@ def start_processing_manager(
                     docker_name = f"{docker_service_name_prefix}-{date_string}"
                     workflow_tags = ["mp", date_string]
                 else:
-                    date_string
                     workflow_params = {
                         "output": basepath,
-                        "file_path": None,
-                        "get_from_db": True,
+                        "file_path": path.join(
+                            basepath, "stack_runs", "stack_namecandidates_monthly"
+                        ),
+                        "get_from_db": False,
                         "date": date_string,
                         "plot": True,
                         "plot_cands": True,
@@ -1522,8 +1563,26 @@ def start_processing_manager(
                         "db_name": db_name,
                         "num_threads": 64,
                         "run_name": stack_name,
-                        "use_stacks": True,
                     }
+                    # Alternative method using
+                    # workflow_params = {
+                    #     "output": basepath,
+                    #     "file_path": None,
+                    #     "get_from_db": True,
+                    #     "plot": True,
+                    #     "plot_cands": True,
+                    #     "plot_all_pulsars": True,
+                    #     "db": True,
+                    #     "csv": True,
+                    #     "plot_threshold": 8,
+                    #     "plot_dm_threshold": 3,
+                    #     "db_port": db_port,
+                    #     "db_host": db_host,
+                    #     "db_name": db_name,
+                    #     "num_threads": 64,
+                    #     "run_name": stack_name,
+                    #     "use_stacks": True,
+                    # }
                     docker_name = f"{docker_service_name_prefix}-{date_string}"
                     workflow_tags = ["mp", "stack", present_date_string]
                 work_id, mp_service_id = schedule_workflow_job(
@@ -1583,7 +1642,7 @@ def start_processing_manager(
             if run_classification:
                 if mode == "pipeline":
                     daily_run = db_api.get_daily_run(date_to_process)
-                message_slack(f"Running classfication for {date_string}")
+                    message_slack(f"Running classfication for {date_string}")
 
                 docker_service_name_prefix = "class"
 
@@ -1643,21 +1702,26 @@ def start_processing_manager(
                         daily_run.classification_result["output_file"].rsplit("_", 1)[0]
                         + "_folded.csv"
                     )
+                    args = ["--date", date_to_process]
                 else:
                     df_folded_name = (
                         f"{basepath}/mp_runs/{stack_name}/all_mp_cands_folded.csv"
                     )
+                    args = []
+                args += [
+                    "--csv",
+                    df_folded_name,
+                    "--db-host",
+                    db_host,
+                    "--db-port",
+                    db_port,
+                    "--db-name",
+                    db_name,
+                    "--mode",
+                    mode,
+                ]
                 fold_schedule_output, [], [] = find_all_folding_processes.main(
-                    args=[
-                        "--date",
-                        date_to_process,
-                        "--db-host",
-                        db_host,
-                        "--db-port",
-                        db_port,
-                        "--db-name",
-                        db_name,
-                    ],
+                    args=args,
                     standalone_mode=False,
                 )
                 df_mp = fold_schedule_output["df"]
@@ -1677,36 +1741,46 @@ def start_processing_manager(
                     args=["--workflow-buckets-name", workflow_buckets_name],
                     standalone_mode=False,
                 )
-
-                work_ids = run_all_folding_processes.main(
-                    args=[
-                        "--date",
-                        date_to_process,
-                        "--db-host",
+                if mode == "pipeline":
+                    work_ids = run_all_folding_processes.main(
+                        args=[
+                            "--date",
+                            date_to_process,
+                            "--db-host",
+                            db_host,
+                            "--db-port",
+                            db_port,
+                            "--db-name",
+                            db_name,
+                            "--foldpath",
+                            foldpath,
+                            "--processes",
+                            processes,
+                            "--workflow-buckets-name",
+                            workflow_buckets_name,
+                            "--docker-image-name",
+                            docker_image_name,
+                            "--docker-service-name-prefix",
+                            docker_service_name_prefix,
+                            "--datpath",
+                            datpath,
+                        ],
+                        standalone_mode=False,
+                    )
+                    wait_for_no_tasks_in_states(
+                        docker_swarm_running_states, docker_service_name_prefix
+                    )
+                else:
+                    df_mp = run_all_multi_day_folds(
+                        df_mp,
                         db_host,
-                        "--db-port",
                         db_port,
-                        "--db-name",
                         db_name,
-                        "--foldpath",
                         foldpath,
-                        "--processes",
-                        processes,
-                        "--workflow-buckets-name",
-                        workflow_buckets_name,
-                        "--docker-image-name",
                         docker_image_name,
-                        "--docker-service-name-prefix",
                         docker_service_name_prefix,
-                        "--datpath",
                         datpath,
-                    ],
-                    standalone_mode=False,
-                )
-
-                wait_for_no_tasks_in_states(
-                    docker_swarm_running_states, docker_service_name_prefix
-                )
+                    )
 
                 # Merge candidates
                 # breakpoint()
@@ -1721,14 +1795,18 @@ def start_processing_manager(
 
                 for index, row in df_mp.iterrows():
                     plot_path = row["plot_path"]
-                    fs_db_entry = db_api.get_followup_source(row["fs_id"])
-                    fold_history = fs_db_entry.folding_history
-                    if len(fs_db_entry.folding_history) == 0:
-                        continue
-                    last_fold = fs_db_entry.folding_history[-1]
-                    df_mp.at[index, "fold_plot"] = last_fold["path_to_plot"]
-                    df_mp.at[index, "fs_sigma"] = last_fold["SN"]
-                    df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
+                    if mode == "pipeline":
+                        fs_db_entry = db_api.get_followup_source(row["fs_id"])
+                        fold_history = fs_db_entry.folding_history
+                        if len(fs_db_entry.folding_history) == 0:
+                            continue
+                        last_fold = fs_db_entry.folding_history[-1]
+                        df_mp.at[index, "fold_plot"] = last_fold["path_to_plot"]
+                        df_mp.at[index, "fs_sigma"] = last_fold["SN"]
+                        df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
+                        fold_plot = last_fold["path_to_plot"]
+                    else:
+                        fold_plot = df_mp["mdf_path_to_plot"]
                     if not os.path.exists(last_fold["path_to_plot"]):
                         continue
                     if type(row["plot_path"]) is not str:
@@ -1744,7 +1822,7 @@ def start_processing_manager(
                         + "_combined.png"
                     )
                     merge_images(
-                        [plot_path, df_mp.at[index, "fold_plot"]],
+                        [plot_path, fold_plot],
                         output_path=output_path,
                     )
                     df_mp.at[index, "combined_plot_path"] = output_path
@@ -1764,33 +1842,41 @@ def start_processing_manager(
                     "port": 3306,
                 }
                 min_sigma_folded = 7
+                if mode == "pipeline":
+                    survey = "dailycands"
+                    folder = date_to_process.strftime("%Y-%m-%d")
+                    sigma_field = "fs_sigma"
+                else:
+                    survey = "stackcands"
+                    folder = stack_name
+                    sigma_field = "mdf_SN"
                 try:
                     with (
                         CandidateViewerRegistrar(
-                            survey="dailycands",  # the project name under top-right corner of the website
-                            folder=date_to_process.strftime(
-                                "%Y-%m-%d"
-                            ),  # the folder name on the website
+                            survey=survey,  # the project name under top-right corner of the website
+                            folder=folder,  # the folder name on the website
                             db_config=db_config,
                             survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
                         ) as sd
                     ):
-                        df_mp_filtered = df_mp[df_mp["fs_sigma"] > min_sigma_folded]
+                        df_mp_filtered = df_mp[df_mp[sigma_field] > min_sigma_folded]
                         sd.add_candidates(
                             df_mp_filtered
                         )  # add candidates from dataframe
                         sd.commit()  # commit to database and update survey config
 
                         message_slack(f"Candidate folding for {date_string} complete")
-                        daily_run = db_api.update_daily_run(
-                            date_to_process,
-                            {"folding_result": {"fold_count": len(processes)}},
-                        )
+                        if mode == "pipeline":
+                            daily_run = db_api.update_daily_run(
+                                date_to_process,
+                                {"folding_result": {"fold_count": len(processes)}},
+                            )
                 except Exception as error:
                     log.error(f"Could not update daily candidates due to {error}")
                     log.error(traceback.format_exc())
             # End of folding phase
-            create_report_pdf(date_to_process, db_host, db_port, db_name, basepath)
+            if mode == "pipeline":
+                create_report_pdf(date_to_process, db_host, db_port, db_name, basepath)
 
             number_of_days_processed = number_of_days_processed + 1
             date_to_process = date_to_process + dt.timedelta(days=1)
