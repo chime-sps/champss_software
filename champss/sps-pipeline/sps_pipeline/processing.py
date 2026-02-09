@@ -1664,7 +1664,7 @@ def start_processing_manager(
                     input_csv = f"{basepath}/mp_runs/{stack_name}/all_mp_cands.csv"
                 output_csv = input_csv.rsplit(".", 1)[0] + "_predicted.csv"
                 work_id, class_service_id = schedule_workflow_job(
-                    docker_image="sps-archiver1.chime:5000/champss_classification:add_sklearn",
+                    docker_image="sps-archiver1.chime:5000/champss_classification:stable",
                     docker_mounts=[
                         f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
@@ -1683,7 +1683,7 @@ def start_processing_manager(
                 )
                 remove_finished_service(class_service_id)
                 work_id, class_service_id = schedule_workflow_job(
-                    docker_image="sps-archiver1.chime:5000/champss_classification:test",
+                    docker_image="sps-archiver1.chime:5000/champss_classification:stable",
                     docker_mounts=[
                         f"{datpath}:{datpath}",
                         f"{basepath}:{basepath}",
