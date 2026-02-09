@@ -149,3 +149,4 @@ def create_report_pdf(date, db_host, db_port, db_name, basepath):
             plt.close(fig3)
         except:
             pass
+    return file_name
