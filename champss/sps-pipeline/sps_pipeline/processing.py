@@ -62,7 +62,7 @@ def scale_down_service(service_name):
     "--date",
     type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
     help="Date to find folding processes for.",
-    required=True,
+    required=False,
 )
 @click.option(
     "--csv",
@@ -311,8 +311,9 @@ def run_all_multi_day_folds(
             db_name,
             "--nday",
             0,
-            "--start_date",
-            "2025/06/01--use-workflow",
+            "--start-date",
+            "2025/06/01",
+            "--use-workflow",
             "--docker-image-name",
             docker_image_name,
         ]
@@ -321,8 +322,12 @@ def run_all_multi_day_folds(
             standalone_mode=False,
         )
         # results.append(result)
-        for field in results:
-            df_mp.at[index, f"mdf_{field}"] = results["field"]
+        if results is not None:
+            for field in results:
+                df_mp.at[index, f"mdf_{field}"] = results[field]
+            df_mp.at[index, "fold_success"] = True
+        else:
+            df_mp.at[index, "fold_success"] = False
         df_mp["fold_plot"] = df_mp["mdf_path_to_plot"]
     return df_mp
 
@@ -1547,10 +1552,9 @@ def start_processing_manager(
                     workflow_params = {
                         "output": basepath,
                         "file_path": path.join(
-                            basepath, "stack_runs", "stack_namecandidates_monthly"
+                            basepath, "stack_runs", stack_name, "candidates_monthly"
                         ),
                         "get_from_db": False,
-                        "date": date_string,
                         "plot": True,
                         "plot_cands": True,
                         "plot_all_pulsars": True,
@@ -1698,6 +1702,7 @@ def start_processing_manager(
             if run_folding:
                 if mode == "pipeline":
                     daily_run = db_api.get_daily_run(date_to_process)
+                    input_csv = daily_run.classification_result["csv_file"]
                     df_folded_name = (
                         daily_run.classification_result["output_file"].rsplit("_", 1)[0]
                         + "_folded.csv"
@@ -1707,11 +1712,14 @@ def start_processing_manager(
                     df_folded_name = (
                         f"{basepath}/mp_runs/{stack_name}/all_mp_cands_folded.csv"
                     )
+                    input_csv = (
+                        f"{basepath}/mp_runs/{stack_name}/all_mp_cands_predicted.csv"
+                    )
                     args = []
 
                 args += [
                     "--csv",
-                    df_folded_name,
+                    input_csv,
                     "--db-host",
                     db_host,
                     "--db-port",
