@@ -1188,7 +1188,7 @@ def run_all_pipeline_processes(
     help="Skip finding processes when this is not necessary anymore (during debugging for example).",
 )
 @click.option(
-    "--run-stack-search/--no-run-stack-search",
+    "--run-stack-search",
     default=False,
     type=bool,
     help="Run stack search only. Currenlty controlled by also giving a stack-name for the run.",
@@ -1914,31 +1914,31 @@ def start_processing_manager(
                     payload,
                 )
 
-            db_config = {
-                "user": "automation",
-                "password": "",  # no password for automation user
-                "host": "sps-archiver1",
-                "database": "champss",
-                "port": 3306,
-            }
-            with (
-                CandidateViewerRegistrar(
-                    survey="reports",  # the project name under top-right corner of the website
-                    folder="daily",  # the folder name on the website
-                    db_config=db_config,
-                    survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
-                ) as sd
-            ):
-                sd.add_candidate(
-                    candname=Path(report_file_name).stem,
-                    ra=0,
-                    dec=0,
-                    f0=0,
-                    dm=0,
-                    snr=0,
-                    report_pdf=report_file_name,
-                )
-                sd.commit()
+                db_config = {
+                    "user": "automation",
+                    "password": "",  # no password for automation user
+                    "host": "sps-archiver1",
+                    "database": "champss",
+                    "port": 3306,
+                }
+                with (
+                    CandidateViewerRegistrar(
+                        survey="reports",  # the project name under top-right corner of the website
+                        folder="daily",  # the folder name on the website
+                        db_config=db_config,
+                        survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
+                    ) as sd
+                ):
+                    sd.add_candidate(
+                        candname=Path(report_file_name).stem,
+                        ra=0,
+                        dec=0,
+                        f0=0,
+                        dm=0,
+                        snr=0,
+                        report_pdf=report_file_name,
+                    )
+                    sd.commit()
 
             number_of_days_processed = number_of_days_processed + 1
             date_to_process = date_to_process + dt.timedelta(days=1)
@@ -2069,7 +2069,7 @@ def start_processing_manager(
     ),
 )
 @click.option(
-    "--run-stack-search/--no-run-stack-search",
+    "--run-stack-search",
     default=False,
     type=bool,
     help="Run stack search only. Currenlty controlled by also giving a stack-name for the run.",
