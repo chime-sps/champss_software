@@ -1551,7 +1551,7 @@ def start_processing_manager(
                 else:
                     workflow_params = {
                         "output": basepath,
-                        "file_path": path.join(
+                        "file_path": os.path.join(
                             basepath, "stack_runs", stack_name, "candidates_monthly"
                         ),
                         "get_from_db": False,
@@ -1797,7 +1797,6 @@ def start_processing_manager(
                         docker_swarm_running_states, docker_service_name_prefix
                     )
                 else:
-                    df_mp = df_mp[:1]
                     df_mp = run_all_multi_day_folds(
                         df_mp,
                         db_host,
