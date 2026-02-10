@@ -328,7 +328,7 @@ def run_all_multi_day_folds(
             df_mp.at[index, "fold_success"] = True
         else:
             df_mp.at[index, "fold_success"] = False
-        df_mp["fold_plot"] = df_mp["mdf_path_to_plot"]
+        # df_mp["fold_plot"] = df_mp["mdf_path_to_plot"]
     return df_mp
 
 
@@ -1797,6 +1797,7 @@ def start_processing_manager(
                         docker_swarm_running_states, docker_service_name_prefix
                     )
                 else:
+                    df_mp = df_mp[:1]
                     df_mp = run_all_multi_day_folds(
                         df_mp,
                         db_host,
@@ -1832,8 +1833,8 @@ def start_processing_manager(
                         df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
                         fold_plot = last_fold["path_to_plot"]
                     else:
-                        fold_plot = df_mp["mdf_path_to_plot"]
-                    if not os.path.exists(last_fold["path_to_plot"]):
+                        fold_plot = row["mdf_path_to_plot"]
+                    if not os.path.exists(fold_plot):
                         continue
                     if type(row["plot_path"]) is not str:
                         if not os.path.exists(row["file_name"]):
@@ -1903,7 +1904,7 @@ def start_processing_manager(
             # End of folding phase
             if mode == "pipeline":
                 report_file_name = create_report_pdf(
-                date_to_process, db_host, db_port, db_name, basepath
+                    date_to_process, db_host, db_port, db_name, basepath
                 )
                 daily_run = db_api.get_daily_run(date_to_process)
                 payload = {"plots": daily_run.plots}
@@ -2067,6 +2068,18 @@ def start_processing_manager(
         """Options passed to --config-options of the pipeline. Example: "{'beamform': {'max_mask_frac': 0.9}}" """
     ),
 )
+@click.option(
+    "--run-stack-search/--no-run-stack-search",
+    default=False,
+    type=bool,
+    help="Run stack search only. Currenlty controlled by also giving a stack-name for the run.",
+)
+@click.option(
+    "--stack-name",
+    default=None,
+    type=str,
+    help="Name of the stack-run",
+)
 def start_processing_services(
     db_host,
     db_port,
@@ -2086,6 +2099,8 @@ def start_processing_services(
     run_stacking,
     pipeline_arguments,
     pipeline_config_options,
+    run_stack_search,
+    stack_name,
 ):
     """Start the processing manager and the cleanup service."""
     # Please run "docker login" in your CLI to allow retrieval of the images
@@ -2108,6 +2123,7 @@ def start_processing_services(
             f" --run-classification {run_classification}"
             f' --pipeline-arguments "{pipeline_arguments}"'
             f' --pipeline-config-options "{pipeline_config_options}"'
+            f" --run-stack-search {run_stack_search} --stack-name {stack_name}"
         ),
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),

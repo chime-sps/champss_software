@@ -282,6 +282,7 @@ class CandidateViewerRegistrar:
                 )
             stack_plot = row.get("plot_path", "")
             fold_plot = row.get("fold_plot", "")
+            mdf_plot = row.get("mdf_path_to_plot", "")
             combined_plot = row.get("combined_plot_path", "")
             input_file = row.get("file_name", "")
             fs_id = row.get("fs_id", "unknown")
@@ -298,6 +299,7 @@ class CandidateViewerRegistrar:
                 plot_stack=stack_plot,
                 plot_fold=fold_plot,
                 plot_combined=combined_plot,
+                plot_mdf=mdf_plot,
                 input_file=input_file,
                 fs_id=fs_id,
                 fs_sigma=fs_sigma,
