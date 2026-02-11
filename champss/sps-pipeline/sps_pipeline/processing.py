@@ -1843,7 +1843,10 @@ def start_processing_manager(
                     else:
                         fold_plot = row["mdf_path_to_plot"]
 
-                    if not os.path.exists(fold_plot):
+                    if fold_plot is str:
+                        if not os.path.exists(fold_plot):
+                            continue
+                    else:
                         continue
 
                     if type(row["plot_path"]) is not str:
