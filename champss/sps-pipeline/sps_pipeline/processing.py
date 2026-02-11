@@ -1199,6 +1199,12 @@ def run_all_pipeline_processes(
     type=str,
     help="Name of the stack-run",
 )
+@click.option(
+    "--create-combined-plots",
+    default=False,
+    type=bool,
+    help="Create merged plots of the fold and ps representation.",
+)
 def start_processing_manager(
     db_host,
     db_port,
@@ -1224,6 +1230,7 @@ def start_processing_manager(
     skip_finding_processes,
     run_stack_search,
     stack_name,
+    create_combined_plots,
 ):
     """Manager function containing the multiple processing steps."""
     # atexit.register(remove_processing_services, None, None)
@@ -1751,11 +1758,11 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
                 df_mp = fold_schedule_output["df"]
-                try:
-                    df_mp.to_csv(df_folded_name)
-                except Exception as error:
-                    # Might fail due to permission
-                    pass
+                # try:
+                df_mp.to_csv(df_folded_name)
+                # except Exception as error:
+                # Might fail due to permission
+                # pass
                 processes = fold_schedule_output["info"]
 
                 docker_service_name_prefix = "fold"
@@ -1808,6 +1815,8 @@ def start_processing_manager(
                         datpath,
                     )
 
+                df_mp.to_csv(df_folded_name)
+
                 # Merge candidates
                 # breakpoint()
                 log.info("Creating merged candidate plots.")
@@ -1833,8 +1842,10 @@ def start_processing_manager(
                         fold_plot = last_fold["path_to_plot"]
                     else:
                         fold_plot = row["mdf_path_to_plot"]
+
                     if not os.path.exists(fold_plot):
                         continue
+
                     if type(row["plot_path"]) is not str:
                         if not os.path.exists(row["file_name"]):
                             continue
@@ -1842,16 +1853,17 @@ def start_processing_manager(
                         plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
                         df_mp.at[index, "plot_path"] = plot_path
 
-                    output_path = (
-                        merged_candidate_path
-                        + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
-                        + "_combined.png"
-                    )
-                    merge_images(
-                        [plot_path, fold_plot],
-                        output_path=output_path,
-                    )
-                    df_mp.at[index, "combined_plot_path"] = output_path
+                    if create_combined_plots:
+                        output_path = (
+                            merged_candidate_path
+                            + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
+                            + "_combined.png"
+                        )
+                        merge_images(
+                            [plot_path, fold_plot],
+                            output_path=output_path,
+                        )
+                        df_mp.at[index, "combined_plot_path"] = output_path
                 # Could get work results, alternatively can query fs db
                 try:
                     df_mp.to_csv(df_folded_name)
