@@ -501,7 +501,7 @@ def search_freq_range_from_dc(dc, base_freq=50.0, nphi=0):
     return freq_min, freq_max
 
 
-def change_spin_period(source, new_epoch):
+def change_spin_period(P0, P1, old_epoch, new_epoch):
     """
     Calculates period of known source based on new epoch, rather than the observation
     epoch.
@@ -519,10 +519,10 @@ def change_spin_period(source, new_epoch):
     P: int
         The updated period of the known source
     """
-    P0 = source.spin_period_s
-    P1 = source.spin_period_derivative
-    if P1 > 0 and ~np.isnan(source.spin_period_epoch):
-        detect_epoch = Time(source.spin_period_epoch, format="mjd")
+    # P0 = source.spin_period_s
+    # P1 = source.spin_period_derivative
+    if P1 > 0 and ~np.isnan(old_epoch):
+        detect_epoch = Time(old_epoch, format="mjd")
         new_epoch = Time(new_epoch)
         diff_epoch = (new_epoch - detect_epoch).sec
         P = P0 + diff_epoch * P1

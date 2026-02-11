@@ -85,8 +85,9 @@ class KnownSourceSifter:
             ks_collection = [
                 ks
                 for ks in ks_collection
-                if np.isfinite(ks.spin_period_s_error)
-                and "psr_scraper" not in ks.survey
+                # if np.isfinite(ks.spin_period_s_error)
+                # and
+                if "psr_scraper" in ks.survey
             ]
         ks_database = np.empty(
             shape=len(ks_collection),
@@ -105,6 +106,18 @@ class KnownSourceSifter:
             ],  # the dtype has some unused fields trimmed out
         )
         for i, ks in enumerate(ks_collection):
+            if ("F0" and "F1") in ks.timing_model.keys():
+                period = 1 / ks.timing_model["F0"]
+                period_derivative = (
+                    1 / ks.timing_model["F0"] ** 2 * ks.timing_model["F1"]
+                )
+                period_error = 1 / period**2 * ks.timing_model["F0_ERR"]
+                old_epoch = ks.timing_model["PEPOCH"]
+            else:
+                period = ks.spin_period_s
+                period_derivative = ks.spin_period_derivative
+                period_error = ks.spin_period_s_error
+                old_epoch = ks.spin_period_epoch
             ks_database[i] = (
                 ks.source_name,
                 ks.pos_ra_deg,
@@ -112,11 +125,13 @@ class KnownSourceSifter:
                 ks.pos_error_semimajor_deg,
                 ks.pos_error_semiminor_deg,
                 ks.pos_error_theta_deg,
-                ks.dm,
-                ks.dm_error,
-                ks.spin_period_s,
-                known_source_filters.change_spin_period(ks, Time.now()),
-                ks.spin_period_s_error,
+                ks.timing_model.get("DM", ks.dm),
+                ks.timing_model.get("DM_ERR", ks.dm_error),
+                period,
+                known_source_filters.change_spin_period(
+                    period, period_derivative, old_epoch, Time.now()
+                ),
+                period_error,
             )
 
         self.ks_database = ks_database

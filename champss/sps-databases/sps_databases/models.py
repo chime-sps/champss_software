@@ -661,6 +661,7 @@ class KnownSource:
         ),
         on_setattr=validate,
     )
+    timing_model = attrib(default={}, type=dict)
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )
