@@ -1900,7 +1900,10 @@ def start_processing_manager(
                             survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
                         ) as sd
                     ):
-                        df_mp_filtered = df_mp[df_mp[sigma_field] > min_sigma_folded]
+                        df_mp_filtered = df_mp[
+                            (df_mp[sigma_field] > min_sigma_folded)
+                            | df_mp["mdf_SN"].isna()
+                        ]
                         sd.add_candidates(
                             df_mp_filtered
                         )  # add candidates from dataframe
