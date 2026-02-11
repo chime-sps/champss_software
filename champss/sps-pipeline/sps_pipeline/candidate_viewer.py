@@ -131,7 +131,7 @@ class CandidateViewerRegistrar:
         # Generate SQL query
         keys = ", ".join(data.keys())
         values = ", ".join(["%s"] * len(data))
-        sql = f"INSERT INTO profile_cache ({keys}) VALUES ({values})"
+        sql = f"INSERT IGNORE INTO profile_cache ({keys}) VALUES ({values})"
 
         val = tuple(data.values())
         self.cursor.cursor().execute(sql, val)
