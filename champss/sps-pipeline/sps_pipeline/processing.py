@@ -96,13 +96,13 @@ def scale_down_service(service_name):
 @click.option(
     "--class-min",
     default=0.9,
-    type=int,
+    type=float,
     help="Classification threshold.",
 )
 @click.option(
     "--sigma-min",
     default=6.5,
-    type=int,
+    type=float,
     help="Sigma threshold.",
 )
 def find_all_folding_processes(
