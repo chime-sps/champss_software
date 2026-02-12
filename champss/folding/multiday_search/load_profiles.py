@@ -1,4 +1,6 @@
+import logging
 import os
+import subprocess
 
 import astropy.units as u
 import numpy as np
@@ -62,19 +64,37 @@ def load_profiles(archives, max_npbin=256):
             - "npbin": Number of phase bins.
             - "T": Maximum time difference from reference.
 
-    Raises:
-        ValueError: If not all profiles reference the same PEPOCHs.
+    Note:
+        If archives have mismatched PEPOCHs, the first archive's ephemeris
+        is applied to discrepant files using pam -E.
     """
+    log = logging.getLogger(__name__)
     print("Loading in archive files...")
     profs = []
     times = []
-    PEPOCHs = []
+    psr_name = None
+    reference_par = None
+    reference_pepoch = None
     print(*archives,sep='\n')
     for filename in sorted(archives):
         f = filename.replace(".ar", ".FT")
         if os.path.isfile(f) and f.endswith(".FT"):
             print(f)
+            PEPOCH = get_archive_parameter(f, "PEPOCH")
+            if reference_pepoch is None:
+                reference_pepoch = PEPOCH
+                # Extract ephemeris from first archive as reference
+                reference_par = os.path.join(os.path.dirname(f), "reference_pepoch.par")
+                result = subprocess.run(["vap", "-E", f], capture_output=True, text=True)
+                with open(reference_par, "w") as f_out:
+                    f_out.write(result.stdout)
+            elif PEPOCH != reference_pepoch:
+                log.warning(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
+                subprocess.run(["pam", "-E", reference_par, "-m", f], check=True)
+
             data_ar, params = readpsrarch(f)
+            if psr_name is None:
+                psr_name = params["psr"]
             T = params["T"]
             data_ar = data_ar.squeeze()
             if len(data_ar.shape) > 1:
@@ -85,15 +105,7 @@ def load_profiles(archives, max_npbin=256):
             prof = prof - np.median(prof)
             profs.append(prof)
             times.append(T[0])
-            PEPOCH = get_archive_parameter(f, "PEPOCH")
-            PEPOCHs.append(PEPOCH)
-
-    if np.unique(PEPOCHs).size > 1:
-        print(
-            "Not all profiles reference the same PEPOCHs, re-apply same ephemeris to"
-            " all archives"
-        )
-        raise ValueError("Not all profiles reference the same PEPOCHs")
+    PEPOCH = reference_pepoch
 
     T0 = Time(PEPOCH, format="mjd")
     print(f"Reference epoch: {T0}, {T0.isot}")
@@ -138,6 +150,7 @@ def load_profiles(archives, max_npbin=256):
             "DEC": DEC,
             "directory": directory,
             "npbin": npbin,
+            "psr": psr_name,
             "PEPOCH": T0.mjd,
             "Tmax_from_reference": Tmax_from_reference,
         }
@@ -186,17 +199,23 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         dF0 = F0_incoherent - F0
         dF1 = F1_incoherent
 
-        data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, -dF1)
+        data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, dF1)
         if i == 0:
             data_F = data_unwrapped.sum(0)
             data_T = data_unwrapped.sum(1)
         else:
             data_F += data_unwrapped.sum(0)
-            # Sometimes the data_T shape mismatch, need to diagnose
-            try:
-                data_T += data_unwrapped.sum(1)
-            except ValueError:
-                print("Data_T shape mismatch, skipping")
+            new_T = data_unwrapped.sum(1)
+            if new_T.shape[0] != data_T.shape[0]:
+                target = data_T.shape[0]
+                if new_T.shape[0] > target:
+                    print(f"Removing last time bin to match data_T shape for {f}")
+                    new_T = new_T[:target]
+                else:
+                    print(f"Padding 1 zero to match data_T shape for {f}")
+                    pad = np.zeros((target - new_T.shape[0], new_T.shape[1]))
+                    new_T = np.concatenate([new_T, pad], axis=0)
+            data_T += new_T
 
     npbin = data_F.shape[-1]
     if npbin > max_npbin:
