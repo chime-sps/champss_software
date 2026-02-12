@@ -93,7 +93,21 @@ def scale_down_service(service_name):
     type=str,
     help="Mode used for the function [pipeline, stack-search].",
 )
-def find_all_folding_processes(date, csv, db_host, db_port, db_name, mode):
+@click.option(
+    "--class-min",
+    default=0.9,
+    type=int,
+    help="Classification threshold.",
+)
+@click.option(
+    "--sigma-min",
+    default=6.5,
+    type=int,
+    help="Sigma threshold.",
+)
+def find_all_folding_processes(
+    date, csv, db_host, db_port, db_name, mode, class_min, sigma_min
+):
     """Find all available folding processes for a given date."""
     log.setLevel(logging.INFO)
 
@@ -106,7 +120,7 @@ def find_all_folding_processes(date, csv, db_host, db_port, db_name, mode):
     # csv_input_name = daily_run.classification_result["output_file"]
     candidate_df = pd.read_csv(csv, index_col=0)
 
-    filtered_df = filter_mp_df(candidate_df, sigma_min=6.5, class_min=0.9)
+    filtered_df = filter_mp_df(candidate_df, sigma_min=sigma_min, class_min=class_min)
     if mode == "pipeline":
         filtered_df = write_df_to_fsdb(filtered_df, date)
 
@@ -322,12 +336,20 @@ def run_all_multi_day_folds(
             standalone_mode=False,
         )
         # results.append(result)
-        if results is not None:
-            for field in results:
-                df_mp.at[index, f"mdf_{field}"] = results[field]
+        # Define fields manuall to allow simpler replacement
+        result_fields_str = ["date", "gridsearch_file", "path_to_plot"]
+        result_fields_float = ["SN", "f0", "f1"]
+        if results is None:
+            results = {}
+        for field in result_fields_str:
+            df_mp.at[index, f"mdf_{field}"] = results.get(field, "")
+        for field in result_fields_float:
+            df_mp.at[index, f"mdf_{field}"] = results.get(field, np.nan)
+        if results.get("SN", None):
             df_mp.at[index, "fold_success"] = True
         else:
             df_mp.at[index, "fold_success"] = False
+        df_mp.at[index, "fold_success"] = False
         # df_mp["fold_plot"] = df_mp["mdf_path_to_plot"]
     return df_mp
 
@@ -1732,6 +1754,7 @@ def start_processing_manager(
                         + "_folded.csv"
                     )
                     args = ["--date", date_to_process]
+                    class_min = 0.9
                 else:
                     df_folded_name = (
                         f"{basepath}/mp_runs/{stack_name}/all_mp_cands_folded.csv"
@@ -1740,6 +1763,7 @@ def start_processing_manager(
                         f"{basepath}/mp_runs/{stack_name}/all_mp_cands_predicted.csv"
                     )
                     args = []
+                    class_min = 0.5
 
                 args += [
                     "--csv",
@@ -1752,6 +1776,8 @@ def start_processing_manager(
                     db_name,
                     "--mode",
                     mode,
+                    "--class-min",
+                    class_min,
                 ]
                 fold_schedule_output, [], [] = find_all_folding_processes.main(
                     args=args,
