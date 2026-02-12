@@ -226,22 +226,12 @@ class ExploreGrid:
         gal_b = gal_coord.galactic.b.deg
         pointing = find_closest_pointing(self.RA, self.DEC)
         max_dm = pointing.maxdm
-        max_beam = pointing.max_beams[0].get('beam', None) if pointing.max_beams else None
-        beam_str = f"{max_beam}" if max_beam is not None else "N/A"
+        beam_str = f"{pointing.beam_row}"
 
         start_date = Time(self.PEPOCH + min(self.dts) / 86400.0, format="mjd").isot[:10]
 
-        dm_ne2001_str = "N/A"
-        dm_ymw16_str = "N/A"
-        try:
-            from beamformer.utilities.dm import DMMap
-            dmm = DMMap()
-            dm_ne2001 = dmm.get_dm_ne2001(latitude=self.DEC, longitude=self.RA)
-            dm_ymw16 = dmm.get_dm_ymw16(latitude=self.DEC, longitude=self.RA)
-            dm_ne2001_str = f"{dm_ne2001:.1f}"
-            dm_ymw16_str = f"{dm_ymw16:.1f}"
-        except (ImportError, Exception) as e:
-            print(e)
+        dm_ne2001_str = f"{pointing.ne2001dm:.1f}"
+        dm_ymw16_str = f"{pointing.ymw16dm:.1f}"
 
         cand_params_text = [
             [f"{self.psr_name}", f"RA: {self.RA:.2f}", rf"$g_l$: {gal_l:.2f}", f"DM$_{{max}}$: {max_dm:.1f}", f"F0$_{{best}}$: {F0_best}"],
