@@ -186,9 +186,10 @@ class CandidateViewerRegistrar:
         )
 
         # Check if output json is valid
-        tmp_config_path = (
-            "/tmp/" + os.path.basename(self.survey_config_path) + f".{os.getpid()}.tmp"
-        )
+        # tmp_config_path = (
+        #     "/tmp/" + os.path.basename(self.survey_config_path) + f".{os.getpid()}.tmp"
+        # )
+        tmp_config_path = f"/data/candidate_viewer/champss_candidate_viewer/surveys/temp_{os.getpid()}.json"
         with open(tmp_config_path, "w") as f:
             json.dump(existing_config, f, indent=4)
         try:
