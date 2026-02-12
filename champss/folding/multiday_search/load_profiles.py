@@ -229,7 +229,7 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         npbin = max_npbin
     nfbin = data_F.shape[0]
     if nfbin > max_nfbin:
-        print(f"Binning to {max_nfbin} frequency bins.")
+        print(f"Binning to {max_nfbin} frequency bins.") 
         data_F = data_F.reshape(max_nfbin, data_F.shape[0] // max_nfbin, -1).sum(1)
         nfbin = max_nfbin
 
