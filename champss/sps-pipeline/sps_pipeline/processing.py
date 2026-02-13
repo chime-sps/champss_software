@@ -151,6 +151,7 @@ def find_all_folding_processes(
         # Outputting the df will probably break, if this function is run by workflow.
     else:
         info = {}
+
     return {"info": info, "df": filtered_df}, [], []
 
 
