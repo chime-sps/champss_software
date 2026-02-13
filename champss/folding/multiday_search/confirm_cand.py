@@ -163,6 +163,7 @@ def main(
     DEC = par_vals["DECJD"]
 
     data = load_profiles(archives)
+    data["candidate_sigma"] = source.candidate_sigma
     print(f"Loaded {len(data['profiles'])} profiles")
 
     if foldpath is not None:
