@@ -1,5 +1,6 @@
 import datetime as dt
 from glob import glob
+import time
 
 import click
 import folding.fold_candidate as fold_candidate
@@ -147,7 +148,7 @@ def main(
     nchan = 1024 * (2**nchan_tier)
     dates_with_data = find_all_dates_with_data(ra, dec, datpath, nday=nday, start_date=start_date)
     print(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
-    for date in dates_with_data:
+    for i, date in enumerate(dates_with_data):
         if use_workflow:
             docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
             docker_memory_reservation = (nchan / 1024) * 8
@@ -186,6 +187,13 @@ def main(
                 workflow_params,
                 workflow_tags,
             )
+            if i == 0:
+                # Wait longer after first job so it creates the parfile
+                # before subsequent jobs start, avoiding PEPOCH race condition
+                print("Waiting for first folding job to create parfile...")
+                time.sleep(5)
+            else:
+                time.sleep(1)
         else:
             args = [
             "--date", str(date),

@@ -30,7 +30,7 @@ from sps_pipeline.pipeline import default_datpath
 )
 @click.option(
     "--foldpath",
-    default="/data/chime/sps/archives",
+    default="/mnt/beegfs-client/archives",
     type=str,
     help="Path for created files during fold step.",
 )

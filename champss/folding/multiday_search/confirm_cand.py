@@ -1,5 +1,8 @@
 import datetime
 import logging
+import os
+import subprocess
+from collections import Counter
 
 import click
 import numpy as np
@@ -9,9 +12,10 @@ log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
-from folding.utilities.archives import read_par
+from folding.utilities.archives import get_archive_parameter, read_par
 from multiday_search.load_profiles import load_profiles, load_unwrapped_archives
 from multiday_search.phase_aligned_search import ExploreGrid
+from multiday_search.summary_plot import create_summary_pdf
 from sps_databases import db_api, db_utils
 
 
@@ -44,13 +48,13 @@ from sps_databases import db_api, db_utils
     "--phase_accuracy",
     type=float,
     default=1.0 / 64,
-    help="Required accuracy in pulse phase, which determines step size.",
+    help="Required accuracy in pulse phase, which determines step sizes.",
 )
 @click.option(
     "--nday",
     default=0,
     type=int,
-    help="Number of days to search. Default is to search all available archives."
+    help="Number of days to search. Default is to search all available archives.",
 )
 @click.option(
     "--foldpath",
@@ -68,6 +72,11 @@ from sps_databases import db_api, db_utils
     is_flag=True,
     help="Output possible candidates.",
 )
+@click.option(
+    "--create-summary/--no-create-summary",
+    default=True,
+    help="Create a summary PDF with all plots (default: True).",
+)
 def main(
     fs_id,
     db_port,
@@ -78,6 +87,7 @@ def main(
     foldpath,
     write_to_db=False,
     check_cands=False,
+    create_summary=True,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     if check_cands:
@@ -153,6 +163,7 @@ def main(
     DEC = par_vals["DECJD"]
 
     data = load_profiles(archives)
+    data["candidate_sigma"] = source.candidate_sigma
     print(f"Loaded {len(data['profiles'])} profiles")
 
     if foldpath is not None:
@@ -164,7 +175,7 @@ def main(
     f0_lims = (f0_min, f0_max)
     delta_f0max = f0_max - f0_min
 
-    f1_max = 1e-12  # Upper limit based on known pulsars, or expected barycentric shift
+    f1_max = 2e-12  # Upper limit based on known pulsars, or expected barycentric shift
     f1_lims = (
         -f1_max,
         f1_max,
@@ -184,7 +195,7 @@ def main(
     f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
 
     np.savez(
-        data["directory"] + f"cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
+        data["directory"] +  f"/cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
         f0s=f0s,
         f1s=f1s,
         chi2_grid=chi2_grid,
@@ -243,6 +254,11 @@ def main(
                     output.write(line)
 
     explore_grid.plot(fullplot=True)
+
+    # Create summary PDF if requested
+    if create_summary:
+        summary_pdf_path = create_summary_pdf(source, plot_name, data["directory"])
+        log.info(f"Summary PDF saved to: {summary_pdf_path}")
 
     return coherentsearch_summary, [plot_name], [plot_name]
 

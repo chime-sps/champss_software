@@ -672,7 +672,8 @@ def plot_candidate_archive(
         f"cand_{ra:.02f}_{dec:.02f}_{f0:.02f}_{dm:.02f}_{T0.isot[:10]}.png"
     )
 
-    plt.savefig(f'{coord_path}/{plotstring}', dpi=fig.dpi, bbox_inches="tight")
+    plt.savefig(f'{coord_path}/{plotstring}', dpi=150, bbox_inches="tight",
+                pil_kwargs={'optimize': True})
 
     img_path = f"{foldpath}/{T0.isot[:10]}-plots/"
     if not os.path.exists(img_path):
@@ -680,7 +681,8 @@ def plot_candidate_archive(
     else:
         print(f"Directory '{img_path}' already exists.")
     plot_fname = img_path + plotstring_radec
-    plt.savefig(plot_fname, dpi=fig.dpi, bbox_inches="tight")
+    plt.savefig(plot_fname, dpi=150, bbox_inches="tight",
+                pil_kwargs={'optimize': True})
     plt.close()
 
     return SNprof, SNR_val, plot_fname
