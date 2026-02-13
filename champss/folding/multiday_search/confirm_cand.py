@@ -174,7 +174,7 @@ def main(
     f0_lims = (f0_min, f0_max)
     delta_f0max = f0_max - f0_min
 
-    f1_max = 1e-12  # Upper limit based on known pulsars, or expected barycentric shift
+    f1_max = 2e-12  # Upper limit based on known pulsars, or expected barycentric shift
     f1_lims = (
         -f1_max,
         f1_max,
@@ -194,7 +194,7 @@ def main(
     f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
 
     np.savez(
-        data["directory"] + f"cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
+        data["directory"] +  f"/cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
         f0s=f0s,
         f1s=f1s,
         chi2_grid=chi2_grid,

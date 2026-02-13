@@ -236,18 +236,19 @@ class ExploreGrid:
         cand_params_text = [
             [f"{self.psr_name}", f"RA: {self.RA:.2f}", rf"$g_l$: {gal_l:.2f}", f"DM$_{{max}}$: {max_dm:.1f}", f"F0$_{{best}}$: {F0_best}"],
             [f"{start_date}", f"Dec: {self.DEC:.2f}", rf"$g_b$: {gal_b:.2f}", f"DM$_{{ne2001}}$: {dm_ne2001_str}", f"P0$_{{best}}$: {P0_best:.5f}"],
-            [f"N={len(self.profiles)}", f"DM: {self.DM:.2f}", f"Beam: {beam_str}", f"DM$_{{ymw16}}$: {dm_ymw16_str}", f"$f_1$: {F1plot}"],
+            [f"Nday: {len(self.profiles)}", f"DM: {self.DM:.2f}", f"Beam: {beam_str}", f"DM$_{{ymw16}}$: {dm_ymw16_str}", f"$f_1$: {F1plot}"],
             [f"SNR: {SNR:.2f}", f"$f_0$: {self.f0_incoherent:.5f}", f"P0: {P0:.5f}", "", f"PEPOCH: {self.PEPOCH:.2f}"],
         ]
 
-        table_ax = fig.add_axes([0.1, 0.92, 0.85, 0.08])
+        table_ax = fig.add_axes([0.1, 0.90, 0.8, 0.05])
         table_ax.axis("off")
         param_table = table_ax.table(
             cellText=cand_params_text, cellLoc="left", loc="center", edges="open",
         )
         param_table.auto_set_font_size(False)
-        param_table.set_fontsize(14)
-        param_table.auto_set_column_width(col=list(range(5)))
+        param_table.set_fontsize(22)
+        param_table.scale(1, 1.8)
+        #param_table.auto_set_column_width(col=list(range(5)))
 
         if fullplot:
             data_T, data_F = load_unwrapped_archives(
