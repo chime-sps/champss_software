@@ -62,7 +62,7 @@ class KnownSourceSifter:
     threshold = attr.ib(default=1.0, validator=instance_of(float))
     rfi_check = attr.ib(default={}, validator=instance_of(dict))
     use_unknown_freq = attr.ib(default=False, validator=instance_of(bool))
-    filter_scraper_and_f1_nan = attr.ib(default=True, validator=instance_of(bool))
+    filter_scraper_and_f1_nan = attr.ib(default=False, validator=instance_of(bool))
     config_init = attr.ib(init=False)
     ks_database = attr.ib(init=False)
     ks_filter_names = attr.ib(init=False)
@@ -85,9 +85,8 @@ class KnownSourceSifter:
             ks_collection = [
                 ks
                 for ks in ks_collection
-                # if np.isfinite(ks.spin_period_s_error)
-                # and
-                if "psr_scraper" in ks.survey
+                if np.isfinite(ks.spin_period_s_error)
+                and "psr_scraper" not in ks.survey
             ]
         ks_database = np.empty(
             shape=len(ks_collection),
@@ -127,7 +126,7 @@ class KnownSourceSifter:
                 frequency = 1 / ks.spin_period_s
                 frequency_derivative = -(frequency**2) * ks.spin_period_derivative
                 frequency_error = frequency**2 * ks.spin_period_s_error
-            ks_database[i] = (
+            entry = (
                 ks.source_name,
                 ks.pos_ra_deg,
                 ks.pos_dec_deg,
@@ -147,6 +146,7 @@ class KnownSourceSifter:
                 ),
                 frequency_error,
             )
+            ks_database[i] = entry
 
         self.ks_database = ks_database
         logger.info(f"{ks_database.size} known sources loaded")
@@ -192,14 +192,14 @@ class KnownSourceSifter:
             return candidate
         prob_freq = self.calculate_response(candidate, ks_db_freq, n_ks)
         ks_db_freq = ks_db_freq[
-            ["source_name", "pos_ra_deg", "pos_dec_deg", "spin_period_s", "dm"]
+            ["source_name", "pos_ra_deg", "pos_dec_deg", "spin_frequency_f", "dm"]
         ]
         if self.use_unknown_freq:
             prob_no_freq = self.calculate_response(
                 candidate, ks_db_no_freq, n_ks, freq=False
             )
             ks_db_no_freq = ks_db_no_freq[
-                ["source_name", "pos_ra_deg", "pos_dec_deg", "spin_period_s", "dm"]
+                ["source_name", "pos_ra_deg", "pos_dec_deg", "spin_frequency_f", "dm"]
             ]
             known_sources = np.concatenate(
                 (
@@ -233,7 +233,7 @@ class KnownSourceSifter:
                     ("source_name", "u1"),
                     ("pos_ra_deg", "<f4"),
                     ("pos_dec_deg", "<f4"),
-                    ("spin_period_s", "<f4"),
+                    ("spin_frequency_f", "<f4"),
                     ("dm", "<f4"),
                     ("likelihood", "<f4"),
                 ],
@@ -407,9 +407,9 @@ def known_sources_subset(ks_database, pos_filter=False, ra=0, dec=0, radius=5.0)
         ks_names.append(ks_name.split("_")[0])
     n_ks = np.unique(ks_names).size
 
-    # split ks_database to sources with spin period and sources without spin period
-    freq_mask = np.where(~np.isnan(ks_region["spin_period_s"]))[0]
-    no_freq_mask = np.where(np.isnan(ks_region["spin_period_s"]))[0]
+    # split ks_database to sources with spin period and sources without spin frequency_f
+    freq_mask = np.where(~np.isnan(ks_region["spin_frequency_f"]))[0]
+    no_freq_mask = np.where(np.isnan(ks_region["spin_frequency_f"]))[0]
     return (
         ks_region[freq_mask],
         ks_region[no_freq_mask],
