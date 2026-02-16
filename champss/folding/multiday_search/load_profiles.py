@@ -1,4 +1,3 @@
-import logging
 import os
 import subprocess
 
@@ -68,7 +67,6 @@ def load_profiles(archives, max_npbin=256):
         If archives have mismatched PEPOCHs, the first archive's ephemeris
         is applied to discrepant files using pam -E.
     """
-    log = logging.getLogger(__name__)
     print("Loading in archive files...")
     profs = []
     times = []
@@ -89,7 +87,7 @@ def load_profiles(archives, max_npbin=256):
                 with open(reference_par, "w") as f_out:
                     f_out.write(result.stdout)
             elif PEPOCH != reference_pepoch:
-                log.warning(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
+                print(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
                 subprocess.run(["pam", "-E", reference_par, "-m", f], check=True)
 
             data_ar, params = readpsrarch(f)
@@ -174,12 +172,25 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
 
     print("Loading and unwrapping full archives...")
     times = []
-    PEPOCHs = []
+    reference_par = None
+    reference_pepoch = None
 
     F0_incoherent = optimal_parameters[0]
     F1_incoherent = optimal_parameters[1]
     for i, f in enumerate(sorted(archives)):
         print(f)
+        PEPOCH = get_archive_parameter(f, "PEPOCH")
+        if reference_pepoch is None:
+            reference_pepoch = PEPOCH
+            # Extract ephemeris from first archive as reference
+            reference_par = os.path.join(os.path.dirname(f), "reference_pepoch_ar.par")
+            result = subprocess.run(["vap", "-E", f], capture_output=True, text=True)
+            with open(reference_par, "w") as f_out:
+                f_out.write(result.stdout)
+        elif PEPOCH != reference_pepoch:
+            print(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
+            subprocess.run(["pam", "-E", reference_par, "-m", f], check=True)
+
         data_ar, params = readpsrarch(f)
         F, times = params["F"], params["T"]
         data_ar = data_ar.squeeze()
@@ -188,9 +199,7 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         RA = get_archive_parameter(f, "RAJD")
         DEC = get_archive_parameter(f, "DECJD")
         F0 = get_archive_parameter(f, "F0")
-        PEPOCH = get_archive_parameter(f, "PEPOCH")
-        PEPOCHs.append(PEPOCH)
-        T0 = Time(PEPOCH, format="mjd")
+        T0 = Time(reference_pepoch, format="mjd")
 
         times = Time(times, format="mjd")
         t_bary = get_ssb_delay(RA, DEC, times)
@@ -199,7 +208,7 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         dF0 = F0_incoherent - F0
         dF1 = F1_incoherent
 
-        data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, dF1)
+        data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, -dF1)
         if i == 0:
             data_F = data_unwrapped.sum(0)
             data_T = data_unwrapped.sum(1)
