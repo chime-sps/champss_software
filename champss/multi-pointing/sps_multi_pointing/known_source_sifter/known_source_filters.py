@@ -275,15 +275,15 @@ def compare_frequency(
             cand_width = max_cand_width
         used_delta_freq = np.sqrt(used_delta_freq**2 + cand_width**2)
 
-    current_period = known_sources["current_spin_period_s"]
+    current_frequency = known_sources["current_spin_frequency_f"]
     for harm in harms:
         bayes_factor_harm = gaussian_bayes(
             candidate.best_freq,
             used_delta_freq,
-            1 / current_period * harm,
+            current_frequency * harm,
             mu_min,
             mu_max,
-            sigma_mu=harm * known_sources["spin_period_s_error"] / current_period**2,
+            sigma_mu=known_sources["spin_frequency_f_error"] * harm,
         )
         bayes_factor = np.max((bayes_factor, bayes_factor_harm), axis=0)
 
@@ -501,26 +501,25 @@ def search_freq_range_from_dc(dc, base_freq=50.0, nphi=0):
     return freq_min, freq_max
 
 
-def change_spin_period(P0, P1, old_epoch, new_epoch):
+def change_spin_epoch(P0, P1, old_epoch, new_epoch):
     """
-    Calculates period of known source based on new epoch, rather than the observation
+    Calculates period or frequency of known source based on new epoch, rather than the observation
     epoch.
 
     Parameters
     ----------
-    source: KnownSource
-        The known source class object to be updated
+    P0, P1: float
+        The period of frequencies that should be moved
 
-    new_epoch: astropy Time
-        Date of new epoch
+    old_epoch, new_epoch: astropy Time
+        Date of old and new epoch
 
     Returns
     -------
-    P: int
-        The updated period of the known source
+    P: float
+        The updated period or frequency of the known source
     """
-    # P0 = source.spin_period_s
-    # P1 = source.spin_period_derivative
+
     if P1 > 0 and ~np.isnan(old_epoch):
         detect_epoch = Time(old_epoch, format="mjd")
         new_epoch = Time(new_epoch)

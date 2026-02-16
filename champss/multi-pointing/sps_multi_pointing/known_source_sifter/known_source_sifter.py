@@ -100,24 +100,33 @@ class KnownSourceSifter:
                 ("pos_error_theta_deg", "<f4"),
                 ("dm", "<f4"),
                 ("dm_error", "<f4"),
-                ("spin_period_s", "<f4"),
-                ("current_spin_period_s", "<f4"),
-                ("spin_period_s_error", "<f4"),
+                # ("spin_period_s", "<f4"),
+                # ("current_spin_period_s", "<f4"),
+                # ("spin_period_s_error", "<f4"),
+                ("spin_frequency_f", "<f4"),
+                ("current_spin_frequency_f", "<f4"),
+                ("spin_frequency_f_error", "<f4"),
             ],  # the dtype has some unused fields trimmed out
         )
         for i, ks in enumerate(ks_collection):
             if ("F0" and "F1") in ks.timing_model.keys():
-                period = 1 / ks.timing_model["F0"]
-                period_derivative = (
-                    1 / ks.timing_model["F0"] ** 2 * ks.timing_model["F1"]
-                )
-                period_error = 1 / period**2 * ks.timing_model["F0_ERR"]
+                # period = 1 / ks.timing_model["F0"]
+                # period_derivative = (
+                #     1 / ks.timing_model["F0"] ** 2 * ks.timing_model["F1"]
+                # )
+                # period_error = 1 / period**2 * ks.timing_model["F0_ERR"]
                 old_epoch = ks.timing_model["PEPOCH"]
+                frequency = ks.timing_model["F0"]
+                frequency_derivative = ks.timing_model["F1"]
+                frequency_error = ks.timing_model["F0_ERR"]
             else:
-                period = ks.spin_period_s
-                period_derivative = ks.spin_period_derivative
-                period_error = ks.spin_period_s_error
+                # period = ks.spin_period_s
+                # period_derivative = ks.spin_period_derivative
+                # period_error = ks.spin_period_s_error
                 old_epoch = ks.spin_period_epoch
+                frequency = 1 / ks.spin_period_s
+                frequency_derivative = -(frequency**2) * ks.spin_period_derivative
+                frequency_error = frequency**2 * ks.spin_period_s_error
             ks_database[i] = (
                 ks.source_name,
                 ks.pos_ra_deg,
@@ -127,11 +136,16 @@ class KnownSourceSifter:
                 ks.pos_error_theta_deg,
                 ks.timing_model.get("DM", ks.dm),
                 ks.timing_model.get("DM_ERR", ks.dm_error),
-                period,
-                known_source_filters.change_spin_period(
-                    period, period_derivative, old_epoch, Time.now()
+                # period,
+                # known_source_filters.change_spin_period(
+                #     period, period_derivative, old_epoch, Time.now()
+                # ),
+                # period_error,
+                frequency,
+                known_source_filters.change_spin_epoch(
+                    frequency, frequency_derivative, old_epoch, Time.now()
                 ),
-                period_error,
+                frequency_error,
             )
 
         self.ks_database = ks_database
