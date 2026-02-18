@@ -349,8 +349,6 @@ def run_all_multi_day_folds(
             df_mp.at[index, "fold_success"] = True
         else:
             df_mp.at[index, "fold_success"] = False
-        df_mp.at[index, "fold_success"] = False
-        # df_mp["fold_plot"] = df_mp["mdf_path_to_plot"]
     return df_mp
 
 
