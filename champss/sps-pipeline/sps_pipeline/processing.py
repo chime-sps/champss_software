@@ -1906,15 +1906,16 @@ def start_processing_manager(
                     "database": "champss",
                     "port": 3306,
                 }
-                min_sigma_folded = 7
                 if mode == "pipeline":
                     survey = "dailycands"
                     folder = date_to_process.strftime("%Y-%m-%d")
                     sigma_field = "fs_sigma"
+                    min_sigma_folded = 7
                 else:
                     survey = "stackcands"
                     folder = stack_name
                     sigma_field = "mdf_SN"
+                    min_sigma_folded = 0
                 try:
                     with (
                         CandidateViewerRegistrar(
