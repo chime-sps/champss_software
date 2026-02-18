@@ -62,7 +62,10 @@ class KnownSourceSifter:
     threshold = attr.ib(default=1.0, validator=instance_of(float))
     rfi_check = attr.ib(default={}, validator=instance_of(dict))
     use_unknown_freq = attr.ib(default=False, validator=instance_of(bool))
-    filter_scraper_and_f1_nan = attr.ib(default=True, validator=instance_of(bool))
+    filter_scraper_and_f1_nan = attr.ib(default=False, validator=instance_of(bool))
+    filter_any_nan= attr.ib(default=True, validator=instance_of(bool))
+    filter_undetected_scraper_source = attr.ib(default=True, validator=instance_of(bool))
+    update_kss_nan_from_champss = attr.ib(default=True, validator=instance_of(bool))
     config_init = attr.ib(init=False)
     ks_database = attr.ib(init=False)
     ks_filter_names = attr.ib(init=False)
@@ -104,8 +107,10 @@ class KnownSourceSifter:
                 ("spin_period_s_error", "<f4"),
             ],  # the dtype has some unused fields trimmed out
         )
+        checked_nan_fields = ["dm", "dm_error", "spin_period_s", "spin_period_s_error"]
+        used_indices = []
         for i, ks in enumerate(ks_collection):
-            ks_database[i] = (
+            entry = (
                 ks.source_name,
                 ks.pos_ra_deg,
                 ks.pos_dec_deg,
@@ -118,8 +123,25 @@ class KnownSourceSifter:
                 known_source_filters.change_spin_period(ks, Time.now()),
                 ks.spin_period_s_error,
             )
+            ks_database[i] = entry
+            if self.filter_undetected_scraper_source:
+                if "psr_scraper" in ks.survey and not len(ks.champss_derived_parameters):
+                    continue
+            if self.update_kss_nan_from_champss:
+                for field in checked_nan_fields:
+                    if np.isnan(ks_database[i][field]):
+                        new_value = ks.champss_derived_parameters.get(field, None)
+                        if new_value:
+                            ks_database[i][field] = new_value
 
-        self.ks_database = ks_database
+            if self.filter_any_nan:
+                if np.isnan(ks_database[i][checked_nan_fields].tolist()).any():
+                    print("filtered", ks.source_name)
+                    continue
+            used_indices.append(i)
+
+
+        self.ks_database = ks_database[used_indices]
         logger.info(f"{ks_database.size} known sources loaded")
 
     def classify(self, candidate, pos_filter=False, known_source_radius=5.0):
