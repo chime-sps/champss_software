@@ -521,6 +521,10 @@ def change_spin_period(source, new_epoch):
     """
     P0 = source.spin_period_s
     P1 = source.spin_period_derivative
+    if np.isnan(P0):
+        P0 = source.champss_derived_parameters.get("spin_period_s", np.nan)
+    if np.isnan(P1):
+        P1 = source.champss_derived_parameters.get("spin_period_derivative", np.nan)
     if P1 > 0 and ~np.isnan(source.spin_period_epoch):
         detect_epoch = Time(source.spin_period_epoch, format="mjd")
         new_epoch = Time(new_epoch)
