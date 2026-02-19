@@ -63,8 +63,10 @@ class KnownSourceSifter:
     rfi_check = attr.ib(default={}, validator=instance_of(dict))
     use_unknown_freq = attr.ib(default=False, validator=instance_of(bool))
     filter_scraper_and_f1_nan = attr.ib(default=False, validator=instance_of(bool))
-    filter_any_nan= attr.ib(default=True, validator=instance_of(bool))
-    filter_undetected_scraper_source = attr.ib(default=True, validator=instance_of(bool))
+    filter_any_nan = attr.ib(default=True, validator=instance_of(bool))
+    filter_undetected_scraper_source = attr.ib(
+        default=True, validator=instance_of(bool)
+    )
     update_kss_nan_from_champss = attr.ib(default=True, validator=instance_of(bool))
     config_init = attr.ib(init=False)
     ks_database = attr.ib(init=False)
@@ -125,11 +127,15 @@ class KnownSourceSifter:
             )
             ks_database[i] = entry
             if self.filter_undetected_scraper_source:
-                if "psr_scraper" in ks.survey and not len(ks.champss_derived_parameters):
+                if "psr_scraper" in ks.survey and not len(
+                    ks.champss_derived_parameters
+                ):
                     continue
             if self.update_kss_nan_from_champss:
                 for field in checked_nan_fields:
-                    if np.isnan(ks_database[i][field]):
+                    if np.isnan(ks_database[i][field]) or (
+                        "psr_scraper" in ks.survey and "error" in field
+                    ):
                         new_value = ks.champss_derived_parameters.get(field, None)
                         if new_value:
                             ks_database[i][field] = new_value
@@ -139,7 +145,6 @@ class KnownSourceSifter:
                     print("filtered", ks.source_name)
                     continue
             used_indices.append(i)
-
 
         self.ks_database = ks_database[used_indices]
         logger.info(f"{ks_database.size} known sources loaded")
