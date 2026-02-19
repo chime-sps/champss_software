@@ -58,6 +58,7 @@ def known_bad_channels(nchan: int = 16384) -> list:
             range(15224, 15226),
         )
     )
+
     badchans_16k = sorted(badchans_16k)
 
     if nchan == L1_NCHAN:
