@@ -96,12 +96,12 @@ class PointingMapper:
                     self.y_pos[index],
                     self.ref_time + datetime.timedelta(seconds=r * sidereal_s / no_ra),
                 )
-                ne2001dm, ymw16dm = self.get_ne2001_ymw16(ra, dec)
+                ymw16dm, ne2025dm = self.get_ne2025_ymw16(ra, dec)
                 maxdm = self.get_max_dm(
                     ra,
                     dec,
-                    ne2001dm,
                     ymw16dm,
+                    ne2025dm,
                     exp=self.exp,
                     excess=self.excess,
                     excess_fac=self.excess_fac,
@@ -113,7 +113,7 @@ class PointingMapper:
                     dec=dec,
                     beam_row=beam,
                     length=length,
-                    ne2001dm=ne2001dm,
+                    ne2025dm=ne2025dm,
                     ymw16dm=ymw16dm,
                     maxdm=maxdm,
                     nchans=nchans,
@@ -121,46 +121,46 @@ class PointingMapper:
                 pointings.append(attr.asdict(pointing))
         return pointings
 
-    def get_ne2001_ymw16(self, ra, dec):
+    def get_ne2025_ymw16(self, ra, dec):
         if ra > 359:
-            ne2001 = self.dm_check.get_dm_ne2001(dec, 359) + (
-                self.dm_check.get_dm_ne2001(dec, 1)
-                - self.dm_check.get_dm_ne2001(dec, 359)
-            ) * ((ra - 359) / 2)
+            frac = (ra - 359) / 2
             ymw16 = self.dm_check.get_dm_ymw16(dec, 359) + (
                 self.dm_check.get_dm_ymw16(dec, 1)
                 - self.dm_check.get_dm_ymw16(dec, 359)
-            ) * ((ra - 359) / 2)
+            ) * frac
+            ne2025_a = self.dm_check.get_dm_ne2025(dec, 359)
+            ne2025_b = self.dm_check.get_dm_ne2025(dec, 1)
+            ne2025 = ne2025_a + (ne2025_b - ne2025_a) * frac
         elif ra < 1:
-            ne2001 = self.dm_check.get_dm_ne2001(dec, 1) - (
-                self.dm_check.get_dm_ne2001(dec, 1)
-                - self.dm_check.get_dm_ne2001(dec, 359)
-            ) * ((ra - 1) / 2)
+            frac = (ra - 1) / 2
             ymw16 = self.dm_check.get_dm_ymw16(dec, 1) - (
                 self.dm_check.get_dm_ymw16(dec, 1)
                 - self.dm_check.get_dm_ymw16(dec, 359)
-            ) * ((ra - 1) / 2)
+            ) * frac
+            ne2025_a = self.dm_check.get_dm_ne2025(dec, 1)
+            ne2025_b = self.dm_check.get_dm_ne2025(dec, 359)
+            ne2025 = ne2025_a - (ne2025_a - ne2025_b) * frac
         else:
-            ne2001 = self.dm_check.get_dm_ne2001(dec, ra).sum()
             ymw16 = self.dm_check.get_dm_ymw16(dec, ra).sum()
-        return ne2001, ymw16
+            ne2025 = self.dm_check.get_dm_ne2025(dec, ra).sum()
+        return ymw16, ne2025
 
     def get_max_dm(
         self,
         ra,
         dec,
-        ne2001dm,
         ymw16dm,
+        ne2025dm,
         exp=True,
         excess=50.0,
         excess_fac=2.0,
         extragalactic=True,
     ):
         """
-        Get LoS max DM from a dict of RA, Dec, ne2001 and ymw16 max DM.
+        Get LoS max DM from a dict of RA, Dec, ymw16 and ne2025 max DM.
 
         Inputs :
-        pointing - a dict of ra, dec, beam, ne2001dm and ymw16dm
+        pointing - a dict of ra, dec, beam, ymw16dm and ne2025dm
         exp - Boolean input for exponential modelling of max DM to search
         excess - Excess DM to add to the LoS Max DM
         excess_fac - Excess factor to LoS Max DM if exp=False
@@ -168,15 +168,16 @@ class PointingMapper:
         """
         coord = SkyCoord(ra=ra * u.degree, dec=dec * u.degree)
         gb = coord.galactic.b.value
+        base_dm = np.maximum(ymw16dm, ne2025dm)
         if exp:
             if np.abs(gb) < 15:
-                maxdm = (np.maximum(ne2001dm, ymw16dm)) * np.exp(
+                maxdm = base_dm * np.exp(
                     0.0313 * np.abs(gb) + 0.223
                 ) + excess
             else:
-                maxdm = (np.maximum(ne2001dm, ymw16dm)) * 2 + excess
+                maxdm = base_dm * 2 + excess
         else:
-            maxdm = (np.maximum(ne2001dm, ymw16dm)) * excess_fac + excess
+            maxdm = base_dm * excess_fac + excess
         if extragalactic:
             # Andromeda galaxy
             if 8.355 <= ra <= 13.012 and 40.269 <= dec <= 42.269:
