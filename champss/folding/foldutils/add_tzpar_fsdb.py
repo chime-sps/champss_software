@@ -33,7 +33,7 @@ def main(path, db_port, db_host, db_name):
     The attributes extracted are :
     ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
     'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
-    'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
+    'spin_period_s_error', 'dm_galactic_ne_2025_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
     'spin_period_derivative_error', 'spin_period_epoch']
     """
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)

@@ -33,14 +33,14 @@ class Pointing:
     length: int
         Length of the pointing in number of time samples. Must be larger than 0.
 
-    ne2001dm: float
-        The line-of-sight max DM from ne2001 model. Must be larger than 0.
+    ne2025dm: float
+        The line-of-sight max DM from ne2025 model. Must be larger than 0.
 
     ymw16dm: float
         The line-of-sight max DM from ymw16 model. Must be larger than 0.
 
     maxdm:float
-        The max DM value to search for the pointing. Must be larger than both ne2001dm and ymw16dm.
+        The max DM value to search for the pointing. Must be larger than both ne2025dm and ymw16dm.
 
     nchans: int
         The number of channels required for this pointing. Must be either 1024, 2048, 4096, 8192, or 16384.
@@ -53,7 +53,7 @@ class Pointing:
     ra = attrib(converter=float)
     dec = attrib(converter=float)
     length = attrib(converter=int)
-    ne2001dm = attrib(converter=float)
+    ne2025dm = attrib(converter=float)
     ymw16dm = attrib(converter=float)
     maxdm = attrib(converter=float)
     nchans = attrib(
@@ -71,9 +71,9 @@ class Pointing:
     pointing_id = attrib(default=None, converter=optional(str), on_setattr=convert)
 
     def __attrs_post_init__(self):
-        if self.maxdm <= np.max([self.ne2001dm, self.ymw16dm]):
+        if self.maxdm <= np.max([self.ne2025dm, self.ymw16dm]):
             raise ValueError(
-                f"The attribute maxdm must be larger than both ne2001dm and ymw16dm."
+                f"The attribute maxdm must be larger than both ne2025dm and ymw16dm."
             )
 
     @beam_row.validator
@@ -108,7 +108,7 @@ class Pointing:
                 " larger than 0."
             )
 
-    @ne2001dm.validator
+    @ne2025dm.validator
     @ymw16dm.validator
     def _validate_dm(self, attribute, value):
         if value <= 0:

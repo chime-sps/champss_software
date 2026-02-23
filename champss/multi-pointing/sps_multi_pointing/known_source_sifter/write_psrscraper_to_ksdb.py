@@ -110,7 +110,7 @@ if __name__ == "__main__":
                     "dm_error": DMerr,
                     "spin_period_s": P0,
                     "spin_period_s_error": P0err,
-                    "dm_galactic_ne_2001_max": float(dmm.get_dm_ne2001(dec, ra)),
+                    "dm_galactic_ne_2025_max": float(dmm.get_dm_ne2025(dec, ra)),
                     "dm_galactic_ymw_2016_max": float(dmm.get_dm_ymw16(dec, ra)),
                     "spin_period_derivative": 0.0,
                     "spin_period_derivative_error": 0.0,

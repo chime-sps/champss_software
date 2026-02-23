@@ -9,8 +9,8 @@ from beamformer.utilities import dm
 dm_map = dm.DMMap()
 
 
-def test_ne_2001():
-    dm = dm_map.get_dm_ne2001(random() * 90, random() * 360)
+def test_ne_2025():
+    dm = dm_map.get_dm_ne2025(random() * 90, random() * 360)
     assert type(dm) == np.ndarray
     assert dm > 0
 

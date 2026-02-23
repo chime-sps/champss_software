@@ -249,9 +249,9 @@ class PointingStrategist:
 
         # Calculate standard pointing attributes
         beam_row = self._find_beam_row_for_dec(dec)
-        ne2001_dm, ymw16_dm = self._mapper.get_ne2001_ymw16(ra, dec)
+        ymw16_dm, ne2025_dm = self._mapper.get_ne2025_ymw16(ra, dec)
         maxdm = self._mapper.get_max_dm(
-            ra, dec, ne2001_dm, ymw16_dm,
+            ra, dec, ymw16_dm, ne2025_dm,
             exp=self._mapper.exp,
             excess=self._mapper.excess,
             excess_fac=self._mapper.excess_fac,
@@ -268,7 +268,7 @@ class PointingStrategist:
             dec=dec,
             beam_row=beam_row,
             length=length,
-            ne2001dm=ne2001_dm,
+            ne2025dm=ne2025_dm,
             ymw16dm=ymw16_dm,
             maxdm=maxdm,
             nchans=nchans

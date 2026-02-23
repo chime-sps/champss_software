@@ -102,7 +102,7 @@ def add_source_to_database(payload, db_port=27017, db_host="sps-archiver1", db_n
         A dictionary including all the properties expected by the known source database. It should have :
         ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
         'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
-        'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
+        'spin_period_s_error', 'dm_galactic_ne_2025_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
         'spin_period_derivative_error', 'spin_period_epoch', 'survey']
     """
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     The attributes extracted are :
     ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
     'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
-    'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
+    'spin_period_s_error', 'dm_galactic_ne_2025_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
     'spin_period_derivative_error', 'spin_period_epoch', 'survey']
     """
     parser = argparse.ArgumentParser(
@@ -306,8 +306,8 @@ if __name__ == "__main__":
                 payload["pos_error_semimajor_deg"],
                 payload["pos_error_semiminor_deg"],
             ) = ra_dec_from_ecliptic(elong, elat, elong_err, elat_err)
-        payload["dm_galactic_ne_2001_max"] = float(
-            dmm.get_dm_ne2001(payload["pos_dec_deg"], payload["pos_ra_deg"])
+        payload["dm_galactic_ne_2025_max"] = float(
+            dmm.get_dm_ne2025(payload["pos_dec_deg"], payload["pos_ra_deg"])
         )
         payload["dm_galactic_ymw_2016_max"] = float(
             dmm.get_dm_ymw16(payload["pos_dec_deg"], payload["pos_ra_deg"])

@@ -71,8 +71,8 @@ if __name__ == "__main__":
             "dm_error": pulsar["DM_ERR"],
             "spin_period_s": pulsar["P0"],
             "spin_period_s_error": pulsar["P0_ERR"],
-            "dm_galactic_ne_2001_max": float(
-                dmm.get_dm_ne2001(float(pulsar["DECJD"]), float(pulsar["RAJD"]))
+            "dm_galactic_ne_2025_max": float(
+                dmm.get_dm_ne2025(float(pulsar["DECJD"]), float(pulsar["RAJD"]))
             ),
             "dm_galactic_ymw_2016_max": float(
                 dmm.get_dm_ymw16(float(pulsar["DECJD"]), float(pulsar["RAJD"]))

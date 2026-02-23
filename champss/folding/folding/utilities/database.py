@@ -127,8 +127,8 @@ def scrape_ephemeris(ephem_path):
         ra, dec, ra_err, dec_err = ra_dec_from_ecliptic(elong, elat, 0, 0)
         payload["ra"] = ra
         payload["dec"] = dec
-    payload["dm_galactic_ne_2001_max"] = float(
-        dmm.get_dm_ne2001(payload["dec"], payload["ra"])
+    payload["dm_galactic_ne_2025_max"] = float(
+        dmm.get_dm_ne2025(payload["dec"], payload["ra"])
     )
     payload["dm_galactic_ymw_2016_max"] = float(
         dmm.get_dm_ymw16(payload["dec"], payload["ra"])
@@ -248,8 +248,8 @@ def add_candidate_to_fsdb(
         "path_to_ephemeris": path_to_ephemeris,
     }
 
-    payload["dm_galactic_ne_2001_max"] = float(
-        dmm.get_dm_ne2001(payload["dec"], payload["ra"])
+    payload["dm_galactic_ne_2025_max"] = float(
+        dmm.get_dm_ne2025(payload["dec"], payload["ra"])
     )
     payload["dm_galactic_ymw_2016_max"] = float(
         dmm.get_dm_ymw16(payload["dec"], payload["ra"])
