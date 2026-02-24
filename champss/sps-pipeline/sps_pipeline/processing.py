@@ -13,6 +13,7 @@ import pymongo
 import atexit
 import pandas as pd
 from bson.objectid import ObjectId
+from pathlib import Path
 
 import click
 import docker
@@ -30,6 +31,7 @@ from scheduler.workflow import (  # docker_swarm_pending_states,
     wait_for_no_tasks_in_states,
     remove_finished_service,
 )
+from sps_pipeline.create_quality_report import create_report_pdf
 from sps_common.interfaces import MultiPointingCandidate
 from workflow.definitions.work import Work
 from workflow.http.context import HTTPContext
@@ -37,6 +39,7 @@ from sps_databases import db_api, db_utils, models
 from sps_pipeline.pipeline import default_datpath
 from sps_pipeline.utils import get_pointings_from_list, merge_images
 from sps_pipeline.candidate_viewer import CandidateViewerRegistrar
+from sps_pipeline.stack_scheduling import find_monthly_search_commands
 
 
 log = logging.getLogger()
@@ -138,7 +141,6 @@ def find_all_folding_processes(date, db_host, db_port, db_name):
                 "ra": source["ra"],
                 "dec": source["dec"],
                 "dm": source["dm"],
-                "source_type": source["source_type"],
             }
         )
     # Outputting the df will probably break, if this function is run by workflow.
@@ -222,15 +224,7 @@ def run_all_folding_processes(
 
     date_string = date.strftime("%Y/%m/%d")
 
-    # Count sources by type
-    sd_count = sum(1 for p in processes if p.get("source_type") == "sd_candidate")
-    md_count = sum(1 for p in processes if p.get("source_type") == "md_candidate")
-    known_count = sum(1 for p in processes if p.get("source_type") == "known_source")
-
-    message_slack(
-        f"Folding {len(processes)} candidates for {date_string}: "
-        f"{sd_count} single day, {md_count} multiday, {known_count} known sources"
-    )
+    message_slack(f"Folding {len(processes)} candidates for {date_string}")
 
     work_ids = []
     for process in processes:
@@ -539,6 +533,26 @@ def deposit_pipeline_work(
     return work_id
 
 
+def deposit_stack_work(workflow_buckets_name, httpcontext, stack_parameters):
+    work = Work(
+        pipeline=workflow_buckets_name, site="chime", user="CHAMPSS", http=httpcontext
+    )
+    work.function = "sps_pipeline.pipeline.stack_and_search"
+    work.parameters = stack_parameters["arguments"]
+    work.tags = [
+        "stack-search",
+        stack_parameters["tier_name"],
+    ]
+    work.config.archive.results = True
+    work.config.archive.plots = "bypass"
+    work.config.archive.products = "bypass"
+    work.retries = 1
+    work.timeout = max_work_duration
+
+    work_id = work.deposit(return_ids=True)
+    return work_id
+
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--db-host",
@@ -664,6 +678,12 @@ def deposit_pipeline_work(
 @click.option(
     "--alert-slack/--no-slack-alert", default=False, help="Alert slack about results."
 )
+@click.option(
+    "--mode",
+    default="pipeline",
+    type=str,
+    help="Which mode to use. Available: [pipeline, stack]",
+)
 def run_all_pipeline_processes(
     db_host,
     db_port,
@@ -686,98 +706,120 @@ def run_all_pipeline_processes(
     pipeline_arguments,
     pipeline_config_options,
     alert_slack,
+    mode,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
 
     log.setLevel(logging.INFO)
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
-    if run_stacking:
-        query = {
-            "ra": {"$gte": min_ra, "$lte": max_ra},
-            "dec": {"$gte": min_dec, "$lte": max_dec},
-            #    "status": 1,   For now grad all processes which are not
-            #                   in stack and also not are considered RFI
-            "$and": [{"is_in_stack": False}, {"quality_label": {"$ne": False}}],
-            # "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
-        }
-    else:
-        query = {
-            "ra": {"$gte": min_ra, "$lte": max_ra},
-            "dec": {"$gte": min_dec, "$lte": max_dec},
-            "status": {"$ne": 2},
-        }
-    if date:
-        query["datetime"] = {"$gte": date, "$lte": date + dt.timedelta(days=ndays)}
-    all_processes = list(db.processes.find(query))
-    if dry_run:
-        log.info("Will only print out processes commands without running them.")
-    log.info(f"{len(all_processes)} process found.")
-
-    if alert_slack:
-        time_passed = dt.datetime.now(dt.timezone.utc) - (date + dt.timedelta(days=1))
-        hours_passed = time_passed.total_seconds() / 3600
-        if len(all_processes):
-            message_slack(
-                "Starting processing for"
-                f" {date.strftime('%Y/%m/%d')}\n{len(all_processes)} processes will run."
-                f" \n{hours_passed:.2f} hours passed"
-                " since data recording was complete."
-            )
-        else:
-            message_slack(f"No process found that fit the query {query}")
-
-    all_processes = sorted(
-        all_processes,
-        key=lambda process: (process["date"], process["ra"], process["dec"]),
-    )
-
-    workflow_params = {
-        # "date": process.date,
-        "stack": run_stacking,
-        "fdmt": True,
-        "rfi_beamform": True,
-        "plot": False,
-        "plot_threshold": 8.0,
-        # "ra": process.ra,
-        # "dec": f" {process.dec}",
-        "components": ["all"],
-        # "num_threads": docker_threads_needed,
-        "db_port": db_port,
-        "db_host": db_host,
-        "db_name": db_name,
-        "basepath": basepath,
-        "stackpath": stackpath,
-        "datpath": datpath,
-        "using_pyroscope": False,
-        "using_docker": True,
-        "config_options": pipeline_config_options,
-        "known_source_threshold": 10,
-    }
-    if pipeline_arguments != "":
-        split_args = pipeline_arguments.split("--")
-        for arg_string in split_args:
-            arg_string = arg_string.strip()
-            if arg_string != "":
-                arg_count = len(arg_string.split(" "))
-                if arg_count > 2:
-                    argument, value = arg_string.split(" ", 1)
-                    workflow_params[argument] = (value,)
-                elif arg_count == 1:
-                    workflow_params[argument] = value
-                else:
-                    log.error(
-                        "Flags not implimented yet. Reformated your option to --option_python_name True"
-                    )
-    process_ids = [process["_id"] for process in all_processes]
     http = HTTPContext()
-    pool = Pool(4)
-    # First deposit all process in workflow bucket
-    # Imap will perform these jobs in the background, a single process can deposit ~4 jobs per second
-    work_ids = pool.imap(
-        partial(deposit_pipeline_work, workflow_params, workflow_buckets_name, http),
-        all_processes,
-    )
+    if mode == "pipeline":
+        if run_stacking:
+            query = {
+                "ra": {"$gte": min_ra, "$lte": max_ra},
+                "dec": {"$gte": min_dec, "$lte": max_dec},
+                #    "status": 1,   For now grad all processes which are not
+                #                   in stack and also not are considered RFI
+                "$and": [{"is_in_stack": False}, {"quality_label": {"$ne": False}}],
+                # "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
+            }
+        else:
+            query = {
+                "ra": {"$gte": min_ra, "$lte": max_ra},
+                "dec": {"$gte": min_dec, "$lte": max_dec},
+                "status": {"$ne": 2},
+            }
+        if date:
+            query["datetime"] = {"$gte": date, "$lte": date + dt.timedelta(days=ndays)}
+        all_processes = list(db.processes.find(query))
+        if dry_run:
+            log.info("Will only print out processes commands without running them.")
+        log.info(f"{len(all_processes)} process found.")
+
+        if alert_slack:
+            time_passed = dt.datetime.now(dt.timezone.utc) - (
+                date + dt.timedelta(days=1)
+            )
+            hours_passed = time_passed.total_seconds() / 3600
+            if len(all_processes):
+                message_slack(
+                    "Starting processing for"
+                    f" {date.strftime('%Y/%m/%d')}\n{len(all_processes)} processes will run."
+                    f" \n{hours_passed:.2f} hours passed"
+                    " since data recording was complete."
+                )
+            else:
+                message_slack(f"No process found that fit the query {query}")
+
+        all_processes = sorted(
+            all_processes,
+            key=lambda process: (process["date"], process["ra"], process["dec"]),
+        )
+
+        workflow_params = {
+            "stack": run_stacking,
+            "fdmt": True,
+            "rfi_beamform": True,
+            "plot": False,
+            "plot_threshold": 8.0,
+            "components": ["all"],
+            "db_port": db_port,
+            "db_host": db_host,
+            "db_name": db_name,
+            "basepath": basepath,
+            "stackpath": stackpath,
+            "datpath": datpath,
+            "using_pyroscope": False,
+            "using_docker": True,
+            "config_options": pipeline_config_options,
+            "known_source_threshold": 10,
+        }
+        if pipeline_arguments != "":
+            split_args = pipeline_arguments.split("--")
+            for arg_string in split_args:
+                arg_string = arg_string.strip()
+                if arg_string != "":
+                    arg_count = len(arg_string.split(" "))
+                    if arg_count > 2:
+                        argument, value = arg_string.split(" ", 1)
+                        workflow_params[argument] = (value,)
+                    elif arg_count == 1:
+                        workflow_params[argument] = value
+                    else:
+                        log.error(
+                            "Flags not implimented yet. Reformated your option to --option_python_name True"
+                        )
+        process_ids = [process["_id"] for process in all_processes]
+        pool = Pool(4)
+        # First deposit all process in workflow bucket
+        # Imap will perform these jobs in the background, a single process can deposit ~4 jobs per second
+        workflow_buckets_name = "champss-pipeline"
+        work_ids = pool.imap(
+            partial(
+                deposit_pipeline_work, workflow_params, workflow_buckets_name, http
+            ),
+            all_processes,
+        )
+    elif mode == "stack":
+        all_processes = find_monthly_search_commands(
+            db_port, db_host, db_name, basepath, 10
+        )
+        pool = Pool(4)
+        # First deposit all process in workflow bucket
+        # Imap will perform these jobs in the background, a single process can deposit ~4 jobs per second
+        workflow_buckets_name = "champss-stack-search"
+        work_ids = pool.imap(
+            partial(
+                deposit_stack_work,
+                workflow_buckets_name,
+                http,
+            ),
+            all_processes,
+        )
+    else:
+        log.error("Unrecognized mode.")
+        sys.exit()
 
     docker_client = docker.from_env()
     services = []
@@ -826,7 +868,7 @@ def run_all_pipeline_processes(
             "name": service_name,
             "command": (
                 "workflow run"
-                f" champss-pipeline --site"
+                f" {workflow_buckets_name} --site"
                 f" chime --lives -1 --sleep 1"
                 f" --tag {tier_name}"
             ),
@@ -1094,6 +1136,12 @@ def run_all_pipeline_processes(
     type=bool,
     help="Skip finding processes when this is not necessary anymore (during debugging for example).",
 )
+@click.option(
+    "--run-stack-search/--no-run-stack-search",
+    default=False,
+    type=bool,
+    help="Run stack search only. Will later implement to run stack every n days. INCOMPLETE: WILL ADD BETTER CONTROL LATER.",
+)
 def start_processing_manager(
     db_host,
     db_port,
@@ -1117,6 +1165,7 @@ def start_processing_manager(
     pipeline_arguments,
     pipeline_config_options,
     skip_finding_processes,
+    run_stack_search,
 ):
     """Manager function containing the multiple processing steps."""
     # atexit.register(remove_processing_services, None, None)
@@ -1144,7 +1193,10 @@ def start_processing_manager(
     number_of_days_processed = 0
 
     def loop_condition():
-        if number_of_days != -1:
+        # For now just enale running h stack search once.
+        if run_stack_search:
+            return number_of_days_processed < 1
+        elif number_of_days != -1:
             # If number_of_days is not -1, then we want to run for a specific number of days
             return number_of_days_processed < number_of_days
         else:
@@ -1154,9 +1206,14 @@ def start_processing_manager(
     while loop_condition():
         try:
             present_date = dt.datetime.now(dt.timezone.utc)
+            present_date_string = present_date.strftime("%Y/%m/%d")
             yesterday_date = present_date - dt.timedelta(days=1)
 
             date_string = date_to_process.strftime("%Y/%m/%d")
+            if run_stack_search:
+                mode = "stack-search"
+            else:
+                mode = "pipeline"
 
             if date_to_process <= yesterday_date:
                 log.info(
@@ -1178,7 +1235,7 @@ def start_processing_manager(
 
             # Start of pipeline phase
             if run_pipeline:
-                if not skip_finding_processes:
+                if not skip_finding_processes and not (mode == "stack-search"):
                     processes, [], [] = find_all_pipeline_processes.main(
                         args=[
                             "--db-host",
@@ -1232,15 +1289,14 @@ def start_processing_manager(
 
                     start_time_of_processing = time.time()
 
-                    docker_service_name_prefix = "pipeline"
+                    if run_stack_search:
+                        docker_service_name_prefix = "stack-search"
+                    else:
+                        docker_service_name_prefix = "pipeline"
 
                     workflow_buckets_name = (
                         f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
                     )
-                    # clear_workflow_buckets.main(
-                    #     args=["--workflow-buckets-name", workflow_buckets_name],
-                    #     standalone_mode=False,
-                    # )
                     db_work = pymongo.MongoClient(
                         host="sps-archiver1", port=27018
                     ).work.buckets
@@ -1282,99 +1338,113 @@ def start_processing_manager(
                         pipeline_config_options,
                         "--alert-slack",
                     ]
+                    if run_stack_search:
+                        pipeline_args.extend(["--mode", "stack"])
+                    else:
+                        pipeline_args.extend(["--mode", "pipeline"])
                     process_ids = run_all_pipeline_processes.main(
                         args=pipeline_args,
                         standalone_mode=False,
                     )
 
-                    wait_for_no_tasks_in_states(
-                        docker_swarm_running_states, docker_service_name_prefix
-                    )
+                    # wait_for_no_tasks_in_states(
+                    #     docker_swarm_running_states, docker_service_name_prefix
+                    # )
+                    if not run_stack_search:
+                        end_time_of_processing = time.time()
+                        processed = list(
+                            db.processes.find({"_id": {"$in": process_ids}})
+                        )
+                        if not len(processed):
+                            number_of_days_processed = number_of_days_processed + 1
+                            date_to_process = date_to_process + dt.timedelta(days=1)
+                            continue
 
-                    end_time_of_processing = time.time()
-                    processed = list(db.processes.find({"_id": {"$in": process_ids}}))
-                    if not len(processed):
-                        number_of_days_processed = number_of_days_processed + 1
-                        date_to_process = date_to_process + dt.timedelta(days=1)
-                        continue
+                        overall_time_of_processing = (
+                            end_time_of_processing - start_time_of_processing
+                        ) / 60
+                        average_time_of_processing = (
+                            overall_time_of_processing / len(processed)
+                        ) * 60
 
-                    overall_time_of_processing = (
-                        end_time_of_processing - start_time_of_processing
-                    ) / 60
-                    average_time_of_processing = (
-                        overall_time_of_processing / len(processed)
-                    ) * 60
+                        completed_processes = [
+                            proc for proc in processed if proc["status"] == 2
+                        ]
+                        rfi_processes = [
+                            proc
+                            for proc in completed_processes
+                            if proc["quality_label"] is False
+                        ]
+                        db["processes"].count_documents(
+                            {"date": date_string, "status": 2, "is_in_stack": False}
+                        )
 
-                    completed_processes = [
-                        proc for proc in processed if proc["status"] == 2
-                    ]
-                    rfi_processeses = [
-                        proc
-                        for proc in completed_processes
-                        if proc["quality_label"] is False
-                    ]
-                    db["processes"].count_documents(
-                        {"date": date_string, "status": 2, "is_in_stack": False}
-                    )
+                        obs_ids = [
+                            ObjectId(proc["obs_id"]) for proc in completed_processes
+                        ]
+                        observations = list(
+                            db.observations.find({"_id": {"$in": obs_ids}})
+                        )
+                        mean_detections = np.nanmean(
+                            [
+                                obs["num_detections"]
+                                for obs in observations
+                                if obs["num_detections"] is not None
+                            ]
+                        )
 
-                    obs_ids = [ObjectId(proc["obs_id"]) for proc in completed_processes]
-                    observations = list(db.observations.find({"_id": {"$in": obs_ids}}))
-                    mean_detections = np.nanmean(
-                        [obs["num_detections"] for obs in observations]
-                    )
+                        # Get the execution time and nchan per process for the day
+                        time_per_nchan = {
+                            "1024": {"total": 0, "count": 0},
+                            "2048": {"total": 0, "count": 0},
+                            "4096": {"total": 0, "count": 0},
+                            "8192": {"total": 0, "count": 0},
+                            "16384": {"total": 0, "count": 0},
+                        }
 
-                    # Get the execution time and nchan per process for the day
-                    time_per_nchan = {
-                        "1024": {"total": 0, "count": 0},
-                        "2048": {"total": 0, "count": 0},
-                        "4096": {"total": 0, "count": 0},
-                        "8192": {"total": 0, "count": 0},
-                        "16384": {"total": 0, "count": 0},
-                    }
+                        for process in processed:
+                            nchan = str(process["nchan"])
+                            execution_time = process["process_time"]
 
-                    for process in processed:
-                        nchan = str(process["nchan"])
-                        execution_time = process["process_time"]
+                            if execution_time is not None and nchan in time_per_nchan:
+                                time_per_nchan[nchan]["total"] += execution_time
+                                time_per_nchan[nchan]["count"] += 1
 
-                        if execution_time is not None and nchan in time_per_nchan:
-                            time_per_nchan[nchan]["total"] += execution_time
-                            time_per_nchan[nchan]["count"] += 1
+                        slack_message = (
+                            f"For {date_string}:\n{len(completed_processes)} /"
+                            f" {len(processed)} finished successfully for the day\nOf those,"
+                            f" {len(rfi_processes)} were rejected by quality metrics\nMean number"
+                            f" of detections: {mean_detections}\nOverall processing time for"
+                            f" current run: {overall_time_of_processing:.2f} minutes\n(/"
+                            f" {len(processed)} jobs run ="
+                            f" {average_time_of_processing:.2f} seconds)"
+                        )
 
-                    slack_message = (
-                        f"For {date_string}:\n{len(completed_processes)} /"
-                        f" {len(processed)} finished successfully for the day\nOf those,"
-                        f" {len(rfi_processeses)} were rejected by quality metrics\nMean number"
-                        f" of detections: {mean_detections}\nOverall processing time for"
-                        f" current run: {overall_time_of_processing:.2f} minutes\n(/"
-                        f" {len(processed)} jobs run ="
-                        f" {average_time_of_processing:.2f} seconds)"
-                    )
+                        for nchan in time_per_nchan.keys():
+                            time_of_nchan = time_per_nchan[nchan]
 
-                    for nchan in time_per_nchan.keys():
-                        time_of_nchan = time_per_nchan[nchan]
+                            if time_of_nchan["count"] > 0:
+                                mean_time_of_nchan = round(
+                                    time_of_nchan["total"] / time_of_nchan["count"]
+                                )
 
-                        if time_of_nchan["count"] > 0:
-                            mean_time_of_nchan = round(
-                                time_of_nchan["total"] / time_of_nchan["count"]
-                            )
+                                slack_message += (
+                                    f"\nMean process time for nchan {float(nchan)}:"
+                                    f" {mean_time_of_nchan} seconds"
+                                    f" ({mean_time_of_nchan / 60:.2f} minutes)"
+                                )
 
-                            slack_message += (
-                                f"\nMean process time for nchan {float(nchan)}:"
-                                f" {mean_time_of_nchan} seconds"
-                                f" ({mean_time_of_nchan / 60:.2f} minutes)"
-                            )
-
-                    message_slack(slack_message)
-                    pipeline_result = {
-                        "completed_processes": len(completed_processes),
-                        "overall_time_of_processing": overall_time_of_processing,
-                        "time_per_nchan": time_per_nchan,
-                        "rfi_processeses": rfi_processeses,
-                        "average_time_of_processing": average_time_of_processing,
-                    }
-                    daily_run = db_api.update_daily_run(
-                        date_to_process, {"pipeline_result": pipeline_result}
-                    )
+                        message_slack(slack_message)
+                        pipeline_result = {
+                            "completed_processes": len(completed_processes),
+                            "overall_time_of_processing": overall_time_of_processing,
+                            "time_per_nchan": time_per_nchan,
+                            "rfi_processes": len(rfi_processes),
+                            "average_time_of_processing": average_time_of_processing,
+                        }
+                        daily_run = db_api.update_daily_run(
+                            date_to_process, {"pipeline_result": pipeline_result}
+                        )
             # End of pipeline phase
 
             # Start of multi-pointing phase
@@ -1391,17 +1461,8 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
                 mp_timeout = 60 * 60 * 6
-                work_id, mp_service_id = schedule_workflow_job(
-                    docker_image=docker_image_name,
-                    docker_mounts=[
-                        f"{datpath}:{datpath}",
-                        f"{basepath}:{basepath}",
-                    ],
-                    docker_name=f"{docker_service_name_prefix}-{date_string}",
-                    docker_memory_reservation=200,
-                    workflow_buckets_name=workflow_buckets_name,
-                    workflow_function="sps_multi_pointing.mp_pipeline.cli",
-                    workflow_params={
+                if mode == "pipeline":
+                    workflow_params = {
                         "output": basepath,
                         "file_path": None,
                         "get_from_db": True,
@@ -1419,8 +1480,44 @@ def start_processing_manager(
                         "db_name": db_name,
                         "num_threads": 64,
                         "run_name": f"daily_{date_string}",
-                    },
-                    workflow_tags=["mp", date_string],
+                    }
+                    docker_name = f"{docker_service_name_prefix}-{date_string}"
+                    workflow_tags = ["mp", date_string]
+                else:
+                    date_string
+                    workflow_params = {
+                        "output": basepath,
+                        "file_path": None,
+                        "get_from_db": True,
+                        "date": date_string,
+                        "plot": True,
+                        "plot_cands": True,
+                        "plot_all_pulsars": True,
+                        "db": True,
+                        "csv": True,
+                        "plot_threshold": 8,
+                        "plot_dm_threshold": 3,
+                        "db_port": db_port,
+                        "db_host": db_host,
+                        "db_name": db_name,
+                        "num_threads": 64,
+                        "run_name": "stack_1",
+                        "use_stacks": True,
+                    }
+                    docker_name = f"{docker_service_name_prefix}-{date_string}"
+                    workflow_tags = ["mp", "stack", present_date_string]
+                work_id, mp_service_id = schedule_workflow_job(
+                    docker_image=docker_image_name,
+                    docker_mounts=[
+                        f"{datpath}:{datpath}",
+                        f"{basepath}:{basepath}",
+                    ],
+                    docker_name=docker_name,
+                    docker_memory_reservation=200,
+                    workflow_buckets_name=workflow_buckets_name,
+                    workflow_function="sps_multi_pointing.mp_pipeline.cli",
+                    workflow_params=workflow_params,
+                    workflow_tags=workflow_tags,
                     timeout=mp_timeout,
                     return_service_id=True,
                 )
@@ -1456,14 +1553,16 @@ def start_processing_manager(
                         "No results from multi-pointing. See Workfklow Web for errors,"
                         f" with filter: ALL_tags=['mp', '{date_string}']"
                     )
-                daily_run = db_api.update_daily_run(
-                    date_to_process, {"multipointing_result": work_result}
-                )
+                if mode == "pipeline":
+                    daily_run = db_api.update_daily_run(
+                        date_to_process, {"multipointing_result": work_result}
+                    )
             # End of multi-pointing phase
 
             # Start of classification phase
             if run_classification:
-                daily_run = db_api.get_daily_run(date_to_process)
+                if mode == "pipeline":
+                    daily_run = db_api.get_daily_run(date_to_process)
                 message_slack(f"Running classfication for {date_string}")
 
                 docker_service_name_prefix = "class"
@@ -1476,6 +1575,10 @@ def start_processing_manager(
                     standalone_mode=False,
                 )
                 class_timeout = 60 * 60 * 5
+                if mode == "pipeline":
+                    input_csv = daily_run.multipointing_result["csv_file"]
+                else:
+                    input_csv = f"{basepath}/mp_runs/stack_1/all_mp_cands.csv"
                 work_id, class_service_id = schedule_workflow_job(
                     docker_image="sps-archiver1.chime:5000/champss_classification:test",
                     docker_mounts=[
@@ -1487,7 +1590,7 @@ def start_processing_manager(
                     workflow_buckets_name=workflow_buckets_name,
                     workflow_function="champss_classification.pytorch_model.classify_lazy.load_model_and_classify_mp_csv_lazy",
                     workflow_params={
-                        "csv": daily_run.multipointing_result["csv_file"],
+                        "csv": input_csv,
                     },
                     workflow_tags=["class", date_string],
                     timeout=class_timeout,
@@ -1505,19 +1608,23 @@ def start_processing_manager(
                     work_id=work_id,
                     failover_to_buckets=True,
                 )["results"]
-                daily_run = db_api.update_daily_run(
-                    date_to_process,
-                    {"classification_result": work_result},
-                )
+                if mode == "pipeline":
+                    daily_run = db_api.update_daily_run(
+                        date_to_process,
+                        {"classification_result": work_result},
+                    )
             # End of classification phase
 
             # Start of folding phase
             if run_folding:
-                daily_run = db_api.get_daily_run(date_to_process)
-                df_folded_name = (
-                    daily_run.classification_result["output_file"].rsplit("_", 1)[0]
-                    + "_folded.csv"
-                )
+                if mode == "pipeline":
+                    daily_run = db_api.get_daily_run(date_to_process)
+                    df_folded_name = (
+                        daily_run.classification_result["output_file"].rsplit("_", 1)[0]
+                        + "_folded.csv"
+                    )
+                else:
+                    df_folded_name = f"{basepath}/stack_{present_date_string}/all_mp_cands_folded.csv"
                 fold_schedule_output, [], [] = find_all_folding_processes.main(
                     args=[
                         "--date",
@@ -1579,38 +1686,6 @@ def start_processing_manager(
                     docker_swarm_running_states, docker_service_name_prefix
                 )
 
-                # Check for failed folding jobs
-                failed_count = 0
-                for process in processes:
-                    fs_id = process["fs_id"]
-                    source_type = process.get("source_type", "")
-
-                    try:
-                        fs_db_entry = db_api.get_followup_source(fs_id)
-
-                        # Check if folding succeeded by looking for today's entry in folding_history
-                        fold_dates = [entry["date"].date() for entry in fs_db_entry.folding_history]
-                        if date_to_process.date() not in fold_dates:
-                            # Folding job failed
-                            failed_count += 1
-                            log.warning(f"Folding job failed for fs_id {fs_id}")
-
-                            # For sd_candidates with followup_duration=1, set active=False
-                            if (source_type == "sd_candidate" and
-                                fs_db_entry.followup_duration == 1 and
-                                fs_db_entry.active):
-                                log.info(f"Setting active=False for failed sd_candidate {fs_id}")
-                                db_api.update_followup_source(fs_id, {"active": False})
-                    except Exception as error:
-                        log.error(f"Error checking folding status for fs_id {fs_id}: {error}")
-                        failed_count += 1
-
-                # Send slack message about failed jobs
-                if failed_count > 0:
-                    message_slack(
-                        f"Folding for {date_string}: {failed_count} of {len(processes)} jobs failed to complete"
-                    )
-
                 # Merge candidates
                 # breakpoint()
                 log.info("Creating merged candidate plots.")
@@ -1666,7 +1741,7 @@ def start_processing_manager(
                     "database": "champss",
                     "port": 3306,
                 }
-                min_sigma_folded = 9
+                min_sigma_folded = 7
                 try:
                     with (
                         CandidateViewerRegistrar(
@@ -1693,6 +1768,42 @@ def start_processing_manager(
                     log.error(f"Could not update daily candidates due to {error}")
                     log.error(traceback.format_exc())
             # End of folding phase
+            report_file_name = create_report_pdf(
+                date_to_process, db_host, db_port, db_name, basepath
+            )
+            daily_run = db_api.get_daily_run(date_to_process)
+            payload = {"plots": daily_run.plots}
+            payload["plots"]["daily_report"] = report_file_name
+            daily_run = db_api.update_daily_run(
+                date_to_process,
+                payload,
+            )
+
+            db_config = {
+                "user": "automation",
+                "password": "",  # no password for automation user
+                "host": "sps-archiver1",
+                "database": "champss",
+                "port": 3306,
+            }
+            with (
+                CandidateViewerRegistrar(
+                    survey="reports",  # the project name under top-right corner of the website
+                    folder="daily",  # the folder name on the website
+                    db_config=db_config,
+                    survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
+                ) as sd
+            ):
+                sd.add_candidate(
+                    candname=Path(report_file_name).stem,
+                    ra=0,
+                    dec=0,
+                    f0=0,
+                    dm=0,
+                    snr=0,
+                    report_pdf=report_file_name,
+                )
+                sd.commit()
 
             number_of_days_processed = number_of_days_processed + 1
             date_to_process = date_to_process + dt.timedelta(days=1)
