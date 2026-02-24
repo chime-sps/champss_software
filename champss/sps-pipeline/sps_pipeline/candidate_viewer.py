@@ -131,7 +131,7 @@ class CandidateViewerRegistrar:
         # Generate SQL query
         keys = ", ".join(data.keys())
         values = ", ".join(["%s"] * len(data))
-        sql = f"INSERT INTO profile_cache ({keys}) VALUES ({values})"
+        sql = f"INSERT IGNORE INTO profile_cache ({keys}) VALUES ({values})"
 
         val = tuple(data.values())
         self.cursor.cursor().execute(sql, val)
@@ -186,9 +186,10 @@ class CandidateViewerRegistrar:
         )
 
         # Check if output json is valid
-        tmp_config_path = (
-            "/tmp/" + os.path.basename(self.survey_config_path) + f".{os.getpid()}.tmp"
-        )
+        # tmp_config_path = (
+        #     "/tmp/" + os.path.basename(self.survey_config_path) + f".{os.getpid()}.tmp"
+        # )
+        tmp_config_path = f"/data/candidate_viewer/champss_candidate_viewer/surveys/temp_{os.getpid()}.json"
         with open(tmp_config_path, "w") as f:
             json.dump(existing_config, f, indent=4)
         try:
@@ -272,9 +273,17 @@ class CandidateViewerRegistrar:
             dec = float(row["best_dec"])
             f0 = float(row["mean_freq"])
             dm = float(row["mean_dm"])
-            snr = float(row["fs_sigma"]) if row.get("fs_sigma") else float(row["sigma"])
+            if row.get("mdf_SN"):
+                snr = float(row["mdf_SN"])
+            else:
+                snr = (
+                    float(row["fs_sigma"])
+                    if row.get("fs_sigma")
+                    else float(row["sigma"])
+                )
             stack_plot = row.get("plot_path", "")
             fold_plot = row.get("fold_plot", "")
+            mdf_plot = row.get("mdf_path_to_plot", "")
             combined_plot = row.get("combined_plot_path", "")
             input_file = row.get("file_name", "")
             fs_id = row.get("fs_id", "unknown")
@@ -291,6 +300,7 @@ class CandidateViewerRegistrar:
                 plot_stack=stack_plot,
                 plot_fold=fold_plot,
                 plot_combined=combined_plot,
+                plot_mdf=mdf_plot,
                 input_file=input_file,
                 fs_id=fs_id,
                 fs_sigma=fs_sigma,

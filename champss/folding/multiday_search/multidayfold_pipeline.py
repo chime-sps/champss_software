@@ -9,9 +9,11 @@ from scheduler.workflow import (
     docker_swarm_running_states,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
+    get_work_from_results,
 )
 from sps_databases import db_utils
 from sps_pipeline.pipeline import default_datpath
+
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
@@ -105,7 +107,6 @@ def main(
     workflow_buckets_name_prefix,
     docker_image_name,
 ):
-
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     if psr != "":
         fs_id = str(add_mdcand_from_psrname(psr, dt.datetime.now()))
@@ -113,15 +114,22 @@ def main(
         fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
     else:
         raise ValueError("Must provide either a candidate path or pulsar name")
-    
+
     args = [
-        "--fs_id", fs_id,
-        "--foldpath", foldpath,
-        "--datpath", datpath,
-        "--db-port", str(db_port),
-        "--db-name", db_name,
-        "--db-host", db_host,
-        "--nday", str(nday)
+        "--fs_id",
+        fs_id,
+        "--foldpath",
+        foldpath,
+        "--datpath",
+        datpath,
+        "--db-port",
+        str(db_port),
+        "--db-name",
+        db_name,
+        "--db-host",
+        db_host,
+        "--nday",
+        str(nday),
     ]
     if start_date:
         args += ["--start-date", start_date.strftime("%Y-%m-%d")]
@@ -200,11 +208,15 @@ def main(
         wait_for_no_tasks_in_states(
             docker_swarm_running_states, docker_service_name_prefix
         )
+        confirm_work = get_work_from_results(
+            workflow_results_name=workflow_buckets_name,
+            work_id=work_id,
+            failover_to_buckets=True,
+        )  # ["results"]
 
         # Can add Slack alerts here
         print("Finished multiday search")
-        foldresults_dict = {"coherentsearch_work_id": work_id}
-        return foldresults_dict, [], []
+        return confirm_work["results"], confirm_work["products"], confirm_work["plots"]
     else:
         fold_multiday.main(
             args=args,
@@ -212,7 +224,7 @@ def main(
         )
 
         print("Finished multiday folding, beginning the coherent search")
-        confirm_cand.main(
+        confirm_output = confirm_cand.main(
             args=[
                 "--fs_id",
                 fs_id,
@@ -233,6 +245,7 @@ def main(
 
         # Can add Slack alerts here
         print("Finished multiday search")
+        return confirm_output
 
 
 if __name__ == "__main__":
