@@ -306,7 +306,7 @@ def cli(
     "--basepath",
     default=[
         "/sps-archiver2/raw/",
-        "/sps-archiver3/raw/",
+        # "/sps-archiver3/raw/",
         "/sps-archiver4/raw/",
         "/sps-archiver5/raw/",
     ],
