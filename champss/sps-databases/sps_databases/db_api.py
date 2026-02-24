@@ -11,7 +11,6 @@ from sps_databases.models import (
     Candidate,
     DatabaseError,
     FollowUpSource,
-    HhatStack,
     KnownSource,
     Observation,
     ObservationStatus,
@@ -642,88 +641,6 @@ def append_ps_stack(pointing_id, payload):
     )
 
 
-def create_hhat_stack(payload):
-    """
-    Create an `HhatStack` instance and inserts it into the database.
-
-    Parameters
-    ----------
-    payload: dict
-        dictionary of attributes for the stack,
-        as expected by `models.HhatStack`
-
-    Returns
-    -------
-    stack: sps_database.models.HhatStack
-        the new instance, including the created MongoDB document id
-    """
-    db = db_utils.connect()
-    hhat_stack = HhatStack(**payload)
-    doc = hhat_stack.to_db()
-    del doc["_id"]
-    query = {k: doc[k] for k in doc.keys() & {"pointing_id"}}
-    rc = db.hhat_stacks.find_one_and_replace(
-        query, doc, upsert=True, return_document=pymongo.ReturnDocument.AFTER
-    )
-    hhat_stack._id = rc["_id"]
-    return hhat_stack
-
-
-def get_hhat_stack(pointing_id):
-    """
-    Find an `HhatStack` instance for the given pointing.
-
-    Parameters
-    ----------
-    pointing_id: bson.objectid.ObjectId or string
-        key for the pointing lookup, as expected by
-        pymongo.collection.Collection.find()
-
-    Returns
-    -------
-    stack: sps_database.models.HhatStack
-        the stack instance for the given pointing
-
-    Exceptions
-    ----------
-    Raises a runtime exception if the pointing id does not exist
-    """
-    db = db_utils.connect()
-    if isinstance(pointing_id, str):
-        pointing_id = ObjectId(pointing_id)
-    return HhatStack.from_db(db.hhat_stacks.find_one({"pointing_id": pointing_id}))
-
-
-def update_hhat_stack(pointing_id, payload):
-    """
-    Updates a hhat stack entry of a given pointing.
-
-    The hhat stack entry is updated with the given attribute and
-    values as a dict.
-
-    Parameters
-    ----------
-    pointing_id: str or ObjectId
-        The pointing_id of the hhat stack to be updated
-
-    payload: dict
-        The dict of the attributes and values to be updated
-
-    Returns
-    -------
-    observation: dict
-        The dict of the updated hhat stack entry
-    """
-    db = db_utils.connect()
-    if isinstance(pointing_id, str):
-        pointing_id = ObjectId(pointing_id)
-    return db.hhat_stacks.find_one_and_update(
-        {"pointing_id": pointing_id},
-        {"$set": payload},
-        return_document=pymongo.ReturnDocument.AFTER,
-    )
-
-
 def create_known_source(payload):
     """
     Create a `KnownSource` instance and inserts it into the database.
@@ -1003,40 +920,6 @@ def delete_followup_source(fs_id):
     if isinstance(fs_id, str):
         fs_id = ObjectId(fs_id)
     return db.followup_sources.find_one_and_delete({"_id": fs_id})
-
-
-def activate_sd_candidate_for_followup(fs_id, followup_duration=10):
-    """
-    Activates an sd_candidate for followup by setting active=True and
-    followup_duration to the specified value (default: 10 days).
-
-    Parameters
-    ----------
-    fs_id: str or ObjectId
-        The objectid of the FollowUpSource (sd_candidate) to be activated
-    followup_duration: int, optional
-        The number of days to follow up this candidate (default: 10)
-
-    Returns
-    -------
-    followup_source: dict
-        The dict of the updated followup source
-    """
-    db = db_utils.connect()
-    if isinstance(fs_id, str):
-        fs_id = ObjectId(fs_id)
-
-    payload = {
-        "active": True,
-        "followup_duration": followup_duration,
-        "last_changed": dt.datetime.now()
-    }
-
-    return db.followup_sources.find_one_and_update(
-        {"_id": fs_id},
-        {"$set": payload},
-        return_document=pymongo.ReturnDocument.AFTER,
-    )
 
 
 def create_process(payload, assume_new=False):
