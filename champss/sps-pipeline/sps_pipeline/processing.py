@@ -1588,7 +1588,7 @@ def start_processing_manager(
                         "db": True,
                         "csv": True,
                         "plot_threshold": 8,
-                        "plot_dm_threshold": 3,
+                        "plot_dm_threshold": 1,
                         "db_port": db_port,
                         "db_host": db_host,
                         "db_name": db_name,
