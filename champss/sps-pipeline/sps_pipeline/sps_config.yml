@@ -155,7 +155,7 @@ ps:
       freq_scale_factor: 0.9
       dbscan_min_samples: 5
       filter_nharm: False
-      cluster_dm_cut: 2
+      cluster_dm_cut: 1
       max_ndetect: 200000
       overlap_scale: 1.5
       metric_combination: replace

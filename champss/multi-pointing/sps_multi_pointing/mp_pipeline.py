@@ -153,7 +153,7 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 )
 @click.option(
     "--plot-dm-threshold",
-    default=2.0,
+    default=1.0,
     type=float,
     help="DM threshold above which the candidate plots are created",
 )
