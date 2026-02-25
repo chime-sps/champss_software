@@ -721,7 +721,7 @@ class PowerSpectraSearch:
                             )
                             if (
                                 injection_overlap.size / len(sorted_harm_bins)
-                                > injection_overlap_threshold
+                                >= injection_overlap_threshold
                                 and np.abs(injection_dict["DM"] - dm)
                                 < injection_dm_threshold
                             ):
