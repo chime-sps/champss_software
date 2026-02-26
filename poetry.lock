@@ -4242,7 +4242,11 @@ tooling-extras = ["pyaml (>=23.7.0)", "pypandoc-binary (>=1.11)", "pytest (>=7.4
 [[package]]
 name = "virtualenv"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "21.0.0"
+=======
+version = "20.39.0"
+>>>>>>> b16f151 (feat: Inject from string (#224))
 =======
 version = "20.39.0"
 >>>>>>> b16f151 (feat: Inject from string (#224))
@@ -4251,8 +4255,13 @@ optional = false
 python-versions = ">=3.8"
 files = [
 <<<<<<< HEAD
+<<<<<<< HEAD
     {file = "virtualenv-21.0.0-py3-none-any.whl", hash = "sha256:d44e70637402c7f4b10f48491c02a6397a3a187152a70cba0b6bc7642d69fb05"},
     {file = "virtualenv-21.0.0.tar.gz", hash = "sha256:e8efe4271b4a5efe7a4dce9d60a05fd11859406c0d6aa8464f4cf451bc132889"},
+=======
+    {file = "virtualenv-20.39.0-py3-none-any.whl", hash = "sha256:44888bba3775990a152ea1f73f8e5f566d49f11bbd1de61d426fd7732770043e"},
+    {file = "virtualenv-20.39.0.tar.gz", hash = "sha256:a15f0cebd00d50074fd336a169d53422436a12dfe15149efec7072cfe817df8b"},
+>>>>>>> b16f151 (feat: Inject from string (#224))
 =======
     {file = "virtualenv-20.39.0-py3-none-any.whl", hash = "sha256:44888bba3775990a152ea1f73f8e5f566d49f11bbd1de61d426fd7732770043e"},
     {file = "virtualenv-20.39.0.tar.gz", hash = "sha256:a15f0cebd00d50074fd336a169d53422436a12dfe15149efec7072cfe817df8b"},
