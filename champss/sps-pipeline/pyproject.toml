@@ -55,6 +55,8 @@ start-processing-manager = "sps_pipeline.processing:start_processing_manager"
 start-processing-cleanup = "sps_pipeline.processing:start_processing_cleanup"
 find-monthly-search-commands = "sps_pipeline.stack_scheduling:find_monthly_search_commands"
 execute-monthly-search-commands = "sps_pipeline.stack_scheduling:execute_monthly_search_commands"
+move-parameters-to-ksdb = "sps_pipeline.candidate_viewer_ks_database_integration:move_derived_values_to_ks_db"
+
 
 [build-system]
 requires = ["poetry-core"]
