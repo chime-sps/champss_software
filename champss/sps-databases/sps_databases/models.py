@@ -55,7 +55,6 @@ class Pointing:
     dec = attrib(converter=float)
     beam_row = attrib(converter=int)
     length = attrib(converter=int)
-    ne2025dm = attrib(converter=float)
     ymw16dm = attrib(converter=float)
     maxdm = attrib(converter=float)
     nchans = attrib(converter=int)
@@ -69,6 +68,8 @@ class Pointing:
         default={},
         converter=dict,
     )
+    ne2025dm = attrib(default=None, converter=converters.optional(float))
+    ne2001dm = attrib(default=None, converter=converters.optional(float))
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )
@@ -698,12 +699,13 @@ class KnownSource:
     dm_error = attrib(converter=float)
     spin_period_s = attrib(converter=float)
     spin_period_s_error = attrib(converter=float)
-    dm_galactic_ne_2025_max = attrib(converter=float)
     dm_galactic_ymw_2016_max = attrib(converter=float)
     spin_period_derivative = attrib(default=0, converter=float, type=float)
     spin_period_derivative_error = attrib(default=0, converter=float, type=float)
     spin_period_epoch = attrib(default=0, converter=float, type=float)
     detection_history = attrib(default=[], type=list)
+    dm_galactic_ne_2025_max = attrib(default=None, converter=converters.optional(float))
+    dm_galactic_ne_2001_max = attrib(default=None, converter=converters.optional(float))
     survey = attrib(
         default=[],
         validator=validators.optional(
@@ -751,10 +753,11 @@ class FollowUpSource:
     dec = attrib(converter=float)
     dm = attrib(converter=float)
     f0 = attrib(converter=float)
-    dm_galactic_ne_2025_max = attrib(converter=float)
     dm_galactic_ymw_2016_max = attrib(converter=float)
     pepoch = attrib(default=0, converter=float, type=float)
     candidate_sigma = attrib(default=0, converter=float, type=float)
+    dm_galactic_ne_2025_max = attrib(default=None, converter=converters.optional(float))
+    dm_galactic_ne_2001_max = attrib(default=None, converter=converters.optional(float))
     folding_history = attrib(default=[], type=list)
     coherentsearch_history = attrib(default=[], type=list)
     followup_duration = attrib(default=1, converter=int, type=int)
