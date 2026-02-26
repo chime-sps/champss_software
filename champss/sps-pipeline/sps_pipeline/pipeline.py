@@ -278,7 +278,10 @@ def dbexcepthook(type, value, tb):
     "--injection-path",
     default=None,
     type=str,
-    help="Path to yml file containing injection",
+    help=(
+        "Path to yml or pd pickle file containing injection. "
+        "Can also inject when the string is 'random' or 'single tpa_index frequency DM flux'"
+    ),
 )
 @click.option(
     "--injection-idx",

@@ -239,6 +239,28 @@ class PowerSpectraSearch:
                         scale_injections=scale_injections,
                     )
                     injection_dicts.append(injection_dict)
+            elif "single" in injection_path:
+                split_parameters = injection_path.split(" ")
+                injection_dict = {
+                    "TPA_idx": int(
+                        float(split_parameters[1])
+                    ),  # Cast twice to remove ".""
+                    "frequency": float(split_parameters[2]),
+                    "DM": float(split_parameters[3]),
+                    "flux": float(split_parameters[4]),
+                    "profile": [],
+                }
+                injection_dicts.append(injection_dict)
+                log.info("Injecting at:")
+                log.info(f"DM: {injection_dict['DM']}")
+                log.info(f"frequency: {injection_dict['frequency']}")
+
+                injection_dict = ps_inject.main(
+                    pspec,
+                    self.full_harm_bins,
+                    injection_dict,
+                    scale_injections=scale_injections,
+                )
             else:
                 try:
                     with open(injection_path) as file:
@@ -699,7 +721,7 @@ class PowerSpectraSearch:
                             )
                             if (
                                 injection_overlap.size / len(sorted_harm_bins)
-                                > injection_overlap_threshold
+                                >= injection_overlap_threshold
                                 and np.abs(injection_dict["DM"] - dm)
                                 < injection_dm_threshold
                             ):
