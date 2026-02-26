@@ -32,10 +32,8 @@ mean_ones = 0.40298
 mean_twos = 0.064676
 mean_threes = 0.00995
 
-TPA_profiles = np.load(os.path.dirname(__file__) + "/smoothed_baselined_TPA_pulses.npy")
-f_dist = np.loadtxt(os.path.dirname(__file__) + "/atnf_freqs.txt", usecols=[1])
-kernels = np.load(os.path.dirname(__file__) + "/kernels.npy")
-kernel_scaling = np.load(os.path.dirname(__file__) + "/kernels.meta.npy")
+TPA_profiles = np.load(os.path.dirname(__file__) + "/smoothed_baselined_TPA_pulses.npz")
+kernels = np.load(os.path.dirname(__file__) + "/kernels.npz")
 
 # parameters of the system:
 GAIN = 1.16e-3  # K mJy^-1
@@ -65,6 +63,7 @@ def generate_injection(pspec, f_nyquist=508):
     """
     This function generates a random injection and its parameters.
     """
+    f_dist = np.loadtxt(os.path.dirname(__file__) + "/atnf_freqs.txt", usecols=[1])
     f_log = np.logspace(-3, 2.7, int((4 / 6) * len(f_dist)))
     f_choices = np.concatenate([f_dist, f_log])
     f_choices = f_choices[f_choices < f_nyquist]
@@ -79,8 +78,8 @@ def generate_injection(pspec, f_nyquist=508):
     S_choices = np.logspace(-2, 1, 10000)
     S = np.random.choice(S_choices)
 
-    prof_idx = np.random.choice(range(len(TPA_profiles)))
-    prof = TPA_profiles[prof_idx]
+    prof_idx = np.random.choice(range(len(TPA_profiles.keys())))
+    prof = TPA_profiles[str(prof_idx)]
 
     injection_dict = {
         "TPA_idx": prof_idx,
@@ -171,7 +170,7 @@ class Injection:
         if not TPA_idx:
             self.phase_prof = np.array(profile)
         else:
-            self.phase_prof = TPA_profiles[TPA_idx]
+            self.phase_prof = TPA_profiles[str(TPA_idx)]
         self.TPA_idx = TPA_idx
         self.sigma = sigma
         self.flux = flux
@@ -352,7 +351,7 @@ class Injection:
 
         return prof_fft
 
-    def disperse(self, prof_fft, kernels, kernel_scaling):
+    def disperse(self, prof_fft, kernels=kernels):
         """
         This function disperses an input pulse profile over a range of -2*deltaDM to
         2*deltaDM according to the algorithm specified above.
@@ -362,8 +361,8 @@ class Injection:
         Inputs:
         -------
                 prof_fft (arr) : FFT array to disperse, not including the zeroth harmonic
-                kernels (arr)  : 2D array containing the smeared impulse function kernels
-                kernel_scaling (arr): a 1D array containing the labels of kernels in units of DM/deltaDM
+                kernels (NpzFile)  : NpzFile containing the smeared impulse function kernels and an
+                                    1D array containing the labels of kernels in units of DM/deltaDM
         Returns:
         --------
                 dispersed_prof_fft (arr): a 2D array of size (len(DM_labels), len(prof)) containing the
@@ -387,9 +386,11 @@ class Injection:
         # load the dispersion kernels and multiply our pulse profile by them
         for i in range(len(dms)):
             key = np.argmin(
-                np.abs(np.abs((dms[i] - self.true_dm) / self.deltaDM) - kernel_scaling)
+                np.abs(
+                    np.abs((dms[i] - self.true_dm) / self.deltaDM) - kernels["scaling"]
+                )
             )
-            dispersed_prof_fft[i] = prof_fft * kernels[key, 1 : len(prof_fft) + 1]
+            dispersed_prof_fft[i] = prof_fft * kernels[str(key)][1 : len(prof_fft) + 1]
 
         return dispersed_prof_fft, target_dm_idx
 
@@ -595,9 +596,7 @@ class Injection:
         smeared_prof_fft = self.smear_fft(windowed_prof_fft)
 
         log.info(f"Injecting {n_harm} harmonics.")
-        dispersed_prof_fft, dm_indices = self.disperse(
-            smeared_prof_fft, kernels, kernel_scaling
-        )
+        dispersed_prof_fft, dm_indices = self.disperse(smeared_prof_fft)
 
         # grab idx of true dm in full pspec
         true_dm_in_pspec = np.argmin(np.abs(self.true_dm - self.trial_dms))
