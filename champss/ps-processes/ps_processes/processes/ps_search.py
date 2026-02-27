@@ -5,11 +5,13 @@ import time
 from functools import partial
 import yaml
 from multiprocessing import Pool, shared_memory, set_start_method
+import datetime
 
 import numpy as np
 import pandas as pd
 from attr import ib as attribute
 from attr import s as attrs
+from attr import converters
 from attr.validators import instance_of
 from ps_processes.processes import ps_inject
 from ps_processes.processes.clustering import Clusterer
@@ -20,7 +22,10 @@ from sps_common.interfaces.utilities import (
     harmonic_sum,
     powersum_at_sigma,
     sigma_sum_powers,
+    get_arc_for_beam,
+    angular_separation,
 )
+from sps_common.constants import TSAMP
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
@@ -121,34 +126,29 @@ class PowerSpectraSearch:
     """
 
     cluster_config = attribute(validator=instance_of(dict))
+    arc_filter_config = attribute(validator=instance_of(dict))
     num_harm = attribute(validator=instance_of(int), default=32)
     sigma_min = attribute(validator=instance_of(float), default=5.0)
     padded_length = attribute(validator=instance_of(int), default=1048576)
     precompute_harms = attribute(validator=instance_of(bool), default=True)
     num_threads = attribute(validator=instance_of(int), default=8)
     cluster_scale_factor: float = attribute(default=10)
-    # dbscan_eps: float = attribute(default=0.125)
-    # dbscan_min_samples: int = attribute(default=5)
-    # clustering_max_ndetect: int = attribute(default=30000)
-    # group_duplicate_freqs: bool = attribute(default=True)
-    # clustering_metric_method: str = attribute(default="rhp_norm_by_min_nharm")
-    # clustering_metric_combination: str = attribute(default="multiply")
-    # clustering_method: str = attribute(default="DBSCAN")
-    # clustering_min_freq: float = attribute(default=0)
-    # clustering_ignore_nharm1: bool = attribute(default=False)
-    # filter_by_nharm: bool = attribute(default=False)
     use_nsum_per_bin: bool = attribute(default=False)
     mp_chunk_size: bool = attribute(default=10)
     skip_first_n_bins: int = attribute(default=2)
     injection_overlap_threshold: bool = attribute(default=0.5)
     injection_dm_threshold: int = attribute(default=10.0)
-    # cluster_dm_cut: bool = attribute(default=-1)
-    known_source_threshold: float = attribute(default=np.inf)
+    known_source_threshold: float = attribute(
+        default=np.inf,
+        validator=instance_of(float),
+        converter=converters.optional(float),
+    )
     filter_birdies: bool = attribute(default=False)
     mean_bin_sigma_threshold: float = attribute(default=0)
-    use_stack_threshold = attribute(validator=instance_of(bool), default=False)
+    only_use_stack_threshold = attribute(validator=instance_of(bool), default=False)
     full_harm_bins = attribute(init=False)
     update_db = attribute(default=True, validator=instance_of(bool))
+    max_search_frequency: float = attribute(default=np.inf)
 
     def __attrs_post_init__(self):
         """Precompute bins used in harmonic summing."""
@@ -177,7 +177,6 @@ class PowerSpectraSearch:
         injection_path=None,
         injection_indices=[],
         only_injections=False,
-        cutoff_frequency=100,
         scale_injections=False,
     ):
         """
@@ -195,16 +194,15 @@ class PowerSpectraSearch:
             whether or not to inject an artificial pulse into the power spectrum
 
         injection_path: str
-            Path to injection file or string describing default injection type
+            Path to injection file or string describing default injection type.
+            If 'random', then an integer may be sent in following the string to
+            clarify the number of random profiles to inject. Ex: random4
 
         injection_indices: list
-            Indices of injection file entries that are injected
+            Indices of injection file entries that are injected.
 
         only_injections: bool
             Whether non-injections are filtered out. Default: False
-
-        cutoff_frequency: float
-            Highest frequency allowed for a candidate/detection. Default: 100
 
         scale_injection: bool
             Whether to scale the injection so that the detected sigma should be
@@ -230,31 +228,47 @@ class PowerSpectraSearch:
             ).astype(np.int32)
 
         if injection_path is not None:
-            presets = [
-                "gaussian",
-                "subpulse",
-                "interpulse",
-                "faint",
-                "high-DM",
-                "slow",
-                "fast",
-            ]
-            if injection_path in presets:
-                profile = injection_path
+            injection_dicts = []
+            if "random" in injection_path:
+                if injection_path == "random":
+                    n_injections = 1
+                else:
+                    n_injections = int(injection_path[-1])
+
+                for i in range(n_injections):
+                    injection_dict = ps_inject.main(
+                        pspec,
+                        self.full_harm_bins,
+                        scale_injections=scale_injections,
+                    )
+                    injection_dicts.append(injection_dict)
+            elif "single" in injection_path:
+                split_parameters = injection_path.split(" ")
+                injection_dict = {
+                    "TPA_idx": int(
+                        float(split_parameters[1])
+                    ),  # Cast twice to remove ".""
+                    "frequency": float(split_parameters[2]),
+                    "DM": float(split_parameters[3]),
+                    "flux": float(split_parameters[4]),
+                    "profile": [],
+                }
+                injection_dicts.append(injection_dict)
+                log.info("Injecting at:")
+                log.info(f"DM: {injection_dict['DM']}")
+                log.info(f"frequency: {injection_dict['frequency']}")
+
                 injection_dict = ps_inject.main(
                     pspec,
                     self.full_harm_bins,
-                    profile,
+                    injection_dict,
                     scale_injections=scale_injections,
                 )
-                injection_dicts = injection_dict
             else:
-                injection_dicts = []
                 try:
                     with open(injection_path) as file:
                         injection_list = yaml.safe_load(file)
                     injection_df = pd.DataFrame(injection_list)
-                    print("zo")
                 except:
                     injection_df = pd.read_pickle(injection_path)
                 # injection_df are the initial injection parameters
@@ -263,13 +277,11 @@ class PowerSpectraSearch:
                 if len(injection_indices) == 0:
                     injection_indices = np.arange(len(injection_df))
                 for injection_index in injection_indices:
+                    log.info("Injecting at:")
                     log.info(f"DM: {injection_df.iloc[injection_index]['DM']}")
-                    log.info(f"sigma: {injection_df.iloc[injection_index]['sigma']}")
                     log.info(
                         f"frequency: {injection_df.iloc[injection_index]['frequency']}"
                     )
-
-                    # injection_dict = injection_list[injection_index]
                     injection_dict = injection_df.iloc[injection_index].to_dict()
 
                     injection_dict = ps_inject.main(
@@ -278,34 +290,74 @@ class PowerSpectraSearch:
                         injection_dict,
                         scale_injections=scale_injections,
                     )
-                    injection_dicts.extend(injection_dict)
+                    injection_dicts.append(injection_dict)
             for injection_index, injection_dict in enumerate(injection_dicts):
                 injection_dict["injection_index"] = injection_index
         else:
             injection_dicts = []
             log.info("No artificial pulse injected.")
         search_start = time.time()
-
         filtered_sources = []
         if self.known_source_threshold is not np.inf:
+            log.info(
+                f"Will remove known pulsars based on a threshold of {self.known_source_threshold} sigma."
+            )
             pointing_id = db_api.get_observation(pspec.obs_id[0]).pointing_id
             current_pointing = db_api.get_pointing(pointing_id)
-            if self.use_stack_threshold:
+            if self.only_use_stack_threshold:
                 previous_detections = current_pointing.strongest_pulsar_detections_stack
             else:
-                previous_detections = current_pointing.strongest_pulsar_detections
+                # This will merge the two fields with the stack taking precedece on overlap
+                previous_detections = (
+                    current_pointing.strongest_pulsar_detections
+                    | current_pointing.strongest_pulsar_detections_stack
+                )
+
             filtered_psr_names = [
                 pulsar
                 for pulsar in previous_detections
                 if previous_detections[pulsar]["sigma"] > self.known_source_threshold
             ]
+
+            # Filter based on arc
+            if self.arc_filter_config["filter_if_kst_active"]:
+                # Get psr list from config
+                all_arc_psrs = self.arc_filter_config["filtered_pulsars"]
+                arc = get_arc_for_beam(
+                    current_pointing.beam_row,
+                    pspec.
+                  s[-1]
+                    + datetime.timedelta(seconds=current_pointing.length * TSAMP / 2),
+                    delta_x=90,
+                    samples=401,
+                )
+                nearby_arc_psrs = []
+                for psr in all_arc_psrs:
+                    config_entry = all_arc_psrs[psr]
+                    db_entry = db_api.get_known_source_by_names(psr)[0]
+                    used_dist = config_entry.get(
+                        "arc_length", self.arc_filter_config["default_arc_length"]
+                    )
+                    if np.abs(pspec.ra - db_entry.pos_ra_deg) < used_dist:
+                        nearby_arc_psrs.append(psr)
+                    for arc_ra, arc_dec in arc:
+                        arc_dist = angular_separation(
+                            arc_ra,
+                            arc_dec,
+                            db_entry.pos_ra_deg,
+                            db_entry.pos_dec_deg,
+                        )[1]
+                        if arc_dist < self.arc_filter_config["arc_search_dist"]:
+                            filtered_psr_names.append(psr)
+                            break
+
             filtered_sources = db_api.get_known_source_by_names(filtered_psr_names)
 
             if len(filtered_sources):
                 static_filter = StaticPeriodicFilter.from_ks_list(filtered_sources)
                 bad_freq_indices = static_filter.apply_static_mask(pspec.freq_labels, 0)
 
-                dummy_spec = np.zeros(self.padded_length // 2)
+                dummy_spec = np.zeros(len(pspec.freq_labels))
                 dummy_spec[bad_freq_indices] = 1
                 dummy_harmonics = dummy_spec[self.full_harm_bins]
                 log.info(
@@ -430,7 +482,7 @@ class PowerSpectraSearch:
                 nsum_per_harmonic,
                 power_cutoff_per_harmonic,
                 injection_dicts,
-                cutoff_frequency,
+                self.max_search_frequency,
                 self.skip_first_n_bins,
                 self.injection_overlap_threshold,
                 self.injection_dm_threshold,
@@ -448,23 +500,10 @@ class PowerSpectraSearch:
             [j for sub in detection_list for j in sub], dtype=detection_dtype
         )
         log.info(f"Total number of detections={len(detections)}")
-        if len(detections) == 0:
-            log.warning("No detections made. Further processing will not be completed.")
-            return None
+        # if len(detections) == 0:
+        #     log.warning("No detections made. Further processing will not be completed.")
+        #     return None
         log.info("Clustering the detections")
-        # clusterer_dict = dict(
-        #     cluster_scale_factor=self.cluster_scale_factor,
-        #     dbscan_eps=self.dbscan_eps,
-        #     dbscan_min_samples=self.dbscan_min_samples,
-        #     max_ndetect=self.clustering_max_ndetect,
-        #     sigma_detection_threshold=self.sigma_min,
-        #     group_duplicate_freqs=self.group_duplicate_freqs,
-        #     metric_method=self.clustering_metric_method,
-        #     metric_combination=self.clustering_metric_combination,
-        #     clustering_method=self.clustering_method,
-        #     min_freq=self.clustering_min_freq,
-        #     ignore_nharm1=self.clustering_ignore_nharm1,
-        # )
         clusterer = Clusterer(
             **self.cluster_config,
             sigma_detection_threshold=self.sigma_min,
@@ -484,6 +523,9 @@ class PowerSpectraSearch:
             plot_fname="",
             only_injections=only_injections,
         )
+        # if len(clusters) == 0:
+        #     log.warning("No clusters found. Further processing will not be completed.")
+        #     return None
 
         log.info(f"Total number of candidate clusters={len(clusters)}")
         # Only update db for single day obs, proper stack logging tba
@@ -634,8 +676,9 @@ class PowerSpectraSearch:
                 for idx_count, idx in enumerate(detection_idx):
                     replace_last = False
                     detection_freq = freq_labels[idx] / harm
-                    # skipping candidates with period less than 10 time samples
-                    if detection_freq <= freq_labels[skip_n_bins]:
+                    # skipping candidates with very short and very high frequencies
+
+                    if detection_freq <= skip_n_bins * freq_labels[1]:
                         continue
                     if detection_freq > cutoff_frequency:
                         break
@@ -682,7 +725,7 @@ class PowerSpectraSearch:
                             )
                             if (
                                 injection_overlap.size / len(sorted_harm_bins)
-                                > injection_overlap_threshold
+                                >= injection_overlap_threshold
                                 and np.abs(injection_dict["DM"] - dm)
                                 < injection_dm_threshold
                             ):

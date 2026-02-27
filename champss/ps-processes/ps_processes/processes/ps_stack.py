@@ -698,8 +698,8 @@ class PowerSpectraStack:
                     **metric_parameters,
                 )
                 quality_metrics[current_metric_name] = {
-                    "ksdist": current_ksstat,
-                    "pval": current_pval,
+                    "ksdist": float(current_ksstat),
+                    "pval": float(current_pval),
                 }
             elif current_metric["type"] == "kstest_chi2_fit":
                 # this method allows fitting the number of days
@@ -722,7 +722,7 @@ class PowerSpectraStack:
                         **metric_parameters,
                     )
                     day_vals.append(days)
-                    ksdists.append(current_ksstat)
+                    ksdists.append(float(current_ksstat))
                 min_val = min(ksdists)
                 min_days = day_vals[np.argmin(ksdists)]
                 fraction = min_days / expected_days
@@ -810,15 +810,27 @@ class PowerSpectraStack:
                     ):
                         if self.mode == "month":
                             if not looked_for_compared_obs:
+                                oldest_date_to_compare_against = (
+                                    datetime.datetime.strptime(
+                                        self.qc_config["oldest_date_for_comparison"],
+                                        "%Y/%m/%d",
+                                    ).replace(tzinfo=datetime.timezone.utc)
+                                )
                                 compared_obs = db_api.get_observations(obs.pointing_id)
                                 # Remove the observation itself if it wa already processed
                                 compared_obs = [
                                     obs
                                     for obs in compared_obs
-                                    if obs._id != pspec.obs_id[-1]
+                                    if (obs._id != pspec.obs_id[-1])
+                                    and (
+                                        obs.last_changed
+                                        > oldest_date_to_compare_against
+                                    )
                                 ][-self.qc_config.get("dynamic_max_obs", 10000) :]
-
                                 looked_for_compared_obs = True
+                                log.info(
+                                    f"Loaded {len(compared_obs)} observations for dynamic thresholds."
+                                )
                             if len(compared_obs) >= self.qc_config.get(
                                 "dynamic_min_obs", 2
                             ):

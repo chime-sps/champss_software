@@ -13,26 +13,6 @@ from sps_pipeline import utils
 log = logging.getLogger(__package__)
 
 
-def cleanup_rfi(beams_start_end):
-    for beam in beams_start_end:
-        beam_id = beam["beam"]
-        date_start = (
-            dt.datetime.utcfromtimestamp(beam["utc_start"])
-            .replace(tzinfo=pytz.utc)
-            .date()
-        )
-        date_end = (
-            dt.datetime.utcfromtimestamp(beam["utc_end"])
-            .replace(tzinfo=pytz.utc)
-            .date()
-        )
-        dates = list({date_start, date_end})
-        for date in dates:
-            beam_path = path.join(date.strftime("%Y/%m/%d"), f"{beam_id:04d}")
-            if path.exists(beam_path):
-                shutil.rmtree(beam_path)
-
-
 @attrs(slots=True)
 class CleanUp:
     """

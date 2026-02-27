@@ -5,13 +5,20 @@ import os
 import numpy as np
 import scipy.stats as stats
 from scipy.fft import rfft
+from scipy.signal import correlate
 from scipy.special import chdtri
-from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP
+from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.interfaces.utilities import sigma_sum_powers
+from sps_databases import db_utils
+from beamformer.utilities.common import find_closest_pointing
+from scipy.special import erf
+from pygdsm import HaslamSkyModel
+from astropy.coordinates import SkyCoord
+import healpy as hp
+import astropy.units as u
 
 log = logging.getLogger(__name__)
 
-import numpy.random as rand
 
 phis = np.linspace(0, 1, 1024)
 """
@@ -25,8 +32,13 @@ mean_ones = 0.40298
 mean_twos = 0.064676
 mean_threes = 0.00995
 
-kernels = np.load(os.path.dirname(__file__) + "/kernels.npy")
-kernel_scaling = np.load(os.path.dirname(__file__) + "/kernels.meta.npy")
+TPA_profiles = np.load(os.path.dirname(__file__) + "/smoothed_baselined_TPA_pulses.npz")
+kernels = np.load(os.path.dirname(__file__) + "/kernels.npz")
+
+# parameters of the system:
+GAIN = 1.16e-3  # K mJy^-1
+TSYS = 30  # K
+BETA = 1.1
 
 
 def gaussian(mu, sig):
@@ -38,56 +50,46 @@ def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
 
 
-def sinc(x):
-    """Sinc function."""
-    return np.sin(x) / x
+def dm_distribution(x, mu, sig, l):
+    gauss = l * np.exp(l * (2 * mu + l * sig**2 - 2 * x) / 2) / 2
+    tail = 1 - erf(
+        (mu + l * sig**2 - x) / np.sqrt(2) / sig
+    )  # complimentary error function
+
+    return gauss * tail / np.sum(gauss * tail)
 
 
-def generate_pulse(noise=False):
+def generate_injection(pspec, f_nyquist=508):
     """
-    This function generates a random pulse profile to inject.
-
-    Inputs:
-    -------
-            noise: bool
-                whether or not the pulse should be distorted by white noise
+    This function generates a random injection and its parameters.
     """
-    u = rand.uniform(0.01, 0.99, 1000)
-    # inverse sampling theorem for an exponential distribution with lambda = 1/15
-    gamma = -15 * np.log(1 - u) / 2 / 360
-    prof = lorentzian(phis, gamma)
-    prof /= max(prof)
-    subpulses = rand.choice(range(4), p=(mean_zeros, mean_ones, mean_twos, mean_threes))
+    f_dist = np.loadtxt(os.path.dirname(__file__) + "/atnf_freqs.txt", usecols=[1])
+    f_log = np.logspace(-3, 2.7, int((4 / 6) * len(f_dist)))
+    f_choices = np.concatenate([f_dist, f_log])
+    f_choices = f_choices[f_choices < f_nyquist]
+    f = np.random.choice(f_choices)
 
-    # interpulse?
-    # the chances of having an interpulse are approximately 23/(1208 - 23), as in TPA
-    roll = rand.choice(range(1208 - 23))
-    if roll < 23:
-        u = rand.choice(np.linspace(0.01, 0.99, 1000))
-        # inverse sampling theorem for an exponential distribution with lambda = 1/15
-        gamma_interpulse = -15 * np.log(1 - u) / 2 / 360
-        x0_inter = rand.normal(0.5, 10 / 360)
-        interpulse = lorentzian(phis, gamma_interpulse, x0_inter)
-        interpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(interpulse)
-        # roll interpulse to correct location at ~180 deg from main pulse
-        np.roll(interpulse, 512)
-        prof += interpulse
+    dm_spread = np.linspace(0, pspec.dms[-1], 10000)
+    dm_weights = 0.6 * dm_distribution(dm_spread, 24, 24, 0.02)
+    dm_weights += 0.4 / len(dm_spread)
+    # 24 is chosen as the maximum DM value at b = 90 deg from NE2001
+    dm = np.random.choice(dm_spread, p=dm_weights)
 
-    # subpulses
-    for i in range(subpulses):
-        u = rand.choice(np.linspace(0.01, 0.99, 1000))
-        # inverse sampling theorem for an exponential distribution with lambda = 1/15
-        gamma_sub = -15 * np.log(1 - u) / 2 / 360
-        x0_sub = 0.5 + rand.normal(0, 0.1)
-        subpulse = lorentzian(phis, gamma_sub, x0_sub)
-        subpulse *= rand.choice(np.linspace(0.4, 0.8)) / max(subpulse)
-        prof += subpulse
+    S_choices = np.logspace(-2, 1, 10000)
+    S = np.random.choice(S_choices)
 
-    # working on this-- the standard deviation isn't correct
-    if noise:
-        prof += rand.normal(0, 1, len(phis))
+    prof_idx = np.random.choice(range(len(TPA_profiles.keys())))
+    prof = TPA_profiles[str(prof_idx)]
 
-    return prof
+    injection_dict = {
+        "TPA_idx": prof_idx,
+        "profile": prof,
+        "flux": S,
+        "frequency": f,
+        "DM": dm,
+    }
+
+    return injection_dict
 
 
 def x_to_chi2(x, df):
@@ -151,8 +153,10 @@ class Injection:
         DM,
         frequency,
         profile,
-        sigma,
         scale_injections=False,
+        flux=None,
+        sigma=None,
+        TPA_idx=None,
     ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
@@ -163,12 +167,56 @@ class Injection:
         self.true_dm = DM
         self.trial_dms = self.pspec_obj.dms
         self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
-        self.phase_prof = profile
+        if not TPA_idx:
+            self.phase_prof = np.array(profile)
+        else:
+            self.phase_prof = TPA_profiles[str(TPA_idx)]
+        self.TPA_idx = TPA_idx
         self.sigma = sigma
+        self.flux = flux
         self.power_threshold = 1
         self.full_harm_bins = full_harm_bins
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
+        self.W = self.get_fwhm()
+        self.Tsky = self.get_tsky()
+        if flux is not None:
+            self.use_sigma = False
+        else:
+            self.use_sigma = True
+
+    def get_tsky(self):
+        haslam = HaslamSkyModel(freq_unit="MHz", spectral_index=-2.6)
+        # Generate the sky map at 600 MHz
+        # (extrapolated from 408MHz where it is measured)
+        sky_map = haslam.generate(600)
+        # Convert your RA/Dec to a healpix pixel
+        ra = self.pspec_obj.ra  # degrees
+        dec = self.pspec_obj.dec  # degrees
+        coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
+        gal_coord = coord.galactic
+        # Get the temperature, at the healpix pixel index
+        nside = haslam.nside  # 512 for Haslam
+        pix_idx = hp.ang2pix(nside, gal_coord.l.deg, gal_coord.b.deg, lonlat=True)
+        temperature = sky_map[pix_idx]
+        log.info(f"Sky temperature at RA={ra}, Dec={dec}: {temperature:.2f} K")
+        return temperature
+
+    def get_width(self):
+        phase_width = np.mean(self.phase_prof) / max(self.phase_prof)
+        time_width = phase_width / self.f
+
+        return time_width
+
+    def get_fwhm(self):
+        phi = np.linspace(0, 1, 1024)
+        acf = correlate(self.phase_prof, self.phase_prof)[len(self.phase_prof) - 1 :]
+        hwhm_idx = np.where(acf <= 0.5 * acf[0])[0][0]
+        hwhm = phi[hwhm_idx]
+        fwhm = 2 * hwhm / np.sqrt(2)
+        time_fwhm = fwhm / self.f
+
+        return time_fwhm
 
     def onewrap_deltaDM(self):
         """Return the deltaDM where the dispersion smearing is one pulse period in
@@ -176,6 +224,36 @@ class Injection:
         """
         deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
+
+    def smear_fft(self, scaled_fft):
+        mode = "database"
+        db = db_utils.connect(host="sps-archiver1", name="test")
+        ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)
+        nchan = str(ap.nchans)
+
+        quadratic_terms = {
+            "1024": 1e-8,
+            "2048": 6e-9,
+            "4096": 3e-9,
+            "8192": 1.5e-9,
+            "16384": 8e-10,
+        }
+        # value of 1/400^2 - 1/(400 - dnu)^2 at each channelization, overestimation
+        dt_dm = self.true_dm * DM_CONSTANT * quadratic_terms[nchan]
+        t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
+        fwhm = t_eff * self.f  # get the FWHM in units of the pulse period
+        conversion_factor = 2 * np.sqrt(2 * np.log(2))
+        sigma = fwhm / conversion_factor  # convert from sigma to fwhm
+
+        if sigma > 1 / 1024:
+            smear_gaussian = gaussian(0.5, sigma)
+            smear_fft = rfft(smear_gaussian)[1:]
+            smear_fft /= max(np.abs(smear_fft))
+            smeared_fft = smear_fft[: len(scaled_fft)] * scaled_fft
+            return smeared_fft
+
+        else:
+            return scaled_fft
 
     def sigma_to_power(self, n_harm, df):
         """
@@ -193,37 +271,87 @@ class Injection:
             n_harm (int): The actually inected number of harmonics.
         """
         # Compute the normalized powers of the injected profile (Sum of pows == 1)
+
         prof_fft = rfft(self.phase_prof)[1:]
         norm_pows = np.abs(prof_fft) ** 2.0
         maxpower = norm_pows.sum()
-        norm_pows /= maxpower
-        # check the sum of powers is 1
-        assert math.isclose(norm_pows.sum(), 1.0)
-        Nallharms = len(norm_pows)
 
-        # Compute the theoretical power in the harmonics where we will inject
-        # a significant amount of our power (i.e. > 1%)
+        if maxpower.all() == 0:
+            return np.zeros(len(n_harm))
+
+        else:
+            norm_pows /= maxpower
+            # check the sum of powers is 1
+            assert math.isclose(norm_pows.sum(), 1.0)
+            Nallharms = len(norm_pows)
+
+            # Compute the theoretical power in the harmonics where we will inject
+            # a significant amount of our power (i.e. > 1%)
+            Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
+
+            # use ALL HARMONICS to calculate power
+            power = x_to_chi2(self.sigma, 2 * Nsignif * self.ndays)
+
+            # Now compute the theoretical power for each harmonic to inject. We will
+            # add this value to the current stack. Note that we are subtracting the
+            # predicted amount of power due to the means of the power spectra.
+
+            power -= Nsignif * self.ndays
+
+            # if there are fewer significant harmonics than there are harmonics that fit
+            # then use Nsignif
+            # otherwise only take harmonics that fit before the Nyquist cutoff frequency
+            if Nsignif < n_harm:
+                n_harm = Nsignif
+
+            scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
+            phases = np.angle(prof_fft)
+
+            return scaled_fft, phases
+
+    def flux_to_power(self):
+        """
+        This function takes a flux in mJy and converts it to a power.
+        NOTES: PULSE PROFILE MUST BE NOISELESS AND SCALED TO 1
+        """
+
+        Npol = 2
+        delta_f = 200e6  # need more precise way of grabbing this but right now this is not stored.
+        tau = 2 * self.pspec.shape[1] * TSAMP
+        Nbin = len(self.phase_prof)
+        # calculate input signal
+
+        RMS = np.sqrt(1 / Nbin)
+        signal = (
+            self.flux
+            * RMS
+            * np.sqrt(Npol * delta_f * tau / Nbin)
+            * GAIN
+            / (TSYS + self.Tsky)
+            / BETA
+        )
+        signal *= np.sqrt(((1 / self.f) - self.W) / self.W)
+        prof = self.phase_prof
+        prof *= signal / np.mean(prof)
+        prof_fft = rfft(prof)[1:] / (Nbin / 2) ** (1 / 2)
+        phases = np.angle(prof_fft)
+        prof_fft *= np.sqrt(self.ndays)
+
+        norm_pows = np.abs(prof_fft) ** 2.0
         Nsignif = int(((norm_pows / norm_pows.max()) > 0.01).sum())
+        prof_fft = prof_fft[:Nsignif]
 
-        power = x_to_chi2(self.sigma, 2 * Nsignif * self.ndays)
+        return prof_fft, phases
 
-        # Now compute the theoretical power for each harmonic to inject. We will
-        # add this value to the current stack. Note that we are subtracting the
-        # predicted amount of power due to the means of the power spectra.
+    def time_windowing(self, prof_fft):
+        # apply Van der Klis Eq 2.19 for time-bin windowing effect
+        harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
+        B = np.sinc(harmonic_freqs * TSAMP)
+        prof_fft *= B
 
-        power -= Nsignif * self.ndays
+        return prof_fft
 
-        # if there are fewer significant harmonics than there are harmonics that fit
-        # then use Nsignif
-        # otherwise only take harmonics that fit before the Nyquist cutoff frequency
-        if Nsignif < n_harm:
-            n_harm = Nsignif
-
-        scaled_fft = prof_fft[:n_harm] * np.sqrt(power / maxpower)
-
-        return scaled_fft, n_harm
-
-    def disperse(self, prof_fft, kernels, kernel_scaling):
+    def disperse(self, prof_fft, kernels=kernels):
         """
         This function disperses an input pulse profile over a range of -2*deltaDM to
         2*deltaDM according to the algorithm specified above.
@@ -233,8 +361,8 @@ class Injection:
         Inputs:
         -------
                 prof_fft (arr) : FFT array to disperse, not including the zeroth harmonic
-                kernels (arr)  : 2D array containing the smeared impulse function kernels
-                kernel_scaling (arr): a 1D array containing the labels of kernels in units of DM/deltaDM
+                kernels (NpzFile)  : NpzFile containing the smeared impulse function kernels and an
+                                    1D array containing the labels of kernels in units of DM/deltaDM
         Returns:
         --------
                 dispersed_prof_fft (arr): a 2D array of size (len(DM_labels), len(prof)) containing the
@@ -246,11 +374,9 @@ class Injection:
         # find the starting index, where the DM scale is -2
 
         i_min = np.argmin(np.abs((self.true_dm - 2 * self.deltaDM) - self.trial_dms))
-        log.info(f"Starting DM: {self.trial_dms[i_min]}")
         i0 = np.argmin(np.abs(self.true_dm - self.trial_dms))
         # find the stopping index, where the DM scale is +2
         i_max = np.argmin(np.abs((self.true_dm + 2 * self.deltaDM) - self.trial_dms))
-        log.info(f"Stopping DM: {self.trial_dms[i_max]}")
 
         # reminder; we are inclusive of i_max because that's the last index into which we want to inject
         target_dm_idx = np.arange(i_min, i_max + 1)
@@ -260,22 +386,23 @@ class Injection:
         # load the dispersion kernels and multiply our pulse profile by them
         for i in range(len(dms)):
             key = np.argmin(
-                np.abs(np.abs((dms[i] - self.true_dm) / self.deltaDM) - kernel_scaling)
+                np.abs(
+                    np.abs((dms[i] - self.true_dm) / self.deltaDM) - kernels["scaling"]
+                )
             )
-            dispersed_prof_fft[i] = prof_fft * kernels[key, 1 : len(prof_fft) + 1]
+            dispersed_prof_fft[i] = prof_fft * kernels[str(key)][1 : len(prof_fft) + 1]
 
         return dispersed_prof_fft, target_dm_idx
 
-    def harmonics(self, prof_fft, df, N=4):
+    def scalloping(self, prof_fft, df, N=4):
         """
         This function calculates the array of frequency-domain harmonics for a given
         pulse profile.
 
         Inputs:
         _______
-                prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic
+                prof_fft (ndarray): FFT of pulse profile, not including zeroth harmonic, with length n_harm
                 df (float)        : frequency bin width in target spectrum
-                n_harm (int)      : the number of harmonics before the Nyquist frequency
                 N (int)           : number of bins over which to sinc-interpolate the harmonic
         Returns:
         ________
@@ -289,23 +416,23 @@ class Injection:
         harmonics = np.zeros(N * n_harm)
         bins = np.zeros(N * n_harm).astype(int)
 
-        # now evaluate sinc-modified power at each of the first 10 harmonics
+        # now evaluate sinc-modified power at each of the first n_harm harmonics
         for i in range(n_harm):
             f_harm = (i + 1) * self.f
             bin_true = f_harm / df
-            bin_below = np.floor(bin_true)
-            bin_above = np.ceil(bin_true)
+            bin_below = np.floor(bin_true + 1e-8)
+            bin_above = bin_below + 1
 
             # use 2 bins on either side
             current_bins = np.array(
                 [bin_below - 1, bin_below, bin_above, bin_above + 1]
             )
             bins[i * N : (i + 1) * N] = current_bins
-            amplitude = prof_fft[i] * sinc(np.pi * (bin_true - current_bins))
+            amplitude = prof_fft[i] * np.sinc(bin_true - current_bins)
             harmonics[i * N : (i + 1) * N] = np.abs(amplitude) ** 2
 
         return bins, harmonics
-    
+
     def get_rednoise_normalisation(self, inj_bins, inj_dms):
         """
         This function retrieves the rednoise information from the power spectrum and
@@ -326,7 +453,9 @@ class Injection:
 
         for day in range(self.pspec_obj.num_days):
             day_normalizer = (
-                np.ones((len(inj_dms), len(inj_bins))) / self.pspec_obj.num_days / np.log(2)
+                np.ones((len(inj_dms), len(inj_bins)))
+                / self.pspec_obj.num_days
+                / np.log(2)
             )
             # day_medians = rn_medians[day]
             day_medians = (
@@ -343,7 +472,7 @@ class Injection:
                 day_normalizer[i] /= rn_interpolated
             normalizer += day_normalizer
         return normalizer
-    
+
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
@@ -437,47 +566,74 @@ class Injection:
 
         # pull frequency bins from target power spectrum
         freqs = self.pspec_obj.freq_labels
-        df = freqs[1] - freqs[0]
         f_nyquist = freqs[-1]
-        n_harm = int(np.floor(f_nyquist / self.f))
-        scaled_prof_fft, n_harm = self.sigma_to_power(n_harm, df)
-        used_nharm = len(scaled_prof_fft)
-        log.info(f"Injecting {n_harm} harmonics.")
+        N = 2 * len(freqs)
+        tau = TSAMP * N
+        df = 1 / tau
 
-        dispersed_prof_fft, dm_indices = self.disperse(
-            scaled_prof_fft, kernels, kernel_scaling
-        )
+        n_harm = int(np.floor(f_nyquist / self.f))
+
+        if 32 < n_harm:
+            n_harm = 32
+
+        if self.use_sigma:
+            scaled_prof_fft, phases = self.sigma_to_power(n_harm, df)
+            log.info(
+                f"Injecting at f = {self.f:.2f} Hz, DM = {self.true_dm:.2f} pc / cm^3, and sigma = {self.sigma}."
+            )
+        else:
+            scaled_prof_fft, phases = self.flux_to_power()
+            log.info(
+                f"Injecting at f = {self.f:.2f} Hz, DM = {self.true_dm:.2f} pc / cm^3, and S = {self.flux:.2f} mJy."
+            )
+
+        if len(scaled_prof_fft) > n_harm:
+            scaled_prof_fft = scaled_prof_fft[:n_harm]
+        else:
+            n_harm = len(scaled_prof_fft)
+
+        windowed_prof_fft = self.time_windowing(scaled_prof_fft)
+        smeared_prof_fft = self.smear_fft(windowed_prof_fft)
+
+        log.info(f"Injecting {n_harm} harmonics.")
+        dispersed_prof_fft, dm_indices = self.disperse(smeared_prof_fft)
+
+        # grab idx of true dm in full pspec
+        true_dm_in_pspec = np.argmin(np.abs(self.true_dm - self.trial_dms))
+        # grab idx of true dm in harms
+        true_dm_in_harms = np.where(dm_indices == true_dm_in_pspec)[0][0]
 
         harms = []
 
         for i in range(len(dispersed_prof_fft)):
-            bins, harm = self.harmonics(dispersed_prof_fft[i], df)
+            bins, harm = self.scalloping(dispersed_prof_fft[i], df)
             harms.append(harm)
+        # note that harms are POWERS, not amplitudes
 
         harms = np.asarray(harms)
         harms *= self.get_rednoise_normalisation(
             bins,
             dm_indices,
         )
+
         # estimate sigma
         (
             harms,
             predicted_nharm,
             predicted_sigma,
             rescale_factor,
-        ) = self.predict_sigma(harms, bins, dm_indices, used_nharm, True)
+        ) = self.predict_sigma(harms, bins, dm_indices, n_harm, True)
 
         if self.use_rfi_information:
             # Maybe want to enable buffering this value for faster multiple injection
             bin_fractions = self.pspec_obj.get_bin_weights_fraction()
-            # Is linear scaling the way to go?
             harms *= bin_fractions[bins]
         injected_indices = np.ix_(dm_indices, bins)
         _, detection_nharm, detection_sigma, _ = self.predict_sigma(
             harms + self.pspec[injected_indices],
             bins,
             dm_indices,
-            used_nharm,
+            n_harm,
             False,
         )
 
@@ -506,14 +662,14 @@ class Injection:
             "detection_sigma": detection_sigma,
             "injected_nharm": n_harm,
         }
+
         return output_dict
 
 
 def main(
     pspec,
     full_harm_bins,
-    injection_profile="random",
-    num_injections=1,
+    injection_dict="random",
     remove_spectra=False,
     scale_injections=False,
     only_predict=False,
@@ -527,8 +683,6 @@ def main(
                                               profile in the dictionary defaults, or a dict with
                                               custom injection profile keys
                                               (profile, sigma, frequency, DM)
-            num_injections (int)            : provided if injection_profile == 'random.' How
-                                              many profiles to randomly generate.
             remove_spectra (bool)           : Whether to remove the spectra. Replaced by static value
             scale_injections (bool)         : Whether to scale the injection so that the
                                             detected sigma should be
@@ -539,79 +693,11 @@ def main(
     --------
             injection_profiles (list(dict)) : List containing dict describing the injection.
     """
-    default_freq = rand.choice(
-        np.linspace(0.1, 100, 10000), num_injections, replace=False
-    )
-    default_dm = rand.choice(np.linspace(10, 200, 10000), num_injections, replace=False)
-    default_sigma = rand.choice(np.linspace(5, 20, 1000), num_injections, replace=False)
+    if injection_dict == "random":
+        injection_dict = generate_injection(pspec)
 
-    defaults = {
-        "gaussian": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "subpulse": {
-            "profile": gaussian(0.5, 0.025) + 0.5 * gaussian(0.6, 0.015),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "interpulse": {
-            "profile": gaussian(0.5, 0.025) + 0.8 * gaussian(0.1, 0.02),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "faint": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 10,
-            "frequency": default_freq[0],
-            "DM": 121.4375,
-        },
-        "high-DM": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": default_freq[0],
-            "DM": 212.3,
-        },
-        "slow": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": 3.27,
-            "DM": 121.4375,
-        },
-        "fast": {
-            "profile": gaussian(0.5, 0.025),
-            "sigma": 20,
-            "frequency": 70.26,
-            "DM": 121.4375,
-        },
-    }
-
-    injection_profiles = []
-
-    if type(injection_profile) == str and injection_profile != "random":
-        injection_profile = defaults[injection_profile]
-        injection_profiles.append(injection_profile)
-        if injection_profile != "slow" and injection_profile != "fast":
-            log.info(f"Your randomly assigned frequency is {default_freq} Hz.")
-
-    elif injection_profile == "random":
-        for i in range(num_injections):
-            pulse = generate_pulse()
-            injection_profiles.append(
-                {
-                    "profile": pulse,
-                    "sigma": default_sigma[i],
-                    "frequency": default_freq[i],
-                    "DM": default_dm[i],
-                }
-            )
-
-    else:
-        injection_profiles.append(injection_profile)
+    # else:
+    #     injection_dict['TPA_idx'] = None
 
     if remove_spectra:
         log.info("Replacing spectra with expected mean value.")
@@ -623,39 +709,35 @@ def main(
     # There are probably easier ways to do this
     zero_bins = pspec.power_spectra[0, :] == 0
 
-    i = 0
-    for injection_dict in injection_profiles:
-        injection_output_dict = Injection(
-            pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
-        ).injection()
-        if len(injection_output_dict["injected_powers"]) == 0:
-            log.info("Pulsar too weak.")
-            continue
+    injection_output_dict = Injection(
+        pspec, full_harm_bins, **injection_dict, scale_injections=scale_injections
+    ).injection()
+    if len(injection_output_dict["injected_powers"]) == 0:
+        log.info("Pulsar too weak.")
 
-        injection_dict["dms"] = injection_output_dict["dm_indices"]
-        injection_dict["bins"] = injection_output_dict["freq_indices"]
-        injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
-        injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
-        injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
-        injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
-        injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
+    injection_dict["dms"] = injection_output_dict["dm_indices"]
+    injection_dict["bins"] = injection_output_dict["freq_indices"]
+    injection_dict["predicted_nharm"] = injection_output_dict["predicted_nharm"]
+    injection_dict["predicted_sigma"] = injection_output_dict["predicted_sigma"]
+    injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
+    injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
+    injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
 
-        if isinstance(injection_dict["profile"], (np.ndarray, list)):
-            injection_dict["profile"] = "custom_profile"
+    if isinstance(injection_dict["profile"], (np.ndarray, list)):
+        injection_dict["profile"] = "custom_profile"
 
-        if not only_predict:
-            # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
-            # not change the object
-            injected_indices = np.ix_(
-                injection_output_dict["dm_indices"],
-                injection_output_dict["freq_indices"],
-            )
+    if not only_predict:
+        # Just using pspec.power_spectra[dms_temp,:][:, bins_temp] will return the slice but
+        # not change the object
+        injected_indices = np.ix_(
+            injection_output_dict["dm_indices"],
+            injection_output_dict["freq_indices"],
+        )
 
-            pspec.power_spectra[injected_indices] += injection_output_dict[
-                "injected_powers"
-            ].astype(pspec.power_spectra.dtype)
+        pspec.power_spectra[injected_indices] += injection_output_dict[
+            "injected_powers"
+        ].astype(pspec.power_spectra.dtype)
 
-        i += 1
     pspec.power_spectra[:, zero_bins] = 0
 
-    return injection_profiles
+    return injection_dict

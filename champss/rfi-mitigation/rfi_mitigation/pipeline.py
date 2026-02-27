@@ -66,6 +66,9 @@ class RFIPipeline:
             masks_to_apply["powspec"] if "powspec" in keys else False
         )
         self.apply_dummy_filter = masks_to_apply["dummy"] if "dummy" in keys else False
+        self.apply_stddev_filter = (
+            masks_to_apply["stddev"] if "stddev" in keys else False
+        )
 
         self.plot_diagnostics = make_plots
 
@@ -267,6 +270,31 @@ class RFIPipeline:
                     f"Corresponds to {1000 * powspec_time_per_chan} ms per channel"
                 )
 
+        if self.apply_stddev_filter:
+            with rfi_processing_time.labels("stddev_channel", "0").time():
+                stddev_start = time.time()
+                log.debug("StdDev Channel clean START")
+                cleaner = cleaners.StdDevChannelCleaner(spectra.shape)
+                cleaner.clean(spectra, rfi_mask)
+                before_masked_frac = rfi_mask.mean()
+
+                rfi_mask[:], masked_frac = combine_cleaner_masks(
+                    np.array([rfi_mask, cleaner.get_mask()])
+                )
+
+                masked_frac = rfi_mask.mean()
+                unique_masked_frac = masked_frac - before_masked_frac
+                log.debug(f"unique masked frac = {unique_masked_frac:g}")
+                log.debug(f"total masked frac = {masked_frac:g}")
+                log.debug("StdDev Channel clean END")
+                stddev_end = time.time()
+                stddev_runtime = stddev_end - stddev_start
+                stddev_time_per_chan = stddev_runtime / spectra_shape[0]
+                log.debug(f"Took {stddev_runtime} seconds to run StdDevChannelCleaner")
+                log.debug(
+                    f"Corresponds to {1000 * stddev_time_per_chan} ms per channel"
+                )
+
         # update cleaned flag and append to the list of output instances
 
         log.info(f"final flagged fraction = {rfi_mask.mean():g}")
@@ -284,6 +312,114 @@ class RFIPipeline:
             plt.title(f"nchan={spectra_shape[0]}  mask frac. = {rfi_mask.mean()}")
             plt.savefig("cleaned_waterfall.png")
             plt.clf()
+
+        shared_spectra.close()
+        shared_mask.close()
+
+
+class RFIGlobalPipeline:
+    """
+    This class is responsible for cleaning the full beamformed dataset.
+
+    Unlike RFIPipeline which operates on chunks, this pipeline operates on the
+    entire dataset at once, allowing cleaners to analyze global statistics across
+    the full time series.
+    """
+
+    def __init__(self, masks_to_apply: dict, make_plots: bool = False):
+        """
+        Initialise the global RFI cleaning pipeline.
+
+        Parameters
+        ----------
+        masks_to_apply: dict
+            A dictionary of RFI mitigation techniques to apply to the data.
+            Currently supports:
+            - "stddev": StdDevChannelCleaner
+
+        make_plots: bool
+            Whether to produce diagnostic plots from cleaners that support
+            those operations (only useful for debugging and it comes with
+            significant performance impacts)
+        """
+        keys = masks_to_apply.keys()
+        self.apply_stddev_filter = (
+            masks_to_apply["stddev"] if "stddev" in keys else False
+        )
+
+        self.plot_diagnostics = make_plots
+
+    def clean(
+        self,
+        spectra_shared_name,
+        mask_shared_name,
+        spectra_shape,
+        spec_dtype,
+    ):
+        """
+        Run the requested global cleaners on the full beamformed dataset.
+
+        Parameters
+        ----------
+        spectra_shared_name: str
+            Name of shared spectra
+
+        mask_shared_name: str
+            Name of shared mask
+
+        spectra_shape: tuple(int)
+            Shape of spectra
+
+        spec_dtype:
+            dtype of spectra
+        """
+        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        spectra = np.ndarray(
+            spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
+        )
+        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
+
+        log.debug(f"full data shape = {spectra_shape}")
+        initial_masked_frac = rfi_mask.sum() / rfi_mask.size
+        log.info(f"initial flagged fraction = {initial_masked_frac:g}")
+
+        if self.apply_stddev_filter:
+            with rfi_processing_time.labels("stddev_channel_global", "0").time():
+                stddev_start = time.time()
+                log.debug("Global StdDev Channel clean START")
+                cleaner = cleaners.StdDevChannelCleaner(spectra_shape)
+                cleaner.clean(spectra_shared_name, mask_shared_name, spectra_shape, spec_dtype)
+
+                # Re-access mask after cleaner modifies it
+                shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+                rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
+                before_masked_frac = rfi_mask.mean()
+
+                rfi_mask[:], masked_frac = combine_cleaner_masks(
+                    np.array([rfi_mask, cleaner.get_mask()])
+                )
+
+                masked_frac = rfi_mask.mean()
+                unique_masked_frac = masked_frac - before_masked_frac
+                log.debug(f"unique masked frac = {unique_masked_frac:g}")
+                log.debug(f"total masked frac = {masked_frac:g}")
+                log.debug("Global StdDev Channel clean END")
+                stddev_end = time.time()
+                stddev_runtime = stddev_end - stddev_start
+                stddev_time_per_chan = stddev_runtime / spectra_shape[0]
+                log.debug(
+                    f"Took {stddev_runtime} seconds to run global StdDevChannelCleaner"
+                )
+                log.debug(
+                    f"Corresponds to {1000 * stddev_time_per_chan} ms per channel"
+                )
+
+        # Re-access mask for final reporting
+        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
+        log.info(f"final flagged fraction = {rfi_mask.mean():g}")
+        shared_mask.close()
 
         shared_spectra.close()
         shared_mask.close()

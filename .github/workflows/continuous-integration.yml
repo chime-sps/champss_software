@@ -28,6 +28,6 @@ jobs:
     uses: ./.github/workflows/image.yml
     secrets: inherit
     with:
-      runs_on: self-hosted
+      runs_on: 'sps-compute3'
       image_tag: ${{ github.ref_name || 'test' }}
       build_locally: false

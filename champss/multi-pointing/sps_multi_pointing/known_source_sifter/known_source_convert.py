@@ -31,7 +31,7 @@ if __name__ == "__main__":
         entry["dm_error"] = float(entry["dm_error"])
         entry["spin_period_s"] = float(entry["spin_period_s"])
         entry["spin_period_s_error"] = float(entry["spin_period_s_error"])
-        entry["dm_galactic_ne_2001_max"] = float(entry["dm_galactic_ne_2001_max"])
+        entry["dm_galactic_ne_2025_max"] = float(entry["dm_galactic_ne_2025_max"])
         entry["dm_galactic_ymw_2016_max"] = float(entry["dm_galactic_ymw_2016_max"])
 
         # Delete remaining two superfluous entries

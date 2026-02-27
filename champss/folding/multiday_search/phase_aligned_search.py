@@ -13,7 +13,7 @@ from astropy.coordinates import (
 )
 from astropy.time import Time
 from beamformer.utilities.common import find_closest_pointing
-from folding.archive_utils import get_SN
+from folding.utilities.archives import get_SN
 from multiday_search.load_profiles import load_unwrapped_archives, unwrap_profiles
 from numba import njit, prange, set_num_threads
 from numpy import unravel_index
@@ -21,23 +21,49 @@ from scipy.ndimage import uniform_filter
 
 
 @njit(parallel=True)
-def phase_loop(profiles, dts, f0s, f1s):
+def phase_loop(profiles, dts, f0s, f1s, metric=0):
     """
-    Calculates SNR of the sum of the phase-shifted profiles.
+    Calculates chi-squared or S/N of the sum of the phase-shifted profiles.
 
-    profiles array has shape [ntime, nphase]
+    Parameters
+    ----------
+    profiles : ndarray
+        2D array of shape [ntime, nphase]
+    dts : ndarray
+        Time offsets in seconds
+    f0s : ndarray
+        F0 offset grid
+    f1s : ndarray
+        F1 grid
+    metric : int
+        0 for chi-squared (default), 1 for S/N with boxcar smoothing
+
+    Returns
+    -------
+    grid : ndarray
+        2D grid of chi-squared or S/N values
     """
-    # average noise, assuming individual pulses are faint
     set_num_threads(8)
 
-    sigma_off = np.std(profiles.sum(0))
     npbin = profiles.shape[1]
     Nf1 = len(f1s)
     Nf0 = len(f0s)
-    chi2_grid = np.zeros((Nf0, Nf1))
+    grid = np.zeros((Nf0, Nf1))
+
+    # Pre-compute noise estimate from summed profiles
+    sigma_off = np.std(profiles.sum(0))
+
+    # Pre-compute boxcar widths (powers of 2 up to npbin//4) and scaled noise
+    max_exp = int(np.log2(npbin // 4))
+    n_widths = max_exp + 1
+    widths = np.zeros(n_widths, dtype=np.int64)
+    scaled_sigmas = np.zeros(n_widths)
+    for iw in range(n_widths):
+        widths[iw] = 2 ** iw
+        scaled_sigmas[iw] = sigma_off / np.sqrt(widths[iw])
 
     for i, f0i in enumerate(f0s):
-        profsums = np.zeros((Nf1, profiles.shape[1]))
+        profsums = np.zeros((Nf1, npbin))
         for j in prange(Nf1):
             f1j = f1s[j]
             dphis = f0i * dts + 0.5 * f1j * dts**2
@@ -46,11 +72,42 @@ def phase_loop(profiles, dts, f0s, f1s):
             for k, prof in enumerate(profiles):
                 profsums[j] += np.roll(prof, -i_phis[k])
 
-            chi2_grid[i, j] = np.sum(
-                (profsums[j] - np.mean(profsums[j])) ** 2 / sigma_off**2
-            )
+            if metric == 0:
+                # Chi-squared
+                grid[i, j] = np.sum(
+                    (profsums[j] - np.mean(profsums[j])) ** 2 / sigma_off**2
+                )
+            else:
+                # S/N with boxcar smoothing over powers of 2
+                prof = profsums[j]
+                prof_mean = np.mean(prof)
+                snmax = 0.0
 
-    return chi2_grid
+                # Cumulative sum for efficient boxcar computation
+                cumsum = np.zeros(npbin + 1)
+                for idx in range(npbin):
+                    cumsum[idx + 1] = cumsum[idx] + prof[idx]
+
+                for iw in range(n_widths):
+                    width = widths[iw]
+                    # Find max of boxcar-filtered profile
+                    boxcar_max = -1e30
+                    for idx in range(npbin):
+                        end_idx = idx + width
+                        if end_idx <= npbin:
+                            val = (cumsum[end_idx] - cumsum[idx]) / width
+                        else:
+                            val = (cumsum[npbin] - cumsum[idx] + cumsum[end_idx - npbin]) / width
+                        if val > boxcar_max:
+                            boxcar_max = val
+
+                    sn = (boxcar_max - prof_mean) / scaled_sigmas[iw]
+                    if sn > snmax:
+                        snmax = sn
+
+                grid[i, j] = snmax
+
+    return grid
 
 
 class ExploreGrid:
@@ -67,6 +124,9 @@ class ExploreGrid:
         self.DEC = data["DEC"]
         self.directory = data["directory"]
         self.archives = data["archives"]
+        self.psr_name = data["psr"]
+        self.PEPOCH = data["PEPOCH"]
+        self.candidate_sigma = data.get("candidate_sigma", None)
 
         self.f0_points = f0_points
         self.f1_points = f1_points
@@ -155,60 +215,43 @@ class ExploreGrid:
         axs[1, 1].xaxis.get_major_ticks()[0].label1.set_visible(False)
 
         SNR = float(np.max(self.SNmax))
-        F0plot = round(self.optimal_parameters[0], 6)
-        F1plot = round(self.optimal_parameters[1] * 1e15, 2) / 1e15
-        param_txt1 = f"$f_0$: {F0plot}\n$f_1$: {F1plot}\nSNR: {round(SNR, 2)}"
-
-        param_txt2 = (
-            f"RA (deg): {round(self.RA, 2)}\n"
-            f"DEC (deg): {round(self.DEC, 2)}\n"
-            f"DM: {round(self.DM, 2)}"
-        )
+        F0_best = round(self.optimal_parameters[0], 6)
+        F1plot = f"{self.optimal_parameters[1]:.1e}"
+        P0 = 1 / self.f0_incoherent
+        P0_best = 1 / self.optimal_parameters[0]
 
         gal_coord = SkyCoord(
             ra=self.RA * u.degree, dec=self.DEC * u.degree, frame="icrs"
         )
-        l = gal_coord.galactic.l.deg
-        b = gal_coord.galactic.b.deg
+        gal_l = gal_coord.galactic.l.deg
+        gal_b = gal_coord.galactic.b.deg
         pointing = find_closest_pointing(self.RA, self.DEC)
         max_dm = pointing.maxdm
+        beam_str = f"{pointing.beam_row}"
 
-        param_txt3 = (
-            f"$\\ell$ (deg): {round(l, 2)}\n"
-            f"$\\it{{b}}$ (deg): {round(b, 2)}\n"
-            f"Max DM: {round(max_dm,2)}"
-        )
+        start_date = Time(self.PEPOCH + min(self.dts) / 86400.0, format="mjd").isot[:10]
 
-        axs[0, 1].text(
-            0,
-            1.3,
-            param_txt1,
-            transform=axs[0, 0].transAxes,
-            fontsize=25,
-            va="top",
-            ha="left",
-            backgroundcolor="white",
+        dm_ne2025_str = f"{pointing.ne2025dm:.1f}"
+        dm_ymw16_str = f"{pointing.ymw16dm:.1f}"
+
+        sigma_str = f"$\\sigma$: {self.candidate_sigma:.2f}" if self.candidate_sigma is not None else ""
+
+        cand_params_text = [
+            [f"{self.psr_name}", f"RA: {self.RA:.2f}", rf"$g_l$: {gal_l:.2f}", f"DM$_{{max}}$: {max_dm:.1f}", f"F0$_{{best}}$: {F0_best}"],
+            [f"{start_date}", f"Dec: {self.DEC:.2f}", rf"$g_b$: {gal_b:.2f}", f"DM$_{{ne2025}}$: {dm_ne2025_str}", f"P0$_{{best}}$: {P0_best:.5f}"],
+            [f"{sigma_str}", f"DM: {self.DM:.2f}", f"Beam: {beam_str}", f"DM$_{{ymw16}}$: {dm_ymw16_str}", f"$f_1$: {F1plot}"],
+            [f"SNR: {SNR:.2f}", f"$f_0$: {self.f0_incoherent:.5f}", f"P0: {P0:.5f}", f"Nday: {len(self.profiles)}", f"PEPOCH: {self.PEPOCH:.2f}"],
+        ]
+
+        table_ax = fig.add_axes([0.1, 0.90, 0.8, 0.05])
+        table_ax.axis("off")
+        param_table = table_ax.table(
+            cellText=cand_params_text, cellLoc="left", loc="center", edges="open",
         )
-        axs[0, 1].text(
-            1.7,
-            1.3,
-            param_txt2,
-            transform=axs[0, 0].transAxes,
-            fontsize=25,
-            va="top",
-            ha="left",
-            backgroundcolor="white",
-        )
-        axs[0, 1].text(
-            4.2,
-            1.3,
-            param_txt3,
-            transform=axs[0, 0].transAxes,
-            fontsize=25,
-            va="top",
-            ha="left",
-            backgroundcolor="white",
-        )
+        param_table.auto_set_font_size(False)
+        param_table.set_fontsize(22)
+        param_table.scale(1, 1.8)
+        #param_table.auto_set_column_width(col=list(range(5)))
 
         if fullplot:
             data_T, data_F = load_unwrapped_archives(

@@ -1,8 +1,9 @@
 import os
+import subprocess
 
 import astropy.units as u
 import numpy as np
-from astropy.constants import au, c
+import astropy.constants as const
 from astropy.coordinates import (
     BarycentricTrueEcliptic,
     EarthLocation,
@@ -10,24 +11,25 @@ from astropy.coordinates import (
     get_body_barycentric,
 )
 from astropy.time import Time
-from folding.archive_utils import *
+from folding.utilities.archives import *
 
 
 def get_ssb_delay(raj, decj, times):
-    """Get Romer delay to Solar System Barycentre (SSB) for correction of site arrival
-    times to barycentric.
-    """
+    """Get Römer delay to Solar System Barycentre (SSB)."""
 
-    coord = SkyCoord(
-        raj, decj, frame=BarycentricTrueEcliptic, unit=(u.hourangle, u.deg)
-    )
-    psr_xyz = coord.cartesian.xyz.value
-    earth_xyz = get_body_barycentric("earth", times).xyz.value
-    t_bary = []
-    for i in range(len(times)):
-        e_dot_p = np.dot(earth_xyz[:, i], psr_xyz)
-        t_bary.append(e_dot_p * au.value / c.value)
-    return np.array(t_bary) * u.s
+    # Pulsar unit vector in ICRS
+    coord = SkyCoord(raj, decj, frame="icrs", unit=(u.hourangle, u.deg))
+    psr_xyz = coord.cartesian.xyz.to(u.one)  # dimensionless, unit vector
+
+    # Earth position wrt SSB (with units!)
+    earth_xyz = get_body_barycentric("earth", times).xyz  # in AU by default
+
+    # Dot product -> length (still with units, e.g. AU)
+    e_dot_p = np.einsum("ij,i->j", earth_xyz.to(u.m).value, psr_xyz.value) * u.m
+
+    t_bary = e_dot_p / const.c
+    # Divide by c -> time
+    return t_bary.to(u.s)
 
 
 def unwrap_profiles(profiles, dts, f0, f1):
@@ -61,19 +63,37 @@ def load_profiles(archives, max_npbin=256):
             - "npbin": Number of phase bins.
             - "T": Maximum time difference from reference.
 
-    Raises:
-        ValueError: If not all profiles reference the same PEPOCHs.
+    Note:
+        If archives have mismatched PEPOCHs, the first archive's ephemeris
+        is applied to discrepant files using pam -E.
     """
     print("Loading in archive files...")
     profs = []
     times = []
-    PEPOCHs = []
+    psr_name = None
+    reference_par = None
+    reference_pepoch = None
     print(*archives,sep='\n')
     for filename in sorted(archives):
         f = filename.replace(".ar", ".FT")
         if os.path.isfile(f) and f.endswith(".FT"):
             print(f)
-            data_ar, F, T, source, tel = readpsrarch(f)
+            PEPOCH = get_archive_parameter(f, "PEPOCH")
+            if reference_pepoch is None:
+                reference_pepoch = PEPOCH
+                # Extract ephemeris from first archive as reference
+                reference_par = os.path.join(os.path.dirname(f), "reference_pepoch.par")
+                result = subprocess.run(["vap", "-E", f], capture_output=True, text=True)
+                with open(reference_par, "w") as f_out:
+                    f_out.write(result.stdout)
+            elif PEPOCH != reference_pepoch:
+                print(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
+                subprocess.run(["pam", "-E", reference_par, "-m", f], check=True)
+
+            data_ar, params = readpsrarch(f)
+            if psr_name is None:
+                psr_name = params["psr"]
+            T = params["T"]
             data_ar = data_ar.squeeze()
             if len(data_ar.shape) > 1:
                 prof = data_ar.sum(0)
@@ -83,18 +103,16 @@ def load_profiles(archives, max_npbin=256):
             prof = prof - np.median(prof)
             profs.append(prof)
             times.append(T[0])
-            PEPOCH = get_archive_parameter(f, "PEPOCH")
-            PEPOCHs.append(PEPOCH)
-
-    if np.unique(PEPOCHs).size > 1:
-        print(
-            "Not all profiles reference the same PEPOCHs, re-apply same ephemeris to"
-            " all archives"
-        )
-        raise ValueError("Not all profiles reference the same PEPOCHs")
+    PEPOCH = reference_pepoch
 
     T0 = Time(PEPOCH, format="mjd")
     print(f"Reference epoch: {T0}, {T0.isot}")
+    times = Time(times, format="mjd")
+    if (min(times) > T0) or (max(times) < T0):
+        print("Warning: PEPOCH is outside range of observation epochs")
+        T0 = Time(np.median(times.mjd), format="mjd")
+        print(f"Changing reference epoch to central observation {T0}, {T0.isot}")
+
 
     npbin = len(profs[0])
     profs = np.array(profs)
@@ -111,8 +129,8 @@ def load_profiles(archives, max_npbin=256):
     DM = get_archive_parameter(f, "DM")
     directory = os.path.dirname(archives[0])
 
-    times = Time(times, format="mjd")
     t_bary = get_ssb_delay(RA, DEC, times)
+
     dts = times + t_bary
     dts = dts - T0
     dts = dts.to_value("second")
@@ -130,7 +148,9 @@ def load_profiles(archives, max_npbin=256):
             "DEC": DEC,
             "directory": directory,
             "npbin": npbin,
-            "T": Tmax_from_reference,
+            "psr": psr_name,
+            "PEPOCH": T0.mjd,
+            "Tmax_from_reference": Tmax_from_reference,
         }
     )
     return param_dict
@@ -152,22 +172,34 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
 
     print("Loading and unwrapping full archives...")
     times = []
-    PEPOCHs = []
+    reference_par = None
+    reference_pepoch = None
 
     F0_incoherent = optimal_parameters[0]
     F1_incoherent = optimal_parameters[1]
     for i, f in enumerate(sorted(archives)):
         print(f)
-        data_ar, F, times, source, tel = readpsrarch(f)
+        PEPOCH = get_archive_parameter(f, "PEPOCH")
+        if reference_pepoch is None:
+            reference_pepoch = PEPOCH
+            # Extract ephemeris from first archive as reference
+            reference_par = os.path.join(os.path.dirname(f), "reference_pepoch_ar.par")
+            result = subprocess.run(["vap", "-E", f], capture_output=True, text=True)
+            with open(reference_par, "w") as f_out:
+                f_out.write(result.stdout)
+        elif PEPOCH != reference_pepoch:
+            print(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
+            subprocess.run(["pam", "-E", reference_par, "-m", f], check=True)
+
+        data_ar, params = readpsrarch(f)
+        F, times = params["F"], params["T"]
         data_ar = data_ar.squeeze()
         data_ar = data_ar - np.median(data_ar, axis=-1, keepdims=True)
 
         RA = get_archive_parameter(f, "RAJD")
         DEC = get_archive_parameter(f, "DECJD")
         F0 = get_archive_parameter(f, "F0")
-        PEPOCH = get_archive_parameter(f, "PEPOCH")
-        PEPOCHs.append(PEPOCH)
-        T0 = Time(PEPOCH, format="mjd")
+        T0 = Time(reference_pepoch, format="mjd")
 
         times = Time(times, format="mjd")
         t_bary = get_ssb_delay(RA, DEC, times)
@@ -176,17 +208,23 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         dF0 = F0_incoherent - F0
         dF1 = F1_incoherent
 
-        data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, -dF1)
+        data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, dF1)
         if i == 0:
             data_F = data_unwrapped.sum(0)
             data_T = data_unwrapped.sum(1)
         else:
             data_F += data_unwrapped.sum(0)
-            # Sometimes the data_T shape mismatch, need to diagnose
-            try:
-                data_T += data_unwrapped.sum(1)
-            except ValueError:
-                print("Data_T shape mismatch, skipping")
+            new_T = data_unwrapped.sum(1)
+            if new_T.shape[0] != data_T.shape[0]:
+                target = data_T.shape[0]
+                if new_T.shape[0] > target:
+                    print(f"Removing last time bin to match data_T shape for {f}")
+                    new_T = new_T[:target]
+                else:
+                    print(f"Padding 1 zero to match data_T shape for {f}")
+                    pad = np.zeros((target - new_T.shape[0], new_T.shape[1]))
+                    new_T = np.concatenate([new_T, pad], axis=0)
+            data_T += new_T
 
     npbin = data_F.shape[-1]
     if npbin > max_npbin:
@@ -200,7 +238,7 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         npbin = max_npbin
     nfbin = data_F.shape[0]
     if nfbin > max_nfbin:
-        print(f"Binning to {max_nfbin} frequency bins.")
+        print(f"Binning to {max_nfbin} frequency bins.") 
         data_F = data_F.reshape(max_nfbin, data_F.shape[0] // max_nfbin, -1).sum(1)
         nfbin = max_nfbin
 

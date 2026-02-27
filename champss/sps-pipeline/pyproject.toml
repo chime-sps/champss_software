@@ -14,11 +14,11 @@ python = ">=3.10,<3.12"
 beamformer = {path = "../beamformer", develop=true}
 candidate-processor = {path = "../candidate-processor", develop=true}
 workflow-core = {git = "https://github.com/CHIMEFRB/workflow.git"}
+FFA = {path = "../FFA", develop=true}
 folding = {path = "../folding", develop=true}
 ps-processes = {path = "../ps-processes", develop=true}
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}
 scheduler = {path = "../scheduler", develop=true}
-spshuff = {path = "../spshuff", develop=true}
 sps-common = {path = "../sps-common", develop=true}
 sps-databases = {path = "../sps-databases", develop=true}
 sps-dedispersion = {path = "../sps-dedispersion", develop=true}
@@ -34,6 +34,8 @@ pyyaml = "^6.0"
 pyroscope-io = "^0.8.5"
 requests = "<2.32.0"
 your = "^0.6.7"
+riptide-ffa = "^0.2.5"
+mysql-connector-python = "^9.5.0"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
@@ -55,6 +57,8 @@ start-processing-cleanup = "sps_pipeline.processing:start_processing_cleanup"
 find-monthly-search-commands = "sps_pipeline.stack_scheduling:find_monthly_search_commands"
 execute-monthly-search-commands = "sps_pipeline.stack_scheduling:execute_monthly_search_commands"
 run-file-pipeline = "sps_pipeline.file_pipeline:run_file_pipeline"
+move-parameters-to-ksdb = "sps_pipeline.candidate_viewer_ks_database_integration:move_derived_values_to_ks_db"
+
 
 [build-system]
 requires = ["poetry-core"]

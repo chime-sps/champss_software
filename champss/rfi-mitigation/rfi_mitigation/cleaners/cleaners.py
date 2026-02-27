@@ -503,6 +503,178 @@ class SpectralKurtosisCleaner(Cleaner):
             self.cleaner_mask[:, start_idx:end_idx] = sk_mask[:, np.newaxis]
 
 
+class StdDevChannelCleaner(Cleaner):
+    """
+    This class flags channels based on anomalous standard deviation values computed
+    across the full beamformed pointing. This helps identify RFI that varies on
+    longer timescales than the typical 1-second blocks.
+
+    The cleaner first normalizes each channel by its time-averaged mean to remove
+    bandpass structure, then computes the standard deviation across time. Channels
+    with anomalously high or low normalized standard deviations are flagged.
+    """
+
+    def __init__(
+        self,
+        spectra_shape,
+        threshold: float = 5.0,
+    ):
+        """
+        Initialize the StdDevChannelCleaner.
+
+        Parameters
+        ----------
+        spectra_shape : tuple
+            Shape of the spectra (nchan, ntime)
+        threshold : float
+            Number of MAD units beyond which channels are flagged.
+            Default: 5.0
+        """
+        super().__init__(spectra_shape)
+        self.threshold = threshold
+
+    def summary(self):
+        return dict(
+            nchan=self.nchan,
+            ntime=self.ntime,
+            nsamp=self.nsamp,
+            threshold=self.threshold,
+            nmasked=self.cleaner_mask.sum(),
+            cleaned=self.cleaned,
+        )
+
+    def clean(self, spectra_shared_name, mask_shared_name, spectra_shape, spec_dtype, time_bin=1024):
+        """
+        Flag channels based on anomalous standard deviation across full pointing.
+
+        Parameters
+        ----------
+        spectra_shared_name : str
+            Name of shared memory for spectra
+        mask_shared_name : str
+            Name of shared memory for mask
+        spectra_shape : tuple
+            Shape of the spectra (nchan, ntime)
+        spec_dtype : dtype
+            Data type of spectra
+        time_bin : int
+            Number of time samples to average together. Default: 1024
+        """
+        from multiprocessing import shared_memory
+
+        log.info("Running Standard Deviation Channel cleaner")
+
+        # Access shared memory
+        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        spectra = np.ndarray(spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf)
+        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
+
+        # Replace zeros with NaN (zeros indicate masked regions after zero-filling)
+        spectra_work = spectra.copy()
+        spectra_work[spectra_work == 0] = np.nan
+
+        # Trim to multiple of time_bin
+        nchan, ntime = spectra_shape
+        ntime_trimmed = (ntime // time_bin) * time_bin
+        spectra_trimmed = spectra_work[:, :ntime_trimmed]
+
+        # Reshape and average: (nchan, ntime_trimmed) -> (nchan, nbins, time_bin) -> (nchan, nbins)
+        spectra_binned = spectra_trimmed.reshape(nchan, -1, time_bin).mean(axis=-1)
+
+        # Check the fraction of channels that are already heavily flagged
+        channel_mask_fractions = rfi_mask.mean(axis=1)
+        heavily_flagged_channels = channel_mask_fractions > 0.5
+        num_heavily_flagged = heavily_flagged_channels.sum()
+        frac_heavily_flagged = num_heavily_flagged / self.nchan
+
+        log.debug(
+            f"{num_heavily_flagged} channels ({frac_heavily_flagged*100:.1f}%) "
+            f"already have >90% of samples flagged"
+        )
+
+        # Compute global mean for each channel across all bins (ignoring NaNs)
+        channel_means = np.nanmean(spectra_binned, axis=1, keepdims=True)
+
+        # Normalize binned data by dividing by global mean to remove bandpass structure
+        channel_means[channel_means == 0] = 1.0
+        channel_means[np.isnan(channel_means)] = 1.0
+        normalized_binned = spectra_binned / channel_means
+
+        # Compute standard deviation across normalized bins for each channel
+        channel_stds = np.nanstd(normalized_binned, axis=1)
+
+        # Replace NaN stds with 0 for heavily-flagged channels
+        channel_stds[np.isnan(channel_stds)] = 0
+
+        # Always compute statistics from only the cleaner channels (those with <50% flagged)
+        # to avoid biased estimates when many channels are already heavily flagged
+        clean_channel_stds = channel_stds[~heavily_flagged_channels]
+        # Remove zeros from clean channels for statistics
+        clean_channel_stds = clean_channel_stds[clean_channel_stds > 0]
+
+        if len(clean_channel_stds) == 0:
+            log.error("No clean channels available for statistics - skipping cleaner")
+            self.cleaned = True
+            shared_spectra.close()
+            shared_mask.close()
+            return
+
+        log.debug(
+            f"Computing statistics from {len(clean_channel_stds)} channels "
+            f"with <50% samples flagged"
+        )
+
+        # Normalize std by its median (like in the working snippet)
+        std_median = np.nanmedian(clean_channel_stds)
+
+        if std_median == 0:
+            log.warning("Median std is zero - skipping cleaner")
+            self.cleaned = True
+            return
+
+        normalized_channel_stds = channel_stds / std_median
+        normalized_clean_stds = clean_channel_stds / std_median
+
+        # Use MAD for robust statistics on normalized std values
+        # Compute MAD of (normalized_std - 1) to detect deviations from typical behavior
+        std_deviations = normalized_clean_stds - 1.0
+        std_mad = median_absolute_deviation(std_deviations)[1]  # Get just the MAD value
+        log.debug(f"Normalized channel std median: 1.0 (by design), MAD of deviations: {std_mad:.3f}")
+
+        # Flag channels where deviation from 1.0 exceeds threshold
+        # This matches: (bpass-1) > thresh*mad from the snippet
+        upper_bound = 1.0 + self.threshold * std_mad
+        lower_bound = 1.0 - self.threshold * std_mad
+
+        # Flag entire channels that fall outside bounds
+        bad_channels = np.logical_or(
+            normalized_channel_stds > upper_bound,
+            normalized_channel_stds < lower_bound
+        )
+
+        # Also flag channels with zero std (non-physical)
+        bad_channels = np.logical_or(bad_channels, channel_stds == 0)
+
+        num_flagged = np.sum(bad_channels)
+        log.info(
+            f"Flagged {num_flagged} channels ({num_flagged/self.nchan*100:.1f}%) "
+            f"based on normalized std deviation (bounds: [{lower_bound:.3f}, {upper_bound:.3f}])"
+        )
+
+        # Update the cleaner mask - flag entire channels
+        self.cleaner_mask[bad_channels, :] = True
+
+        # Also update the shared memory mask directly
+        rfi_mask[bad_channels, :] = True
+
+        self.cleaned = True
+
+        # Close shared memory handles
+        shared_spectra.close()
+        shared_mask.close()
+
+
 class PowerSpectrumCleaner(Cleaner):
     """
     This class accepts a spectra and detects periodic RFI with an amplitude outside the

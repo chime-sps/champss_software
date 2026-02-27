@@ -11,7 +11,6 @@ from sps_databases.models import (
     Candidate,
     DatabaseError,
     FollowUpSource,
-    HhatStack,
     KnownSource,
     Observation,
     ObservationStatus,
@@ -19,6 +18,7 @@ from sps_databases.models import (
     Process,
     ProcessStatus,
     PsStack,
+    DailyRun,
 )
 
 
@@ -641,88 +641,6 @@ def append_ps_stack(pointing_id, payload):
     )
 
 
-def create_hhat_stack(payload):
-    """
-    Create an `HhatStack` instance and inserts it into the database.
-
-    Parameters
-    ----------
-    payload: dict
-        dictionary of attributes for the stack,
-        as expected by `models.HhatStack`
-
-    Returns
-    -------
-    stack: sps_database.models.HhatStack
-        the new instance, including the created MongoDB document id
-    """
-    db = db_utils.connect()
-    hhat_stack = HhatStack(**payload)
-    doc = hhat_stack.to_db()
-    del doc["_id"]
-    query = {k: doc[k] for k in doc.keys() & {"pointing_id"}}
-    rc = db.hhat_stacks.find_one_and_replace(
-        query, doc, upsert=True, return_document=pymongo.ReturnDocument.AFTER
-    )
-    hhat_stack._id = rc["_id"]
-    return hhat_stack
-
-
-def get_hhat_stack(pointing_id):
-    """
-    Find an `HhatStack` instance for the given pointing.
-
-    Parameters
-    ----------
-    pointing_id: bson.objectid.ObjectId or string
-        key for the pointing lookup, as expected by
-        pymongo.collection.Collection.find()
-
-    Returns
-    -------
-    stack: sps_database.models.HhatStack
-        the stack instance for the given pointing
-
-    Exceptions
-    ----------
-    Raises a runtime exception if the pointing id does not exist
-    """
-    db = db_utils.connect()
-    if isinstance(pointing_id, str):
-        pointing_id = ObjectId(pointing_id)
-    return HhatStack.from_db(db.hhat_stacks.find_one({"pointing_id": pointing_id}))
-
-
-def update_hhat_stack(pointing_id, payload):
-    """
-    Updates a hhat stack entry of a given pointing.
-
-    The hhat stack entry is updated with the given attribute and
-    values as a dict.
-
-    Parameters
-    ----------
-    pointing_id: str or ObjectId
-        The pointing_id of the hhat stack to be updated
-
-    payload: dict
-        The dict of the attributes and values to be updated
-
-    Returns
-    -------
-    observation: dict
-        The dict of the updated hhat stack entry
-    """
-    db = db_utils.connect()
-    if isinstance(pointing_id, str):
-        pointing_id = ObjectId(pointing_id)
-    return db.hhat_stacks.find_one_and_update(
-        {"pointing_id": pointing_id},
-        {"$set": payload},
-        return_document=pymongo.ReturnDocument.AFTER,
-    )
-
-
 def create_known_source(payload):
     """
     Create a `KnownSource` instance and inserts it into the database.
@@ -1308,3 +1226,58 @@ def update_pulsars_in_pointing(pointing_id, pulsar_name, pulsar_dict, stack=Fals
             else:
                 updated_pointing = initial_pointing
     return updated_pointing
+
+
+def update_daily_run(date, payload, upsert=True):
+    """
+    Updates a power spectra stack entry of a given pointing.
+
+    The PS stack entry is updated with the given attribute
+    and values as a dict.
+
+    Parameters
+    -------
+    date: datetime.datetime
+        The date that should be updated
+
+    payload: dict
+        The dict of the attributes and values to be updated
+
+    upsert: bool
+        If daily run object should eb created if not pre-existing.
+        For now always create, to simplify.
+
+    Returns
+    -------
+    DailyRun: dict
+        The dict of the updated DailyRun entry
+    """
+    db = db_utils.connect()
+    payload["last_changed"] = dt.datetime.now()
+    return db.daily_runs.find_one_and_update(
+        {"date": date.replace(tzinfo=None)},
+        {"$set": payload},
+        return_document=pymongo.ReturnDocument.AFTER,
+        upsert=upsert,
+    )
+
+
+def get_daily_run(date):
+    """
+    Updates a power spectra stack entry of a given pointing.
+
+    The PS stack entry is updated with the given attribute
+    and values as a dict.
+
+    Parameters
+    -------
+    date: datetime.datetime
+        The date that should be updated
+
+    Returns
+    -------
+    DailyRun: DailyRun
+        The DailyRun object for the database entry
+    """
+    db = db_utils.connect()
+    return DailyRun.from_db(db.daily_runs.find_one({"date": date.replace(tzinfo=None)}))

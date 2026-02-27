@@ -4,7 +4,6 @@ import logging
 import math
 import os
 import signal
-import subprocess  # nosec
 
 import pytz
 import trio
@@ -14,7 +13,9 @@ from controller.l1_rpc import get_beam_ip
 log = logging.getLogger("issuer")
 
 
-async def pointing_beam_control(new_pointing_listen, pointing_done_announce, basepath):
+async def pointing_beam_control(
+    new_pointing_listen, pointing_done_announce, basepath, source="champss"
+):
     """
     Task that issues beam pointing updates on a generated schedule.
 
@@ -39,8 +40,12 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
     last_update = dt.datetime.utcnow().replace(tzinfo=pytz.utc).timestamp()
 
     # Quick and dirty way of changing mount name
-    local_path = basepath.replace("/sps-archiver2/", "/mnt/beegfs-client/").replace(
-        "/sps-archiver1/", "/data/"
+    local_path = (
+        basepath.replace("/sps-archiver1/", "/data/")
+        .replace("/sps-archiver2/", "/mnt/beegfs-client/")
+        .replace("/sps-archiver3/", "/mnt/beegfs-client/")
+        .replace("/sps-archiver4/", "/mnt/beegfs-client/")
+        .replace("/sps-archiver5/", "/mnt/beegfs-client/")
     )
 
     async with new_pointing_listen:
@@ -163,6 +168,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                     1024,
                                     5,
                                     basepath,
+                                    source,
                                     timeout=-1,
                                     servers=[b.beam],
                                 )
@@ -207,6 +213,7 @@ async def pointing_beam_control(new_pointing_listen, pointing_done_announce, bas
                                         1024,
                                         5,
                                         basepath,
+                                        source,
                                         timeout=-1,
                                         servers=[b.beam],
                                     )

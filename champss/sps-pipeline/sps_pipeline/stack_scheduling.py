@@ -9,75 +9,78 @@ from scheduler.workflow import (
 from sps_databases import db_utils, models
 
 
-@click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option(
-    "--db-port",
-    default=27017,
-    type=int,
-    help="Port used for the mongodb database.",
-)
-@click.option(
-    "--db-host",
-    default="localhost",
-    type=str,
-    help="Host used for the mongodb database.",
-)
-@click.option(
-    "--db-name",
-    default="sps",
-    type=str,
-    help="Name used for the mongodb database.",
-)
-@click.option(
-    "--day-threshold",
-    default=20,
-    type=int,
-    help="Number of days that are used as threshold.",
-)
-@click.option(
-    "--options",
-    default=None,
-    type=str,
-    help="Options used for search. Write a string in the form of a python dict",
-)
-@click.option(
-    "--run-name",
-    default="test_run",
-    type=str,
-    help="Name of the run",
-)
-def find_monthly_search_commands(
-    db_port, db_host, db_name, day_threshold, options, run_name
-):
+# @click.command(context_settings={"help_option_names": ["-h", "--help"]})
+# @click.option(
+#     "--db-port",
+#     default=27017,
+#     type=int,
+#     help="Port used for the mongodb database.",
+# )
+# @click.option(
+#     "--db-host",
+#     default="sps-archiver1",
+#     type=str,
+#     help="Host used for the mongodb database.",
+# )
+# @click.option(
+#     "--db-name",
+#     default="sps-processing",
+#     type=str,
+#     help="Name used for the mongodb database.",
+# )
+# @click.option(
+#     "--day-threshold",
+#     default=20,
+#     type=int,
+#     help="Number of days that are used as threshold.",
+# )
+# @click.option(
+#     "--options",
+#     default=None,
+#     type=str,
+#     help="Options used for search. Write a string in the form of a python dict",
+# )
+# @click.option(
+#     "--run-name",
+#     default="test_run",
+#     type=str,
+#     help="Name of the run",
+# )
+def find_monthly_search_commands(db_port, db_host, db_name, candpath, day_threshold=10):
     db = db_utils.connect(port=db_port, host=db_host, name=db_name)
     all_stacks = list(db.ps_stacks.find({"num_days_month": {"$gte": day_threshold}}))
 
     all_commands = []
-    options_dict = json.loads(options)
+    # options_dict = json.loads(options)
     for stack in all_stacks:
         stack_obj = models.PsStack.from_db(stack)
         pointing = stack_obj.pointing(db)
+        ram_requirement = pointing.ram_requirement
+        tier_name, tier_limit = pointing.tier
+        threads_reserved = int(tier_limit / 3)
         arguments = {
             "ra": pointing.ra,
-            "dec": pointing.dec,
-            "components": "search-monthly",
+            "dec": f" {pointing.dec}",
             "db_port": db_port,
             "db_name": db_name,
             "db_host": db_host,
-            **options_dict,
+            "num_threads": threads_reserved,
+            "components": ["search-monthly"],
+            "known_source_threshold": 10,
+            "cand_path": candpath,
         }
         all_commands.append(
             {
                 "arguments": arguments,
-                "scheduled": False,
                 "maxdm": pointing.maxdm,
                 "stackpath": stack_obj.datapath_month,
                 "length": pointing.length,
+                "ram_requirement": ram_requirement,
+                "tier_name": tier_name,
             }
         )
 
-    with open(f"{run_name}.json", "w") as file:
-        file.write(json.dumps(all_commands, indent=4))
+    return all_commands
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})

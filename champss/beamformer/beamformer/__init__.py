@@ -13,7 +13,7 @@ AVAILAIBLE_POINTING_MAPS = []
 filenames = pathlib.Path(DATA_PATH).glob("**/pointings_map*")
 for filename in filenames:
     AVAILAIBLE_POINTING_MAPS.append(str(filename.absolute()))
-CURRENT_POINTING_MAP = DATA_PATH + "pointings_map_v1-3.json"
+CURRENT_POINTING_MAP = DATA_PATH + "pointings_map_v2-0.json"
 
 log = logging.getLogger(__package__)
 

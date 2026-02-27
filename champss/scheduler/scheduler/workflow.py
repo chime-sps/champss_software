@@ -4,12 +4,14 @@ import logging
 import os
 import re
 import time
+import threading
 
 import click
 import docker
 from slack_sdk import WebClient
 from workflow.definitions.work import Work
 from workflow.http.context import HTTPContext
+from bson.objectid import ObjectId
 
 log = logging.getLogger()
 
@@ -46,10 +48,10 @@ def message_slack(
 ):
     log.setLevel(logging.INFO)
     log.info(f"Sending to Slack: \n{slack_message}")
-    
+
     if not slack_token:
         slack_token = os.getenv("SLACK_APP_TOKEN", "")
-    
+
     slack_client = WebClient(token=slack_token)
     try:
         slack_request = slack_client.chat_postMessage(
@@ -278,6 +280,40 @@ def wait_for_no_tasks_in_states(
                 break
 
 
+def wait_until_service_not_pending(service_id, timeout=0.5):
+    docker_client = docker.from_env()
+    pending = True
+    while pending:
+        try:
+            service_tasks = docker_client.services.get(service_id).tasks()
+            pending = service_tasks[0]["Status"]["State"] in docker_swarm_pending_states
+            if pending:
+                time.sleep(timeout)
+        except (docker.errors.NotFound, IndexError) as e:
+            return None
+    return service_tasks[0]["Status"]["State"]
+
+
+def remove_finished_service(service_id, timeout=10):
+    docker_client = docker.from_env()
+    finished = False
+    while not finished:
+        time.sleep(timeout)
+        try:
+            service_tasks = docker_client.services.get(service_id).tasks()
+            finished = (
+                service_tasks[0]["Status"]["State"] in docker_swarm_finished_states
+            )
+            if finished:
+                try:
+                    docker_client.services.get(service_id).remove()
+                except:
+                    pass
+        except (docker.errors.NotFound, IndexError) as e:
+            return None
+    return service_tasks[0]["Status"]["State"]
+
+
 def schedule_workflow_job(
     docker_image,
     docker_mounts,
@@ -289,6 +325,7 @@ def schedule_workflow_job(
     workflow_tags,
     workflow_user="CHAMPSS",
     timeout=task_timeout_seconds,
+    return_service_id=False,
 ):
     """
     Deposit Work and scale Docker Service, as node resources are free.
@@ -306,6 +343,8 @@ def schedule_workflow_job(
     workflow_params (dict): Parameters to your function, in form {"param1": "value1", "param2": "value2"}.
     workflow_tags (list): Custom  tags for your Workflow job to be filtered by.
     workflow_user (str): Name of the user who shall own the Workflow job.
+    timeout (int): Timeout of the workflow task
+    return_service_id (bool): Also return service id and not only work id
 
     Returns:
     str: The ID of the deposited Workflow job if successful, otherwise an empty string.
@@ -315,6 +354,9 @@ def schedule_workflow_job(
     docker_client = docker.from_env()
 
     workflow_site = "chime"
+
+    tag_id = ObjectId().__str__()
+    workflow_tags.append(tag_id)
 
     try:
         work = Work(
@@ -329,8 +371,6 @@ def schedule_workflow_job(
         work.config.archive.products = "bypass"
         work.retries = 1
         work.timeout = timeout
-
-        wait_for_no_tasks_in_states(docker_swarm_pending_states)
 
         work_id = work.deposit(return_ids=True)
 
@@ -361,17 +401,17 @@ def schedule_workflow_job(
                     target=mount_target, source=mount_source, type="bind"
                 )
             )
-
+        service_name = f"processing-{docker_name.replace('.', '_').replace('/', '')}"
         docker_service = {
             "image": docker_image,
             # Can't have dots or slashes in Docker Service names
             # All Docker Services made with this function will be prefixed with "processing-"
-            "name": f"processing-{docker_name.replace('.', '_').replace('/', '')}",
+            "name": service_name,
             # Use one-shot Workflow runners since we need a new container per process for unique memory reservations
             # (we currently only use Workflow as a wrapper for its additional features, e.g. frontend)
             "command": (
                 "workflow run"
-                f" {workflow_buckets_name} {' '.join([f'--tag {tag}' for tag in workflow_tags])} --site"
+                f" {workflow_buckets_name} --tag {tag_id} --site"
                 f" {workflow_site} --lives 1 --sleep 1"
             ),
             # Using template Docker variables as in-container environment variables
@@ -403,15 +443,17 @@ def schedule_workflow_job(
 
         log.info(f"Creating Docker Service: \n{docker_service}")
 
-        # Wait a few seconds because Workflow Work might still not have propogated
-        # to Buckets, and Workflow runner can pickup nothing and just quietly exit
-        time.sleep(2)
-
-        docker_client.services.create(**docker_service)
-
-        wait_for_no_tasks_in_states(docker_swarm_pending_states)
-
-        return work_id[0]
+        service = docker_client.services.create(**docker_service)
+        service_id = service.attrs["ID"]
+        status = wait_until_service_not_pending(service_id)
+        remove_service_thread = threading.Thread(
+            target=remove_finished_service, args=(service_id,)
+        )
+        remove_service_thread.start()
+        if return_service_id:
+            return work_id[0], service_id
+        else:
+            return work_id[0]
     except Exception as error:
         log.info(
             f"Failed to deposit Work or create Docker Service: {error}. "
@@ -423,7 +465,10 @@ def schedule_workflow_job(
         except Exception as error:
             log.info(f"Failed to delete dangling Work: {error}.")
 
-        return ""
+        if return_service_id:
+            return "", ""
+        else:
+            return ""
 
 
 @click.command()
@@ -505,7 +550,7 @@ def get_work_from_buckets(workflow_buckets_name, work_id, failover_to_results):
     workflow_buckets_list = workflow_buckets_api.view(
         query={"pipeline": workflow_buckets_name, "id": work_id},
         limit=1,
-        projection={"results": 1},
+        # projection={"results": 1},
     )
 
     log.info(f"Workflow Buckets for Work ID {work_id}: \n{workflow_buckets_list}")
@@ -515,7 +560,7 @@ def get_work_from_buckets(workflow_buckets_name, work_id, failover_to_results):
             type(workflow_buckets_list[0]) == dict
             and "results" in workflow_buckets_list[0]
         ):
-            workflow_buckets_dict = workflow_buckets_list[0]["results"]
+            workflow_buckets_dict = workflow_buckets_list[0]  # ["results"]
             return workflow_buckets_dict
 
     if failover_to_results:
@@ -546,7 +591,7 @@ def get_work_from_results(workflow_results_name, work_id, failover_to_buckets):
         query={"id": work_id},
         pipeline=workflow_results_name,
         limit=1,
-        projection={"results": 1},
+        # projection={"results": 1},
     )
 
     log.info(f"Workflow Results for Work ID {work_id}: \n{workflow_results_list}")
@@ -556,7 +601,7 @@ def get_work_from_results(workflow_results_name, work_id, failover_to_buckets):
             type(workflow_results_list[0]) == dict
             and "results" in workflow_results_list[0]
         ):
-            workflow_results_dict = workflow_results_list[0]["results"]
+            workflow_results_dict = workflow_results_list[0]  # ["results"]
             return workflow_results_dict
 
     if failover_to_buckets:

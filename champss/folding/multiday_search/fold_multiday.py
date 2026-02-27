@@ -1,7 +1,6 @@
 import datetime as dt
-import logging
-import os
 from glob import glob
+import time
 
 import click
 import folding.fold_candidate as fold_candidate
@@ -10,15 +9,11 @@ from beamformer.strategist.strategist import PointingStrategist
 from beamformer.utilities.common import get_data_list
 from scheduler.workflow import schedule_workflow_job
 from sps_databases import db_api, db_utils
+from sps_pipeline.pipeline import default_datpath
 
-log = logging.getLogger()
-
-
-def find_all_dates_with_data(ra, dec, basepath, nday=0):
-    log.setLevel(logging.INFO)
+def find_all_dates_with_data(ra, dec, basepath, nday=0, start_date=""):
 
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
-    os.chdir(f"{basepath}")
     pst = PointingStrategist(create_db=False)
 
     dates_with_data = []
@@ -32,21 +27,22 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
 
         date = dt.datetime(year, month, day)
 
-        datelow = dt.datetime(2024, 1, 31)
-        datehigh = dt.datetime(2024, 12, 31)
-        if (date > datelow) and (date < datehigh):
-            active_pointing = pst.get_single_pointing(ra, dec, date)
+        if start_date:
+            if date < start_date:
+                continue
 
-            files = get_data_list(
-                active_pointing[0].max_beams, basepath=basepath, extn="dat"
-            )
-            if len(files) > 0:
-                print(filepath, len(files))
-                dates_with_data.append(date.strftime("%Y%m%d"))
+        active_pointing = pst.get_single_pointing(ra, dec, date)
 
-            if nday:
-                if len(dates_with_data) >= nday:
-                    return dates_with_data
+        files = get_data_list(
+            active_pointing[0].max_beams, basepath=basepath, extn="dat"
+        )
+        if len(files) > 0:
+            print(filepath, len(files))
+            dates_with_data.append(date.strftime("%Y%m%d"))
+
+        if nday:
+            if len(dates_with_data) >= nday:
+                return dates_with_data
 
     return dates_with_data
 
@@ -83,10 +79,27 @@ def find_all_dates_with_data(ra, dec, basepath, nday=0):
     help="Path for created files during fold step.",
 )
 @click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
+)
+@click.option(
     "--nday",
     default=0,
     type=int,
     help="Number of days to fold. Default is to fold all available days.",
+)
+@click.option(
+    "--start-date",
+    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
+    required=False,
+    help="Start date of data to process. Default = Today in UTC",
+)
+@click.option(
+    "--overwrite-folding",
+    is_flag=True,
+    help="Re-run folding even if already folded on this date.",
 )
 @click.option(
     "--use-workflow",
@@ -117,7 +130,10 @@ def main(
     db_host,
     db_name,
     foldpath,
+    datpath,
     nday,
+    start_date,
+    overwrite_folding,
     use_workflow,
     workflow_buckets_name,
     docker_image_name,
@@ -130,16 +146,14 @@ def main(
     dm = source.dm
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    dates_with_data = find_all_dates_with_data(
-        ra, dec, "/data/chime/sps/raw/", nday=nday
-    )
-    log.info(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
-    for date in dates_with_data:
+    dates_with_data = find_all_dates_with_data(ra, dec, datpath, nday=nday, start_date=start_date)
+    print(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
+    for i, date in enumerate(dates_with_data):
         if use_workflow:
             docker_name = f"{docker_service_name_prefix}-{date}-{fs_id}"
             docker_memory_reservation = (nchan / 1024) * 8
             docker_mounts = [
-                "/data/chime/sps/raw:/data/chime/sps/raw",
+                f"{datpath}:{datpath}",
                 f"{foldpath}:{foldpath}",
             ]
 
@@ -153,6 +167,8 @@ def main(
                 "write_to_db": True,
                 "using_workflow": True,
                 "foldpath": foldpath,
+                "datpath": datpath,
+                "overwrite_folding": overwrite_folding,
             }
             workflow_tags = [
                 "fold",
@@ -171,21 +187,28 @@ def main(
                 workflow_params,
                 workflow_tags,
             )
+            if i == 0:
+                # Wait longer after first job so it creates the parfile
+                # before subsequent jobs start, avoiding PEPOCH race condition
+                print("Waiting for first folding job to create parfile...")
+                time.sleep(5)
+            else:
+                time.sleep(1)
         else:
+            args = [
+            "--date", str(date),
+            "--fs_id", str(fs_id),
+            "--foldpath", str(foldpath),
+            "--datpath", str(datpath),
+            "--db-port", str(db_port),
+            "--db-name", str(db_name),
+            "--db-host", str(db_host),
+            "--write-to-db",
+            ]
+            if overwrite_folding:
+                args.append("--overwrite-folding")
             fold_candidate.main(
-                args=[
-                    "--date",
-                    str(date),
-                    "--fs_id",
-                    str(fs_id),
-                    "--db-host",
-                    str(db_host),
-                    "--db-port",
-                    str(db_port),
-                    "--db-name",
-                    str(db_name),
-                    "--write-to-db",
-                ],
+                args=args,
                 standalone_mode=False,
             )
 

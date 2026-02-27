@@ -1,22 +1,18 @@
 import datetime as dt
-import logging
 
 import click
 import multiday_search.confirm_cand as confirm_cand
 import multiday_search.fold_multiday as fold_multiday
-from foldutils.database_utils import add_mdcand_from_candpath, add_mdcand_from_psrname
+from folding.utilities.database import add_mdcand_from_candpath, add_mdcand_from_psrname
 from scheduler.workflow import (
     clear_workflow_buckets,
     docker_swarm_running_states,
     schedule_workflow_job,
     wait_for_no_tasks_in_states,
+    get_work_from_results,
 )
-from sps_databases import db_api, db_utils, models
-
-log = logging.getLogger()
-log_stream = logging.StreamHandler()
-logging.root.addHandler(log_stream)
-log = logging.getLogger(__name__)
+from sps_databases import db_utils
+from sps_pipeline.pipeline import default_datpath
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -34,9 +30,15 @@ log = logging.getLogger(__name__)
 )
 @click.option(
     "--foldpath",
-    default="/data/chime/sps/archives",
+    default="/mnt/beegfs-client/archives",
     type=str,
     help="Path for created files during fold step.",
+)
+@click.option(
+    "--datpath",
+    default=default_datpath,
+    type=str,
+    help="Path to the raw data folder.",
 )
 @click.option(
     "--db-port",
@@ -63,6 +65,17 @@ log = logging.getLogger(__name__)
     help="Number of days to fold and search. Default will fold and search all available days.",
 )
 @click.option(
+    "--start-date",
+    type=click.DateTime(["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]),
+    required=False,
+    help="Start date of data to process. Default = Today in UTC",
+)
+@click.option(
+    "--overwrite-folding",
+    is_flag=True,
+    help="Re-run folding even if already folded on this date.",
+)
+@click.option(
     "--use-workflow",
     is_flag=True,
     help="Queue folding jobs in parallel into Workflow, otherwise run locally.",
@@ -83,10 +96,13 @@ def main(
     candpath,
     psr,
     foldpath,
+    datpath,
     db_port,
     db_host,
     db_name,
     nday,
+    start_date,
+    overwrite_folding,
     use_workflow,
     workflow_buckets_name_prefix,
     docker_image_name,
@@ -98,6 +114,28 @@ def main(
         fs_id = str(add_mdcand_from_candpath(candpath, dt.datetime.now()))
     else:
         raise ValueError("Must provide either a candidate path or pulsar name")
+
+    args = [
+        "--fs_id",
+        fs_id,
+        "--foldpath",
+        foldpath,
+        "--datpath",
+        datpath,
+        "--db-port",
+        str(db_port),
+        "--db-name",
+        db_name,
+        "--db-host",
+        db_host,
+        "--nday",
+        str(nday),
+    ]
+    if start_date:
+        args += ["--start-date", start_date.strftime("%Y-%m-%d")]
+    if overwrite_folding:
+        args += ["--overwrite-folding"]
+
     if use_workflow:
         docker_service_name_prefix = "fold-multiday"
 
@@ -109,28 +147,13 @@ def main(
             standalone_mode=False,
         )
 
-        fold_multiday.main.main(
-            args=[
-                "--fs_id",
-                fs_id,
-                "--foldpath",
-                foldpath,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-host",
-                db_host,
-                "--nday",
-                nday,
-                "--use-workflow",
-                "--docker-image-name",
-                docker_image_name,
-                "--docker-service-name-prefix",
-                docker_service_name_prefix,
-                "--workflow-buckets-name",
-                workflow_buckets_name,
-            ],
+        args.append("--use-workflow")
+        args += ["--docker-image-name", docker_image_name]
+        args += ["--docker-service-name-prefix", docker_service_name_prefix]
+        args += ["--workflow-buckets-name", workflow_buckets_name]
+
+        fold_multiday.main(
+            args=args,
             standalone_mode=False,
         )
 
@@ -144,7 +167,7 @@ def main(
         docker_name = f"{docker_service_name_prefix}-{fs_id}"
         docker_memory_reservation = 64
         docker_mounts = [
-            "/data/chime/sps/raw:/data/chime/sps/raw",
+            f"{datpath}:{datpath}",
             f"{foldpath}:{foldpath}",
         ]
 
@@ -164,6 +187,7 @@ def main(
             "db_name": db_name,
             "nday": nday,
             "write_to_db": True,
+            "foldpath": foldpath,
         }
         workflow_tags = [
             "multiday",
@@ -184,32 +208,23 @@ def main(
         wait_for_no_tasks_in_states(
             docker_swarm_running_states, docker_service_name_prefix
         )
+        confirm_work = get_work_from_results(
+            workflow_results_name=workflow_buckets_name,
+            work_id=work_id,
+            failover_to_buckets=True,
+        )  # ["results"]
 
         # Can add Slack alerts here
         print("Finished multiday search")
-        foldresults_dict = {"coherentsearch_work_id": work_id}
-        return foldresults_dict, [], []
+        return confirm_work["results"], confirm_work["products"], confirm_work["plots"]
     else:
         fold_multiday.main(
-            args=[
-                "--fs_id",
-                fs_id,
-                "--foldpath",
-                foldpath,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-host",
-                db_host,
-                "--nday",
-                nday,
-            ],
+            args=args,
             standalone_mode=False,
         )
 
         print("Finished multiday folding, beginning the coherent search")
-        confirm_cand.main(
+        confirm_output = confirm_cand.main(
             args=[
                 "--fs_id",
                 fs_id,
@@ -221,12 +236,16 @@ def main(
                 db_host,
                 "--nday",
                 nday,
+                "--write-to-db",
+                "--foldpath",
+                foldpath,
             ],
             standalone_mode=False,
         )
 
         # Can add Slack alerts here
         print("Finished multiday search")
+        return confirm_output
 
 
 if __name__ == "__main__":

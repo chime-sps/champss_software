@@ -91,7 +91,7 @@ def ra_dec_from_ecliptic(elong, elat, elong_err=np.nan, elat_err=np.nan):
     return ra, dec, ra_err, dec_err
 
 
-def add_source_to_database(payload, db_port=27017, db_host="localhost", db_name="sps"):
+def add_source_to_database(payload, db_port=27017, db_host="sps-archiver1", db_name="sps"):
     """
     Add a source into the known source database, given a dictionary including all the
     properties required by the database.
@@ -102,7 +102,7 @@ def add_source_to_database(payload, db_port=27017, db_host="localhost", db_name=
         A dictionary including all the properties expected by the known source database. It should have :
         ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
         'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
-        'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
+        'spin_period_s_error', 'dm_galactic_ne_2025_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
         'spin_period_derivative_error', 'spin_period_epoch', 'survey']
     """
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     The attributes extracted are :
     ['source_type', 'source_name', 'pos_ra_deg', 'pos_dec_deg', 'pos_error_semimajor_deg',
     'pos_error_semiminor_deg', 'pos_error_theta_deg', 'dm', 'dm_error', 'spin_period_s',
-    'spin_period_s_error', 'dm_galactic_ne_2001_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
+    'spin_period_s_error', 'dm_galactic_ne_2025_max', 'dm_galactic_ymw_2016_max', 'spin_period_derivative',
     'spin_period_derivative_error', 'spin_period_epoch', 'survey']
     """
     parser = argparse.ArgumentParser(
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--db-host",
-        default="localhost",
+        default="sps-archiver1",
         type=str,
         help="Host used for the mongodb database.",
     )
@@ -169,9 +169,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--survey",
-        default=None,
+        nargs="+",                    # one or more arguments as a list
+        default=["champss"],          # default list
         type=str,
-        help="Survey for the new source",
+        help="Survey(s) for the new source",
     )
     args = parser.parse_args()
     tzpar_path = args.path
@@ -305,8 +306,8 @@ if __name__ == "__main__":
                 payload["pos_error_semimajor_deg"],
                 payload["pos_error_semiminor_deg"],
             ) = ra_dec_from_ecliptic(elong, elat, elong_err, elat_err)
-        payload["dm_galactic_ne_2001_max"] = float(
-            dmm.get_dm_ne2001(payload["pos_dec_deg"], payload["pos_ra_deg"])
+        payload["dm_galactic_ne_2025_max"] = float(
+            dmm.get_dm_ne2025(payload["pos_dec_deg"], payload["pos_ra_deg"])
         )
         payload["dm_galactic_ymw_2016_max"] = float(
             dmm.get_dm_ymw16(payload["pos_dec_deg"], payload["pos_ra_deg"])

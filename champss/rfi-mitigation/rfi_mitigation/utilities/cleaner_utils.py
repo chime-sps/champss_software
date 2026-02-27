@@ -7,7 +7,7 @@ from typing import Tuple, Union
 
 import numpy as np
 from scipy.optimize import newton
-from scipy.special import gamma, gammainc
+from scipy.special import gammainc
 from sps_common.constants import L1_NCHAN
 
 log = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def known_bad_channels(nchan: int = 16384) -> list:
     """
     # TODO: This bad channel mask needs to be re-evaluated,
     #  and the ordering needs to be checked
-    badchans_16k = 16383 - np.concatenate(
+    badchans_16k = np.concatenate(
         (
             range(0, 64),
             range(1804, 2224),
@@ -49,8 +49,16 @@ def known_bad_channels(nchan: int = 16384) -> list:
             range(12924, 12980),
             range(13534, 13554),
             range(16319, 16383),
+            range(1728, 1792),
+            range(2896, 2960),
+            range(7504, 7728),
+            [15142],
+            [15183],
+            [15199],
+            [15224],
         )
     )
+
     badchans_16k = sorted(badchans_16k)
 
     if nchan == L1_NCHAN:
@@ -529,7 +537,7 @@ def plot_diagnostic_delta(delta, idx):
     plt.plot(delta)
     plt.xlabel("Channel number")
     plt.ylabel(r"$\delta$ (data distribution shape)")
-    plt.title(f"Frequency-dependent shape parameter")
+    plt.title("Frequency-dependent shape parameter")
     plt.savefig(f"chunk_sk_delta_{idx}.png")
     plt.close()
 

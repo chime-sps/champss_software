@@ -43,9 +43,8 @@ from sps_pipeline import (  # ps,
     beamform,
     cands,
     cleanup,
-    hhat,
+    ffa,
     ps_cumul_stack,
-    rfi,
     utils,
 )
 
@@ -67,6 +66,13 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     )
 
     if config.logging.get("file_logging", False):
+        # Remove possibly pre-existing file handler
+        handlers_to_be_removed = []
+        for log_handler in log.root.handlers:
+            if isinstance(log_handler, logging.FileHandler):
+                handlers_to_be_removed.append(log_handler)
+        for handler in handlers_to_be_removed:
+            log.root.removeHandler(handler)
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(
@@ -140,11 +146,6 @@ def dbexcepthook(type, value, tb):
     help="Whether to use fdmt for dedispersion",
 )
 @click.option(
-    "--rfi-beamform/--no-rfi-beamform",
-    default=True,
-    help="Whether to run rfi mitigation during beamforming instead of separately",
-)
-@click.option(
     "--plot/--no-plot",
     default=False,
     help="Whether to create candidate plots",
@@ -160,7 +161,7 @@ def dbexcepthook(type, value, tb):
 @click.argument(
     "components",
     type=click.Choice(
-        ["all", "quant", "rfi", "beamform", "dedisp", "ps", "hhat", "search", "cleanup"]
+        ["all", "rfi", "beamform", "dedisp", "ps", "ffa", "search", "cleanup"]
     ),
     nargs=-1,
 )
@@ -181,7 +182,7 @@ def dbexcepthook(type, value, tb):
 )
 @click.option(
     "--db-host",
-    default="localhost",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
@@ -236,7 +237,10 @@ def dbexcepthook(type, value, tb):
     "--injection-path",
     default=None,
     type=str,
-    help="Path to yml file containing injection",
+    help=(
+        "Path to yml or pd pickle file containing injection. "
+        "Can also inject when the string is 'random' or 'single tpa_index frequency DM flux'"
+    ),
 )
 @click.option(
     "--injection-idx",
@@ -250,12 +254,6 @@ def dbexcepthook(type, value, tb):
     "--only-injections/--no-only-injections",
     default=False,
     help="Only process clusters containing injections.",
-)
-@click.option(
-    "--cutoff-frequency",
-    default=100.0,
-    type=float,
-    help="Frequency at which to stop processing candidates.",
 )
 @click.option(
     "--scale-injections/--not-scale-injections",
@@ -281,7 +279,6 @@ def main(
     date,
     stack,
     fdmt,
-    rfi_beamform,
     plot,
     plot_threshold,
     ra,
@@ -300,7 +297,6 @@ def main(
     injection_path,
     injection_idx,
     only_injections,
-    cutoff_frequency,
     scale_injections,
     datpath,
     config_options,
@@ -314,15 +310,11 @@ def main(
     Subcommands:
     - all: run all components (default)
 
-    - rfi: run only RFI excision
-
     - beamform: run only the beamformer
 
     - dedisp: run only the dedisperser
 
     - ps: run only power spectrum computation
-
-    - hhat: run only Hhat computation
 
     - search: run only the search
 
@@ -332,6 +324,7 @@ def main(
     E.g. If you want to produce filterbank files only from scratch,
     you can do run-pipeline --date 20200701 317.86 20.96 rfi beamform
     """
+    log.info("START")
     # Logging in multiprocessing child processes with Linux default
     # "fork" leads to unexpected behaviour
     multiprocessing.set_start_method("forkserver", force=True)
@@ -476,14 +469,6 @@ def main(
         assert date.date() == utils.transit_time(active_pointings[0]).date()
 
         global active_process
-        # RFI clean the data first
-        if "quant" in components:
-            nchan = max([p.nchan for p in active_pointings])
-            beams_start_end = rfi.get_data_to_clean(active_pointings)
-            run_quant(beams_start_end, nchan)
-        if "rfi" in components and not rfi_beamform:
-            beams_start_end = rfi.get_data_to_clean(active_pointings)
-            rfi.run(beams_start_end, config, basepath)
         N_ap = len(active_pointings)
         if N_ap > 1:
             log.info(
@@ -544,7 +529,7 @@ def main(
                 fdmt = False
             if "beamform" in components:
                 beamformer = beamform.initialise(
-                    config, rfi_beamform, basepath, datpath
+                    config, "rfi" in components, basepath, datpath
                 )
                 skybeam, spectra_shared = beamform.run(
                     active_pointing, beamformer, fdmt, num_threads, basepath
@@ -553,7 +538,10 @@ def main(
                     spectra_shared.close()
                     spectra_shared.unlink()
                     components = ["cleanup"]
-                    processing_failed = True
+                    # processing_failed = True
+                    insufficient_data = True
+                else:
+                    insufficient_data = False
             if "dedisp" in components:
                 if fdmt:
                     from sps_pipeline import dedisp
@@ -568,7 +556,7 @@ def main(
                     gc.collect()
                 else:
                     dedisp.run(active_pointing, config, basepath)
-            elif "ps" in components:
+            elif "ps" in components or "ffa" in components:
                 dedisp_ts = DedispersedTimeSeries.from_presto_datfiles(
                     obs_folder, active_pointing.obs_id, prefix=prefix
                 )
@@ -576,6 +564,26 @@ def main(
                 if "beamform" in components:
                     spectra_shared.close()
                     spectra_shared.unlink()
+
+            # Run FFA search if requested
+            if "ffa" in components and config.get("ffa", {}).get(
+                "run_ffa_search", False
+            ):
+                log.info(
+                    "FFA Search"
+                    f" ({active_pointing.ra:.2f} {active_pointing.dec:.2f}) @"
+                    f" {date:%Y-%m-%d}"
+                )
+                ffa_processor = ffa.initialise(config, num_threads)
+                ffa.run(
+                    active_pointing,
+                    dedisp_ts,
+                    ffa_processor,
+                    basepath,
+                    date,
+                )
+                # Note: We don't delete dedisp_ts here as PS might need it
+
             if "ps" in components:
                 # splitting the FFT for power spectra and search/stack process, so
                 # that we can delete dedispersed time series from memory first
@@ -608,7 +616,6 @@ def main(
                         injection_path,
                         injection_idx,
                         only_injections,
-                        cutoff_frequency,
                         scale_injections,
                         obs_folder,
                         prefix,
@@ -644,20 +651,22 @@ def main(
                 del power_spectra
             else:
                 power_spectra = None
-            if "hhat" in components:
-                hhat.run(active_pointing)
+                # If FFA was run without PS, clean up dedisp_ts
+                if "ffa" in components and "dedisp_ts" in locals():
+                    del dedisp_ts
+                    gc.collect()
+
             if "cleanup" in components:
                 clean_up = cleanup.CleanUp(**OmegaConf.to_container(config.cleanup))
                 clean_up.remove_files(active_pointing)
-                if config.cleanup_rfi:
-                    cleanup.cleanup_rfi(
-                        active_pointing.max_beams,
-                    )
             # finishing the observation -- update its status to completed
-            if processing_failed:
-                final_status = models.ObservationStatus.failed.value
+            if insufficient_data:
+                final_status = models.ObservationStatus.insufficient_data.value
             else:
-                final_status = models.ObservationStatus.complete.value
+                if processing_failed:
+                    final_status = models.ObservationStatus.failed.value
+                else:
+                    final_status = models.ObservationStatus.complete.value
             obs_final_dict = db_api.update_observation(
                 active_pointing.obs_id,
                 {"status": final_status},
@@ -789,7 +798,7 @@ def main(
 )
 @click.option(
     "--db-host",
-    default="localhost",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
@@ -843,11 +852,6 @@ def main(
     help="Only process clusters containing injections.",
 )
 @click.option(
-    "--cutoff-frequency",
-    default=100,
-    help="Frequency at which to stop processing candidates.",
-)
-@click.option(
     "--scale-injections/--not-scale-injections",
     default=False,
     help="Scale injection so that input sigma should be detected sigma.",
@@ -880,7 +884,6 @@ def stack_and_search(
     injection_path,
     injection_idx,
     only_injections,
-    cutoff_frequency,
     scale_injections,
     config_file,
     config_options,
@@ -895,7 +898,7 @@ def stack_and_search(
     - search-monthly: run the searching of the monthly stack
     """
 
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("forkserver", force=True)
     sys.excepthook = dbexcepthook
     global pipeline_start_time
     pipeline_start_time = time.time()
@@ -970,7 +973,6 @@ def stack_and_search(
             injection_path,
             injection_idx,
             only_injections,
-            cutoff_frequency,
             scale_injections,
             file=file,
         )
@@ -989,10 +991,11 @@ def stack_and_search(
                 plot,
                 plot_threshold,
                 config.cands.get("write_harmonically_related_clusters", False),
-                False,
+                True,
                 injection_path,
                 injection_idx,
                 only_injections,
+                closest_pointing_id,
             )
     else:
         power_spectra_monthly = None
@@ -1005,7 +1008,6 @@ def stack_and_search(
             injection_path,
             injection_idx,
             only_injections,
-            cutoff_frequency,
             scale_injections,
         )
         if to_search:
@@ -1031,6 +1033,7 @@ def stack_and_search(
                         injection_path,
                         injection_idx,
                         only_injections,
+                        closest_pointing_id,
                     )
     try:
         power_spectra_monthly.unlink_shared_memory()
@@ -1083,7 +1086,7 @@ def stack_and_search(
 )
 @click.option(
     "--db-host",
-    default="localhost",
+    default="sps-archiver1",
     type=str,
     help="Host used for the mongodb database.",
 )
@@ -1154,16 +1157,6 @@ def find_pointing_with_data(
                 print(f"{ap.ra:.2f} {ap.dec:.2f}")
     if not istheredata:
         print("There are no pointings with data to process for the given beam rows")
-
-
-def run_quant(utc_start, utc_end, beam_row, nchan):
-    """Quantize L1 data for the `pointing`."""
-    try:
-        from sps_pipeline import quant
-    except ImportError:
-        log.error("`ch_frb_l1` is a required dependency for quantization this step.")
-        sys.exit(1)
-    quant.run(utc_start, utc_end, beam_row, nchan)
 
 
 if __name__ == "__main__":

@@ -1,116 +1,21 @@
 import logging
+import multiprocessing
 import os
-import subprocess
-
 import click
-import numpy as np
-from astropy.coordinates import SkyCoord
-from astropy.time import Time
 
 # set these up before importing any SPS packages
 log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
-from beamformer.skybeam import SkyBeamFormer
-from beamformer.strategist.strategist import PointingStrategist
-from beamformer.utilities.common import find_closest_pointing, get_data_list
-from folding.plot_candidate import plot_candidate_archive
+from beamformer.utilities.common import find_closest_pointing
+from folding.fold import Fold
+from folding.utilities.utils import candidate_name, create_ephemeris
+from folding.plot_aliases import plot_aliases
+from folding.utilities.database import update_folding_history
 from scheduler.utils import convert_date_to_datetime
 from sps_databases import db_api, db_utils
-from sps_pipeline.pipeline import default_datpath
-
-
-def update_folding_history(id, payload):
-    """
-    Updates a followup_source with the given attribute and values as a dict.
-
-    Parameters
-    ----------
-    id: str or ObjectId
-        The id of the followup source to be updated
-
-    payload: dict
-        The dict of the attributes and values to be updated
-
-    Returns
-    -------
-    followup_source: dict
-        The dict of the updated followup source
-    """
-    import pymongo
-    from bson.objectid import ObjectId
-
-    db = db_utils.connect()
-    if isinstance(id, str):
-        id = ObjectId(id)
-    return db.followup_sources.find_one_and_update(
-        {"_id": id},
-        {"$push": payload},
-        return_document=pymongo.ReturnDocument.AFTER,
-    )
-
-
-def apply_logging_config(level):
-    """
-    Applies logging settings from the given configuration.
-
-    Logging settings are under the 'logging' key, and include:
-    - format: string for the `logging.formatter`
-    - level: logging level for the root logger
-    - modules: a dictionary of submodule names and logging level to be applied to that submodule's logger
-    """
-    log_stream.setFormatter(
-        logging.Formatter(
-            fmt="%(asctime)s %(levelname)s >> %(message)s", datefmt="%b %d %H:%M:%S"
-        )
-    )
-
-    logging.root.setLevel(level)
-    log.debug("Set default level to: %s", level)
-
-
-apply_logging_config(logging.INFO)
-
-
-def candidate_name(ra_deg, dec_deg, j2000=True):
-    ra_hhmmss = ra_deg * 24 / 360
-    dec_ddmmss = abs(dec_deg)
-    ra_str = f"{int(ra_hhmmss):02d}{int((ra_hhmmss * 60) % 60):02d}"
-    dec_sign = "+" if dec_deg >= 0 else "-"
-    dec_str = f"{int(dec_ddmmss):02d}{int((dec_ddmmss * 60) % 60):02d}"
-    candidate_name = "J" + ra_str + dec_sign + dec_str
-    return candidate_name
-
-
-def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
-    cand_pos = SkyCoord(ra, dec, unit="deg")
-    raj = f"{cand_pos.ra.hms.h:02.0f}:{cand_pos.ra.hms.m:02.0f}:{cand_pos.ra.hms.s:.6f}"
-    decj = f"{cand_pos.dec.dms.d:02.0f}:{abs(cand_pos.dec.dms.m):02.0f}:{abs(cand_pos.dec.dms.s):.6f}"
-    pepoch = Time(obs_date).mjd
-    log.info("Making new candidate ephemeris...")
-    ephem = [
-        ["PSRJ", name],
-        ["RAJ", str(raj)],
-        ["DECJ", str(decj)],
-        ["DM", str(dm)],
-        ["PEPOCH", str(pepoch)],
-        ["F0", str(f0)],
-        ["DMEPOCH", str(pepoch)],
-        ["RAJD", str(ra)],
-        ["DECJD", str(dec)],
-        ["EPHVER", "2"],
-        ["UNITS", "TDB"],
-    ]
-
-    with open(ephem_path, "w") as file:
-        for row in ephem:
-            line = "\t".join(row)
-            line.expandtabs(8)
-            file.write(line + "\n")
-
-    if fs_id:
-        db_api.update_followup_source(fs_id, {"path_to_ephemeris": ephem_path})
+from sps_pipeline.pipeline import default_datpath, load_config, apply_logging_config
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -120,19 +25,18 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
     required=True,
     help="Date of data to process. Default = Today in UTC",
 )
-@click.option("--sigma", type=float, help="Pipeline sigma of candidate")
-@click.option("--dm", type=float, help="DM")
-@click.option("--f0", type=float, help="F0")
-@click.option("--ra", type=float, help="RA")
-@click.option("--dec", type=float, help="DEC")
 @click.option(
-    "--known",
+    "--foldvalues",
     type=str,
-    default=" ",
-    help="Name of known pulsar, otherwise empty string",
+    default="",
+    help="Space-separated candidate parameters: 'ra dec f0 dm' (degrees, degrees, Hz, pc/cm^3)",
 )
 @click.option(
-    "--psr", type=str, default="", help="Fold on known pulsar, using ephemeris"
+    "--parfile",
+    "-par",
+    type=str,
+    default="",
+    help="Path to ephemeris file for folding",
 )
 @click.option(
     "--fs_id",
@@ -179,22 +83,32 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
 @click.option(
     "--write-to-db",
     is_flag=True,
-    help="Set folded_status to True in the processes database.",
+    help="Write folding results to database (only used with --fs_id).",
 )
 @click.option(
     "--overwrite-folding",
     is_flag=True,
     help="Re-run folding even if already folded on this date.",
 )
+@click.option(
+    "--filterbank-to-ram/--no-filterbank-to-ram",
+    default=True,
+    help="Use ramdisk for filterbank files, default True.",
+)
+@click.option(
+    "--fold-aliases",
+    is_flag=True,
+    help="Fold at multiple frequency aliases (1/16, 1/8, 1/4, 1/3, 1/2, 1, 2, 3, 4, 8, 16).",
+)
+@click.option(
+    "--exact-coords",
+    is_flag=True,
+    help="Use exact RA/Dec coordinates without snapping to pointing map grid.",
+)
 def main(
     date,
-    sigma,
-    dm,
-    f0,
-    ra,
-    dec,
-    known,
-    psr,
+    foldvalues,
+    parfile,
     fs_id,
     db_port,
     db_host,
@@ -205,46 +119,57 @@ def main(
     write_to_db=False,
     using_workflow=False,
     overwrite_folding=False,
+    filterbank_to_ram=True,
+    fold_aliases=False,
+    exact_coords=False,
 ):
     """
-    Perform the main processing steps for folding a candidate or known source.  It can
-    be called for a set of ra, dec, f0, dm, from a pulsar name using the known_source
-    database, or from a FollowUpSource ID which uses the ephemeris in the database.
+    Perform the main processing steps for folding a candidate.
 
     The main automated processing will use FollowUpSource ID, and update the database with the folding history.
 
+    Use cases:
+    1. --fs_id: Read from database using FollowUpSource ID
+    2. --foldvalues: Fold with explicit ra, dec, f0, dm values
+    3. --parfile: Fold using an explicit ephemeris file
+    4. --candpath: Fold from a candidate file
+
     Args:
         date (str or datetime.datetime): The date of the observation.
-        sigma (float): The significance threshold for folding.
-        dm (float): The dispersion measure.
-        f0 (float): The spin frequency.
-        ra (float): The right ascension of the source.
-        dec (float): The declination of the source.
-        known (str): The name of the known source.
-        psr (str): The name of the pulsar.
-        fs_id (int): The ID of the FollowUpSource.
+        foldvalues (str): Space-separated "ra dec f0 dm" values.
+        parfile (str): Path to parfile.
+        fs_id (str): FollowUpSource ID from the database.
         db_port (int): The port number for the database connection.
         db_host (str): The hostname of the database.
         db_name (str): The name of the database.
-        basepath (str): The base path for the data.
-        write_to_db (bool, optional): Whether to write the results to the database. Defaults to False.
-        using_workflow (bool, optional): Whether the function is being called from a workflow. Defaults to False.
+        foldpath (str): The basepath for fold outputs.
+        datpath (str): The basepath for raw data.
+        candpath (str): Path to candidate file.
+        write_to_db (bool, optional): Whether to write the results to the database (only with --fs_id).
+        using_workflow (bool, optional): Whether to run the function through Workflow.
+        overwrite_folding (bool, optional): Re-run folding even if already done.
+        filterbank_to_ram (bool, optional): Use ramdisk for filterbank files.
+        fold_aliases (bool, optional): Fold at multiple frequency aliases.
+        exact_coords (bool, optional): Use exact coordinates without grid snapping.
 
     Returns:
-        tuple: A tuple containing an empty dictionary, an empty list, and an empty list.
+        tuple: A tuple containing fold_details dict, list of plot filenames, list of plot filenames.
     """
 
     if using_workflow:
         date = convert_date_to_datetime(date)
 
+    multiprocessing.set_start_method("forkserver", force=True)
     db_utils.connect(host=db_host, port=db_port, name=db_name)
-    pst = PointingStrategist(create_db=False)
 
-    # fs_id known_source, md_candidate, sd_candidate, ra+dec, psr
+    # Parse input parameters
     ephem_path = None
+    sigma = None
+
     if fs_id:
+        # Main production use case: read from database
         source = db_api.get_followup_source(fs_id)
-        source_type = source.source_type
+
         if source.folding_history:
             fold_dates = [entry["date"].date() for entry in source.folding_history]
             if not overwrite_folding and date.date() in fold_dates:
@@ -256,31 +181,54 @@ def main(
         dec = source.dec
         dm = source.dm
         sigma = source.candidate_sigma
-        if source_type == "known_source":
-            psr = source.source_name
-            dir_suffix = "known_sources"
-            known = psr
-        elif source_type == "md_candidate" or source_type == "sd_candidate":
-            dir_suffix = "candidates"
-            name = candidate_name(ra, dec)
-        ephem_path = source.path_to_ephemeris
-    elif psr:
-        source = db_api.get_known_source_by_names(psr)[0]
-        ra = source.pos_ra_deg
-        dec = source.pos_dec_deg
-        dm = source.dm
-        name = psr
-        dir_suffix = "known_sources"
-        f0 = 1 / source.spin_period_s
-        known = psr
-    elif ra and dec:
-        coords = find_closest_pointing(ra, dec)
-        ra = coords.ra
-        dec = coords.dec
         dir_suffix = "candidates"
         name = candidate_name(ra, dec)
-    elif candpath and write_to_db:
-        from folding.filter_mpcandidates import add_candidate_to_fsdb
+        ephem_path = source.path_to_ephemeris
+
+    elif foldvalues:
+        # Parse space-separated "ra dec f0 dm" values
+        try:
+            values = foldvalues.split()
+            if len(values) != 4:
+                log.error("--foldvalues must contain exactly 4 space-separated values: ra dec f0 dm")
+                return {}, [], []
+            ra, dec, f0, dm = map(float, values)
+        except ValueError as e:
+            log.error(f"Failed to parse --foldvalues: {e}")
+            return {}, [], []
+
+        if not exact_coords:
+            coords = find_closest_pointing(ra, dec)
+            ra = coords.ra
+            dec = coords.dec
+        dir_suffix = "candidates"
+        name = candidate_name(ra, dec)
+
+    elif parfile:
+        # Explicit ephemeris file provided
+        if not os.path.exists(parfile):
+            log.error(f"Ephemeris file {parfile} not found")
+            return {}, [], []
+        ephem_path = parfile
+
+        # Parse ephemeris to get ra, dec, f0, dm
+        from folding.utilities.database import scrape_ephemeris
+        payload = scrape_ephemeris(parfile)
+        ra = payload['ra']
+        dec = payload['dec']
+        f0 = payload['f0']
+        dm = float(payload['dm'])
+
+        if not exact_coords:
+            coords = find_closest_pointing(ra, dec)
+            ra = coords.ra
+            dec = coords.dec
+        dir_suffix = "candidates"
+        name = candidate_name(ra, dec)
+
+    elif candpath:
+        # Fold from candidate file
+        from folding.utilities.database import add_candidate_to_fsdb
         from sps_common.interfaces import MultiPointingCandidate
 
         date_str = date.strftime("%Y%m%d")
@@ -293,182 +241,112 @@ def main(
         dir_suffix = "candidates"
         name = candidate_name(ra, dec)
 
-        followup_source = add_candidate_to_fsdb(
-            date_str, ra, dec, f0, dm, sigma, candpath
-        )
-        print(followup_source)
-        fs_id = followup_source._id
+        # Only add to database if write_to_db is True and fs_id wasn't already provided
+        if write_to_db:
+            followup_source = add_candidate_to_fsdb(
+                date_str, ra, dec, f0, dm, sigma, candpath
+            )
+            fs_id = followup_source._id
     else:
         log.error(
-            "Must provide either a pulsar name, FollowUpSource ID, candidate path, or"
-            " candidate RA and DEC"
+            "Must provide one of: --fs_id, --foldvalues, --parfile, or --candpath"
         )
         return {}, [], []
 
+    config = load_config()
+    log_path = foldpath + f"/logs/{date.strftime('%Y/%m/%d')}/"
+    log_name = (
+        f"fold_candidate{date.strftime('%Y-%m-%d')}_{ra:.02f}_"
+        f"{dec:.02f}_{f0:.02f}_{dm:.02f}.log"
+    )
+    log_file = log_path + log_name
+    apply_logging_config(config, log_file)
+
     directory_path = f"{foldpath}/{dir_suffix}"
+    coord_path = f"{directory_path}/{ra:.02f}_{dec:.02f}"
 
-    year = date.year
-    month = date.month
-    day = date.day
-
-    if dir_suffix == "candidates":
-        log.info(f"Setting up pointing for {ra:.02f} {dec:.02f}...")
-        coord_path = f"{directory_path}/{ra:.02f}_{dec:.02f}"
-        archive_fname = (
-            f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}"
+    # Create ephemeris if not provided
+    if not ephem_path:
+        if not os.path.exists(coord_path):
+            os.makedirs(coord_path)
+        ephem_path = (
+            f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.par"
         )
-        if not os.path.exists(coord_path):
-            os.makedirs(coord_path)
-        else:
-            log.info(f"Directory '{coord_path}' already exists.")
-        if not ephem_path:
-            ephem_path = (
-                f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{year}-{month:02}-{day:02}.par"
-            )
-            create_ephemeris(name, ra, dec, dm, date, f0, ephem_path, fs_id)
-    elif dir_suffix == "known_sources":
-        log.info(f"Setting up pointing for {psr}...")
-        coord_path = f"{directory_path}/folded_profiles/{psr}"
-        archive_fname = f"{coord_path}/{psr}_{year}-{month:02}-{day:02}"
-        if not os.path.exists(coord_path):
-            os.makedirs(coord_path)
-        else:
-            log.info(f"Directory '{coord_path}' already exists.")
-        if not ephem_path:
-            ephem_path = f"{directory_path}/ephemerides/{psr}.par"
+        create_ephemeris(name, ra, dec, dm, date, f0, ephem_path, fs_id)
+
+    # Check if archive already exists
+    archive_fname = (
+        f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.ar"
+    )
+    if os.path.isfile(archive_fname) and not overwrite_folding:
+        log.info(f"Archive file {archive_fname} already exists, skipping folding...")
+        return {}, [], []
 
     if not os.path.exists(ephem_path):
         log.error(f"Ephemeris file {ephem_path} not found")
         return {}, [], []
 
-    outdir = coord_path
-    fname = f"/{year}-{month:02}-{day:02}.fil"
-    fil = outdir + fname
+    # Initialize Fold object
+    folder = Fold(
+        ra=ra,
+        dec=dec,
+        f0=f0,
+        dm=dm,
+        date=date,
+        ephem_path=ephem_path,
+        foldpath=foldpath,
+        datpath=datpath,
+        config=config,
+        name=name,
+        filterbank_to_ram=filterbank_to_ram,
+        exact_coords=exact_coords,
+        coord_path=coord_path,
+    )
 
-    pst = PointingStrategist(create_db=False)
-    ap = pst.get_single_pointing(ra, dec, date)
+    # Setup paths
+    folder.setup_paths(dir_suffix=dir_suffix)
 
-    data_list = []
-    for active_pointing in ap:
-        data_list.extend(
-            get_data_list(active_pointing.max_beams, basepath=datpath, extn="dat")
-        )
-    if not data_list:
-        log.error(f"No data found for the pointing {ap[0].ra:.2f} {ap[0].dec:.2f}")
+    # Beamform
+    if not folder.beamform():
+        log.error("Beamforming failed")
         return {}, [], []
 
-    nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
-    nchan = 1024 * (2**nchan_tier)
-    if nchan < ap[0].nchan:
-        log.info(
-            f"only need nchan = {nchan} for dm = {dm}, beamforming with"
-            f" {nchan} channels"
-        )
-        ap[0].nchan = nchan
-    num_threads = 4 * nchan // 1024
-    log.info(f"using {num_threads} threads")
+    # Fold
+    if not folder.fold():
+        log.error("Folding failed")
+        folder.cleanup()
+        return {}, [], []
 
-    # set number of turns, roughly equalling 10s
-    turns = int(np.ceil(10 * f0))
-    if turns <= 2:
-        intflag = "-turns"
-    else:
-        intflag = "-L"
-        turns = 10
+    # Fold aliases if requested
+    alias_results = {}
+    if fold_aliases:
+        alias_results = folder.fold_aliases()
 
-    if not os.path.isfile(fil):
-        log.info("Beamforming...")
-        sbf = SkyBeamFormer(
-            extn="dat",
-            update_db=False,
-            min_data_frac=0.5,
-            basepath=datpath,
-            add_local_median=True,
-            detrend_data=True,
-            detrend_nsamp=32768,
-            masking_timescale=512000,
-            # flatten_bandpass=False,
-            run_rfi_mitigation=True,
-            masking_dict=dict(
-                weights=True,
-                l1=True,
-                badchan=True,
-                kurtosis=False,
-                mad=False,
-                sk=True,
-                powspec=False,
-                dummy=False,
-            ),
-            beam_to_normalise=1,
-        )
-        skybeam, spectra_shared = sbf.form_skybeam(ap[0], num_threads=num_threads)
-        if skybeam is None:
-            log.info(
-                "Insufficient unmasked data to form skybeam, exiting before filterbank creation"
+        # Plot alias results
+        if alias_results:
+            alias_plot_path = os.path.join(
+                folder.coord_path, "aliases", f"alias_plot_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.png"
             )
-            spectra_shared.close()
-            spectra_shared.unlink()
-            return
-        else:
-            log.info(f"Writing to {fil}")
-            skybeam.write(fil)
-            spectra_shared.close()
-            spectra_shared.unlink()
-            del skybeam
+            plot_aliases(alias_results, output_path=alias_plot_path)
 
-    if not os.path.isfile(f"{archive_fname}.ar"):
-        log.info("Folding...")
-        subprocess.run(
-            [
-                "dspsr",
-                "-t",
-                f"{num_threads}",
-                f"{intflag}",
-                f"{turns}",
-                "-A",
-                "-k",
-                "chime",
-                "-E",
-                f"{ephem_path}",
-                "-O",
-                f"{archive_fname}",
-                f"{fil}",
-            ]
-        )
-        log.info(f"Finished, deleting {fil}")
-        os.remove(fil)
-
-    archive_fname = archive_fname + ".ar"
-    create_FT = f"pam -T -F {archive_fname} -e FT"
-    subprocess.run(create_FT, shell=True, capture_output=True, text=True)
-
-    SNprof, SN_arr, plot_fname = plot_candidate_archive(
-        archive_fname,
-        sigma,
-        dm,
-        f0,
-        ra,
-        dec,
-        coord_path,
-        known=known,
-        foldpath=foldpath + "/plots/folded_candidate_plots/",
+    # Plot
+    SNprof, SN_arr, plot_fname = folder.plot(
+        sigma=sigma,
+        foldpath_plots=foldpath + "/plots/folded_candidate_plots/"
     )
+
+    # Cleanup
+    folder.cleanup()
 
     log.info(f"SN of folded profile: {SN_arr}")
     fold_details = {
         "date": date,
-        "archive_fname": archive_fname,
+        "archive_fname": folder.archive_fname,
         "SN": float(SN_arr),
         "path_to_plot": plot_fname,
     }
 
-    fold_details = {
-        "date": date,
-        "archive_fname": archive_fname,
-        "SN": float(SN_arr),
-        "path_to_plot": plot_fname,
-    }
-
+    # Update database
     if fs_id and write_to_db:
         log.info("Updating FollowUpSource with folding history")
         folding_history = source.folding_history
@@ -493,4 +371,3 @@ def main(
 
 if __name__ == "__main__":
     main()
-    # main(year, month, day, sigma, dm, f0, ra, dec, known)

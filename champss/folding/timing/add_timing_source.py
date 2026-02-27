@@ -4,8 +4,8 @@ import subprocess
 
 import click
 import numpy as np
-from folding.archive_utils import read_par
-from foldutils.database_utils import add_knownsource_to_fsdb, scrape_ephemeris
+from folding.utilities.archives import read_par
+from folding.utilities.database import add_knownsource_to_fsdb, scrape_ephemeris
 from sps_common.interfaces import MultiPointingCandidate
 from sps_databases import db_api, db_utils
 

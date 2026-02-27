@@ -5,7 +5,6 @@ if an event is likely originating from a known source.
 Adapted to SPS 20210204
 """
 
-
 import logging
 import operator
 import os
@@ -18,6 +17,7 @@ from attr.validators import instance_of
 from sps_common.interfaces import KnownSourceClassification, KnownSourceLabel
 from sps_databases.db_api import get_nearby_known_sources
 from sps_multi_pointing.known_source_sifter import known_source_filters
+from sps_common.interfaces.utilities import angular_separation
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +62,18 @@ class KnownSourceSifter:
     threshold = attr.ib(default=1.0, validator=instance_of(float))
     rfi_check = attr.ib(default={}, validator=instance_of(dict))
     use_unknown_freq = attr.ib(default=False, validator=instance_of(bool))
+    filter_scraper_and_f1_nan = attr.ib(default=False, validator=instance_of(bool))
+    filter_any_nan = attr.ib(default=True, validator=instance_of(bool))
+    filter_undetected_scraper_source = attr.ib(
+        default=True, validator=instance_of(bool)
+    )
+    update_kss_nan_from_champss = attr.ib(default=True, validator=instance_of(bool))
     config_init = attr.ib(init=False)
     ks_database = attr.ib(init=False)
     ks_filter_names = attr.ib(init=False)
     ks_filter_weights = attr.ib(init=False)
+    use_sp_fit_in_delta_freq = attr.ib(default=True, validator=instance_of(bool))
+    use_sp_fit_in_delta_dm = attr.ib(default=True, validator=instance_of(bool))
 
     def __attrs_post_init__(self):
         self.config_init = False
@@ -77,6 +85,14 @@ class KnownSourceSifter:
     def load_ks_database(self):
         # get nearby known sources and make it a numpy array
         ks_collection = get_nearby_known_sources(0, 0, np.infty)  # get all sources
+        # Filter scraper sources and sources with no errors
+        if self.filter_scraper_and_f1_nan:
+            ks_collection = [
+                ks
+                for ks in ks_collection
+                if np.isfinite(ks.spin_period_s_error)
+                and "psr_scraper" not in ks.survey
+            ]
         ks_database = np.empty(
             shape=len(ks_collection),
             dtype=[
@@ -93,8 +109,10 @@ class KnownSourceSifter:
                 ("spin_period_s_error", "<f4"),
             ],  # the dtype has some unused fields trimmed out
         )
+        checked_nan_fields = ["dm", "dm_error", "spin_period_s", "spin_period_s_error"]
+        used_indices = []
         for i, ks in enumerate(ks_collection):
-            ks_database[i] = (
+            entry = (
                 ks.source_name,
                 ks.pos_ra_deg,
                 ks.pos_dec_deg,
@@ -107,8 +125,28 @@ class KnownSourceSifter:
                 known_source_filters.change_spin_period(ks, Time.now()),
                 ks.spin_period_s_error,
             )
+            ks_database[i] = entry
+            if self.filter_undetected_scraper_source:
+                if "psr_scraper" in ks.survey and not len(
+                    ks.champss_derived_parameters
+                ):
+                    continue
+            if self.update_kss_nan_from_champss:
+                for field in checked_nan_fields:
+                    if np.isnan(ks_database[i][field]) or (
+                        "psr_scraper" in ks.survey and "error" in field
+                    ):
+                        new_value = ks.champss_derived_parameters.get(field, None)
+                        if new_value:
+                            ks_database[i][field] = new_value
 
-        self.ks_database = ks_database
+            if self.filter_any_nan:
+                if np.isnan(ks_database[i][checked_nan_fields].tolist()).any():
+                    print("filtered", ks.source_name)
+                    continue
+            used_indices.append(i)
+
+        self.ks_database = ks_database[used_indices]
         logger.info(f"{ks_database.size} known sources loaded")
 
     def classify(self, candidate, pos_filter=False, known_source_radius=5.0):
@@ -276,6 +314,9 @@ class KnownSourceSifter:
                     candidate,
                     ks_sub_database,
                     self.ks_filter_weights[i],
+                    # Giving these possibly superfluous arguments does not hurt as long **kwargs is used
+                    use_sp_fit_in_delta_freq=self.use_sp_fit_in_delta_freq,
+                    use_sp_fit_in_delta_dm=self.use_sp_fit_in_delta_dm,
                 )
             else:
                 # Btot = B1 * B2 * ... * Bn
@@ -342,7 +383,7 @@ def known_sources_subset(ks_database, pos_filter=False, ra=0, dec=0, radius=5.0)
     """
     if pos_filter:
         # select on angular separation
-        _, separation = known_source_filters.angular_separation(
+        _, separation = angular_separation(
             ks_database["pos_ra_deg"],
             ks_database["pos_dec_deg"],
             ra,

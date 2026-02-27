@@ -145,6 +145,8 @@ class StaticPeriodicFilter:
         # sort things so that bin numbers are arranged from smallest to
         # largest, and ensure that the list is unique
         bad_indices = sorted(set(bad_indices))
+        # Make sure that no indices that are too high exist
+        bad_indices = [index for index in bad_indices if index < nfreqs]
         n_bad_indices = len(bad_indices)
         log.info(
             "Fraction of FFT bins removed ="
@@ -280,7 +282,7 @@ class DynamicPeriodicFilter:
         log.debug(
             f"flagging freq bins with peak above {self.peak_find_height} sigma limit "
         )
-        log.debug(f"Replace first bin in power spectra by mean value")
+        log.debug("Replace first bin in power spectra by mean value")
         ps[0] = np.median(ps)
         red_noise_fit_start_freq_bin = np.where(
             ps_freqs < self.red_noise_fit_start_freq
@@ -292,15 +294,15 @@ class DynamicPeriodicFilter:
             red_noise_fit_start_freq_bin, red_noise_fit_upper_freq_bin
         )
 
-        log.debug(f"taking the log of power spectrum")
+        log.debug("taking the log of power spectrum")
 
         # replacing 0's wth 1's to avoid log function error
 
         np.place(ps, ps == 0, [1])
         log_ps = np.log10(ps)
         log.debug(
-            f"normallising the log of power spectra to zero mean and unit standard"
-            f" deviation"
+            "normallising the log of power spectra to zero mean and unit standard"
+            " deviation"
         )
 
         # replace NaNs and infs with 0
@@ -370,10 +372,10 @@ class DynamicPeriodicFilter:
         widths_of_birdies = right_markers - left_markers
         percentage_of_data_flagged = sum(widths_of_birdies) * 100 / ps_freqs[-1]
 
-        log.info(f"The percentage of data flagged is { percentage_of_data_flagged }")
+        log.info(f"The percentage of data flagged is {percentage_of_data_flagged}")
 
         if debug:
-            log.info(f"enable debug mode to see Diagnostic Plots for troubleshooting")
+            log.info("enable debug mode to see Diagnostic Plots for troubleshooting")
             from matplotlib import pyplot as plt
 
             res = ps_freqs[1]
@@ -406,11 +408,10 @@ class DynamicPeriodicFilter:
                 if num < 6:
                     pointing = db_api.get_pointing(observ.pointing_id)
                     log.info(
-                        "length of birdies index array "
-                        f" {len(observ.birdies_position) }"
+                        f"length of birdies index array  {len(observ.birdies_position)}"
                     )
                     log.info(
-                        f"length of birdies height array  {len(observ.birdies_height) }"
+                        f"length of birdies height array  {len(observ.birdies_height)}"
                     )
                     ax.scatter(
                         np.array(observ.birdies_position) * res,
@@ -465,7 +466,7 @@ class DynamicPeriodicFilter:
         )
         # Only take ps mean and std outside rednoise fitting bins
         if self.update_db:
-            log.info(f"Updating birdie information in database.")
+            log.info("Updating birdie information in database.")
             self.update_database(
                 obs_id,
                 birdies_height,

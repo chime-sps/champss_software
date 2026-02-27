@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--port", type=int, default=27017, help="The port of the database.")
 parser.add_argument("--name", type=str, default="sps", help="The name of the database.")
 parser.add_argument(
-    "--host", type=str, default="localhost", help="The name of the database."
+    "--host", type=str, default="sps-archiver1", help="The name of the database."
 )
 parser.add_argument(
     "--count",
@@ -28,7 +28,9 @@ if "pointings" in db.list_collection_names():
 
 # Add pointings
 print("Load the pointings map")
-pointings = json.load(open("./pointings_map_v1-3.json"))
+pointings = json.load(
+    open("../../../beamformer/beamformer/data/pointings_map_v2-0.json")
+)
 for p in pointings:
     p["search_algorithm"] = models.SearchAlgorithm.power_spec.value
 

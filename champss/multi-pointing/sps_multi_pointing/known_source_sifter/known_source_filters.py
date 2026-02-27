@@ -5,9 +5,9 @@ template function is defined below.
 Adpated from frb-l2l3 on 20200202.
 """
 
-
 import numpy as np
 from astropy.time import Time
+from sps_common.interfaces.utilities import angular_separation
 
 # from sps_common.constants import TELESCOPE_ROTATION_ANGLE
 # from sps_common.config import search_freq_range_from_dc
@@ -54,15 +54,35 @@ def compare_position(candidate, known_sources, weight, **kwargs):
         known_sources["pos_ra_deg"],
         known_sources["pos_dec_deg"],
     )
-
     # in SPS, the position uncertainty is calculated assuming a gaussian ellipsoid beam of EW FWHM of
     # 0.4 degree and NS FWHM of 0.4 / cos(zenith angle) and an angle of from true North from sps_common.
+
+    ini_error_1 = (
+        0.4 / (2 * np.sqrt(2 * np.log(2))) / np.cos(np.abs(candidate.dec - 49.32))
+    )
+    ini_error_2 = 0.4 / (2 * np.sqrt(2 * np.log(2)))
+    cand_sigma = candidate.best_sigma
+    min_search_sigma = 6
     sigma_event = position_uncertainty(
-        0.4 / (2 * np.sqrt(2 * np.log(2))) / np.cos(np.abs(candidate.dec - 49.32)),
-        0.4 / (2 * np.sqrt(2 * np.log(2))),
+        max(
+            np.sqrt(-np.log(min_search_sigma / cand_sigma) * (2 * ini_error_1**2)),
+            ini_error_1,
+        ),
+        max(
+            np.sqrt(-np.log(min_search_sigma / cand_sigma) * (2 * ini_error_2**2)),
+            ini_error_2,
+        ),
         TELESCOPE_ROTATION_ANGLE,
         angle,
     )
+    # Estimate uncertainty based on standard deviation of mp_cand
+    sigma_event2 = position_uncertainty(
+        candidate.position_features["delta_ra"],
+        candidate.position_features["delta_dec"],
+        90.0,
+        angle,
+    )
+    sigma_event = np.sqrt(sigma_event**2 + sigma_event2**2)
 
     # if the angle between source A and source B is x degrees,
     # the angle between source B and source A is (x + 180) % 360 degrees
@@ -88,7 +108,7 @@ def compare_position(candidate, known_sources, weight, **kwargs):
     return bayes_factor
 
 
-def compare_dm(candidate, known_sources, weight, **kwargs):
+def compare_dm(candidate, known_sources, weight, use_sp_fit_in_delta_dm=True, **kwargs):
     """
     Compare the dispersion measures (DMs) of `event` with the DMs of the sources in
     `known_sources` using the Bayes factor. The function first calculates the DM offsets
@@ -125,11 +145,25 @@ def compare_dm(candidate, known_sources, weight, **kwargs):
     """
     mu_min = 0.0
     mu_max = 4357  # maximum of all pointins, may also only want the maximum of used pointings
+    max_cand_width = 10
 
     if candidate.delta_dm == 0:
         used_delta_dm = 1.0
     else:
         used_delta_dm = candidate.delta_dm
+    if use_sp_fit_in_delta_dm:
+        if candidate.best_candidate_features is not None:
+            cand_width = np.nanmin(
+                [
+                    candidate.best_candidate_features[
+                        "dm_sigma_FitGaussWidth_gauss_sigma"
+                    ].item(),
+                    max_cand_width,
+                ]
+            )
+        else:
+            cand_width = max_cand_width
+        used_delta_dm = np.sqrt(used_delta_dm**2 + cand_width**2)
     # calculate Bayes factor for all fine-grained steps and take the maximum
     bayes_factor = gaussian_bayes(
         candidate.best_dm,
@@ -159,7 +193,13 @@ def compare_dm(candidate, known_sources, weight, **kwargs):
 
 
 def compare_frequency(
-    candidate, known_sources, weight, frac_harm=4, max_harm=16, **kwargs
+    candidate,
+    known_sources,
+    weight,
+    frac_harm=8,
+    max_harm=32,
+    use_sp_fit_in_delta_freq=True,
+    **kwargs,
 ):
     """
     Compare the dispersion measures (DMs) of `event` with the DMs of the sources in
@@ -204,6 +244,7 @@ def compare_frequency(
     # dc is deprecated in simple ps search
     # mu_min, mu_max = search_freq_range_from_dc(candidate.best_dc)
     mu_min, mu_max = search_freq_range_from_dc(0)
+    max_cand_width = 0.005
 
     # calculate Bayes factor for all fine-grained steps and take the maximum
     if frac_harm < 1:
@@ -212,22 +253,37 @@ def compare_frequency(
         max_harm = 1
     frac_harms = 1 / np.arange(2, frac_harm + 1)
     num_harms = np.arange(1, max_harm + 1)
-    harms = np.concatenate((frac_harms, num_harms))
+    harms = np.concatenate((frac_harms, num_harms, [2 / 3]))
     bayes_factor = np.zeros(len(known_sources))
     cand_nharm = candidate.best_nharm
     if candidate.delta_freq == 0:
         used_delta_freq = 9.70127682e-04 / cand_nharm
     else:
         used_delta_freq = candidate.delta_freq
+    if use_sp_fit_in_delta_freq:
+        if candidate.best_candidate_features is not None:
+            # Fit sometime fails
+            cand_width = np.nanmin(
+                [
+                    candidate.best_candidate_features[
+                        "freq_sigma_FitGaussWidth_gauss_sigma"
+                    ].item(),
+                    max_cand_width,
+                ]
+            )
+        else:
+            cand_width = max_cand_width
+        used_delta_freq = np.sqrt(used_delta_freq**2 + cand_width**2)
+
     current_period = known_sources["current_spin_period_s"]
     for harm in harms:
         bayes_factor_harm = gaussian_bayes(
-            candidate.best_freq * harm,
-            used_delta_freq * harm,
-            1 / current_period,
+            candidate.best_freq,
+            used_delta_freq,
+            1 / current_period * harm,
             mu_min,
             mu_max,
-            sigma_mu=known_sources["spin_period_s_error"] / current_period**2,
+            sigma_mu=harm * known_sources["spin_period_s_error"] / current_period**2,
         )
         bayes_factor = np.max((bayes_factor, bayes_factor_harm), axis=0)
 
@@ -247,99 +303,6 @@ def compare_frequency(
     #        )
 
     return bayes_factor
-
-
-def angular_separation(ra1, dec1, ra2, dec2):
-    """
-    Calculates the angular separation between two celestial objects.
-
-    Parameters
-    ----------
-    ra1 : float, array
-        Right ascension of the first source in degrees.
-    dec1 : float, array
-        Declination of the first source in degrees.
-    ra2 : float, array
-        Right ascension of the second source in degrees.
-    dec2 : float, array
-        Declination of the second source in degrees.
-
-    Returns
-    -------
-    angle : float, array
-        Angle between the two sources in degrees, where 0 corresponds
-        to the positive Dec axis.
-    angular_separation : float, array
-        Angular separation between the two sources in degrees.
-
-    Notes
-    -----
-    The angle between sources is calculated with the Pythagorean theorem
-    and is used later to calculate the uncertainty in the event position
-    in the direction of the known source.
-    Calculating the angular separation using spherical geometry gives
-    poor accuracy for small (< 1 degree) separations, and using the
-    Pythagorean theorem fails for large separations (> 1 degrees).
-    Transforming the spherical geometry cosine formula into one that
-    uses haversines gives the best results, see e.g. [1]_. This gives:
-    .. math:: \\mathrm{hav} d = \\mathrm{hav} \\Delta\\delta +
-              \\cos\\delta_1 \\cos\\delta_2 \\mathrm{hav} \\Delta\\alpha
-    Where we use the identity
-    :math:`\\mathrm{hav} \\theta = \\sin^2(\\theta/2)` in our
-    calculations.
-    The calculation might give inaccurate results for antipodal
-    coordinates, but we do not expect such calculations here..
-    The source angle (or bearing angle) :math:`\\theta` from a point
-    A(ra1, dec1) to a point B(ra2, dec2), defined as the angle in
-    clockwise direction from the positive declination axis can be
-    calculated using:
-    .. math:: \\tan(\\theta) = (\\alpha_2 - \\alpha_1) /
-              (\\delta_2 - \\delta_1)
-    In NumPy :math:`\\theta` can be calculated using the arctan2
-    function. Note that for negative :math:`\\theta` a factor :math:`2\\pi`
-    needs to be added. See also the documentation for arctan2.
-
-    References
-    ----------
-    .. [1] Sinnott, R. W. 1984, Sky and Telescope, 68, 158
-    Examples
-    --------
-    >>> print(angular_separation(200.478971, 55.185900, 200.806433, 55.247994))
-    (79.262937451490941, 0.19685681276638525)
-    >>> print(angular_separation(0., 20., 180., 20.))
-    (90.0, 140.0)
-    """
-    # convert ra and dec to numpy arrays
-    ra1 = np.array(ra1)
-    ra2 = np.array(ra2)
-    dec1 = np.array(dec1)
-    dec2 = np.array(dec2)
-
-    # convert decimal degrees to radians
-    deg2rad = np.pi / 180
-    ra1 = ra1 * deg2rad
-    dec1 = dec1 * deg2rad
-    ra2 = ra2 * deg2rad
-    dec2 = dec2 * deg2rad
-
-    # delta works
-    dra = ra1 - ra2
-    ddec = dec1 - dec2
-
-    # haversine formula
-    hav = np.sin(ddec / 2.0) ** 2 + np.cos(dec1) * np.cos(dec2) * np.sin(dra / 2.0) ** 2
-    angular_separation = 2 * np.arcsin(np.sqrt(hav))
-
-    # angle in the clockwise direction from the positive dec axis
-    # note the minus signs in front of `dra` and `ddec`
-    source_angle = np.arctan2(-dra, -ddec)
-    if isinstance(source_angle, np.ndarray):
-        source_angle[source_angle < 0] += 2 * np.pi
-    elif source_angle < 0:
-        source_angle += 2 * np.pi
-
-    # convert radians back to decimal degrees
-    return source_angle / deg2rad, angular_separation / deg2rad
 
 
 def position_uncertainty(semi_major, semi_minor, ellipse_angle, source_angle):
@@ -558,6 +521,10 @@ def change_spin_period(source, new_epoch):
     """
     P0 = source.spin_period_s
     P1 = source.spin_period_derivative
+    if np.isnan(P0):
+        P0 = source.champss_derived_parameters.get("spin_period_s", np.nan)
+    if np.isnan(P1):
+        P1 = source.champss_derived_parameters.get("spin_period_derivative", np.nan)
     if P1 > 0 and ~np.isnan(source.spin_period_epoch):
         detect_epoch = Time(source.spin_period_epoch, format="mjd")
         new_epoch = Time(new_epoch)

@@ -7,7 +7,6 @@ readme = "README.md"
 packages = [
     { include = "folding" },
     { include = "multiday_search" },
-    { include = "foldutils"},
 ]
 
 [tool.poetry.dependencies]
@@ -32,6 +31,7 @@ pytest = "^7.3.2"
 
 [tool.poetry.scripts]
 fold_candidate = "folding.fold_candidate:main"
+fold_pulsar = "folding.fold_pulsar:main"
 confirm_cand = "multiday_search.confirm_cand:main"
 multidayfold_pipeline = "multiday_search.multidayfold_pipeline:main"
 

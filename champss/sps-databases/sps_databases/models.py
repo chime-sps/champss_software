@@ -21,6 +21,7 @@ class ObservationStatus(enum.Enum):
     complete = 2
     failed = 3
     incomplete = 4
+    insufficient_data = 5
 
 
 class ProcessStatus(enum.Enum):
@@ -31,8 +32,21 @@ class ProcessStatus(enum.Enum):
     blocked = 5
 
 
+class DailyStatus(enum.Enum):
+    created = 0
+    scheduled = 1
+    finishedPipeline = 2
+    finishedMultiPointing = 3
+    finishedClassification = 4
+    finishedFolding = 5
+
+
 class DatabaseError(Exception):
     pass
+
+
+processing_tier_limits = range(10, 110, 10)
+processing_tier_names = [f"max-{max_limit}GB" for max_limit in processing_tier_limits]
 
 
 @attrs
@@ -41,7 +55,6 @@ class Pointing:
     dec = attrib(converter=float)
     beam_row = attrib(converter=int)
     length = attrib(converter=int)
-    ne2001dm = attrib(converter=float)
     ymw16dm = attrib(converter=float)
     maxdm = attrib(converter=float)
     nchans = attrib(converter=int)
@@ -55,6 +68,8 @@ class Pointing:
         default={},
         converter=dict,
     )
+    ne2025dm = attrib(default=None, converter=converters.optional(float))
+    ne2001dm = attrib(default=None, converter=converters.optional(float))
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )
@@ -98,11 +113,19 @@ class Pointing:
             db.ps_stacks.find_one({"pointing_id": ObjectId(self.id)})
         )
 
-    # hhat_stack = relationship("HhatStack", back_populates="pointing")
-    def hhat_stack(self, db):
-        return HhatStack.from_db(
-            db.hhat_stacks.find_one({"pointing_id": ObjectId(self.id)})
-        )
+    @property
+    def ram_requirement(self):
+        return ram_requirement(self.maxdm, self.length)
+
+    @property
+    def tier(self):
+        ram_requirement = self.ram_requirement
+        for index, mem_limit in enumerate(processing_tier_limits):
+            if ram_requirement < mem_limit:
+                break
+        tier_name = processing_tier_names[index]
+        tier_limit = processing_tier_limits[index]
+        return tier_name, tier_limit
 
 
 @attrs
@@ -203,6 +226,32 @@ class Observation:
         ),
         on_setattr=validate,  # type: ignore
     )
+    dm0_rn_file = attrib(
+        default=None,
+        converter=converters.optional(str),
+        on_setattr=convert,  # type: ignore
+    )
+    dm0_rn_medians = attrib(
+        default=None,
+        converter=converters.optional(np.asarray),
+    )
+    dm0_rn_scales = attrib(
+        default=None,
+        converter=converters.optional(np.asarray),
+    )
+    rn_file = attrib(
+        default=None,
+        converter=converters.optional(str),
+        on_setattr=convert,  # type: ignore
+    )
+    rn_medians = attrib(
+        default=None,
+        converter=converters.optional(np.asarray),
+    )
+    rn_scales = attrib(
+        default=None,
+        converter=converters.optional(np.asarray),
+    )
     mean_power = attrib(
         default=None,
         converter=converters.optional(float),
@@ -287,17 +336,35 @@ class Observation:
         return self._id
 
     @classmethod
-    def from_db(cls, doc):
+    def from_db(cls, doc, load_birdies=True, load_rn=True):
         """Create an `Observation` instance from a MongoDB document."""
         try:
             doc["status"] = ObservationStatus(doc["status"])
             birdie_file = doc.get("birdie_file", None)
-            if birdie_file is not None:
+            if birdie_file is not None and load_birdies:
                 try:
                     birdie_info = np.load(birdie_file)
                     doc.update(birdie_info.items())
-                except FileNotFoundError as e:
+                except (FileNotFoundError, OSError) as e:
                     log.warning(f"Could not load birdie_file at {birdie_file}.")
+                    log.warning(e)
+            rn_file = doc.get("rn_file", None)
+            if rn_file is not None and load_rn:
+                try:
+                    rn_arrays = np.load(rn_file)
+                    doc["rn_medians"] = rn_arrays["medians"]
+                    doc["rn_scales"] = rn_arrays["scales"]
+                except (FileNotFoundError, OSError) as e:
+                    log.warning(f"Could not load dm0 red noise file at {rn_file}.")
+                    log.warning(e)
+            dm0_rn_file = doc.get("dm0_rn_file", None)
+            if dm0_rn_file is not None and load_rn:
+                try:
+                    dm0_rn_arrays = np.load(dm0_rn_file)
+                    doc["dm0_rn_medians"] = dm0_rn_arrays["medians"]
+                    doc["dm0_rn_scales"] = dm0_rn_arrays["scales"]
+                except (FileNotFoundError, OSError) as e:
+                    log.warning(f"Could not load dm0 red noise file at {dm0_rn_file}.")
                     log.warning(e)
             filtered_doc = filter_class_dict(cls, doc)
 
@@ -567,67 +634,6 @@ class PsStack:
 
 
 @attrs
-class HhatStack:
-    pointing_id = attrib(converter=str)
-    datapath_month = attrib(converter=str)
-    datapath_cumul = attrib(converter=str)
-    datetimes_month = attrib(
-        validator=validators.deep_iterable(
-            member_validator=validators.instance_of(dt.datetime),
-            iterable_validator=validators.instance_of(list),
-        )
-    )
-    num_days_month = attrib(converter=int)
-    datetimes_cumul = attrib(
-        validator=validators.deep_iterable(
-            member_validator=validators.instance_of(dt.datetime),
-            iterable_validator=validators.instance_of(list),
-        )
-    )
-    num_days_cumul = attrib(converter=int)
-    sliced_by = attrib(converter=str)
-    r_value = attrib(converter=float)
-    _id = attrib(
-        default=None,
-        alias="_id",
-        converter=converters.optional(str),
-        on_setattr=convert,  # type: ignore
-    )
-
-    @datetimes_month.validator
-    @datetimes_cumul.validator
-    def _validate_datetimes(self, attribute, value):
-        for val in value:
-            if not (val.tzinfo and val.utcoffset().total_seconds() == 0):
-                raise ValueError(
-                    f"The tzinfo of the elements of {attribute.name} = {val.tzinfo} are"
-                    " not utc"
-                )
-
-    @property
-    def id(self):
-        return self._id
-
-    @classmethod
-    def from_db(cls, doc):
-        """Create an `HhatStack` instance from a MongoDB document."""
-        filtered_doc = filter_class_dict(cls, doc)
-        obj = cls(**filtered_doc)
-        return obj
-
-    def to_db(self):
-        """Return a MongoDB document version of this instance."""
-        doc = asdict(self)
-        doc["_id"] = ObjectId(self.id)
-        doc["pointing_id"] = ObjectId(self.pointing_id)
-        return doc
-
-    # pointing = relationship("Pointing", back_populates="hhat_stack")
-    def pointing(self, db):
-        return Pointing.from_db(db.pointings.find_one(ObjectId(self.pointing_id)))
-
-
-@attrs
 class KnownSource:
     source_type = attrib(converter=int)
     source_name = attrib(converter=str)
@@ -640,12 +646,13 @@ class KnownSource:
     dm_error = attrib(converter=float)
     spin_period_s = attrib(converter=float)
     spin_period_s_error = attrib(converter=float)
-    dm_galactic_ne_2001_max = attrib(converter=float)
     dm_galactic_ymw_2016_max = attrib(converter=float)
     spin_period_derivative = attrib(default=0, converter=float, type=float)
     spin_period_derivative_error = attrib(default=0, converter=float, type=float)
     spin_period_epoch = attrib(default=0, converter=float, type=float)
     detection_history = attrib(default=[], type=list)
+    dm_galactic_ne_2025_max = attrib(default=None, converter=converters.optional(float))
+    dm_galactic_ne_2001_max = attrib(default=None, converter=converters.optional(float))
     survey = attrib(
         default=[],
         validator=validators.optional(
@@ -656,6 +663,7 @@ class KnownSource:
         ),
         on_setattr=validate,
     )
+    champss_derived_parameters = attrib(default={}, type=dict)
     last_changed = attrib(
         validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
     )
@@ -693,10 +701,11 @@ class FollowUpSource:
     dec = attrib(converter=float)
     dm = attrib(converter=float)
     f0 = attrib(converter=float)
-    dm_galactic_ne_2001_max = attrib(converter=float)
     dm_galactic_ymw_2016_max = attrib(converter=float)
     pepoch = attrib(default=0, converter=float, type=float)
     candidate_sigma = attrib(default=0, converter=float, type=float)
+    dm_galactic_ne_2025_max = attrib(default=None, converter=converters.optional(float))
+    dm_galactic_ne_2001_max = attrib(default=None, converter=converters.optional(float))
     folding_history = attrib(default=[], type=list)
     coherentsearch_history = attrib(default=[], type=list)
     followup_duration = attrib(default=1, converter=int, type=int)
@@ -818,12 +827,17 @@ class Process:
 
     @property
     def ram_requirement(self):
-        return min(
-            100,
-            int(
-                4 + (self.maxdm * 0.04 + self.ntime * 6e-6) * 2 ** (self.ntime // 2**20)
-            ),
-        )
+        return ram_requirement(self.maxdm, self.ntime)
+
+    @property
+    def tier(self):
+        ram_requirement = self.ram_requirement
+        for index, mem_limit in enumerate(processing_tier_limits):
+            if ram_requirement < mem_limit:
+                break
+        tier_name = processing_tier_names[index]
+        tier_limit = processing_tier_limits[index]
+        return tier_name, tier_limit
 
     @classmethod
     def from_db(cls, doc):
@@ -842,3 +856,126 @@ class Process:
         doc["status"] = self.status.value
         doc["obs_status"] = self.obs_status.value
         return doc
+
+
+def ram_requirement(maxdm, ntime):
+    return min(100.0, (4 + maxdm * 0.05 + ntime * 1.35e-5))
+
+
+@attrs
+class DailyRun:
+    date = attrib(validator=validators.instance_of(dt.date))
+    # status = attrib(validator=validators.in_(DailyStatus), type=DailyStatus)
+    schedule_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    pipeline_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    multipointing_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    classification_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    folding_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    last_changed = attrib(
+        validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
+    )
+    plots = attrib(
+        default={},
+        converter=dict,
+    )
+
+    @property
+    def id(self):
+        return self._id
+
+    @classmethod
+    def from_db(cls, doc):
+        """Create a `DailyRun` instance from a MongoDB document."""
+        filtered_doc = filter_class_dict(cls, doc)
+        obj = cls(**filtered_doc)
+        return obj
+
+    def to_db(self):
+        """Return a MongoDB document version of this instance."""
+        doc = asdict(self)
+        doc["_id"] = ObjectId(self.id)
+        return doc
+
+    @property
+    def status(self):
+        steps = ["schedule", "pipeline", "multipointing", "classification", "folding"]
+        status = 0
+        for step in steps:
+            if getattr(self, f"{step}_result", {}) != {}:
+                status += 1
+            else:
+                break
+        return status
+
+
+@attrs
+class StackSearchRun:
+    date = attrib(validator=validators.instance_of(dt.date))
+    # status = attrib(validator=validators.in_(DailyStatus), type=DailyStatus)
+    name = attrib(converter=str)
+    pipeline_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    multipointing_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    classification_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    folding_result = attrib(
+        default={},
+        converter=converters.optional(dict),
+    )
+    last_changed = attrib(
+        validator=validators.instance_of(dt.datetime), default=Factory(dt.datetime.now)
+    )
+    plots = attrib(
+        default={},
+        converter=dict,
+    )
+
+    @property
+    def id(self):
+        return self._id
+
+    @classmethod
+    def from_db(cls, doc):
+        """Create a `DailyRun` instance from a MongoDB document."""
+        filtered_doc = filter_class_dict(cls, doc)
+        obj = cls(**filtered_doc)
+        return obj
+
+    def to_db(self):
+        """Return a MongoDB document version of this instance."""
+        doc = asdict(self)
+        doc["_id"] = ObjectId(self.id)
+        return doc
+
+    @property
+    def status(self):
+        steps = ["pipeline", "multipointing", "classification", "folding"]
+        status = 0
+        for step in steps:
+            if getattr(self, f"{step}_result", {}) != {}:
+                status += 1
+            else:
+                break
+        return status

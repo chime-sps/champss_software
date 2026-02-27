@@ -5,13 +5,17 @@ import logging
 from functools import partial
 from itertools import product
 from multiprocessing import Pool, set_start_method, shared_memory
+from typing import Literal
 
 import attr
 import numpy as np
+import numpy.ma as ma
 from astropy.time import Time, TimeDelta
 from attr.validators import deep_iterable, instance_of
 from beamformer.utilities.common import get_data_list
-from rfi_mitigation.pipeline import RFIPipeline
+from numpy._typing import ArrayLike
+from rfi_mitigation.pipeline import RFIPipeline, RFIGlobalPipeline
+from scipy import linalg
 from scipy.signal import detrend
 from sps_common.constants import TSAMP
 from sps_common.interfaces.beamformer import SkyBeam
@@ -20,6 +24,160 @@ from spshuff import l1_io
 from threadpoolctl import threadpool_limits
 
 log = logging.getLogger(__name__)
+
+
+def detrend_masked_row(
+    data: np.ndarray,
+    mask: np.ndarray = None,
+    axis: int = -1,
+    type: Literal["linear", "constant"] = "linear",
+    bp: ArrayLike | int = 0,
+    overwrite_data: bool = False,
+) -> np.ndarray:
+    r"""
+    Remove linear or constant trend along axis from masked data. Based on
+    scipy.signal.detrend.
+
+    Parameters
+    ----------
+    data : array_like
+        The input data.
+    data : mask
+        Boolean mask with True at valid indices.
+        Should only have entries along the detrended axis.
+    axis : int, optional
+        The axis along which to detrend the data. By default this is the
+        last axis (-1).
+    type : {'linear', 'constant'}, optional
+        The type of detrending. If ``type == 'linear'`` (default),
+        the result of a linear least-squares fit to `data` is subtracted
+        from `data`.
+        If ``type == 'constant'``, only the mean of `data` is subtracted.
+    bp : array_like of ints, optional
+        A sequence of break points. If given, an individual linear fit is
+        performed for each part of `data` between two break points.
+        Break points are specified as indices into `data`. This parameter
+        only has an effect when ``type == 'linear'``.
+    overwrite_data : bool, optional
+        If True, perform in place detrending and avoid a copy. Default is False
+
+    Returns
+    -------
+    ret : ndarray
+        The detrended input data.
+
+    Notes
+    -----
+    Detrending can be interpreted as substracting a least squares fit polyonimial:
+    Setting the parameter `type` to 'constant' corresponds to fitting a zeroth degree
+    polynomial, 'linear' to a first degree polynomial. Consult the example below.
+
+    See Also
+    --------
+    numpy.polynomial.polynomial.Polynomial.fit: Create least squares fit polynomial.
+
+
+    Examples
+    --------
+    The following example detrends the function :math:`x(t) = \sin(\pi t) + 1/4`:
+
+    >>> import matplotlib.pyplot as plt
+    >>> import numpy as np
+    >>> from scipy.signal import detrend
+    ...
+    >>> t = np.linspace(-0.5, 0.5, 21)
+    >>> x = np.sin(np.pi*t) + 1/4
+    ...
+    >>> x_d_const = detrend(x, type='constant')
+    >>> x_d_linear = detrend(x, type='linear')
+    ...
+    >>> fig1, ax1 = plt.subplots()
+    >>> ax1.set_title(r"Detrending $x(t)=\sin(\pi t) + 1/4$")
+    >>> ax1.set(xlabel="t", ylabel="$x(t)$", xlim=(t[0], t[-1]))
+    >>> ax1.axhline(y=0, color='black', linewidth=.5)
+    >>> ax1.axvline(x=0, color='black', linewidth=.5)
+    >>> ax1.plot(t, x, 'C0.-',  label="No detrending")
+    >>> ax1.plot(t, x_d_const, 'C1x-', label="type='constant'")
+    >>> ax1.plot(t, x_d_linear, 'C2+-', label="type='linear'")
+    >>> ax1.legend()
+    >>> plt.show()
+
+    Alternatively, NumPy's `~numpy.polynomial.polynomial.Polynomial` can be used for
+    detrending as well:
+
+    >>> pp0 = np.polynomial.Polynomial.fit(t, x, deg=0)  # fit degree 0 polynomial
+    >>> np.allclose(x_d_const, x - pp0(t))  # compare with constant detrend
+    True
+    >>> pp1 = np.polynomial.Polynomial.fit(t, x, deg=1)  # fit degree 1 polynomial
+    >>> np.allclose(x_d_linear, x - pp1(t))  # compare with linear detrend
+    True
+
+    Note that `~numpy.polynomial.polynomial.Polynomial` also allows fitting higher
+    degree polynomials. Consult its documentation on how to extract the polynomial
+    coefficients.
+    """
+    if type not in ["linear", "l", "constant", "c"]:
+        raise ValueError("Trend type must be 'linear' or 'constant'.")
+    data = np.asarray(data)
+    dtype = data.dtype.char
+    if dtype not in "dfDF":
+        dtype = "d"
+    if type in ["constant", "c"]:
+        ret = data - np.mean(data, axis, keepdims=True)
+        return ret
+    else:
+        dshape = data.shape
+        N = dshape[axis]
+        bp = np.sort(np.unique(np.concatenate(np.atleast_1d(0, bp, N))))
+        if np.any(bp > N):
+            raise ValueError(
+                "Breakpoints must be less than length of data along given axis."
+            )
+
+        # Restructure data so that axis is along first dimension and
+        #  all other dimensions are collapsed into second dimension
+        rnk = len(dshape)
+        if axis < 0:
+            axis = axis + rnk
+        newdata = np.moveaxis(data, axis, 0)
+        newdata_shape = newdata.shape
+        newdata = newdata.reshape(N, -1)
+
+        if mask is not None:
+            newmask = np.moveaxis(mask, axis, 0)
+            newmask = newmask.squeeze()
+            if newmask.shape[0] != newmask.size:
+                raise ValueError(
+                    "Mask should not have multiple dimensions with size larger than 1."
+                )
+
+        if not overwrite_data:
+            newdata = newdata.copy()  # make sure we have a copy
+        if newdata.dtype.char not in "dfDF":
+            newdata = newdata.astype(dtype)
+
+        #        Nreg = len(bp) - 1
+        # Find leastsq fit and remove it for each piece
+        for m in range(len(bp) - 1):
+            Npts = bp[m + 1] - bp[m]
+            A = np.ones((Npts, 2), dtype)
+            A[:, 0] = np.arange(1, Npts + 1, dtype=dtype) / Npts
+            sl = slice(bp[m], bp[m + 1])
+            if mask is not None:
+                valid_points = newmask[sl]
+                A = A[valid_points]
+                if A.size:
+                    coef, resids, rank, s = linalg.lstsq(A, newdata[sl][valid_points])
+                    newdata[sl][valid_points] = newdata[sl][valid_points] - A @ coef
+            else:
+                coef, resids, rank, s = linalg.lstsq(A, newdata[sl])
+                newdata[sl] = newdata[sl] - A @ coef
+
+        # Put data back in original shape.
+        newdata[~newmask] = 0
+        newdata = newdata.reshape(newdata_shape)
+        ret = np.moveaxis(newdata, 0, axis)
+        return ret
 
 
 @attr.s(slots=True)
@@ -87,6 +245,15 @@ class SkyBeamFormer:
     masking_dict: dict
         The dictionary of the configuration for the RFI mitigation process. Default = {}
 
+    global_masking_dict: dict
+        The dictionary of the configuration for the global RFI mitigation process
+        (runs on full dataset after filling). Default = {}
+
+    subtract_incoh_beam: str or None
+        Path to incoherent beam .npz file to subtract from data, or None to disable.
+        The incoherent beam should contain 'data', 'unix_start', and 'unix_end' fields.
+        Default = None
+
     active_beams: List[int]
         The list of beam columns to be used for beamforming from 0 to 3. Default [0, 1, 2, 3]
     """
@@ -108,6 +275,7 @@ class SkyBeamFormer:
     min_data_frac = attr.ib(default=0.0, validator=instance_of(float))
     run_rfi_mitigation = attr.ib(default=True, validator=instance_of(bool))
     masking_dict = attr.ib(default={}, validator=instance_of(dict), type=dict)
+    global_masking_dict = attr.ib(default={}, validator=instance_of(dict), type=dict)
     active_beams = attr.ib(
         default=[0, 1, 2, 3],
         validator=deep_iterable(
@@ -115,7 +283,9 @@ class SkyBeamFormer:
         ),
     )
     rfi_pipeline = attr.ib(init=False)
+    rfi_global_pipeline = attr.ib(init=False)
     max_mask_frac = attr.ib(default=1.0, validator=instance_of(float))
+    subtract_incoh_beam = attr.ib(default=None)
 
     @extn.validator
     def _validate_extension(self, attribute, value):
@@ -162,9 +332,15 @@ class SkyBeamFormer:
             assert v in [0, 1, 2, 3], "the active beams must be either 0, 1, 2 or 3"
 
     def __attrs_post_init__(self):
-        """Create RFIPipeline instance."""
+        """Create RFIPipeline instances."""
         if self.run_rfi_mitigation:
             self.rfi_pipeline = RFIPipeline(self.masking_dict, make_plots=False)
+            # Create global pipeline for post-fill cleaning on full dataset
+            # Only create if global_masking_dict has any True values
+            if self.global_masking_dict and any(self.global_masking_dict.values()):
+                self.rfi_global_pipeline = RFIGlobalPipeline(self.global_masking_dict, make_plots=False)
+            else:
+                self.rfi_global_pipeline = None
 
     def form_skybeam(self, active_pointing, num_threads=1):
         """
@@ -269,6 +445,99 @@ class SkyBeamFormer:
             for slice in raw_spec_slice_list
         ]
         log.info("Finished loading.")
+
+        # Subtract incoherent beam if specified
+        if self.subtract_incoh_beam is not None:
+            log.info(f"Subtracting incoherent beam from {self.subtract_incoh_beam}")
+            incoh_data = np.load(self.subtract_incoh_beam)
+            incoh_beam = incoh_data['data']  # Shape: [nfreq, ntime]
+            incoh_unix_start = float(incoh_data['unix_start'])
+            incoh_unix_end = float(incoh_data['unix_end'])
+            incoh_nchan = int(incoh_data['nchan'])
+
+            # Validate that incoherent beam is 2D
+            if incoh_beam.ndim != 2:
+                mask_shared.close()
+                mask_shared.unlink()
+                raise ValueError(
+                    f"Incoherent beam must be 2D [nfreq, ntime], got shape {incoh_beam.shape}"
+                )
+
+            log.info(f"Incoherent beam shape: {incoh_beam.shape} (nfreq={incoh_nchan}, ntime={incoh_beam.shape[1]})")
+
+            # Calculate observation time range
+            obs_unix_end = utc_start + spectra_shape[1] * TSAMP
+
+            # Check if incoherent beam covers observation time range
+            # NOTE: Incoherent beam can be longer than observation, we'll read only the overlapping part
+            if incoh_unix_end < obs_unix_end:
+                mask_shared.close()
+                mask_shared.unlink()
+                raise ValueError(
+                    f"Incoherent beam ends before observation ends. "
+                    f"Observation end: {obs_unix_end}, Incoherent beam end: {incoh_unix_end}"
+                )
+
+            if incoh_unix_start > utc_start:
+                mask_shared.close()
+                mask_shared.unlink()
+                raise ValueError(
+                    f"Incoherent beam starts after observation starts. "
+                    f"Observation start: {utc_start}, Incoherent beam start: {incoh_unix_start}"
+                )
+
+            # Calculate time offset and extract only the overlapping time range
+            time_offset_samples = round((utc_start - incoh_unix_start) / TSAMP)
+            time_end_sample = time_offset_samples + spectra_shape[1]
+
+            log.info(f"Reading incoherent beam time range: samples {time_offset_samples} to {time_end_sample}")
+
+            # Extract the overlapping time slice
+            incoh_slice = incoh_beam[:, time_offset_samples:time_end_sample]
+
+            # Ensure we have the right time length
+            if incoh_slice.shape[1] < spectra_shape[1]:
+                log.warning(f"Incoherent beam shorter than needed: {incoh_slice.shape[1]} < {spectra_shape[1]}")
+                # Pad with NaN (will be masked later)
+                padded = np.full((incoh_slice.shape[0], spectra_shape[1]), np.nan, dtype=incoh_beam.dtype)
+                padded[:, :incoh_slice.shape[1]] = incoh_slice
+                incoh_slice = padded
+
+            # Handle channel tiling for finer channelization
+            # Incoherent beam is always 1024 channels, but spectra can have finer channelization
+            if spectra_shape[0] != incoh_nchan:
+                if spectra_shape[0] % incoh_nchan != 0:
+                    mask_shared.close()
+                    mask_shared.unlink()
+                    raise ValueError(
+                        f"Spectra channel count ({spectra_shape[0]}) must be a multiple of "
+                        f"incoherent beam channel count ({incoh_nchan})"
+                    )
+
+                tile_factor = spectra_shape[0] // incoh_nchan
+                log.info(f"Tiling incoherent beam by factor {tile_factor} to match finer channelization")
+                log.info(f"  Incoherent beam: {incoh_nchan} channels -> Spectra: {spectra_shape[0]} channels")
+
+                # Tile along channel axis: repeat each channel tile_factor times
+                incoh_slice = np.tile(incoh_slice, (tile_factor, 1))
+
+            log.info(f"Subtracting 2D incoherent beam (shape: {incoh_slice.shape})")
+            log.info("  Method: Channelized subtraction with tiling support")
+
+            # Subtract the incoherent beam
+            spectra[:, :] -= incoh_slice
+
+            # Handle any invalid values created by subtraction (NaN, Inf)
+            # Note: Negative values are valid after subtraction (noise fluctuations)
+            invalid_mask = ~np.isfinite(spectra)
+            if np.any(invalid_mask):
+                num_invalid = invalid_mask.sum()
+                frac_invalid = num_invalid / spectra.size
+                log.warning(f"Incoherent beam subtraction created {num_invalid} NaN/Inf values "
+                           f"({frac_invalid:.4f} of data). Masking these.")
+                spectra[invalid_mask] = 0
+                rfi_mask[invalid_mask] = True
+
         # For now separate the spectrum that each thread gets one part
         # Splitting it too small might increase memory usage
         # Can set minimal length here
@@ -378,6 +647,45 @@ class SkyBeamFormer:
             ),
             nsub_slices,
         )
+
+        # Global RFI pass: run on full dataset after zero replacement
+        # This allows cleaner statistics since masked regions are now filled
+        if self.run_rfi_mitigation and self.rfi_global_pipeline is not None:
+            log.info("Starting global RFI cleaning on zero-filled dataset.")
+            log.info(
+                "Pre-global-clean masking Fraction:"
+                f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+            )
+            self.rfi_global_pipeline.clean(
+                spectra_shared.name,
+                mask_shared.name,
+                spectra_shape,
+                spec_dtype,
+            )
+            log.info(
+                "Global RFI cleaning finished. New masking Fraction:"
+                f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+            )
+
+            # Apply the updated mask to the spectra (zero out newly masked regions)
+            log.info("Applying global RFI mask to spectra")
+            spectra[rfi_mask] = 0
+
+            # Re-run zero replacement to fill newly masked regions using the existing pool
+            log.info("Re-running zero replacement after global RFI cleaning")
+            pool.map(
+                partial(
+                    self.zero_replace_shared_spectra,
+                    spectra_shared.name,
+                    mask_shared.name,
+                    spectra_shape,
+                    spec_dtype,
+                    flatten_bandpass=self.flatten_bandpass,
+                ),
+                nsub_slices,
+            )
+            log.info("Zero replacement complete")
+
         completely_masked_channels = rfi_mask.min(axis=1).sum()
         log.info(
             "Fraction of completely masked channels:"
@@ -539,7 +847,7 @@ class SkyBeamFormer:
         """
         Class for reading raw files directly to shared spectra.
 
-        Based on the sps_common.conversion.read_huff_msgpack
+        Based on the sps_common.conversion.read_huff_msgpack (now in rfi_mitigation.conversion)
 
         Parameters
         ==========
@@ -783,18 +1091,31 @@ class SkyBeamFormer:
 
             # Only tested the first case for now
             if detrend_data and add_local_median:
-                spectra[:] = (
-                    detrend(
-                        spectra,
-                        axis=1,
-                        type="linear",
-                        bp=np.arange(0, spectra.shape[1], detrend_nsamp),
+                # Only wokrs on 1D masks
+                if spectra.shape[0] == 1:
+                    spectra[:] = (
+                        detrend_masked_row(
+                            spectra,
+                            mask=~rfi_mask,
+                            axis=1,
+                            type="linear",
+                            bp=np.arange(0, spectra.shape[1], detrend_nsamp),
+                        )
+                        + filled_local_medians
                     )
-                    + filled_local_medians
-                )
-                # Detrending will introduce trend to masked values
-                # Could at one point use detrending method that uses masked
-                # arrays which this function does
+                else:
+                    spectra[:] = (
+                        detrend(
+                            spectra,
+                            axis=1,
+                            type="linear",
+                            bp=np.arange(0, spectra.shape[1], detrend_nsamp),
+                        )
+                        + filled_local_medians
+                    )
+                    # Detrending will introduce trend to masked values
+                    # Could at one point use detrending method that uses masked
+                    # arrays which this function does not
                 if num_blocks <= 1:
                     spectra[rfi_mask] = filled_local_medians
                 else:
