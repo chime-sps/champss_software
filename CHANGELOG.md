@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.16.0](https://github.com/chime-sps/champss_software/compare/v0.15.0...v0.16.0) (2026-02-27)
+
+
+### Features
+
+* adjust clustering dm threshold and mp dm plot threshold ([#223](https://github.com/chime-sps/champss_software/issues/223)) ([8149872](https://github.com/chime-sps/champss_software/commit/8149872dc8dffb1db2bf9b7ca384a9ce883cb6c6))
+* Inject from string ([#224](https://github.com/chime-sps/champss_software/issues/224)) ([b16f151](https://github.com/chime-sps/champss_software/commit/b16f1514534ac1dc52af72fc15f97cebef8a0f03))
+* Launch stack search using docker services ([#217](https://github.com/chime-sps/champss_software/issues/217)) ([4a610f7](https://github.com/chime-sps/champss_software/commit/4a610f7f548384d6e579b4650028a3fc8c603386))
+* Update bad channel mask ([#219](https://github.com/chime-sps/champss_software/issues/219)) ([17010ab](https://github.com/chime-sps/champss_software/commit/17010abf73dbb1e686539e148a98d1379d309dfc))
+* Update ptgmap ne2005 ([#222](https://github.com/chime-sps/champss_software/issues/222)) ([5550308](https://github.com/chime-sps/champss_software/commit/5550308d07f8d33a5be0178db06d507bc44f61f0))
+* Write champss derived parameters to database ([#218](https://github.com/chime-sps/champss_software/issues/218)) ([e47a52f](https://github.com/chime-sps/champss_software/commit/e47a52f7c634b693219aa69834ce022947fe9f4d))
+
+
+### Bug Fixes
+
+* Disable sps-archiver3 mount ([#220](https://github.com/chime-sps/champss_software/issues/220)) ([dc748c1](https://github.com/chime-sps/champss_software/commit/dc748c12df6b5f8e44572805e19cba72d2320cd4))
+
 ## [0.15.0](https://github.com/chime-sps/champss_software/compare/v0.14.0...v0.15.0) (2026-01-16)
 
 
