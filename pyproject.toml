@@ -33,6 +33,10 @@ mypy = "^1.4.0"
 pre-commit = "^3.3.3"
 pytest = "^7.3.2"
 
+[tool.poetry.scripts]
+run-as-service = "scheduler.run_as_service:run_as_service_cli"
+
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
