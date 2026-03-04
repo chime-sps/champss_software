@@ -55,31 +55,24 @@ def compare_position(candidate, known_sources, weight, **kwargs):
         known_sources["pos_dec_deg"],
     )
     # in SPS, the position uncertainty is calculated assuming a gaussian ellipsoid beam of EW FWHM of
-    # 0.4 degree and NS FWHM of 0.4 / cos(zenith angle) and an angle of from true North from sps_common.
+    # 0.8 degree and NS FWHM of 0.8 / cos(zenith angle) and an angle of from true North from sps_common.
+    # Previously 0.4 was used. This was doubled to catch more of the side loeb pulsars.
 
-    ini_error_1 = (
-        0.4 / (2 * np.sqrt(2 * np.log(2))) / np.cos(np.abs(candidate.dec - 49.32))
+    ini_error_1 = 0.8 / (2 * np.sqrt(2 * np.log(2)))
+    ini_error_2 = (
+        0.8 / (2 * np.sqrt(2 * np.log(2))) / np.cos(np.abs(candidate.dec - 49.32))
     )
-    ini_error_2 = 0.4 / (2 * np.sqrt(2 * np.log(2)))
-    cand_sigma = candidate.best_sigma
-    min_search_sigma = 6
     sigma_event = position_uncertainty(
-        max(
-            np.sqrt(-np.log(min_search_sigma / cand_sigma) * (2 * ini_error_1**2)),
-            ini_error_1,
-        ),
-        max(
-            np.sqrt(-np.log(min_search_sigma / cand_sigma) * (2 * ini_error_2**2)),
-            ini_error_2,
-        ),
-        TELESCOPE_ROTATION_ANGLE,
+        ini_error_1,
+        ini_error_2,
+        TELESCOPE_ROTATION_ANGLE,  # This angle does not do anything in that function
         angle,
     )
     # Estimate uncertainty based on standard deviation of mp_cand
     sigma_event2 = position_uncertainty(
         candidate.position_features["delta_ra"],
         candidate.position_features["delta_dec"],
-        90.0,
+        TELESCOPE_ROTATION_ANGLE,
         angle,
     )
     sigma_event = np.sqrt(sigma_event**2 + sigma_event2**2)
