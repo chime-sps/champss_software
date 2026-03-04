@@ -1296,7 +1296,7 @@ def start_processing_manager(
         try:
             present_date = dt.datetime.now(dt.timezone.utc)
             present_date_string = present_date.strftime("%Y/%m/%d")
-            yesterday_date = present_date - dt.timedelta(days=0.99)
+            yesterday_date = present_date - dt.timedelta(days=1.02)
 
             if run_stack_search:
                 mode = "stack-search"
