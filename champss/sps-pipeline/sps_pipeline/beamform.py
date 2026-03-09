@@ -60,7 +60,7 @@ def run(pointing, beamformer, fdmt, num_threads, basepath):
         if fdmt:
             return skybeam
         log.info("Beamformed file: %s", spectra_file)
-        skybeam.write(spectra_file)
+        skybeam[0].write(spectra_file)
 
 
 def initialise(configuration, rfi_beamform, basepath, datpath):
