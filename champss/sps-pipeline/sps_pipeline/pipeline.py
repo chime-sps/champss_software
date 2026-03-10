@@ -146,6 +146,11 @@ def dbexcepthook(type, value, tb):
     help="Whether to use fdmt for dedispersion",
 )
 @click.option(
+    "--write-fil/--no-write-fil",
+    default=False,
+    help="Whether to write outa  filterbank file of the raw data.",
+)
+@click.option(
     "--plot/--no-plot",
     default=False,
     help="Whether to create candidate plots",
@@ -279,6 +284,7 @@ def main(
     date,
     stack,
     fdmt,
+    write_fil,
     plot,
     plot_threshold,
     ra,
@@ -516,23 +522,23 @@ def main(
                 num_threads = int(config.threads.thread_per_1024_chan * nchan_factor)
 
             log.info(f"Using {num_threads} threads to run the parallel codes")
-            if stack and "ps" not in components:
-                log.warning(
-                    "The `--stack` option has no effect if power spectrum is not being"
-                    " calculated."
-                )
             if fdmt and "beamform" not in components:
                 log.warning(
                     "Cannot run FDMT without beamforming, using presto dedispersion"
                     " instead"
                 )
                 fdmt = False
+            if stack and "ps" not in components:
+                log.warning(
+                    "The `--stack` option has no effect if power spectrum is not being"
+                    " calculated."
+                )
             if "beamform" in components:
                 beamformer = beamform.initialise(
                     config, "rfi" in components, basepath, datpath
                 )
                 skybeam, spectra_shared = beamform.run(
-                    active_pointing, beamformer, fdmt, num_threads, basepath
+                    active_pointing, beamformer, fdmt, write_fil, num_threads, basepath
                 )
                 if skybeam is None:
                     spectra_shared.close()

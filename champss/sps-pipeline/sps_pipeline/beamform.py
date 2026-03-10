@@ -18,7 +18,7 @@ beamform_processing_time = Summary(
 )
 
 
-def run(pointing, beamformer, fdmt, num_threads, basepath):
+def run(pointing, beamformer, fdmt, write_fil, num_threads, basepath):
     """
     Execute the beamforming step on a `pointing`
 
@@ -28,8 +28,8 @@ def run(pointing, beamformer, fdmt, num_threads, basepath):
         Sky pointing to process.
     beamformer: Wrapper
         Wrapper class containing the SkyBeamFormer class.
-    fdmt: bool
-        Whether to return the skybeam object for fdmt instead of writing into a filterbank file.
+    write_fil: bool
+        Whether to write a filterbank file or not
     num_threads: int
         Number of threads to use for the parallel processing in SkyBeamFormer.
     basepath: str
@@ -57,20 +57,16 @@ def run(pointing, beamformer, fdmt, num_threads, basepath):
             file_path,
             f"{pointing.ra:.02f}_{pointing.dec:.02f}_{pointing.sub_pointing}.fil",
         )
-        if fdmt:
-            return skybeam
-        log.info("Beamformed file: %s", spectra_file)
-        skybeam.write(spectra_file)
+        if write_fil or not fdmt:
+            log.info("Beamformed file: %s", spectra_file)
+            skybeam[0].write(spectra_file)
+        return skybeam
 
 
 def initialise(configuration, rfi_beamform, basepath, datpath):
     """"""
-    if rfi_beamform:
-        extn = "dat"
-        basepath = datpath
-    else:
-        extn = "hdf5"
-        basepath = basepath
+    extn = "dat"
+    basepath = datpath
 
     class Wrapper:
         def __init__(self, config):
