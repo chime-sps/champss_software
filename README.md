@@ -32,6 +32,26 @@ Before running any scripts that call `schedule_workflow_job` outside of a contai
 workflow workspace set champss.workspace.yml
 ```
 
+### Running command as a service
+
+In order to run commands on the CHAMPSS docker swarm the script `run-as-service` can be used. Since this docker services run as a root, please take note that you can overwrite any files, so please take note of your output folders.
+With poetry this script can be used with
+```
+poetry run run-as-service "run-pipeline --help" --memory 10 --image "sps-archiver1.chime:5000/champss_software:latest" --cleanup
+```
+The --cleanup/--no-cleanup defines whether the service will be automatically deleted. With cleanup turned on the script will only end once the service has finished and been removed. When not cleanup is sued, consider removing the created services after finishing.
+--memory defines the memory reservation.
+
+In python the script can be used with:
+```
+from scheduler.run_as_service import run_as_service
+your_command_list = [*command1*, *command2*, ...]
+for command in your_command_list:
+    run_as_service(command)
+```
+As long as the python environment is still alive the run_as_service function will return immediately once the service has started. A thread in the background will remove the services once they have finished.
+
+
 ## Individual Packages
 
 This repository contains multiple packages in the `/champss/` which were previously contained in inidvidual repositories. These individual packages are automatically installed.

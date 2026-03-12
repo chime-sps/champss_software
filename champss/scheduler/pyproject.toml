@@ -14,6 +14,7 @@ python = ">=3.10,<3.12"
 workflow-core = {git = "https://github.com/CHIMEFRB/workflow.git"}
 click = "^8.1.4"
 slack-sdk = "^3.26.1"
+docker = "^6.1.3"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
@@ -22,8 +23,8 @@ pre-commit = "^3.3.3"
 pytest = "^7.3.2"
 
 [tool.poetry.scripts]
-clear-workflow-buckets = "sps_pipeline.workflow:clear_workflow_buckets"
-clear-workflow-results = "sps_pipeline.workflow:clear_workflow_results"
+clear-workflow-buckets = "scheduler.workflow:clear_workflow_buckets"
+clear-workflow-results = "scheduler.workflow:clear_workflow_results"
 
 [build-system]
 requires = ["poetry-core"]
