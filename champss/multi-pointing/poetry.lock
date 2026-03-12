@@ -1366,7 +1366,6 @@ files = [
 numpy = [
     {version = ">=1.22.4", markers = "python_version < \"3.11\""},
     {version = ">=1.23.2", markers = "python_version == \"3.11\""},
-    {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
 ]
 python-dateutil = ">=2.8.2"
 pytz = ">=2020.1"
@@ -2106,7 +2105,7 @@ name = "sps-common"
 version = "1.1.0"
 description = "CHIME SPS Common Code"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -2133,7 +2132,7 @@ name = "sps-databases"
 version = "0.1.0"
 description = "CHIME SPS Database Layer"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -2338,5 +2337,5 @@ watchdog = ["watchdog (>=2.3)"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.10,<=3.12.3"
-content-hash = "378ffa068d25dfeabfefbf8c52a3d0cf7172179a6bb0b0f1f4c4d034b25ea79f"
+python-versions = ">=3.10,<3.12"
+content-hash = "8e6a319d4f84550db79c631635cb68e202cc7ad83bd740a2f9357cf1892bda67"

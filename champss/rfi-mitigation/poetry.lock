@@ -1676,7 +1676,7 @@ name = "sps-common"
 version = "1.1.0"
 description = "CHIME SPS Common Code"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -1882,5 +1882,5 @@ files = [
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.10,<=3.12.3"
-content-hash = "69a5e9a856888feae7dd2b99e14a3355c8ce7507dbca5d202595355e979d2f01"
+python-versions = ">=3.10,<3.12"
+content-hash = "6f8621a53c7c615bddff3ee6daafc90d1e1642e6f43510be9a2a1e1ea317bf36"

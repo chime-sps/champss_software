@@ -121,7 +121,7 @@ name = "beamformer"
 version = "1.2.0"
 description = "CHIME SPS Beamformer"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -2021,7 +2021,7 @@ name = "rfi-mitigation"
 version = "0.1.0"
 description = "CHIME SPS RFI Mitigation"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -2165,7 +2165,7 @@ name = "sps-common"
 version = "1.1.0"
 description = "CHIME SPS Common Code"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -2192,7 +2192,7 @@ name = "sps-databases"
 version = "0.1.0"
 description = "CHIME SPS Database Layer"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -2413,5 +2413,5 @@ files = [
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.10,<=3.12.3"
-content-hash = "ceded43bb015ad86f950bb562c06753b6884bee79bc36d8cd6bc1e69289e69e7"
+python-versions = ">=3.10,<3.12"
+content-hash = "bd2a124a85cf33ffa25253749535e689aba385e8bf8ae7c5f4938e5c2976cc34"

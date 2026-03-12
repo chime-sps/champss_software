@@ -1962,7 +1962,7 @@ name = "rfi-mitigation"
 version = "0.1.0"
 description = "CHIME SPS RFI Mitigation"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -2121,7 +2121,7 @@ name = "sps-common"
 version = "1.1.0"
 description = "CHIME SPS Common Code"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -2148,7 +2148,7 @@ name = "sps-databases"
 version = "0.1.0"
 description = "CHIME SPS Database Layer"
 optional = false
-python-versions = ">=3.10,<=3.12.3"
+python-versions = ">=3.10,<3.12"
 groups = ["main"]
 files = []
 develop = true
@@ -2348,5 +2348,5 @@ files = [
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.10,<=3.12.3"
-content-hash = "ac7dfa23786a7095a3738c67842ad8330c60e311eb36ce3d1b3c3a1934d9b4e5"
+python-versions = ">=3.10,<3.12"
+content-hash = "edfff4a3279b3f07d45b51a428af00761584e8fc48999d824387ca65bde92dca"
