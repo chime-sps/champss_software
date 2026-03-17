@@ -247,6 +247,7 @@ class Injection:
     def smear_fft(self, scaled_fft):
         with open(os.path.dirname(__file__)+'/stack_maxdm.json', 'r') as f:
             maxdm_dict = json.load(f)
+       
         maxdm = maxdm_dict[f'{self.pspec_obj.ra:.2f} {self.pspec_obj.dec:.2f}']
         nchan = str(get_nchans(maxdm))
 
