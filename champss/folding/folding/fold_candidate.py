@@ -280,9 +280,7 @@ def main(
     if os.path.isfile(archive_fname) and not overwrite_folding:
         log.info(f"Archive file {archive_fname} already exists, skipping folding...")
         if fs_id and write_to_db:
-            fold_dates = [
-                entry["date"].date() for entry in source.getattr("folding_history", [])
-            ]
+            fold_dates = [entry["date"].date() for entry in source["folding_history"]]
             if date.date() not in fold_dates:
                 fold_details = {
                     "date": date,
