@@ -1,7 +1,7 @@
 import logging
 import math
 import os
-
+import json
 import numpy as np
 import scipy.stats as stats
 from scipy.fft import rfft
@@ -48,6 +48,25 @@ def gaussian(mu, sig):
 
 def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
+
+def get_nchans(maxdm):
+    """
+    Inputs a pointing dict with ra, dec, maxdm and returns nchans.
+
+    Inputs
+    pointing - A dict of ra, dec, maxdm
+    """
+    if maxdm <= 212.5:
+        nchans = 1024
+    elif maxdm <= 425:
+        nchans = 2048
+    elif maxdm <= 850:
+        nchans = 4096
+    elif maxdm <= 1700:
+        nchans = 8192
+    else:
+        nchans = 16384
+    return nchans
 
 
 def dm_distribution(x, mu, sig, l):
@@ -226,10 +245,10 @@ class Injection:
         return deltaDM
 
     def smear_fft(self, scaled_fft):
-        mode = "database"
-        db = db_utils.connect(host="sps-archiver1", name="test")
-        ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)
-        nchan = str(ap.nchans)
+        with open(os.path.dirname(__file__)+'/stack_maxdm.json', 'r') as f:
+            maxdm_dict = json.load(f)
+        maxdm = maxdm_dict[f'{self.pspec_obj.ra:.2f} {self.pspec_obj.dec:.2f}']
+        nchan = str(get_nchans(maxdm))
 
         quadratic_terms = {
             "1024": 1e-8,
