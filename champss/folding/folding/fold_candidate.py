@@ -190,7 +190,9 @@ def main(
         try:
             values = foldvalues.split()
             if len(values) != 4:
-                log.error("--foldvalues must contain exactly 4 space-separated values: ra dec f0 dm")
+                log.error(
+                    "--foldvalues must contain exactly 4 space-separated values: ra dec f0 dm"
+                )
                 return {}, [], []
             ra, dec, f0, dm = map(float, values)
         except ValueError as e:
@@ -213,11 +215,12 @@ def main(
 
         # Parse ephemeris to get ra, dec, f0, dm
         from folding.utilities.database import scrape_ephemeris
+
         payload = scrape_ephemeris(parfile)
-        ra = payload['ra']
-        dec = payload['dec']
-        f0 = payload['f0']
-        dm = float(payload['dm'])
+        ra = payload["ra"]
+        dec = payload["dec"]
+        f0 = payload["f0"]
+        dm = float(payload["dm"])
 
         if not exact_coords:
             coords = find_closest_pointing(ra, dec)
@@ -269,17 +272,23 @@ def main(
     if not ephem_path:
         if not os.path.exists(coord_path):
             os.makedirs(coord_path)
-        ephem_path = (
-            f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.par"
-        )
+        ephem_path = f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.par"
         create_ephemeris(name, ra, dec, dm, date, f0, ephem_path, fs_id)
 
     # Check if archive already exists
-    archive_fname = (
-        f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.ar"
-    )
+    archive_fname = f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.ar"
     if os.path.isfile(archive_fname) and not overwrite_folding:
         log.info(f"Archive file {archive_fname} already exists, skipping folding...")
+        if fs_id and write_to_db:
+            fold_dates = [entry["date"].date() for entry in source.folding_history]
+            if date.date() not in fold_dates:
+                fold_details = {
+                    "date": date,
+                    "archive_fname": archive_fname,
+                    "SN": 0,
+                    "path_to_plot": archive_fname.split(".ar")[0] + ".png",
+                }
+                update_folding_history(fs_id, {"folding_history": fold_details})
         return {}, [], []
 
     if not os.path.exists(ephem_path):
@@ -325,14 +334,15 @@ def main(
         # Plot alias results
         if alias_results:
             alias_plot_path = os.path.join(
-                folder.coord_path, "aliases", f"alias_plot_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.png"
+                folder.coord_path,
+                "aliases",
+                f"alias_plot_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.png",
             )
             plot_aliases(alias_results, output_path=alias_plot_path)
 
     # Plot
     SNprof, SN_arr, plot_fname = folder.plot(
-        sigma=sigma,
-        foldpath_plots=foldpath + "/plots/folded_candidate_plots/"
+        sigma=sigma, foldpath_plots=foldpath + "/plots/folded_candidate_plots/"
     )
 
     # Cleanup
