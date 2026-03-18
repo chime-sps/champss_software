@@ -61,28 +61,30 @@ async def entry_point(active_beams, basepath, source="champss"):
     """
     pointing_done_announce, pointing_done_listen = trio.open_memory_channel(math.inf)
     beam_schedule_channels = {}
-    try:
-        async with trio.open_nursery() as nursery:
-            log.debug("strat: spawning announcer...")
-            nursery.start_soon(announce_pointing_done, pointing_done_listen)
-            for beam_id in active_beams:
-                new_pointing_announce, new_pointing_listen = trio.open_memory_channel(
-                    math.inf
-                )
-                log.debug(f"strat: spawning controller for beam {beam_id}...")
-                nursery.start_soon(
-                    pointing_beam_control,
-                    new_pointing_listen,
-                    pointing_done_announce.clone(),
-                    basepath,
-                    source,
-                )
-                beam_schedule_channels[beam_id] = new_pointing_announce
+    async with trio.open_nursery() as nursery:
+        log.debug("strat: spawning announcer...")
+        nursery.start_soon(announce_pointing_done, pointing_done_listen)
+        for beam_id in active_beams:
+            new_pointing_announce, new_pointing_listen = trio.open_memory_channel(
+                math.inf
+            )
+            log.debug(f"strat: spawning controller for beam {beam_id}...")
+            nursery.start_soon(
+                pointing_beam_control,
+                new_pointing_listen,
+                pointing_done_announce.clone(),
+                basepath,
+                source,
+            )
+            beam_schedule_channels[beam_id] = new_pointing_announce
 
-            log.debug(f"strat: spawning pointer for {active_beams}...")
-            nursery.start_soon(generate_pointings, active_beams, beam_schedule_channels)
-    except BaseExceptionGroup:
-        pass
+        log.debug(f"strat: spawning pointer for {active_beams}...")
+        nursery.start_soon(generate_pointings, active_beams, beam_schedule_channels)
+    # except BaseExceptionGroup:
+    # except Exception as e:
+    #     print(e)
+    #     print("ahsbdasb")
+    #     pass
         # When cancelling the batch acquisition this Exception will be thrown by trio.
 
 
