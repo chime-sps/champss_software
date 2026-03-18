@@ -80,12 +80,6 @@ async def entry_point(active_beams, basepath, source="champss"):
 
         log.debug(f"strat: spawning pointer for {active_beams}...")
         nursery.start_soon(generate_pointings, active_beams, beam_schedule_channels)
-    # except BaseExceptionGroup:
-    # except Exception as e:
-    #     print(e)
-    #     print("ahsbdasb")
-    #     pass
-        # When cancelling the batch acquisition this Exception will be thrown by trio.
 
 
 def start_beam(beam: int, basepath: str, source: str, channels: int, ntime: int):
@@ -144,7 +138,7 @@ def stop_all_beams(active_beams, basepath, source="champss", batchsize=20):
         time.sleep(0.1)
         for proc, beam in zip(procs, beam_batch):
             try:
-                output = proc.communicate(timeout=5)
+                output = proc.communicate(timeout=10)
                 if "parameters successfully applied" in str(output[0]):
                     output = f"Successfully stopped {beam}"
             except subprocess.TimeoutExpired as e:

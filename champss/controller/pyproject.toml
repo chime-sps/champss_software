@@ -7,6 +7,10 @@ readme = "README.md"
 exclude = [
     "tests"
 ]
+packages = [
+    { include = "controller" },
+    { include = "scheduling" },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
