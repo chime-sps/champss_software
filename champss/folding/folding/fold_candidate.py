@@ -286,6 +286,7 @@ def main(
                     "date": date,
                     "archive_fname": archive_fname,
                     "SN": 0,
+                    "path_to_plot": archive_fname.split(".ar")[0] + ".png",
                 }
                 update_folding_history(fs_id, {"folding_history": fold_details})
         return {}, [], []
