@@ -14,7 +14,7 @@ import click
 import trio
 from controller.l1_rpc import get_beam_ip, get_node_beams
 from controller.pointer import generate_pointings
-from controller.updater import pointing_beam_control, timeout
+from controller.updater import pointing_beam_control
 from scheduling.scheduleknownpulsars import is_beam_recording
 
 log = logging.getLogger("spsctl")
@@ -124,7 +124,9 @@ def stop_beam(beam: int, basepath: str, source: str):
     return proc
 
 
-def stop_all_beams(active_beams, basepath, source="champss", batchsize=20):
+def stop_all_beams(
+    active_beams, basepath, source="champss", batchsize=20, rerun_count=2
+):
     """
     Stop all beams.
 
@@ -133,6 +135,7 @@ def stop_all_beams(active_beams, basepath, source="champss", batchsize=20):
     """
     # Creating processes for all beams at once will lead to a crash
     batched_beams = batched(active_beams, batchsize)
+    failed_beams = []
     for beam_batch in batched_beams:
         procs = [stop_beam(beam, basepath, source) for beam in beam_batch]
         time.sleep(0.1)
@@ -143,9 +146,17 @@ def stop_all_beams(active_beams, basepath, source="champss", batchsize=20):
                     output = f"Successfully stopped {beam}"
             except subprocess.TimeoutExpired as e:
                 output = f"Unable to stop beam {beam}"
+                failed_beams.append(beam)
                 os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
             finally:
                 log.info(output)
+    if len(failed_beams):
+        if rerun_count:
+            stop_all_beams(
+                failed_beams, basepath, source, batchsize, rerun_count=rerun_count - 1
+            )
+        else:
+            log.error(f"Could not stop beams {failed_beams}.")
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
