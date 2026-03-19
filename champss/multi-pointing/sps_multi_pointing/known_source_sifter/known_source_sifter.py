@@ -142,7 +142,6 @@ class KnownSourceSifter:
 
             if self.filter_any_nan:
                 if np.isnan(ks_database[i][checked_nan_fields].tolist()).any():
-                    print("filtered", ks.source_name)
                     continue
             used_indices.append(i)
 

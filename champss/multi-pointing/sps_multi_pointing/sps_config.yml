@@ -36,9 +36,6 @@ sifter:
     num_candidates:
       threshold: 200
       operator: gt # gt meaning values larger than threshold will be ignored by the ks sifter
-    best_harmonic_sum:
-      threshold: 2
-      operator: lt
   use_sp_fit_in_delta_freq: True
   use_sp_fit_in_delta_dm: True
 
