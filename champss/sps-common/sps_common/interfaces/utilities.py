@@ -4,14 +4,17 @@ import logging
 
 import numpy as np
 from scipy.special import chdtrc, chdtri, loggamma, ndtr, ndtri
-import importlib
 import sys
 
-# Import beam model for arc calculation
-if importlib.util.find_spec("cfbm"):
-    import cfbm as beam_model
+import cfbm as beam_model
 
-    bm_config = beam_model.current_config
+bm_config = beam_model.current_config
+try:
+    beammod = beam_model.current_model_class(bm_config)
+except FileNotFoundError:
+    from cfbm.bm_data import get_data
+
+    get_data.main()
     beammod = beam_model.current_model_class(bm_config)
 
 
@@ -299,7 +302,7 @@ def g_abergel_moisan(p, x, stop_value=np.finfo(float).eps, max_iter=200):
 
     # If float32 is used the default stop_value threshold will
     # not be reached for array input
-    if type(x) == np.ndarray:
+    if type(x) is np.ndarray:
         x = x.astype(np.float64)
     else:
         x = float(x)
@@ -327,7 +330,7 @@ def g_abergel_moisan(p, x, stop_value=np.finfo(float).eps, max_iter=200):
     D = 1 / b1
     n = 2
     delta = 100
-    if type(x) == np.ndarray:
+    if type(x) is np.ndarray:
         g = np.full(x.shape, np.inf)
         if np.any(x[np.resize(p == 0, x.shape)]):
             log.warning("Array where p=0!=x found. This should not happen.")
