@@ -45,7 +45,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100
+    PIP_DEFAULT_TIMEOUT=100 \
+    HOME="/champss_module/"
 #    XDG_CACHE_HOME="/champss_module/" \
 #    XDG_CONFIG_HOME="/champss_module/"
 
@@ -65,6 +66,9 @@ RUN run-stack-search-pipeline --help
 FROM pip as runtime
 
 WORKDIR /champss_module/
+
+RUN chmod 777 /champss_module/ \
+    && chmod 777 -R /champss_module/.astropy /champss_module/.config
 
 RUN set -ex \
     && apt-get remove build-essential -yqq \
