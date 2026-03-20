@@ -680,6 +680,8 @@ class Injection:
             "detection_nharm": detection_nharm,
             "detection_sigma": detection_sigma,
             "injected_nharm": n_harm,
+            "FWHM": self.W * self.f, #in phase
+            "TPA_idx": self.TPA_idx,
         }
 
         return output_dict
@@ -741,6 +743,8 @@ def main(
     injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
     injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
     injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
+    injection_dict["FWHM"] = injection_output_dict["FWHM"]
+    injection_dict["TPA_idx"] = injection_output_dict["TPA_idx"]
 
     if isinstance(injection_dict["profile"], (np.ndarray, list)):
         injection_dict["profile"] = "custom_profile"
