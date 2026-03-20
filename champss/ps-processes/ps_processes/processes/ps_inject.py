@@ -762,5 +762,5 @@ def main(
         ].astype(pspec.power_spectra.dtype)
 
     pspec.power_spectra[:, zero_bins] = 0
-
+ 
     return injection_dict
