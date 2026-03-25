@@ -43,7 +43,7 @@ task_timeout_seconds = 60 * 120  # 120 minutes
 
 def message_slack(
     slack_message,
-    slack_channel="#slow-pulsar-alerts",
+    slack_channel="#champss-pipeline-alerts",
     slack_token="",
 ):
     log.setLevel(logging.INFO)
