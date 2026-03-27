@@ -203,6 +203,7 @@ def main(
             workflow_function,
             workflow_params,
             workflow_tags,
+            cleanup=False,
         )
 
         wait_for_no_tasks_in_states(

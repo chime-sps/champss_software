@@ -326,6 +326,7 @@ def schedule_workflow_job(
     workflow_user="CHAMPSS",
     timeout=task_timeout_seconds,
     return_service_id=False,
+    cleanup=True,
 ):
     """
     Deposit Work and scale Docker Service, as node resources are free.
@@ -345,6 +346,7 @@ def schedule_workflow_job(
     workflow_user (str): Name of the user who shall own the Workflow job.
     timeout (int): Timeout of the workflow task
     return_service_id (bool): Also return service id and not only work id
+    cleanup (bool): Start cleanup thread. If not used, you may want to use wait_for_no_tasks_in_states
 
     Returns:
     str: The ID of the deposited Workflow job if successful, otherwise an empty string.
@@ -446,10 +448,11 @@ def schedule_workflow_job(
         service = docker_client.services.create(**docker_service)
         service_id = service.attrs["ID"]
         status = wait_until_service_not_pending(service_id)
-        remove_service_thread = threading.Thread(
-            target=remove_finished_service, args=(service_id,)
-        )
-        remove_service_thread.start()
+        if cleanup:
+            remove_service_thread = threading.Thread(
+                target=remove_finished_service, args=(service_id,)
+            )
+            remove_service_thread.start()
         if return_service_id:
             return work_id[0], service_id
         else:
