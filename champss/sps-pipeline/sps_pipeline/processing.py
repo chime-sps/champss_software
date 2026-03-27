@@ -976,7 +976,7 @@ def run_all_pipeline_processes(
 
     requested_containers = 100
     update_time = 60
-    surplus_replicas = 20
+    surplus_replicas = 10
     # This checks if enough work objects have been deposited. More work objects are scheduled in the background
     for work_index, work in enumerate(work_ids):
         if work_index > requested_containers:
