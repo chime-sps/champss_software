@@ -473,7 +473,7 @@ class Injection:
         for day in range(self.pspec_obj.num_days):
             day_normalizer = (
                 np.ones((len(inj_dms), len(inj_bins)))
-                / self.pspec_obj.num_days
+                #/ self.pspec_obj.num_days #why was this here???
                 / np.log(2)
             )
             # day_medians = rn_medians[day]
