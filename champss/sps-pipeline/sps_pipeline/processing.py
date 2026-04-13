@@ -1864,18 +1864,18 @@ def start_processing_manager(
                     else:
                         fold_plot = row["mdf_path_to_plot"]
 
-                    if type(fold_plot) is str:
-                        if not os.path.exists(fold_plot):
-                            continue
-                    else:
-                        continue
-
                     if type(row["plot_path"]) is not str:
                         if not os.path.exists(row["file_name"]):
                             continue
                         mp_cand = MultiPointingCandidate.read(row["file_name"])
                         plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
                         df_mp.at[index, "plot_path"] = plot_path
+
+                    if type(fold_plot) is str:
+                        if not os.path.exists(fold_plot):
+                            continue
+                    else:
+                        continue
 
                     if create_combined_plots:
                         output_path = (
