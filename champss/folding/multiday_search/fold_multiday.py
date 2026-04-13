@@ -156,7 +156,7 @@ def main(
     print(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for i, date in enumerate(dates_with_data):
         if date in fold_dates:
-            print(f"Already folded on {date.date()}, skipping...")
+            print(f"Already folded on {date}, skipping...")
             continue
 
         if use_workflow:
