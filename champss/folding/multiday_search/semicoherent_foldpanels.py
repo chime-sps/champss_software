@@ -255,16 +255,16 @@ class SemicoherentFoldSearch:
             return fs.mean(0)
 
         def _draw_two_profs(ax, prof1, prof2, title):
-            """Overlay two profiles in the same panel with distinct styles."""
+            """Overlay two profiles in the same panel with distinct colours."""
             if prof1 is None and prof2 is None:
                 ax.axis('off')
                 return
-            for prof, ls in [(prof1, '-'), (prof2, '--')]:
+            for prof, c in [(prof1, color), (prof2, 'tab:orange')]:
                 if prof is None:
                     continue
                 nphase = prof.shape[0]
                 phase_ax2 = np.linspace(0, 2, 2 * nphase, endpoint=False)
-                ax.plot(phase_ax2, np.tile(prof, 2), color=color, lw=1, ls=ls)
+                ax.plot(phase_ax2, np.tile(prof, 2), color=c, lw=1, alpha=0.7)
             ax.set_xlim(0, 2)
             ax.set_xticks([])
             ax.set_title(title, fontsize=10, pad=2)
@@ -291,9 +291,9 @@ class SemicoherentFoldSearch:
 
             _draw_two_profs(ax_prof, prof_nom, prof_corr,
                             f"{mjd_str}  {sn_str}")
-            _draw_tp(ax_nom,  panel.get('fs_time_phase_nominal', None),
+            _draw_tp(ax_nom,  panel.get('fs_time_phase', None), corr_label)
+            _draw_tp(ax_corr, panel.get('fs_time_phase_nominal', None),
                      f"{mjd_str} nominal")
-            _draw_tp(ax_corr, panel.get('fs_time_phase', None), corr_label)
 
         ax_tp_b_corr.set_xlabel('Phase', fontsize=14)
         ax_tp_b_corr.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
@@ -364,9 +364,15 @@ class SemicoherentFoldSearch:
         height_ratios = [1] * n_rows
         height_ratios[10] = 2.0    # gap between DM and F0 sections (room for x-axis label)
 
+        # Col 6 is the empty gap; give it 3× the width of a data column
+        # to ensure axis labels on the left do not overlap the right panels.
+        width_ratios = [1] * 15
+        width_ratios[6] = 3
+
         fig = plt.figure(figsize=(14, 16))
         gs = GridSpec(n_rows, 15, figure=fig,
                       height_ratios=height_ratios,
+                      width_ratios=width_ratios,
                       hspace=0.06, wspace=0.06)
 
         # Left column – DM × MJD (transposed: DM on x, MJD on y)
