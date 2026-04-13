@@ -259,7 +259,7 @@ class SemicoherentFoldSearch:
             if prof1 is None and prof2 is None:
                 ax.axis('off')
                 return
-            for prof, c in [(prof1, color), (prof2, 'tab:orange')]:
+            for prof, c in [(prof1, 'tab:orange'), (prof2, color)]:
                 if prof is None:
                     continue
                 nphase = prof.shape[0]
@@ -367,7 +367,7 @@ class SemicoherentFoldSearch:
         # Col 6 is the empty gap; give it 3× the width of a data column
         # to ensure axis labels on the left do not overlap the right panels.
         width_ratios = [1] * 15
-        width_ratios[6] = 3
+        width_ratios[6] = 2
 
         fig = plt.figure(figsize=(14, 16))
         gs = GridSpec(n_rows, 15, figure=fig,
