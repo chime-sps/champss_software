@@ -77,6 +77,7 @@ def run_as_service(
     ]
     service_name = f"{command_start.replace('.', '_').replace('/', '')}-{id}"
     user = getpass.getuser()
+
     if manager:
         constraints = ["node.role == manager"]
     else:
