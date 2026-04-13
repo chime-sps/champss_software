@@ -1,8 +1,5 @@
 import datetime
 import logging
-import os
-import subprocess
-from collections import Counter
 
 import click
 import numpy as np
@@ -12,8 +9,8 @@ log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
 
-from folding.utilities.archives import get_archive_parameter, read_par
-from multiday_search.load_profiles import load_profiles, load_unwrapped_archives
+from folding.utilities.archives import read_par
+from multiday_search.load_profiles import load_profiles
 from multiday_search.phase_aligned_search import ExploreGrid
 from multiday_search.summary_plot import create_summary_pdf
 from sps_databases import db_api, db_utils
@@ -115,7 +112,9 @@ def main(
         archives = [entry["archive_fname"] for entry in source.folding_history]
 
         if len(archives) < 2:
-            log.error(f"Source {fs_id} does not have more than 1 archive required to run the search, exiting...")
+            log.error(
+                f"Source {fs_id} does not have more than 1 archive required to run the search, exiting..."
+            )
             return
     else:
         log.error(f"Source {fs_id} has no folding history in db, exiting...")
@@ -130,7 +129,7 @@ def main(
     current_chunk = [(fold_dates[0], fold_SN[0], archives[0])]
 
     for i in range(1, len(fold_dates)):
-        if fold_dates[i] - fold_dates[i-1] <= datetime.timedelta(days=30):
+        if fold_dates[i] - fold_dates[i - 1] <= datetime.timedelta(days=30):
             current_chunk.append((fold_dates[i], fold_SN[i], archives[i]))
         else:
             chunks.append(current_chunk)
@@ -143,7 +142,9 @@ def main(
     for ch in chunks:
         if ch is not longest:
             start, end = ch[0][0], ch[-1][0]
-            log.warning(f"Source {fs_id}: trimming chunk from {start} to {end} (gap >30d)")
+            log.warning(
+                f"Source {fs_id}: trimming chunk from {start} to {end} (gap >30d)"
+            )
 
     fold_dates, fold_SN, archives = map(list, zip(*longest))
 
@@ -195,7 +196,7 @@ def main(
     f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
 
     np.savez(
-        data["directory"] +  f"/cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
+        data["directory"] + f"/cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
         f0s=f0s,
         f1s=f1s,
         chi2_grid=chi2_grid,
@@ -204,21 +205,6 @@ def main(
     )
 
     plot_name = explore_grid.plot(fullplot=False)
-    coherentsearch_summary = {
-        "date": datetime.datetime.now(),
-        "SN": float(np.max(explore_grid.SNmax)),
-        "f0": float(optimal_parameters[0]),
-        "f1": float(optimal_parameters[1]),
-        # "profile": explore_grid.profiles_aligned.sum(0).tolist(),
-        "gridsearch_file": data["directory"] + "/explore_grid.npz",
-        "path_to_plot": plot_name,
-    }
-    coherentsearch_summary["date"] = coherentsearch_summary["date"].strftime("%Y%m%d")
-    if write_to_db:
-        log.info("Updating FollowUpSource with coherent search results")
-        db_api.update_followup_source(
-            fs_id, {"coherentsearch_history": [coherentsearch_summary]}
-        )
 
     # Rewrite new ephemeris using new F0 and F1
 
@@ -227,7 +213,7 @@ def main(
 
     optimal_par_file = par_file.replace(".par", "_optimal.par")
     if foldpath is not None:
-        optimal_par_file = data['directory'] + optimal_par_file.split('/')[-1]
+        optimal_par_file = data["directory"] + optimal_par_file.split("/")[-1]
 
     print(f"Writing new par file to {optimal_par_file}")
     with open(par_file) as input:
@@ -247,7 +233,7 @@ def main(
                 elif key == "DECJ":
                     DEC_output = f"{line.strip()} 1 \n"
                     output.write(DEC_output)
-                elif key == 'PEPOCH':
+                elif key == "PEPOCH":
                     PEPOCH_output = f"PEPOCH {data['PEPOCH']} 0 \n"
                     output.write(PEPOCH_output)
                 else:
@@ -255,10 +241,28 @@ def main(
 
     explore_grid.plot(fullplot=True)
 
+    coherentsearch_summary = {
+        "date": datetime.datetime.now(),
+        "SN": float(np.max(explore_grid.SNmax)),
+        "f0": float(optimal_parameters[0]),
+        "f1": float(optimal_parameters[1]),
+        # "profile": explore_grid.profiles_aligned.sum(0).tolist(),
+        "gridsearch_file": data["directory"] + "/explore_grid.npz",
+        "path_to_plot": plot_name,
+    }
+    coherentsearch_summary["date"] = coherentsearch_summary["date"].strftime("%Y%m%d")
+
     # Create summary PDF if requested
     if create_summary:
         summary_pdf_path = create_summary_pdf(source, plot_name, data["directory"])
         log.info(f"Summary PDF saved to: {summary_pdf_path}")
+        coherentsearch_summary["summary_pdf"] = summary_pdf_path
+
+    if write_to_db:
+        log.info("Updating FollowUpSource with coherent search results")
+        db_api.update_followup_source(
+            fs_id, {"coherentsearch_history": [coherentsearch_summary]}
+        )
 
     return coherentsearch_summary, [plot_name], [plot_name]
 
