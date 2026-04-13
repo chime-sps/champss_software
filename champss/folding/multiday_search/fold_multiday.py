@@ -11,8 +11,8 @@ from scheduler.workflow import schedule_workflow_job
 from sps_databases import db_api, db_utils
 from sps_pipeline.pipeline import default_datpath
 
-def find_all_dates_with_data(ra, dec, basepath, nday=0, start_date=""):
 
+def find_all_dates_with_data(ra, dec, basepath, nday=0, start_date=""):
     filepaths = np.sort(glob(f"{basepath}/*/*/*"))
     pst = PointingStrategist(create_db=False)
 
@@ -146,7 +146,9 @@ def main(
     dm = source.dm
     nchan_tier = int(np.ceil(np.log2(dm // 212.5 + 1)))
     nchan = 1024 * (2**nchan_tier)
-    dates_with_data = find_all_dates_with_data(ra, dec, datpath, nday=nday, start_date=start_date)
+    dates_with_data = find_all_dates_with_data(
+        ra, dec, datpath, nday=nday, start_date=start_date
+    )
     print(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for i, date in enumerate(dates_with_data):
         if use_workflow:
@@ -186,6 +188,7 @@ def main(
                 workflow_function,
                 workflow_params,
                 workflow_tags,
+                cleanup=False,
             )
             if i == 0:
                 # Wait longer after first job so it creates the parfile
@@ -196,14 +199,21 @@ def main(
                 time.sleep(1)
         else:
             args = [
-            "--date", str(date),
-            "--fs_id", str(fs_id),
-            "--foldpath", str(foldpath),
-            "--datpath", str(datpath),
-            "--db-port", str(db_port),
-            "--db-name", str(db_name),
-            "--db-host", str(db_host),
-            "--write-to-db",
+                "--date",
+                str(date),
+                "--fs_id",
+                str(fs_id),
+                "--foldpath",
+                str(foldpath),
+                "--datpath",
+                str(datpath),
+                "--db-port",
+                str(db_port),
+                "--db-name",
+                str(db_name),
+                "--db-host",
+                str(db_host),
+                "--write-to-db",
             ]
             if overwrite_folding:
                 args.append("--overwrite-folding")
