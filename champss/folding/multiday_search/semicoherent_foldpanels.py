@@ -170,14 +170,14 @@ class SemicoherentFoldSearch:
             return
         # Transposed: DM on x-axis, MJD on y-axis
         ax_2d.pcolormesh(self.dm_abs, self.mjds, self.SN_DM_MJD.T, cmap=cmap)
-        ax_2d.set_xlabel(r'DM (pc cm$^{-3}$)', fontsize=9)
-        ax_2d.set_ylabel('MJD', fontsize=9)
+        ax_2d.set_xlabel(r'DM (pc cm$^{-3}$)', fontsize=12)
+        ax_2d.set_ylabel('MJD', fontsize=12)
 
         mean_sn = np.nanmean(self.SN_DM_MJD, axis=1)   # mean over MJD → shape (nDM,)
         ax_top.plot(self.dm_abs, mean_sn, color=color, lw=1)
         ax_top.set_xlim(self.dm_abs[0], self.dm_abs[-1])
         ax_top.set_xticks([])
-        ax_top.set_ylabel('Mean S/N', fontsize=7)
+        ax_top.set_ylabel('Mean S/N', fontsize=10)
 
     def _plot_left_f0(self, ax_top, ax_2d, cmap, color):
         if self.SN_F0_MJD is None:
@@ -186,99 +186,60 @@ class SemicoherentFoldSearch:
             return
         # Transposed: dF0 on x-axis, MJD on y-axis
         ax_2d.pcolormesh(self.f0_offsets, self.mjds, self.SN_F0_MJD.T, cmap=cmap)
-        ax_2d.set_xlabel(r'$\Delta F_0$ (Hz)', fontsize=9)
-        ax_2d.set_ylabel('MJD', fontsize=9)
+        ax_2d.set_xlabel(r'$\Delta F_0$ (Hz)', fontsize=12)
+        ax_2d.set_ylabel('MJD', fontsize=12)
 
         mean_sn = np.nanmean(self.SN_F0_MJD, axis=1)   # mean over MJD → shape (nF0,)
         ax_top.plot(self.f0_offsets, mean_sn, color=color, lw=1)
         ax_top.set_xlim(self.f0_offsets[0], self.f0_offsets[-1])
         ax_top.set_xticks([])
-        ax_top.set_ylabel('Mean S/N', fontsize=7)
+        ax_top.set_ylabel('Mean S/N', fontsize=10)
 
     def _plot_candidate_row(self, panel_a, panel_b,
-                            ax_prof_t,
-                            ax_tp_a_nom, ax_tp_a_corr,
-                            ax_tp_b_nom, ax_tp_b_corr,
-                            ax_prof_f,
-                            ax_fp_a_best, ax_fp_a_dm0,
-                            ax_fp_b_best, ax_fp_b_dm0,
+                            ax_prof_a_t, ax_tp_a_nom, ax_tp_a_corr,
+                            ax_prof_b_t, ax_tp_b_nom, ax_tp_b_corr,
+                            ax_prof_a_f, ax_fp_a_best, ax_fp_a_dm0,
+                            ax_prof_b_f, ax_fp_b_best, ax_fp_b_dm0,
                             cmap, color):
         """
-        Fill one candidate row.
+        Fill the candidate panels (6 per column).
 
-        Left pair (phase vs time, 4 panels):
-          ax_tp_a_nom  – day A at nominal fold F0
-          ax_tp_a_corr – day A phase-corrected to best dF0 (+F1 if searched)
-          ax_tp_b_nom  – day B at nominal fold F0
-          ax_tp_b_corr – day B phase-corrected to best dF0 (+F1 if searched)
+        Phase-vs-time column (cols 9-12):
+          ax_prof_a_t  – day A profile
+          ax_tp_a_nom  – day A nominal fold F0
+          ax_tp_a_corr – day A corrected to best dF0 (+F1 if searched)
+          ax_prof_b_t  – day B profile  (aligns with F0 marginal on left)
+          ax_tp_b_nom  – day B nominal fold F0  (aligns with F0 2D on left)
+          ax_tp_b_corr – day B corrected
 
-        Right pair (phase vs frequency, 4 panels — mirrors left):
+        Phase-vs-frequency column (cols 13-16, mirrors left):
+          ax_prof_a_f  – day A freq-summed profile
           ax_fp_a_best – day A at best DM
           ax_fp_a_dm0  – day A at DM = 0
+          ax_prof_b_f  – day B freq-summed profile
           ax_fp_b_best – day B at best DM
           ax_fp_b_dm0  – day B at DM = 0
         """
-        # ---- Left pair: phase vs time ----
-        profile_a = panel_a.get('profile', None)
 
-        if profile_a is not None:
-            nphase = profile_a.shape[0]
-            phase_ax2 = np.linspace(0, 2, 2 * nphase, endpoint=False)
-
-            prof_sum = profile_a.copy()
-            prof_b = panel_b.get('profile', None)
-            if prof_b is not None and prof_b.shape[0] == nphase:
-                prof_sum = prof_sum + prof_b
-            ax_prof_t.plot(phase_ax2, np.tile(prof_sum, 2), color=color, lw=1)
-            ax_prof_t.set_xlim(0, 2)
-            ax_prof_t.set_xticks([])
-            ax_prof_t.set_title(
-                f"MJD {float(panel_a['mjd']):.2f}  S/N={float(panel_a['SN']):.1f}",
-                fontsize=7, pad=2)
-
-            def _draw_tp(ax, fs_tp, label):
-                if fs_tp is None or fs_tp.size == 0:
-                    ax.axis('off')
-                    return
-                fs_tiled = np.tile(fs_tp, (1, 2))
-                vmin = np.nanmean(fs_tp) - np.nanstd(fs_tp)
-                vmax = np.nanmean(fs_tp) + 3 * np.nanstd(fs_tp)
-                ax.imshow(fs_tiled, aspect='auto', interpolation='nearest',
-                          extent=[0, 2, 0, fs_tp.shape[0]],
-                          cmap=cmap, vmin=vmin, vmax=vmax, origin='lower')
-                ax.set_ylabel(label, fontsize=6)
-                ax.set_xticks([])
-
-            for panel, ax_nom, ax_corr in [
-                (panel_a, ax_tp_a_nom, ax_tp_a_corr),
-                (panel_b, ax_tp_b_nom, ax_tp_b_corr),
-            ]:
-                mjd_str = f"MJD {float(panel['mjd']):.2f}"
-                f0_best = float(panel.get('f0_best', 0.0))
-                f1_best = float(panel.get('f1_best', 0.0))
-                if f1_best != 0.0:
-                    corr_label = f"{mjd_str}\ndF0={f0_best:.2e} F1={f1_best:.1e}"
-                else:
-                    corr_label = f"{mjd_str}\ndF0={f0_best:.2e}"
-
-                _draw_tp(ax_nom,  panel.get('fs_time_phase_nominal', None),
-                         f"{mjd_str} (nominal)")
-                _draw_tp(ax_corr, panel.get('fs_time_phase', None), corr_label)
-
-            ax_tp_b_corr.set_xlabel('Phase', fontsize=8)
-            ax_tp_b_corr.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
-        else:
-            for ax in (ax_prof_t, ax_tp_a_nom, ax_tp_a_corr,
-                       ax_tp_b_nom, ax_tp_b_corr):
+        def _draw_tp(ax, fs_tp, label):
+            if fs_tp is None or fs_tp.size == 0:
                 ax.axis('off')
+                return
+            fs_tiled = np.tile(fs_tp, (1, 2))
+            vmin = np.nanmean(fs_tp) - np.nanstd(fs_tp)
+            vmax = np.nanmean(fs_tp) + 3 * np.nanstd(fs_tp)
+            ax.imshow(fs_tiled, aspect='auto', interpolation='nearest',
+                      extent=[0, 2, 0, fs_tp.shape[0]],
+                      cmap=cmap, vmin=vmin, vmax=vmax, origin='lower')
+            ax.set_ylabel(label, fontsize=12)
+            ax.set_xticks([])
 
-        # ---- Right pair: phase vs frequency (both days) ----
         def _draw_fp(ax, panel, dm_offset, label):
             fs_fp = panel.get('fs_freq_phase', None)
             freq  = panel.get('freq', None)
             if fs_fp is None or freq is None or len(freq) == 0:
                 ax.axis('off')
-                return
+                return None
             f0 = float(panel['f0'])
             fs = _apply_dm_shift(fs_fp, dm_offset, freq, f0)
             fs_tiled = np.tile(fs, (1, 2))
@@ -287,50 +248,72 @@ class SemicoherentFoldSearch:
             ax.imshow(fs_tiled, aspect='auto', interpolation='nearest',
                       extent=[0, 2, freq.min(), freq.max()],
                       cmap=cmap, vmin=vmin, vmax=vmax)
-            ax.set_ylabel(f'Freq (MHz)\n{label}', fontsize=6)
+            ax.set_ylabel(f'Freq (MHz)\n{label}', fontsize=12)
             ax.yaxis.tick_right()
             ax.yaxis.set_label_position('right')
             ax.set_xticks([])
-            return fs.mean(0)   # profile summed over frequency
+            return fs.mean(0)
 
-        # Summed profile for top panel: best-DM profiles from both days
-        prof_f_sum = None
-        nphase_f = None
-        for panel in (panel_a, panel_b):
-            fs_fp = panel.get('fs_freq_phase', None)
-            freq  = panel.get('freq', None)
-            if fs_fp is None or freq is None or len(freq) == 0:
-                continue
-            dm      = float(panel['dm'])
-            dm_best = float(panel.get('dm_best', dm))
-            f0      = float(panel['f0'])
-            fs = _apply_dm_shift(fs_fp, dm_best - dm, freq, f0)
-            prof = fs.mean(0)
-            if prof_f_sum is None:
-                prof_f_sum = prof.copy()
-                nphase_f = len(prof)
-            elif len(prof) == nphase_f:
-                prof_f_sum += prof
+        def _draw_two_profs(ax, prof1, prof2, title):
+            """Overlay two profiles in the same panel with distinct styles."""
+            if prof1 is None and prof2 is None:
+                ax.axis('off')
+                return
+            for prof, ls in [(prof1, '-'), (prof2, '--')]:
+                if prof is None:
+                    continue
+                nphase = prof.shape[0]
+                phase_ax2 = np.linspace(0, 2, 2 * nphase, endpoint=False)
+                ax.plot(phase_ax2, np.tile(prof, 2), color=color, lw=1, ls=ls)
+            ax.set_xlim(0, 2)
+            ax.set_xticks([])
+            ax.set_title(title, fontsize=10, pad=2)
 
-        if prof_f_sum is not None:
-            phase_ax2 = np.linspace(0, 2, 2 * nphase_f, endpoint=False)
-            ax_prof_f.plot(phase_ax2, np.tile(prof_f_sum, 2), color=color, lw=1)
-            ax_prof_f.set_xlim(0, 2)
-            ax_prof_f.set_xticks([])
-        else:
-            ax_prof_f.axis('off')
+        # ---- Phase-vs-time panels ----
+        for panel, ax_prof, ax_nom, ax_corr in [
+            (panel_a, ax_prof_a_t, ax_tp_a_nom, ax_tp_a_corr),
+            (panel_b, ax_prof_b_t, ax_tp_b_nom, ax_tp_b_corr),
+        ]:
+            mjd_str = f"MJD {float(panel['mjd']):.2f}"
+            sn_str  = f"S/N={float(panel['SN']):.1f}"
+            f0_best = float(panel.get('f0_best', 0.0))
+            f1_best = float(panel.get('f1_best', 0.0))
+            if f1_best != 0.0:
+                corr_label = f"{mjd_str}\ndF0={f0_best:.2e} F1={f1_best:.1e}"
+            else:
+                corr_label = f"{mjd_str}\ndF0={f0_best:.2e}"
 
-        for panel, ax_best, ax_dm0 in [
-            (panel_a, ax_fp_a_best, ax_fp_a_dm0),
-            (panel_b, ax_fp_b_best, ax_fp_b_dm0),
+            # Nominal profile: frequency-averaged mean of the nominal time-phase array
+            fs_nom = panel.get('fs_time_phase_nominal', None)
+            prof_nom  = fs_nom.mean(0)  if fs_nom  is not None else None
+            # Corrected profile: saved after F0 correction
+            prof_corr = panel.get('profile', None)
+
+            _draw_two_profs(ax_prof, prof_nom, prof_corr,
+                            f"{mjd_str}  {sn_str}")
+            _draw_tp(ax_nom,  panel.get('fs_time_phase_nominal', None),
+                     f"{mjd_str} nominal")
+            _draw_tp(ax_corr, panel.get('fs_time_phase', None), corr_label)
+
+        ax_tp_b_corr.set_xlabel('Phase', fontsize=14)
+        ax_tp_b_corr.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
+
+        # ---- Phase-vs-frequency panels ----
+        for panel, ax_prof, ax_best, ax_dm0 in [
+            (panel_a, ax_prof_a_f, ax_fp_a_best, ax_fp_a_dm0),
+            (panel_b, ax_prof_b_f, ax_fp_b_best, ax_fp_b_dm0),
         ]:
             dm      = float(panel.get('dm', 0))
             dm_best = float(panel.get('dm_best', dm))
             mjd_str = f"MJD {float(panel['mjd']):.2f}"
-            _draw_fp(ax_best, panel, dm_best - dm, f"{mjd_str} DM={dm_best:.1f}")
-            _draw_fp(ax_dm0,  panel, -dm,          f"{mjd_str} DM=0")
 
-        ax_fp_b_dm0.set_xlabel('Phase', fontsize=8)
+            prof_best = _draw_fp(ax_best, panel, dm_best - dm,
+                                 f"{mjd_str} DM={dm_best:.1f}")
+            prof_dm0  = _draw_fp(ax_dm0,  panel, -dm, f"{mjd_str} DM=0")
+            # Show best-DM (solid) and DM=0 (dashed) profiles together
+            _draw_two_profs(ax_prof, prof_best, prof_dm0, '')
+
+        ax_fp_b_dm0.set_xlabel('Phase', fontsize=14)
         ax_fp_b_dm0.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
 
     # ------------------------------------------------------------------
@@ -354,6 +337,9 @@ class SemicoherentFoldSearch:
         plot_name : str
             Path to the saved figure.
         """
+        plt.rcParams.update({'xtick.labelsize': 11, 'ytick.labelsize': 11,
+                             'xtick.major.size': 6, 'ytick.major.size': 6})
+
         cmap = 'Greys_r' if plot_bw else 'viridis'
         color = 'black' if plot_bw else 'tab:blue'
 
@@ -361,61 +347,63 @@ class SemicoherentFoldSearch:
         ndays = len(panels)
         p0 = panels[0]
 
-        # Layout: 17 columns × 21 rows
+        # Layout: 15 columns × 21 rows
         #
-        #   Cols  0– 7: left DM / F0 panels          (8 cols)
-        #   Col   8   : empty gap                    (1 col)
-        #   Cols  9–12: best-day phase-time panels    (4 cols)
-        #   Cols 13–16: best-day phase-freq panels    (4 cols)
+        #   Cols  0– 5: left DM / F0 panels          (6 cols, 3/4 of original 8)
+        #   Col   6   : empty gap                    (1 col)
+        #   Cols  7–10: best-day phase-time panels    (4 cols)
+        #   Cols 11–14: best-day phase-freq panels    (4 cols)
         #
         #   Rows  0– 1: DM marginal / right profile  (2 rows)
         #   Rows  2– 9: DM 2D image / day-A panels   (8 rows, 4 each)
-        #   Row  10   : 1-grid gap                   (tiny height)
+        #   Row  10   : 1-grid gap                   (extra height for axis label)
         #   Rows 11–12: F0 marginal                  (2 rows)
         #   Rows 13–20: F0 2D image / day-B panels   (8 rows, 4 each)
-        #
-        # Right panels span all rows, split by the same gap:
-        #   Rows  0– 1: summed profiles (time + freq)
-        #   Rows  2– 5: day A nominal F0  /  day A best DM
-        #   Rows  6– 9: day A corrected   /  day A DM=0
-        #   Row  10   : gap (visual break between day A and day B)
-        #   Rows 11–14: day B nominal F0  /  day B best DM
-        #   Rows 15–18: day B corrected   /  day B DM=0
-        #   Rows 19–20: (unused)
 
         n_rows = 21
         height_ratios = [1] * n_rows
-        height_ratios[10] = 0.25   # tiny visual gap between DM and F0 sections
+        height_ratios[10] = 2.0    # gap between DM and F0 sections (room for x-axis label)
 
-        fig = plt.figure(figsize=(16, 16))
-        gs = GridSpec(n_rows, 17, figure=fig,
+        fig = plt.figure(figsize=(14, 16))
+        gs = GridSpec(n_rows, 15, figure=fig,
                       height_ratios=height_ratios,
                       hspace=0.06, wspace=0.06)
 
         # Left column – DM × MJD (transposed: DM on x, MJD on y)
-        ax_dm_top = fig.add_subplot(gs[0:2,  0:8])
-        ax_dm_2d  = fig.add_subplot(gs[2:10, 0:8])
+        ax_dm_top = fig.add_subplot(gs[0:2,  0:6])
+        ax_dm_2d  = fig.add_subplot(gs[2:10, 0:6])
 
         # Left column – F0 × MJD (transposed: dF0 on x, MJD on y)
-        ax_f0_top = fig.add_subplot(gs[11:13, 0:8])
-        ax_f0_2d  = fig.add_subplot(gs[13:21, 0:8])
+        ax_f0_top = fig.add_subplot(gs[11:13, 0:6])
+        ax_f0_2d  = fig.add_subplot(gs[13:21, 0:6])
 
         self._plot_left_dm(ax_dm_top, ax_dm_2d, cmap, color)
         self._plot_left_f0(ax_f0_top, ax_f0_2d, cmap, color)
 
-        # Single best-day candidate panel (cols 9-16, all rows)
-        # Col 8 is left empty as a 1-grid horizontal gap
-        ax_prof_t    = fig.add_subplot(gs[0:2,   9:13])
-        ax_tp_a_nom  = fig.add_subplot(gs[2:6,   9:13])
-        ax_tp_a_corr = fig.add_subplot(gs[6:10,  9:13])
-        ax_tp_b_nom  = fig.add_subplot(gs[11:15, 9:13])
-        ax_tp_b_corr = fig.add_subplot(gs[15:19, 9:13])
+        # Candidate panels (col 6 left empty as 1-grid horizontal gap)
+        #
+        # Day A aligns with the DM section on the left (rows 0-9):
+        #   rows 0- 1  profile
+        #   rows 2- 5  nominal F0
+        #   rows 6- 9  corrected F0 (+F1)
+        #
+        # Day B aligns with the F0 section on the left (rows 11-21):
+        #   rows 11-12  profile  (aligns with F0 marginal)
+        #   rows 13-17  nominal F0  (aligns with F0 2D start)
+        #   rows 17-21  corrected F0 (+F1)  (flush with F0 2D bottom)
+        ax_prof_a_t  = fig.add_subplot(gs[0:2,   7:11])
+        ax_tp_a_nom  = fig.add_subplot(gs[2:6,   7:11])
+        ax_tp_a_corr = fig.add_subplot(gs[6:10,  7:11])
+        ax_prof_b_t  = fig.add_subplot(gs[11:13, 7:11])
+        ax_tp_b_nom  = fig.add_subplot(gs[13:17, 7:11])
+        ax_tp_b_corr = fig.add_subplot(gs[17:21, 7:11])
 
-        ax_prof_f    = fig.add_subplot(gs[0:2,   13:17])
-        ax_fp_a_best = fig.add_subplot(gs[2:6,   13:17])
-        ax_fp_a_dm0  = fig.add_subplot(gs[6:10,  13:17])
-        ax_fp_b_best = fig.add_subplot(gs[11:15, 13:17])
-        ax_fp_b_dm0  = fig.add_subplot(gs[15:19, 13:17])
+        ax_prof_a_f  = fig.add_subplot(gs[0:2,   11:15])
+        ax_fp_a_best = fig.add_subplot(gs[2:6,   11:15])
+        ax_fp_a_dm0  = fig.add_subplot(gs[6:10,  11:15])
+        ax_prof_b_f  = fig.add_subplot(gs[11:13, 11:15])
+        ax_fp_b_best = fig.add_subplot(gs[13:17, 11:15])
+        ax_fp_b_dm0  = fig.add_subplot(gs[17:21, 11:15])
 
         if len(self.best_day_indices) >= 1:
             idx_a = self.best_day_indices[0]
@@ -426,19 +414,17 @@ class SemicoherentFoldSearch:
 
             self._plot_candidate_row(
                 panel_a, panel_b,
-                ax_prof_t,
-                ax_tp_a_nom, ax_tp_a_corr,
-                ax_tp_b_nom, ax_tp_b_corr,
-                ax_prof_f,
-                ax_fp_a_best, ax_fp_a_dm0,
-                ax_fp_b_best, ax_fp_b_dm0,
+                ax_prof_a_t, ax_tp_a_nom, ax_tp_a_corr,
+                ax_prof_b_t, ax_tp_b_nom, ax_tp_b_corr,
+                ax_prof_a_f, ax_fp_a_best, ax_fp_a_dm0,
+                ax_prof_b_f, ax_fp_b_best, ax_fp_b_dm0,
                 cmap, color,
             )
         else:
-            for ax in (ax_prof_t, ax_tp_a_nom, ax_tp_a_corr,
-                       ax_tp_b_nom, ax_tp_b_corr,
-                       ax_prof_f, ax_fp_a_best, ax_fp_a_dm0,
-                       ax_fp_b_best, ax_fp_b_dm0):
+            for ax in (ax_prof_a_t, ax_tp_a_nom, ax_tp_a_corr,
+                       ax_prof_b_t, ax_tp_b_nom, ax_tp_b_corr,
+                       ax_prof_a_f, ax_fp_a_best, ax_fp_a_dm0,
+                       ax_prof_b_f, ax_fp_b_best, ax_fp_b_dm0):
                 ax.axis('off')
 
         f0_str = f"{float(p0['f0']):.5f}"
@@ -446,7 +432,7 @@ class SemicoherentFoldSearch:
         plt.suptitle(
             f'Semi-coherent fold panel search  |  N={ndays} days  |  '
             f'f0={f0_str} Hz  |  DM={dm_str} pc/cm³',
-            fontsize=11, y=1.005,
+            fontsize=14, y=1.005,
         )
 
         if output_dir is None:
