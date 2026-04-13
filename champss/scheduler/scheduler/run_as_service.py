@@ -98,10 +98,10 @@ def run_as_service(
         )
         remove_service_thread.start()
         log.info("Cleanup thread started. Will remove service once finished.")
-        return
+        return service_id, remove_service_thread
     else:
         log.info("Started without cleanup.")
         log.info(
             f"Consider cleaning up after finish with: \n docker service ls --filter 'label=user={user}' --quiet | xargs docker service rm"
         )
-        return
+        return service_id
