@@ -188,7 +188,7 @@ def main(
                 workflow_function,
                 workflow_params,
                 workflow_tags,
-                cleanup=False,
+                cleanup=True,
             )
             if i == 0:
                 # Wait longer after first job so it creates the parfile
