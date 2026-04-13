@@ -360,6 +360,8 @@ def run_all_multi_day_folds(
         service_id, cleanup_thread = run_as_service(command, memory=50, manager=True)
         service_ids.append(service_id)
         cleanup_threads.append(cleanup_thread)
+        while cleanup_thread.is_alive():
+            time.sleep(10)
 
     finished = False
     while not finished:
