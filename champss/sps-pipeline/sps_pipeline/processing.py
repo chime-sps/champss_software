@@ -357,6 +357,7 @@ def run_all_multi_day_folds(
         if skip_finished:
             if row.get("fold_success"):
                 continue
+
         command = f"multidayfold_pipeline --candpath {row['file_name']} --db-host {db_host} --db-port {db_port} --db-name {db_name} --nday 0 --datpath {datpath} --foldpath {foldpath} --use-workflow --start-date 2025/6/01 --docker-image-name {docker_image_name}"
         service_id, cleanup_thread = run_as_service(command, memory=50, manager=True)
         service_ids.append(service_id)
