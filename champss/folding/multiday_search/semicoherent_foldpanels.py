@@ -168,13 +168,12 @@ class SemicoherentFoldSearch:
             ax_top.axis('off')
             ax_2d.axis('off')
             return
-        ax_2d.pcolormesh(self.mjds, self.dm_abs, self.SN_DM_MJD, cmap=cmap)
-        ax_2d.set_xlabel('MJD', fontsize=9)
-        ax_2d.set_ylabel(r'DM (pc cm$^{-3}$)', fontsize=9)
-        ax_2d.yaxis.tick_right()
-        ax_2d.yaxis.set_label_position('right')
+        # Transposed: DM on x-axis, MJD on y-axis
+        ax_2d.pcolormesh(self.dm_abs, self.mjds, self.SN_DM_MJD.T, cmap=cmap)
+        ax_2d.set_xlabel(r'DM (pc cm$^{-3}$)', fontsize=9)
+        ax_2d.set_ylabel('MJD', fontsize=9)
 
-        mean_sn = np.nanmean(self.SN_DM_MJD, axis=1)
+        mean_sn = np.nanmean(self.SN_DM_MJD, axis=1)   # mean over MJD → shape (nDM,)
         ax_top.plot(self.dm_abs, mean_sn, color=color, lw=1)
         ax_top.set_xlim(self.dm_abs[0], self.dm_abs[-1])
         ax_top.set_xticks([])
@@ -185,13 +184,12 @@ class SemicoherentFoldSearch:
             ax_top.axis('off')
             ax_2d.axis('off')
             return
-        ax_2d.pcolormesh(self.mjds, self.f0_offsets, self.SN_F0_MJD, cmap=cmap)
-        ax_2d.set_xlabel('MJD', fontsize=9)
-        ax_2d.set_ylabel(r'$\Delta F_0$ (Hz)', fontsize=9)
-        ax_2d.yaxis.tick_right()
-        ax_2d.yaxis.set_label_position('right')
+        # Transposed: dF0 on x-axis, MJD on y-axis
+        ax_2d.pcolormesh(self.f0_offsets, self.mjds, self.SN_F0_MJD.T, cmap=cmap)
+        ax_2d.set_xlabel(r'$\Delta F_0$ (Hz)', fontsize=9)
+        ax_2d.set_ylabel('MJD', fontsize=9)
 
-        mean_sn = np.nanmean(self.SN_F0_MJD, axis=1)
+        mean_sn = np.nanmean(self.SN_F0_MJD, axis=1)   # mean over MJD → shape (nF0,)
         ax_top.plot(self.f0_offsets, mean_sn, color=color, lw=1)
         ax_top.set_xlim(self.f0_offsets[0], self.f0_offsets[-1])
         ax_top.set_xticks([])
@@ -363,63 +361,68 @@ class SemicoherentFoldSearch:
         ndays = len(panels)
         p0 = panels[0]
 
-        # Layout: 16 columns × 20 rows
-        #   Cols  0– 7: left DM/F0 panels           (8 cols)
-        #   Cols  8–11: candidate phase-time panels  (4 cols)
-        #               per candidate row (10 rows):
-        #                 2 rows  – summed profile
-        #                 2 rows  – day A, nominal F0
-        #                 2 rows  – day A, best dF0 + F1
-        #                 2 rows  – day B, nominal F0
-        #                 2 rows  – day B, best dF0 + F1
-        #   Cols 12–15: candidate phase-freq panels  (4 cols, mirrors left)
-        #               per candidate row (10 rows):
-        #                 2 rows  – summed profile
-        #                 2 rows  – day A, best DM
-        #                 2 rows  – day A, DM = 0
-        #                 2 rows  – day B, best DM
-        #                 2 rows  – day B, DM = 0
-        fig = plt.figure(figsize=(16, 16))
-        gs = GridSpec(20, 16, figure=fig, hspace=0.08, wspace=0.08)
+        # Layout: 17 columns × 21 rows
+        #
+        #   Cols  0– 7: left DM / F0 panels          (8 cols)
+        #   Col   8   : empty gap                    (1 col)
+        #   Cols  9–12: best-day phase-time panels    (4 cols)
+        #   Cols 13–16: best-day phase-freq panels    (4 cols)
+        #
+        #   Rows  0– 1: DM marginal / right profile  (2 rows)
+        #   Rows  2– 9: DM 2D image / day-A panels   (8 rows, 4 each)
+        #   Row  10   : 1-grid gap                   (tiny height)
+        #   Rows 11–12: F0 marginal                  (2 rows)
+        #   Rows 13–20: F0 2D image / day-B panels   (8 rows, 4 each)
+        #
+        # Right panels span all rows, split by the same gap:
+        #   Rows  0– 1: summed profiles (time + freq)
+        #   Rows  2– 5: day A nominal F0  /  day A best DM
+        #   Rows  6– 9: day A corrected   /  day A DM=0
+        #   Row  10   : gap (visual break between day A and day B)
+        #   Rows 11–14: day B nominal F0  /  day B best DM
+        #   Rows 15–18: day B corrected   /  day B DM=0
+        #   Rows 19–20: (unused)
 
-        # Left column – DM × MJD
+        n_rows = 21
+        height_ratios = [1] * n_rows
+        height_ratios[10] = 0.25   # tiny visual gap between DM and F0 sections
+
+        fig = plt.figure(figsize=(16, 16))
+        gs = GridSpec(n_rows, 17, figure=fig,
+                      height_ratios=height_ratios,
+                      hspace=0.06, wspace=0.06)
+
+        # Left column – DM × MJD (transposed: DM on x, MJD on y)
         ax_dm_top = fig.add_subplot(gs[0:2,  0:8])
         ax_dm_2d  = fig.add_subplot(gs[2:10, 0:8])
 
-        # Left column – F0 × MJD
-        ax_f0_top = fig.add_subplot(gs[10:12, 0:8])
-        ax_f0_2d  = fig.add_subplot(gs[12:20, 0:8])
+        # Left column – F0 × MJD (transposed: dF0 on x, MJD on y)
+        ax_f0_top = fig.add_subplot(gs[11:13, 0:8])
+        ax_f0_2d  = fig.add_subplot(gs[13:21, 0:8])
 
         self._plot_left_dm(ax_dm_top, ax_dm_2d, cmap, color)
         self._plot_left_f0(ax_f0_top, ax_f0_2d, cmap, color)
 
-        # Two candidate rows, each occupying 10 rows
-        for ci, r0 in enumerate([0, 10]):
-            ax_prof_t    = fig.add_subplot(gs[r0:r0+2,   8:12])
-            ax_tp_a_nom  = fig.add_subplot(gs[r0+2:r0+4, 8:12])
-            ax_tp_a_corr = fig.add_subplot(gs[r0+4:r0+6, 8:12])
-            ax_tp_b_nom  = fig.add_subplot(gs[r0+6:r0+8, 8:12])
-            ax_tp_b_corr = fig.add_subplot(gs[r0+8:r0+10, 8:12])
+        # Single best-day candidate panel (cols 9-16, all rows)
+        # Col 8 is left empty as a 1-grid horizontal gap
+        ax_prof_t    = fig.add_subplot(gs[0:2,   9:13])
+        ax_tp_a_nom  = fig.add_subplot(gs[2:6,   9:13])
+        ax_tp_a_corr = fig.add_subplot(gs[6:10,  9:13])
+        ax_tp_b_nom  = fig.add_subplot(gs[11:15, 9:13])
+        ax_tp_b_corr = fig.add_subplot(gs[15:19, 9:13])
 
-            ax_prof_f    = fig.add_subplot(gs[r0:r0+2,   12:16])
-            ax_fp_a_best = fig.add_subplot(gs[r0+2:r0+4, 12:16])
-            ax_fp_a_dm0  = fig.add_subplot(gs[r0+4:r0+6, 12:16])
-            ax_fp_b_best = fig.add_subplot(gs[r0+6:r0+8, 12:16])
-            ax_fp_b_dm0  = fig.add_subplot(gs[r0+8:r0+10, 12:16])
+        ax_prof_f    = fig.add_subplot(gs[0:2,   13:17])
+        ax_fp_a_best = fig.add_subplot(gs[2:6,   13:17])
+        ax_fp_a_dm0  = fig.add_subplot(gs[6:10,  13:17])
+        ax_fp_b_best = fig.add_subplot(gs[11:15, 13:17])
+        ax_fp_b_dm0  = fig.add_subplot(gs[15:19, 13:17])
 
-            if ci < len(self.best_day_indices):
-                idx_a = self.best_day_indices[ci]
-                others = [i for i in self.best_day_indices if i != idx_a]
-                idx_b = others[0] if others else idx_a
-                panel_a = panels[idx_a]
-                panel_b = panels[idx_b]
-            else:
-                for ax in (ax_prof_t, ax_tp_a_nom, ax_tp_a_corr,
-                           ax_tp_b_nom, ax_tp_b_corr,
-                           ax_prof_f, ax_fp_a_best, ax_fp_a_dm0,
-                           ax_fp_b_best, ax_fp_b_dm0):
-                    ax.axis('off')
-                continue
+        if len(self.best_day_indices) >= 1:
+            idx_a = self.best_day_indices[0]
+            others = [i for i in self.best_day_indices if i != idx_a]
+            idx_b = others[0] if others else idx_a
+            panel_a = panels[idx_a]
+            panel_b = panels[idx_b]
 
             self._plot_candidate_row(
                 panel_a, panel_b,
@@ -431,6 +434,12 @@ class SemicoherentFoldSearch:
                 ax_fp_b_best, ax_fp_b_dm0,
                 cmap, color,
             )
+        else:
+            for ax in (ax_prof_t, ax_tp_a_nom, ax_tp_a_corr,
+                       ax_tp_b_nom, ax_tp_b_corr,
+                       ax_prof_f, ax_fp_a_best, ax_fp_a_dm0,
+                       ax_fp_b_best, ax_fp_b_dm0):
+                ax.axis('off')
 
         f0_str = f"{float(p0['f0']):.5f}"
         dm_str = f"{float(p0['dm']):.2f}"
