@@ -1017,7 +1017,7 @@ def run_all_pipeline_processes(
 
     requested_containers = 100
     update_time = 60
-    surplus_replicas = 20
+    surplus_replicas = 10
     # This checks if enough work objects have been deposited. More work objects are scheduled in the background
     for work_index, work in enumerate(work_ids):
         if work_index > requested_containers:
@@ -2221,7 +2221,7 @@ def start_processing_services(
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
         # Labels allow for easy filtering with Docker CLI
         "labels": {"type": "processing"},
-        "constraints": ["node.role == manager"],
+        "constraints": ["node.hostname == sps-archiver1"],
         # Will throw an error if you give two of the same bind mount paths
         # e.g. avoid double-mounting basepath and stackpath when they are the same
         "mounts": [
