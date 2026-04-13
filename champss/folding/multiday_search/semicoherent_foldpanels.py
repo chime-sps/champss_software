@@ -231,7 +231,8 @@ class SemicoherentFoldSearch:
             ax.imshow(fs_tiled, aspect='auto', interpolation='nearest',
                       extent=[0, 2, 0, fs_tp.shape[0]],
                       cmap=cmap, vmin=vmin, vmax=vmax, origin='lower')
-            ax.set_ylabel(label, fontsize=12)
+            ax.set_ylabel('Time (subint)', fontsize=12)
+            ax.set_title(label, fontsize=9, pad=2)
             ax.set_xticks([])
 
         def _draw_fp(ax, panel, dm_offset, label):
@@ -279,9 +280,9 @@ class SemicoherentFoldSearch:
             f0_best = float(panel.get('f0_best', 0.0))
             f1_best = float(panel.get('f1_best', 0.0))
             if f1_best != 0.0:
-                corr_label = f"{mjd_str}\ndF0={f0_best:.2e} F1={f1_best:.1e}"
+                corr_label = f"dF0={f0_best:.2e} F1={f1_best:.1e}"
             else:
-                corr_label = f"{mjd_str}\ndF0={f0_best:.2e}"
+                corr_label = f"dF0={f0_best:.2e}"
 
             # Nominal profile: frequency-averaged mean of the nominal time-phase array
             fs_nom = panel.get('fs_time_phase_nominal', None)
@@ -293,7 +294,7 @@ class SemicoherentFoldSearch:
                             f"{mjd_str}  {sn_str}")
             _draw_tp(ax_nom,  panel.get('fs_time_phase', None), corr_label)
             _draw_tp(ax_corr, panel.get('fs_time_phase_nominal', None),
-                     f"{mjd_str} nominal")
+                     "nominal F0")
 
         ax_tp_b_corr.set_xlabel('Phase', fontsize=14)
         ax_tp_b_corr.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
@@ -308,10 +309,10 @@ class SemicoherentFoldSearch:
             mjd_str = f"MJD {float(panel['mjd']):.2f}"
 
             prof_best = _draw_fp(ax_best, panel, dm_best - dm,
-                                 f"{mjd_str} DM={dm_best:.1f}")
-            prof_dm0  = _draw_fp(ax_dm0,  panel, -dm, f"{mjd_str} DM=0")
-            # Show best-DM (solid) and DM=0 (dashed) profiles together
-            _draw_two_profs(ax_prof, prof_best, prof_dm0, '')
+                                 f"DM={dm_best:.1f}")
+            prof_dm0  = _draw_fp(ax_dm0,  panel, -dm, "DM=0")
+            # Show DM=0 (tab:orange) and best-DM (primary colour) profiles together
+            _draw_two_profs(ax_prof, prof_dm0, prof_best, '')
 
         ax_fp_b_dm0.set_xlabel('Phase', fontsize=14)
         ax_fp_b_dm0.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
