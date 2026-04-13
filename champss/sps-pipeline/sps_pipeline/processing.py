@@ -312,7 +312,7 @@ def run_all_multi_day_folds(
     # results = []
     service_ids = []
     cleanup_threads = []
-    njobs = 10
+    njobs = 5
     for index, row in df_mp.iterrows():
         # mdf_args = [
         #     "--candpath",
