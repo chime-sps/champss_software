@@ -231,8 +231,7 @@ class SemicoherentFoldSearch:
             ax.imshow(fs_tiled, aspect='auto', interpolation='nearest',
                       extent=[0, 2, 0, fs_tp.shape[0]],
                       cmap=cmap, vmin=vmin, vmax=vmax, origin='lower')
-            ax.set_ylabel('Time (subint)', fontsize=12)
-            ax.set_title(label, fontsize=9, pad=2)
+            ax.set_ylabel(f'Time (subint)\n{label}', fontsize=12)
             ax.set_xticks([])
 
         def _draw_fp(ax, panel, dm_offset, label):
