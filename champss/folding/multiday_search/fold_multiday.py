@@ -142,7 +142,7 @@ def main(
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     source = db_api.get_followup_source(fs_id)
     if source.folding_history:
-        fold_dates = [entry["date"].date() for entry in source.folding_history]
+        fold_dates = [entry["date"].strftime("%Y%m%d") for entry in source.folding_history]
     else:
         fold_dates = []
     ra = source.ra
@@ -155,7 +155,7 @@ def main(
     )
     print(f"Folding {len(dates_with_data)} days of data: {dates_with_data}")
     for i, date in enumerate(dates_with_data):
-        if date.strftime("%Y%m%d") in fold_dates:
+        if date in fold_dates:
             print(f"Already folded on {date.date()}, skipping...")
             continue
 
