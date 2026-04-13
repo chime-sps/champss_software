@@ -352,6 +352,7 @@ def run_all_multi_day_folds(
         #     df_mp.at[index, "fold_success"] = True
         # else:
         #     df_mp.at[index, "fold_success"] = False
+
         if skip_finished:
             if row.get("fold_success"):
                 continue
