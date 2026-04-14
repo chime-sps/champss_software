@@ -17,8 +17,10 @@ Grid ranges
 -----------
   F0_base  : every f0_offsets bin
   F_binary : 1/(10 × T_total) to 0.5 c/d, spacing 1/T_total
-  phase    : 16 uniform values in [0, 1)
-  A        : 8 linear steps from dF0_step to F0_range / 4
+  A        : integer multiples of dF0_step: dF0_step × {1, 2, …, nA}
+             where nA = round(F0_range / (4 × dF0_step))
+  phase    : ceil(nA × 2π) uniform values in [0, 1), so that one step
+             shifts the cosine by ≤ 1 dF bin at the largest amplitude
 """
 
 import numpy as np
@@ -130,8 +132,16 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     if len(F_bins) == 0:
         return None
 
-    phases = np.linspace(0.0, 1.0, 16, endpoint=False)
-    A_vals = np.linspace(dF0_step, F0_range / 4.0, 8)
+    # A grid: exact multiples of dF0_step up to F0_range / 4
+    nA     = max(4, int(round(F0_range / (4.0 * dF0_step))))
+    A_vals = dF0_step * np.arange(1, nA + 1, dtype=np.float64)
+
+    # Phase grid: spacing chosen so that one φ-step shifts the cosine by at
+    # most 1 dF bin at the largest amplitude.  The maximum rate of change is
+    # A_max * 2π (at the cosine's steepest point), so dφ = dF0_step/(A_max*2π)
+    # and N_phi = ceil(A_max * 2π / dF0_step) = ceil(nA * 2π).
+    N_phi  = int(np.ceil(nA * 2.0 * np.pi))
+    phases = np.linspace(0.0, 1.0, N_phi, endpoint=False)
 
     SN_grid = _orbital_sn_grid(
         SN_F0_MJD.astype(np.float64),
