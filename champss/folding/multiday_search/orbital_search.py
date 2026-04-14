@@ -124,10 +124,11 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     dF0_step = float(f0_offsets[1] - f0_offsets[0])
     F0_range = float(f0_offsets[-1] - f0_offsets[0])
 
-    # Orbital frequency grid (cycles / day)
+    # Orbital frequency grid (cycles / day) — 4× finer than 1/T_total to
+    # avoid missing orbits whose period falls between coarse bins
     F_bin_min = 1.0 / (10.0 * T_total)
     F_bin_max = 0.5          # 2-day minimum period
-    dF_bin    = 1.0 / T_total
+    dF_bin    = 1.0 / (4.0 * T_total)
     F_bins = np.arange(F_bin_min, F_bin_max + 0.5 * dF_bin, dF_bin)
     if len(F_bins) == 0:
         return None
@@ -136,16 +137,20 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     nA     = max(4, int(round(F0_range / (4.0 * dF0_step))))
     A_vals = dF0_step * np.arange(1, nA + 1, dtype=np.float64)
 
-    # Phase grid: spacing chosen so that one φ-step shifts the cosine by at
-    # most 1 dF bin at the largest amplitude.  The maximum rate of change is
-    # A_max * 2π (at the cosine's steepest point), so dφ = dF0_step/(A_max*2π)
-    # and N_phi = ceil(A_max * 2π / dF0_step) = ceil(nA * 2π).
-    N_phi  = int(np.ceil(nA * 2.0 * np.pi))
+    # Phase grid: 2× coarser than the 1-bin criterion (factor of 2 speed-up)
+    N_phi  = max(8, int(np.ceil(nA * np.pi)))   # ceil(nA * 2π) / 2
     phases = np.linspace(0.0, 1.0, N_phi, endpoint=False)
 
-    n_iter = len(f0_offsets) * len(F_bins) * N_phi * nA * len(mjds)
+    # F0 search: centre quarter of the full f0_offsets range
+    nF0_full   = len(f0_offsets)
+    i0 = nF0_full // 8 * 3          # start at 3/8
+    i1 = nF0_full // 8 * 5 + 1      # end   at 5/8  (quarter of full range)
+    f0_search      = f0_offsets[i0:i1]
+    SN_F0_search   = SN_F0_MJD[i0:i1, :]
+
+    n_iter = len(f0_search) * len(F_bins) * N_phi * nA * len(mjds)
     print(
-        f"Orbital grid: nF0={len(f0_offsets)}  nF_bin={len(F_bins)}  "
+        f"Orbital grid: nF0={len(f0_search)}  nF_bin={len(F_bins)}  "
         f"nPhase={N_phi}  nA={nA}  nDays={len(mjds)}\n"
         f"  dF0={dF0_step:.3e} Hz  dF_bin={dF_bin:.4f} c/d  "
         f"A_max={float(A_vals[-1]):.3e} Hz\n"
@@ -153,15 +158,15 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     )
 
     SN_grid = _orbital_sn_grid(
-        SN_F0_MJD.astype(np.float64),
-        f0_offsets.astype(np.float64),
+        SN_F0_search.astype(np.float64),
+        f0_search.astype(np.float64),
         mjds.astype(np.float64),
         F_bins.astype(np.float64),
         phases.astype(np.float64),
         A_vals.astype(np.float64),
     )
 
-    # Incoherent baseline: best coherent sum at any constant F0
+    # Incoherent baseline: best coherent sum at any constant F0 (full range)
     baseline_sn = float(np.max(np.sum(SN_F0_MJD, axis=1)))
     best_sn     = float(SN_grid.max())
 
@@ -173,9 +178,10 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
         F_bins      = F_bins,
         phases      = phases,
         A_vals      = A_vals,
+        f0_search   = f0_search,
         best_sn     = best_sn,
         baseline_sn = baseline_sn,
-        F0_best     = float(f0_offsets[iF0]),
+        F0_best     = float(f0_search[iF0]),
         F_bin_best  = float(F_bins[iFbin]),
         phase_best  = float(phases[iPhase]),
         A_best      = float(A_vals[iA]),
@@ -213,7 +219,8 @@ def overlay_orbit(ax_2d, ax_top, orbit, f0_offsets, mjds, SN_F0_MJD):
     )
     ax_2d.plot(F_curve, mjd_dense, color='tab:orange', lw=1.5, alpha=0.85, zorder=5)
 
-    # Orbit-summed profile for the top marginal
+    # Orbit-summed profile for the top marginal, accumulated into the full
+    # f0_offsets axis so the orange trace lines up with the pcolormesh below
     nF0    = len(f0_offsets)
     dF0    = f0_offsets[1] - f0_offsets[0]
     F0min  = float(f0_offsets[0])
@@ -230,7 +237,7 @@ def overlay_orbit(ax_2d, ax_top, orbit, f0_offsets, mjds, SN_F0_MJD):
                 label='orbit sum')
 
 
-def add_corner_plot(fig, gs_corner, orbit, f0_offsets):
+def add_corner_plot(fig, gs_corner, orbit):
     """
     Fill the 4×4 corner plot (lower triangle = 2D S/N contours,
     diagonal = 1D marginals, upper triangle = parameter text).
@@ -240,14 +247,14 @@ def add_corner_plot(fig, gs_corner, orbit, f0_offsets):
     fig       : Figure
     gs_corner : GridSpecFromSubplotSpec – 4 rows × 4 cols
     orbit     : dict returned by run_orbital_search
-    f0_offsets : ndarray (nF0,)
     """
-    SN_grid = orbit['SN_grid']          # (nF0, nFbin, nPhase, nA)
-    F_bins  = orbit['F_bins']
-    phases  = orbit['phases']
-    A_vals  = orbit['A_vals']
+    SN_grid   = orbit['SN_grid']        # (nF0_search, nFbin, nPhase, nA)
+    F_bins    = orbit['F_bins']
+    phases    = orbit['phases']
+    A_vals    = orbit['A_vals']
+    f0_search = orbit['f0_search']
 
-    param_axes  = [f0_offsets, F_bins, phases, A_vals]
+    param_axes  = [f0_search, F_bins, phases, A_vals]
     param_labels = [r'$\Delta F_0$ (Hz)', r'$F_\mathrm{bin}$ (c/d)',
                     r'Phase', r'$A$ (Hz)']
     best_vals = [orbit['F0_best'], orbit['F_bin_best'],
