@@ -143,6 +143,15 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     N_phi  = int(np.ceil(nA * 2.0 * np.pi))
     phases = np.linspace(0.0, 1.0, N_phi, endpoint=False)
 
+    n_iter = len(f0_offsets) * len(F_bins) * N_phi * nA * len(mjds)
+    print(
+        f"Orbital grid: nF0={len(f0_offsets)}  nF_bin={len(F_bins)}  "
+        f"nPhase={N_phi}  nA={nA}  nDays={len(mjds)}\n"
+        f"  dF0={dF0_step:.3e} Hz  dF_bin={dF_bin:.4f} c/d  "
+        f"A_max={float(A_vals[-1]):.3e} Hz\n"
+        f"  Total iterations: {n_iter:,}"
+    )
+
     SN_grid = _orbital_sn_grid(
         SN_F0_MJD.astype(np.float64),
         f0_offsets.astype(np.float64),
@@ -155,9 +164,6 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     # Incoherent baseline: best coherent sum at any constant F0
     baseline_sn = float(np.max(np.sum(SN_F0_MJD, axis=1)))
     best_sn     = float(SN_grid.max())
-
-    if best_sn <= 1.5 * baseline_sn:
-        return None
 
     idx = np.unravel_index(int(np.argmax(SN_grid)), SN_grid.shape)
     iF0, iFbin, iPhase, iA = idx
