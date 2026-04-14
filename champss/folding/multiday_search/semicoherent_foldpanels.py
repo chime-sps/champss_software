@@ -447,7 +447,7 @@ class SemicoherentFoldSearch:
         if orbit is not None:
             overlay_orbit(ax_f0_2d, ax_f0_top, orbit,
                           self.f0_offsets, self.mjds, self.SN_F0_MJD)
-            add_corner_plot(fig, gs_corner, orbit, self.f0_offsets)
+            add_corner_plot(fig, gs_corner, orbit)
 
         # Candidate panels (col 6 left empty as 1-grid horizontal gap)
         #
