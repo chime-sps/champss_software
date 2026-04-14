@@ -152,7 +152,7 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     print(
         f"Orbital grid: nF0={len(f0_search)}  nF_bin={len(F_bins)}  "
         f"nPhase={N_phi}  nA={nA}  nDays={len(mjds)}\n"
-        f"  dF0={dF0_step:.3e} Hz  dF_bin={dF_bin:.4f} c/d  "
+        f"  dF0={dF0_step:.3e} Hz  dF_bin={dF_bin:.4f} day⁻¹  "
         f"A_max={float(A_vals[-1]):.3e} Hz\n"
         f"  Total iterations: {n_iter:,}"
     )
@@ -217,22 +217,22 @@ def overlay_orbit(ax_2d, ax_top, orbit, f0_offsets, mjds, SN_F0_MJD):
     F_curve = F0_best + A_best * np.cos(
         2.0 * np.pi * (mjd_dense * F_bin_best - phase_best)
     )
-    ax_2d.plot(F_curve, mjd_dense, color='tab:orange', lw=1.5, alpha=0.85, zorder=5)
+    ax_2d.plot(F_curve, mjd_dense,
+               color='white', lw=1.5, ls=':', alpha=0.9, zorder=5)
 
-    # Orbit-summed profile for the top marginal, accumulated into the full
-    # f0_offsets axis so the orange trace lines up with the pcolormesh below
-    nF0    = len(f0_offsets)
-    dF0    = f0_offsets[1] - f0_offsets[0]
-    F0min  = float(f0_offsets[0])
-    orbit_profile = np.zeros(nF0)
+    # De-orbited top marginal: roll each day's S/N column by the predicted
+    # orbital bin offset, then take the mean over days.  This collapses the
+    # sinusoidal track onto the rest frequency and stays on the same y-scale
+    # as the existing incoherent mean profile.
+    nF0  = len(f0_offsets)
+    dF0  = f0_offsets[1] - f0_offsets[0]
+    rolled = np.empty_like(SN_F0_MJD)
     for j, mjd in enumerate(mjds):
-        F_orb = F0_best + A_best * np.cos(
-            2.0 * np.pi * (mjd * F_bin_best - phase_best)
-        )
-        k = int(round((F_orb - F0min) / dF0))
-        k = max(0, min(nF0 - 1, k))
-        orbit_profile[k] += SN_F0_MJD[k, j]
+        delta_F = A_best * np.cos(2.0 * np.pi * (mjd * F_bin_best - phase_best))
+        shift   = int(round(delta_F / dF0))
+        rolled[:, j] = np.roll(SN_F0_MJD[:, j], -shift)
 
+    orbit_profile = rolled.mean(axis=1)
     ax_top.plot(f0_offsets, orbit_profile, color='tab:orange', lw=1, alpha=0.8,
                 label='orbit sum')
 
@@ -255,7 +255,7 @@ def add_corner_plot(fig, gs_corner, orbit):
     f0_search = orbit['f0_search']
 
     param_axes  = [f0_search, F_bins, phases, A_vals]
-    param_labels = [r'$\Delta F_0$ (Hz)', r'$F_\mathrm{bin}$ (c/d)',
+    param_labels = [r'$\Delta F_0$ (Hz)', r'$F_\mathrm{bin}$ (day$^{-1}$)',
                     r'Phase', r'$A$ (Hz)']
     best_vals = [orbit['F0_best'], orbit['F_bin_best'],
                  orbit['phase_best'], orbit['A_best']]
