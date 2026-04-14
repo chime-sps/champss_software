@@ -212,12 +212,12 @@ def overlay_orbit(ax_2d, ax_top, orbit, f0_offsets, mjds, SN_F0_MJD):
     phase_best = orbit['phase_best']
     A_best     = orbit['A_best']
 
-    # Dense curve for the 2D overlay (x=dF0, y=MJD – transposed layout)
+    # Dense curve for the 2D overlay (x=dF0 in mHz, y=MJD – transposed layout)
     mjd_dense = np.linspace(float(mjds.min()), float(mjds.max()), 500)
     F_curve = F0_best + A_best * np.cos(
         2.0 * np.pi * (mjd_dense * F_bin_best - phase_best)
     )
-    ax_2d.plot(F_curve, mjd_dense,
+    ax_2d.plot(F_curve * 1e3, mjd_dense,
                color='white', lw=1.5, ls=':', alpha=0.9, zorder=5)
 
     # De-orbited top marginal: roll each day's S/N column by the predicted
@@ -233,7 +233,7 @@ def overlay_orbit(ax_2d, ax_top, orbit, f0_offsets, mjds, SN_F0_MJD):
         rolled[:, j] = np.roll(SN_F0_MJD[:, j], -shift)
 
     orbit_profile = rolled.mean(axis=1)
-    ax_top.plot(f0_offsets, orbit_profile, color='tab:orange', lw=1, alpha=0.8,
+    ax_top.plot(f0_offsets * 1e3, orbit_profile, color='tab:orange', lw=1, alpha=0.8,
                 label='orbit sum')
 
 
@@ -259,11 +259,11 @@ def add_corner_plot(fig, gs_corner, orbit):
     SN_grid_p  = SN_grid[:, ::-1, :, :]   # flip F_bin axis to match P_orb order
     best_P_orb = 1.0 / orbit['F_bin_best']
 
-    param_axes   = [f0_search, P_orb_vals, phases, A_vals]
-    param_labels = [r'$\Delta F_0$ (Hz)', r'$P_\mathrm{orb}$ (day)',
-                    r'Phase', r'$A$ (Hz)']
-    best_vals    = [orbit['F0_best'], best_P_orb,
-                    orbit['phase_best'], orbit['A_best']]
+    param_axes   = [f0_search * 1e3, P_orb_vals, phases, A_vals * 1e3]
+    param_labels = [r'$\Delta F_0$ (mHz)', r'$P_\mathrm{orb}$ (day)',
+                    r'Phase', r'$A$ (mHz)']
+    best_vals    = [orbit['F0_best'] * 1e3, best_P_orb,
+                    orbit['phase_best'], orbit['A_best'] * 1e3]
 
     SN_grid = SN_grid_p   # use the flipped grid throughout
 
@@ -318,10 +318,10 @@ def add_corner_plot(fig, gs_corner, orbit):
     lines = [
         r'Best-fit orbit',
         r'',
-        rf"$\Delta F_0 = {orbit['F0_best']:.3e}$ Hz",
+        rf"$\Delta F_0 = {orbit['F0_best']*1e3:.3f}$ mHz",
         rf"$P_\mathrm{{orb}} = {P_orb:.2f}$ d",
         rf"$\phi = {orbit['phase_best']:.3f}$",
-        rf"$A = {orbit['A_best']:.3e}$ Hz",
+        rf"$A = {orbit['A_best']*1e3:.3f}$ mHz",
         r'',
         rf"S/N$_\mathrm{{orb}}$ = {orbit['best_sn']:.1f}",
         rf"S/N$_\mathrm{{base}}$ = {orbit['baseline_sn']:.1f}",
