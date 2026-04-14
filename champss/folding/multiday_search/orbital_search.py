@@ -238,7 +238,8 @@ def overlay_orbit(ax_2d, ax_top, orbit, f0_offsets, mjds, SN_F0_MJD):
     orbit_profile = (orbit_profile - orbitprof_mean)/orbitprof_std
 
     ax_top.plot(f0_offsets, orbit_profile, color='tab:orange', lw=1, alpha=0.8,
-                label='orbit sum')
+                label='Best Orbit')
+    ax_top.legend(fontsize=8, framealpha=0.5, loc='upper right')
 
 
 def add_corner_plot(fig, gs_corner, orbit):

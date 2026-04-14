@@ -200,7 +200,7 @@ class SemicoherentFoldSearch:
         mean_sn = (Power_F0 - mean_F0)/std_F0
 
         #mean_sn = np.nanmean(self.SN_F0_MJD, axis=1)   # mean over MJD → shape (nF0,)
-        ax_top.plot(self.f0_offsets, mean_sn, color=color, lw=1)
+        ax_top.plot(self.f0_offsets, mean_sn, color=color, lw=1, label='Single F0')
         ax_top.set_xlim(self.f0_offsets[0], self.f0_offsets[-1])
         ax_top.set_xticks([])
         ax_top.set_ylabel('Mean S/N', fontsize=10)
