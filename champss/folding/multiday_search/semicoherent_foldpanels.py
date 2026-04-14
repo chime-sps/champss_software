@@ -375,13 +375,13 @@ class SemicoherentFoldSearch:
                       width_ratios=width_ratios,
                       hspace=0.06, wspace=0.06)
 
-        # Left column – DM × MJD (transposed: DM on x, MJD on y)
-        ax_dm_top = fig.add_subplot(gs[0:2,  0:6])
-        ax_dm_2d  = fig.add_subplot(gs[2:10, 0:6])
+        # Left column – dF0 × MJD on top (transposed: dF0 on x, MJD on y)
+        ax_f0_top = fig.add_subplot(gs[0:2,  0:6])
+        ax_f0_2d  = fig.add_subplot(gs[2:10, 0:6])
 
-        # Left column – F0 × MJD (transposed: dF0 on x, MJD on y)
-        ax_f0_top = fig.add_subplot(gs[11:13, 0:6])
-        ax_f0_2d  = fig.add_subplot(gs[13:21, 0:6])
+        # Left column – DM × MJD on bottom (transposed: DM on x, MJD on y)
+        ax_dm_top = fig.add_subplot(gs[11:13, 0:6])
+        ax_dm_2d  = fig.add_subplot(gs[13:21, 0:6])
 
         self._plot_left_dm(ax_dm_top, ax_dm_2d, cmap, color)
         self._plot_left_f0(ax_f0_top, ax_f0_2d, cmap, color)
