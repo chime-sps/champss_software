@@ -175,7 +175,10 @@ class SemicoherentFoldSearch:
         ax_2d.set_xlabel(r'DM (pc cm$^{-3}$)', fontsize=12)
         ax_2d.set_ylabel('MJD', fontsize=12)
 
-        mean_sn = np.nanmean(self.SN_DM_MJD, axis=1)   # mean over MJD → shape (nDM,)
+        Power_DM = np.nanmean(self.SN_DM_MJD, axis=1)   # mean over MJD → shape (nDM,)
+        std_DM = np.std(np.sort(Power_DM)[:3*len(Power_DM)//4])
+        mean_DM = np.mean(np.sort(Power_DM)[:3*len(Power_DM)//4])
+        mean_sn = (Power_DM - mean_DM)/std_DM
         ax_top.plot(self.dm_abs, mean_sn, color=color, lw=1)
         ax_top.set_xlim(self.dm_abs[0], self.dm_abs[-1])
         ax_top.set_xticks([])
@@ -191,7 +194,12 @@ class SemicoherentFoldSearch:
         ax_2d.set_xlabel(r'$\Delta F_0$ (Hz)', fontsize=12)
         ax_2d.set_ylabel('MJD', fontsize=12)
 
-        mean_sn = np.nanmean(self.SN_F0_MJD, axis=1)   # mean over MJD → shape (nF0,)
+        Power_F0 = np.nanmean(self.SN_F0_MJD, axis=1)   # mean over MJD → shape (nDM,)
+        std_F0 = np.std(np.sort(Power_F0)[:3*len(Power_F0)//4])
+        mean_F0 = np.mean(np.sort(Power_F0)[:3*len(Power_F0)//4])
+        mean_sn = (Power_F0 - mean_F0)/std_F0
+
+        #mean_sn = np.nanmean(self.SN_F0_MJD, axis=1)   # mean over MJD → shape (nF0,)
         ax_top.plot(self.f0_offsets, mean_sn, color=color, lw=1)
         ax_top.set_xlim(self.f0_offsets[0], self.f0_offsets[-1])
         ax_top.set_xticks([])
