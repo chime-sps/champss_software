@@ -148,7 +148,7 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     f0_search      = f0_offsets[i0:i1]
     SN_F0_search   = SN_F0_MJD[i0:i1, :]
 
-    n_iter = len(f0_search) * len(F_bins) * N_phi * nA * len(mjds)
+    n_iter = len(f0_search) * len(F_bins) * N_phi * nA
     print(
         f"Orbital grid: nF0={len(f0_search)}  nF_bin={len(F_bins)}  "
         f"nPhase={N_phi}  nA={nA}  nDays={len(mjds)}\n"

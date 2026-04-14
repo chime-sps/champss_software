@@ -518,9 +518,9 @@ class SemicoherentFoldSearch:
         f0_str = f"{float(p0['f0']):.5f}"
         dm_str = f"{float(p0['dm']):.2f}"
         plt.suptitle(
-            f'Semi-coherent fold panel search  |  N={ndays} days  |  '
+            f'Semi-coherent search  |  N={ndays} days  |  '
             f'f0={f0_str} Hz  |  DM={dm_str} pc/cm³',
-            fontsize=14, y=0.995,
+            fontsize=16, y=0.91,
         )
 
         if output_dir is None:
