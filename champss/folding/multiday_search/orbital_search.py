@@ -254,11 +254,18 @@ def add_corner_plot(fig, gs_corner, orbit):
     A_vals    = orbit['A_vals']
     f0_search = orbit['f0_search']
 
-    param_axes  = [f0_search, F_bins, phases, A_vals]
-    param_labels = [r'$\Delta F_0$ (Hz)', r'$F_\mathrm{bin}$ (day$^{-1}$)',
+    # Convert F_bin axis to P_orb (days) — flip so the axis is ascending
+    P_orb_vals = 1.0 / F_bins[::-1]
+    SN_grid_p  = SN_grid[:, ::-1, :, :]   # flip F_bin axis to match P_orb order
+    best_P_orb = 1.0 / orbit['F_bin_best']
+
+    param_axes   = [f0_search, P_orb_vals, phases, A_vals]
+    param_labels = [r'$\Delta F_0$ (Hz)', r'$P_\mathrm{orb}$ (day)',
                     r'Phase', r'$A$ (Hz)']
-    best_vals = [orbit['F0_best'], orbit['F_bin_best'],
-                 orbit['phase_best'], orbit['A_best']]
+    best_vals    = [orbit['F0_best'], best_P_orb,
+                    orbit['phase_best'], orbit['A_best']]
+
+    SN_grid = SN_grid_p   # use the flipped grid throughout
 
     nparams = 4
 
