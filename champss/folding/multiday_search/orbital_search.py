@@ -217,7 +217,7 @@ def overlay_orbit(ax_2d, ax_top, orbit, f0_offsets, mjds, SN_F0_MJD):
     F_curve = F0_best + A_best * np.cos(
         2.0 * np.pi * (mjd_dense * F_bin_best - phase_best)
     )
-    ax_2d.plot(F_curve * 1e3, mjd_dense,
+    ax_2d.plot(F_curve, mjd_dense,
                color='white', lw=1.5, ls=':', alpha=0.9, zorder=5)
 
     # De-orbited top marginal: roll each day's S/N column by the predicted
@@ -233,7 +233,7 @@ def overlay_orbit(ax_2d, ax_top, orbit, f0_offsets, mjds, SN_F0_MJD):
         rolled[:, j] = np.roll(SN_F0_MJD[:, j], -shift)
 
     orbit_profile = rolled.mean(axis=1)
-    ax_top.plot(f0_offsets * 1e3, orbit_profile, color='tab:orange', lw=1, alpha=0.8,
+    ax_top.plot(f0_offsets, orbit_profile, color='tab:orange', lw=1, alpha=0.8,
                 label='orbit sum')
 
 
