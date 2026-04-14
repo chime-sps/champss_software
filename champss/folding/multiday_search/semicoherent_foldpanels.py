@@ -31,7 +31,9 @@ import os
 import click
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
+from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+
+from .orbital_search import run_orbital_search, overlay_orbit, add_corner_plot
 
 
 # ---------------------------------------------------------------------------
@@ -317,10 +319,28 @@ class SemicoherentFoldSearch:
         ax_fp_b_dm0.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
 
     # ------------------------------------------------------------------
+    # Orbital search
+    # ------------------------------------------------------------------
+
+    def _run_orbital_search(self):
+        """
+        Run the circular-orbit grid search on the dF0 vs MJD panel.
+
+        Returns
+        -------
+        dict or None
+            None if the panel data are unavailable or no orbit is preferred.
+            Otherwise the dict returned by orbital_search.run_orbital_search.
+        """
+        if self.SN_F0_MJD is None or self.f0_offsets is None:
+            return None
+        return run_orbital_search(self.SN_F0_MJD, self.f0_offsets, self.mjds)
+
+    # ------------------------------------------------------------------
     # Public plot method
     # ------------------------------------------------------------------
 
-    def plot(self, output_dir=None, plot_bw=False):
+    def plot(self, output_dir=None, plot_bw=False, orbital_search=False):
         """
         Create and save the semi-coherent diagnostic figure.
 
@@ -331,6 +351,9 @@ class SemicoherentFoldSearch:
             first npz file.
         plot_bw : bool
             Use a greyscale colour scheme if True.
+        orbital_search : bool
+            Run the circular-orbit grid search on the dF0 vs MJD panel.
+            This is computationally expensive; disabled by default.
 
         Returns
         -------
@@ -347,33 +370,67 @@ class SemicoherentFoldSearch:
         ndays = len(panels)
         p0 = panels[0]
 
-        # Layout: 15 columns × 21 rows
-        #
-        #   Cols  0– 5: left DM / F0 panels          (6 cols, 3/4 of original 8)
-        #   Col   6   : empty gap                    (1 col)
+        # Optionally run the orbital grid search before building the figure so
+        # we know whether to extend it with a corner-plot section.
+        orbit = None
+        if orbital_search:
+            print("Running orbital grid search...")
+            orbit = self._run_orbital_search()
+            if orbit is not None:
+                print(f"  Orbit detected: F_bin={orbit['F_bin_best']:.4f} c/d  "
+                      f"A={orbit['A_best']:.3e} Hz  "
+                      f"S/N={orbit['best_sn']:.1f} (baseline {orbit['baseline_sn']:.1f})")
+            else:
+                print("  No significant orbit found.")
+
+        # ------------------------------------------------------------------
+        # GridSpec layout
+        # ------------------------------------------------------------------
+        #   Cols  0– 5: left dF0 / DM panels         (6 cols)
+        #   Col   6   : empty horizontal gap          (2× width)
         #   Cols  7–10: best-day phase-time panels    (4 cols)
         #   Cols 11–14: best-day phase-freq panels    (4 cols)
         #
-        #   Rows  0– 1: DM marginal / right profile  (2 rows)
-        #   Rows  2– 9: DM 2D image / day-A panels   (8 rows, 4 each)
-        #   Row  10   : 1-grid gap                   (extra height for axis label)
-        #   Rows 11–12: F0 marginal                  (2 rows)
-        #   Rows 13–20: F0 2D image / day-B panels   (8 rows, 4 each)
+        #   Rows  0– 1: dF0 marginal
+        #   Rows  2– 9: dF0 2D image
+        #   Row  10   : gap (height 2) for axis label
+        #   Rows 11–12: DM marginal
+        #   Rows 13–20: DM 2D image
+        #
+        #   If orbit detected, a corner plot is added below via a second
+        #   GridSpecFromSubplotSpec spanning the full figure width.
+        # ------------------------------------------------------------------
 
         n_rows = 21
         height_ratios = [1] * n_rows
-        height_ratios[10] = 2.0    # gap between DM and F0 sections (room for x-axis label)
+        height_ratios[10] = 2.0    # gap between dF0 and DM sections
 
-        # Col 6 is the empty gap; give it 3× the width of a data column
-        # to ensure axis labels on the left do not overlap the right panels.
         width_ratios = [1] * 15
-        width_ratios[6] = 2
+        width_ratios[6] = 2        # horizontal gap between left and right panels
 
-        fig = plt.figure(figsize=(14, 16))
-        gs = GridSpec(n_rows, 15, figure=fig,
-                      height_ratios=height_ratios,
-                      width_ratios=width_ratios,
-                      hspace=0.06, wspace=0.06)
+        if orbit is not None:
+            fig = plt.figure(figsize=(14, 24))
+            outer_gs = GridSpec(2, 1, figure=fig,
+                                height_ratios=[16, 8], hspace=0.12)
+            gs = GridSpecFromSubplotSpec(
+                n_rows, 15,
+                subplot_spec=outer_gs[0],
+                height_ratios=height_ratios,
+                hspace=0.06, wspace=0.06,
+                width_ratios=width_ratios,
+            )
+            gs_corner = GridSpecFromSubplotSpec(
+                4, 4,
+                subplot_spec=outer_gs[1],
+                hspace=0.45, wspace=0.45,
+            )
+        else:
+            fig = plt.figure(figsize=(14, 16))
+            gs = GridSpec(n_rows, 15, figure=fig,
+                          height_ratios=height_ratios,
+                          width_ratios=width_ratios,
+                          hspace=0.06, wspace=0.06)
+            gs_corner = None
 
         # Left column – dF0 × MJD on top (transposed: dF0 on x, MJD on y)
         ax_f0_top = fig.add_subplot(gs[0:2,  0:6])
@@ -385,6 +442,12 @@ class SemicoherentFoldSearch:
 
         self._plot_left_dm(ax_dm_top, ax_dm_2d, cmap, color)
         self._plot_left_f0(ax_f0_top, ax_f0_2d, cmap, color)
+
+        # Orbital overlay (only when search was run and an orbit was found)
+        if orbit is not None:
+            overlay_orbit(ax_f0_2d, ax_f0_top, orbit,
+                          self.f0_offsets, self.mjds, self.SN_F0_MJD)
+            add_corner_plot(fig, gs_corner, orbit, self.f0_offsets)
 
         # Candidate panels (col 6 left empty as 1-grid horizontal gap)
         #
@@ -472,7 +535,12 @@ class SemicoherentFoldSearch:
     "--plot-bw", is_flag=True,
     help="Use a black/white (Greys_r) colour scheme.",
 )
-def main(npz_files, output_dir, plot_bw):
+@click.option(
+    "--orbital-search", is_flag=True,
+    help="Run the circular-orbit grid search on the dF0 vs MJD panel.  "
+         "Computationally expensive; disabled by default.",
+)
+def main(npz_files, output_dir, plot_bw, orbital_search):
     """
     Semi-coherent fold panel search from N days of npz panel files.
 
@@ -480,7 +548,8 @@ def main(npz_files, output_dir, plot_bw):
     (one per day of observation).
     """
     search = SemicoherentFoldSearch(list(npz_files))
-    plot_name = search.plot(output_dir=output_dir, plot_bw=plot_bw)
+    plot_name = search.plot(output_dir=output_dir, plot_bw=plot_bw,
+                            orbital_search=orbital_search)
     print(f"Done: {plot_name}")
 
 
