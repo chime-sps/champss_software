@@ -264,8 +264,16 @@ class SemicoherentFoldSearch:
             ax.set_xticks([])
             return fs.mean(0)
 
-        def _draw_two_profs(ax, prof1, prof2, title):
-            """Overlay two profiles in the same panel with distinct colours."""
+        def _normalise(prof):
+            """Robust (I - mn) / sigma using the bottom 3/4 of sorted values."""
+            s = np.sort(prof)
+            n34 = max(1, 3 * len(s) // 4)
+            mn = np.mean(s[:n34])
+            sd = np.std(s[:n34])
+            return (prof - mn) / sd if sd > 0 else prof - mn
+
+        def _draw_two_profs(ax, prof1, prof2, title, hide_yticks=False):
+            """Overlay two normalised profiles in the same panel."""
             if prof1 is None and prof2 is None:
                 ax.axis('off')
                 return
@@ -274,9 +282,12 @@ class SemicoherentFoldSearch:
                     continue
                 nphase = prof.shape[0]
                 phase_ax2 = np.linspace(0, 2, 2 * nphase, endpoint=False)
-                ax.plot(phase_ax2, np.tile(prof, 2), color=c, lw=1, alpha=0.7)
+                ax.plot(phase_ax2, np.tile(_normalise(prof), 2),
+                        color=c, lw=1, alpha=0.7)
             ax.set_xlim(0, 2)
             ax.set_xticks([])
+            if hide_yticks:
+                ax.set_yticks([])
             ax.set_title(title, fontsize=10, pad=2)
 
         # ---- Phase-vs-time panels ----
@@ -321,7 +332,7 @@ class SemicoherentFoldSearch:
                                  f"DM={dm_best:.1f}")
             prof_dm0  = _draw_fp(ax_dm0,  panel, -dm, "DM=0")
             # Show DM=0 (tab:orange) and best-DM (primary colour) profiles together
-            _draw_two_profs(ax_prof, prof_dm0, prof_best, '')
+            _draw_two_profs(ax_prof, prof_dm0, prof_best, '', hide_yticks=True)
 
         ax_fp_b_dm0.set_xlabel('Phase', fontsize=14)
         ax_fp_b_dm0.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
@@ -509,7 +520,7 @@ class SemicoherentFoldSearch:
         plt.suptitle(
             f'Semi-coherent fold panel search  |  N={ndays} days  |  '
             f'f0={f0_str} Hz  |  DM={dm_str} pc/cm³',
-            fontsize=14, y=1.005,
+            fontsize=14, y=0.995,
         )
 
         if output_dir is None:
