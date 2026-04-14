@@ -378,8 +378,8 @@ def run_all_multi_day_folds(
         db_entry = db.followup_sources.find_one(
             {"path_to_candidates": row["file_name"]}
         )
-        coh_history = db_entry.get("coherentsearch_history", None)
-        if coh_history is not None:
+        coh_history = db_entry.get("coherentsearch_history", [])
+        if len(coh_history):
             last_mdf = coh_history[-1]
             # Setting entries on after the other to control types more easily
             result_fields_str = ["date", "gridsearch_file", "path_to_plot"]
