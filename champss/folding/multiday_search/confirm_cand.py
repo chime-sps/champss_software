@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 from folding.utilities.archives import get_archive_parameter, read_par
 from multiday_search.load_profiles import load_profiles, load_unwrapped_archives
 from multiday_search.phase_aligned_search import ExploreGrid
+from multiday_search.semicoherent_foldpanels import SemicoherentFoldSearch
 from multiday_search.summary_plot import create_summary_pdf
 from sps_databases import db_api, db_utils
 
@@ -77,6 +78,17 @@ from sps_databases import db_api, db_utils
     default=True,
     help="Create a summary PDF with all plots (default: True).",
 )
+@click.option(
+    "--coherent/--no-coherent",
+    default=True,
+    help="Run the phase-aligned coherent F0/F1 grid search (default: True).",
+)
+@click.option(
+    "--semicoherent",
+    is_flag=True,
+    help="Run the semi-coherent fold panel search (including orbital grid search) "
+         "using the .searchpanels.npz files derived from the archive paths.",
+)
 def main(
     fs_id,
     db_port,
@@ -88,6 +100,8 @@ def main(
     write_to_db=False,
     check_cands=False,
     create_summary=True,
+    coherent=True,
+    semicoherent=False,
 ):
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     if check_cands:
@@ -169,91 +183,115 @@ def main(
     if foldpath is not None:
         data["directory"] = f"{foldpath}/candidates/{RA:.02f}_{DEC:.02f}/"
 
-    dF0 = 1 / 86164.1  # 1 day alias (can reduce by 2x if necessary)
-    f0_min = F0_incoherent - dF0
-    f0_max = F0_incoherent + dF0
-    f0_lims = (f0_min, f0_max)
-    delta_f0max = f0_max - f0_min
+    plot_name = None
+    coherentsearch_summary = None
 
-    f1_max = 2e-12  # Upper limit based on known pulsars, or expected barycentric shift
-    f1_lims = (
-        -f1_max,
-        f1_max,
-    )  # Negative or positive to account for position error
-    delta_f1max = 2 * f1_max
+    if coherent:
+        dF0 = 1 / 86164.1  # 1 day alias (can reduce by 2x if necessary)
+        f0_min = F0_incoherent - dF0
+        f0_max = F0_incoherent + dF0
+        f0_lims = (f0_min, f0_max)
+        delta_f0max = f0_max - f0_min
 
-    T = data["Tmax_from_reference"]  # Time from first observation to last observation
-    npbin = data["npbin"]  # Number of phase bins
-    M_f0 = npbin * phase_accuracy
-    M_f0 = int(np.max((M_f0, 1)))  # To make sure M_f0 does not return 0
-    # factor of 2, since we reference to central observation
-    f0_points = 2 * int(delta_f0max * T * npbin / M_f0)
-    f1_points = 2 * int(np.max((0.5 * delta_f1max * T**2 * npbin / M_f0, 1)))
+        f1_max = 2e-12  # Upper limit based on known pulsars, or expected barycentric shift
+        f1_lims = (-f1_max, f1_max)
+        delta_f1max = 2 * f1_max
 
-    print(f"Running search with {f0_points} f0 bins, {f1_points} f1 bins")
-    explore_grid = ExploreGrid(data, f0_lims, f1_lims, f0_points, f1_points)
-    f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
+        T = data["Tmax_from_reference"]
+        npbin = data["npbin"]
+        M_f0 = npbin * phase_accuracy
+        M_f0 = int(np.max((M_f0, 1)))
+        f0_points = 2 * int(delta_f0max * T * npbin / M_f0)
+        f1_points = 2 * int(np.max((0.5 * delta_f1max * T**2 * npbin / M_f0, 1)))
 
-    np.savez(
-        data["directory"] +  f"/cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
-        f0s=f0s,
-        f1s=f1s,
-        chi2_grid=chi2_grid,
-        SN=np.max(explore_grid.SNmax),
-        nobs=len(data["profiles"]),
-    )
+        print(f"Running coherent search with {f0_points} f0 bins, {f1_points} f1 bins")
+        explore_grid = ExploreGrid(data, f0_lims, f1_lims, f0_points, f1_points)
+        f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
 
-    plot_name = explore_grid.plot(fullplot=False)
-    coherentsearch_summary = {
-        "date": datetime.datetime.now(),
-        "SN": float(np.max(explore_grid.SNmax)),
-        "f0": float(optimal_parameters[0]),
-        "f1": float(optimal_parameters[1]),
-        # "profile": explore_grid.profiles_aligned.sum(0).tolist(),
-        "gridsearch_file": data["directory"] + "/explore_grid.npz",
-        "path_to_plot": plot_name,
-    }
-    coherentsearch_summary["date"] = coherentsearch_summary["date"].strftime("%Y%m%d")
-    if write_to_db:
-        log.info("Updating FollowUpSource with coherent search results")
-        db_api.update_followup_source(
-            fs_id, {"coherentsearch_history": [coherentsearch_summary]}
+        np.savez(
+            data["directory"] + f"/cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
+            f0s=f0s,
+            f1s=f1s,
+            chi2_grid=chi2_grid,
+            SN=np.max(explore_grid.SNmax),
+            nobs=len(data["profiles"]),
         )
 
-    # Rewrite new ephemeris using new F0 and F1
+        plot_name = explore_grid.plot(fullplot=False)
+        coherentsearch_summary = {
+            "date": datetime.datetime.now(),
+            "SN": float(np.max(explore_grid.SNmax)),
+            "f0": float(optimal_parameters[0]),
+            "f1": float(optimal_parameters[1]),
+            "gridsearch_file": data["directory"] + "/explore_grid.npz",
+            "path_to_plot": plot_name,
+        }
+        coherentsearch_summary["date"] = coherentsearch_summary["date"].strftime("%Y%m%d")
+        if write_to_db:
+            log.info("Updating FollowUpSource with coherent search results")
+            db_api.update_followup_source(
+                fs_id, {"coherentsearch_history": [coherentsearch_summary]}
+            )
 
-    f0_optimal = optimal_parameters[0]  # + F0_incoherent
-    f1_optimal = optimal_parameters[1]
+        # Rewrite new ephemeris using new F0 and F1
+        f0_optimal = optimal_parameters[0]
+        f1_optimal = optimal_parameters[1]
 
-    optimal_par_file = par_file.replace(".par", "_optimal.par")
-    if foldpath is not None:
-        optimal_par_file = data['directory'] + optimal_par_file.split('/')[-1]
+        optimal_par_file = par_file.replace(".par", "_optimal.par")
+        if foldpath is not None:
+            optimal_par_file = data['directory'] + optimal_par_file.split('/')[-1]
 
-    print(f"Writing new par file to {optimal_par_file}")
-    with open(par_file) as input:
-        with open(optimal_par_file, "w") as output:
-            output.write("# Created: " + str(datetime.datetime.now()) + "\n")
-            output.write("# F0 and F1 from CHAMPSS coherent search\n")
-            for line in input:
-                key = line.split()[0]
-                if key == "F0":
-                    F0_output = f"F0 {str(f0_optimal)} 1 \n"
-                    output.write(F0_output)
-                    F1_output = f"F1 {str(-f1_optimal)} 1 \n"
-                    output.write(F1_output)
-                elif key == "RAJ":
-                    RA_output = f"{line.strip()} 1 \n"
-                    output.write(RA_output)
-                elif key == "DECJ":
-                    DEC_output = f"{line.strip()} 1 \n"
-                    output.write(DEC_output)
-                elif key == 'PEPOCH':
-                    PEPOCH_output = f"PEPOCH {data['PEPOCH']} 0 \n"
-                    output.write(PEPOCH_output)
-                else:
-                    output.write(line)
+        print(f"Writing new par file to {optimal_par_file}")
+        with open(par_file) as input:
+            with open(optimal_par_file, "w") as output:
+                output.write("# Created: " + str(datetime.datetime.now()) + "\n")
+                output.write("# F0 and F1 from CHAMPSS coherent search\n")
+                for line in input:
+                    key = line.split()[0]
+                    if key == "F0":
+                        output.write(f"F0 {f0_optimal} 1 \n")
+                        output.write(f"F1 {-f1_optimal} 1 \n")
+                    elif key == "RAJ":
+                        output.write(f"{line.strip()} 1 \n")
+                    elif key == "DECJ":
+                        output.write(f"{line.strip()} 1 \n")
+                    elif key == 'PEPOCH':
+                        output.write(f"PEPOCH {data['PEPOCH']} 0 \n")
+                    else:
+                        output.write(line)
 
-    explore_grid.plot(fullplot=True)
+        explore_grid.plot(fullplot=True)
+
+    # Semi-coherent fold panel search
+    if semicoherent:
+        npz_files = [
+            os.path.splitext(ar)[0] + '.searchpanels.npz'
+            for ar in archives
+        ]
+        npz_files = [f for f in npz_files if os.path.exists(f)]
+        if npz_files:
+            log.info(f"Running semi-coherent fold panel search on {len(npz_files)} panel files")
+            sc_search = SemicoherentFoldSearch(npz_files)
+            sc_plot = sc_search.plot(
+                output_dir=data["directory"],
+                orbital_search=True,
+            )
+            log.info(f"Semi-coherent plot saved to: {sc_plot}")
+            if write_to_db:
+                sc_summary = {
+                    "date": datetime.datetime.now().strftime("%Y%m%d"),
+                    "path_to_plot": sc_plot,
+                    "n_days": len(npz_files),
+                }
+                log.info("Updating FollowUpSource with semi-coherent search results")
+                db_api.update_followup_source(
+                    fs_id, {"semicoherentsearch_history": [sc_summary]}
+                )
+        else:
+            log.warning(
+                "No .searchpanels.npz files found alongside archives — "
+                "re-run plot_candidate_archive with save_panels_npz=True first."
+            )
 
     # Create summary PDF if requested
     if create_summary:
