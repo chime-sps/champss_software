@@ -7,9 +7,9 @@ produces a many-panel diagnostic figure:
 Left column
 -----------
   Top:    2D image of S/N vs DM and MJD, with a marginal panel above
-          summing over MJD (mean S/N vs DM).
+          summing over MJD (S/N vs DM).
   Bottom: 2D image of S/N vs dF0 and MJD, with a marginal panel above
-          summing over MJD (mean S/N vs dF0).
+          summing over MJD (S/N vs dF0).
 
 Right column
 ------------
@@ -171,7 +171,10 @@ class SemicoherentFoldSearch:
             ax_2d.axis('off')
             return
         # Transposed: DM on x-axis, MJD on y-axis
-        ax_2d.pcolormesh(self.dm_abs, self.mjds, self.SN_DM_MJD.T, cmap=cmap)
+        DM_panel = self.SN_DM_MJD
+        DM_panel = (DM_panel - np.median(DM_panel, axis=0, keepdims=True)) / np.std(DM_panel, axis=0, keepdims=True)
+
+        ax_2d.pcolormesh(self.dm_abs, self.mjds, DM_panel.T, cmap=cmap)
         ax_2d.set_xlabel(r'DM (pc cm$^{-3}$)', fontsize=12)
         ax_2d.set_ylabel('MJD', fontsize=12)
 
@@ -182,15 +185,18 @@ class SemicoherentFoldSearch:
         ax_top.plot(self.dm_abs, mean_sn, color=color, lw=1)
         ax_top.set_xlim(self.dm_abs[0], self.dm_abs[-1])
         ax_top.set_xticks([])
-        ax_top.set_ylabel('Mean S/N', fontsize=10)
+        ax_top.set_ylabel('S/N', fontsize=10)
 
     def _plot_left_f0(self, ax_top, ax_2d, cmap, color):
         if self.SN_F0_MJD is None:
             ax_top.axis('off')
             ax_2d.axis('off')
             return
+        
+        F0_panel = self.SN_F0_MJD
+        F0_panel = (F0_panel - np.median(F0_panel, axis=0, keepdims=True)) / np.std(F0_panel, axis=0, keepdims=True)
         # Transposed: dF0 on x-axis, MJD on y-axis
-        ax_2d.pcolormesh(self.f0_offsets, self.mjds, self.SN_F0_MJD.T, cmap=cmap)
+        ax_2d.pcolormesh(self.f0_offsets, self.mjds, F0_panel.T, cmap=cmap)
         ax_2d.set_xlabel(r'$\Delta F_0$ (Hz)', fontsize=12)
         ax_2d.set_ylabel('MJD', fontsize=12)
 
@@ -203,7 +209,7 @@ class SemicoherentFoldSearch:
         ax_top.plot(self.f0_offsets, mean_sn, color=color, lw=1, label='Single F0')
         ax_top.set_xlim(self.f0_offsets[0], self.f0_offsets[-1])
         ax_top.set_xticks([])
-        ax_top.set_ylabel('Mean S/N', fontsize=10)
+        ax_top.set_ylabel('S/N', fontsize=10)
 
     def _plot_candidate_row(self, panel_a, panel_b,
                             ax_prof_a_t, ax_tp_a_nom, ax_tp_a_corr,
