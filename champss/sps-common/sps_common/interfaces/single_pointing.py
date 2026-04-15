@@ -180,6 +180,7 @@ class SinglePointingCandidate:
         ),
         default=[],
     )
+    manual_candidate = attrib(type=str, default="")
     # Note `ra`, `dec`, `obs_id` and `detection_statistic` are populated from
     # `SinglePointingCandidateCollection`.
     # they are attributes here too because multi-pointing then uses the
@@ -201,10 +202,10 @@ class SinglePointingCandidate:
     #             f"[{MIN_SEARCH_DM}, {MAX_SEARCH_DM}] pc/cc"
     #         )
 
-    @sigma.validator
-    def _check_sigma(self, attribute, value):
-        if value <= 0:
-            raise ValueError(f"Sigma ({attribute.name}={value}) must be greater than 0")
+    # @sigma.validator
+    # def _check_sigma(self, attribute, value):
+    #     if value <= 0:
+    #         raise ValueError(f"Sigma ({attribute.name}={value}) must be greater than 0")
 
     @ra.validator
     def _check_ra(self, attribute, value):
@@ -573,7 +574,7 @@ class SinglePointingCandidateCollection:
             plots = []
             for candidate in self.candidates:
                 if candidate.sigma > sigma_threshold:
-                    if candidate.dm > dm_threshold:
+                    if candidate.dm > dm_threshold or candidate.manual_candidate != "":
                         plot = candidate.plot_candidate(folder=folder, config=config)
                         plots.append(plot)
         else:
@@ -583,6 +584,7 @@ class SinglePointingCandidateCollection:
                     cand.plot_candidate
                     for cand in self.candidates
                     if ((cand.sigma > sigma_threshold) and (cand.dm > dm_threshold))
+                    or (cand.manual_candidate != "")
                 ]
                 arguments = (folder, config)
                 tasks = zip(functions, repeat(arguments))

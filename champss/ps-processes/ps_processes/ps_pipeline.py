@@ -195,6 +195,7 @@ class PowerSpectraPipeline:
         scale_injections=False,
         filepath="./",
         prefix="",
+        manual_candidates=[],
     ):
         (
             power_spectra_detection_clusters,
@@ -205,6 +206,7 @@ class PowerSpectraPipeline:
             injection_idx,
             only_injections,
             scale_injections,
+            manual_candidates=manual_candidates,
         )
         if self.write_ps_detections and power_spectra_detection_clusters is not None:
             filename = f"{prefix}_power_spectra_detection_clusters.hdf5"

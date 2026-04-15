@@ -1163,6 +1163,7 @@ class Clusterer:
                     nharm=cluster.nharm,
                     harm_idx=cluster.harm_idx,
                     injection=cluster.injection_index,
+                    manual_candidate="",
                 )
                 current_label += 1
         if zero_dm_count:
