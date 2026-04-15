@@ -725,7 +725,7 @@ def plot_candidate_archive(
         _npz['dm_best'] = float(dm_best) if dm_best is not None else float(dm)
         _npz['f0_best'] = float(f0_best) if f0_best is not None else 0.0
         _npz['f1_best'] = float(f1_best) if f1_best is not None else 0.0
-        npz_fname = plot_fname.replace('.png', '_panels.npz')
+        npz_fname = os.path.splitext(fn)[0] + '.searchpanels.npz'
         np.savez(npz_fname, **_npz)
         print(f"Saved panels to {npz_fname}")
 
