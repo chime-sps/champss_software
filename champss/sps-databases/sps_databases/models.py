@@ -708,6 +708,7 @@ class FollowUpSource:
     dm_galactic_ne_2001_max = attrib(default=None, converter=converters.optional(float))
     folding_history = attrib(default=[], type=list)
     coherentsearch_history = attrib(default=[], type=list)
+    semicoherentsearch_history = attrib(default=[], type=list)
     followup_duration = attrib(default=1, converter=int, type=int)
     path_to_ephemeris = attrib(
         default=None, converter=converters.optional(str), type=str
