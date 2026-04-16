@@ -176,27 +176,32 @@ class ExploreGrid:
         7 – phase vs frequency  (fullplot only)
         8 – phase vs time       (fullplot only)
         """
-        plt.rcParams.update({"font.size": 14})
+        plt.rcParams.update({
+            'axes.labelsize': 20,      # Size of x and y labels
+            'xtick.labelsize': 16,     # Size of x-tick labels
+            'ytick.labelsize': 16,     # Size of y-tick labels
+            'axes.titlesize': 22       # Size of the plot title
+        })
 
         # ------------------------------------------------------------------
         # Build figure and axes
         # ------------------------------------------------------------------
-        fig = plt.figure(figsize=(26, 16))
+        fig = plt.figure(figsize=(26, 18))
         from matplotlib.gridspec import GridSpec as GS
-        gs = GS(5, 10, figure=fig,
-                height_ratios=[1, 2, 2, 2, 2],
-                width_ratios=[1, 1, 2, 2, 2, 2, 2, 2, 2, 2],
-                hspace=0.06, wspace=0.08)
+        gs = GS(6, 10, figure=fig,
+                height_ratios=[2, 2, 2, 0.6, 2, 3],
+                width_ratios=[2, 2, 2, 2, 2, 1.2, 2, 2, 2, 2],
+                hspace=0.06, wspace=0.12)
 
         # create ax5 first so others can share its axes
-        ax5 = fig.add_subplot(gs[1:5, 2:6])
-        ax1 = fig.add_subplot(gs[0,   2:6], sharex=ax5)
-        ax3 = fig.add_subplot(gs[1:5, 0  ], sharey=ax5)
-        ax4 = fig.add_subplot(gs[1:5, 1  ], sharey=ax5)
+        ax5 = fig.add_subplot(gs[1:6, 2:5])
+        ax1 = fig.add_subplot(gs[0,   2:5], sharex=ax5)
+        ax3 = fig.add_subplot(gs[1:6, 0  ], sharey=ax5)
+        ax4 = fig.add_subplot(gs[1:6, 1  ], sharey=ax5)
         ax2 = fig.add_subplot(gs[0,   6:10])
         ax6 = fig.add_subplot(gs[1:3, 6:10], sharex=ax2)
-        ax7 = fig.add_subplot(gs[3:5, 6:8 ])
-        ax8 = fig.add_subplot(gs[3:5, 8:10])
+        ax7 = fig.add_subplot(gs[4:6, 6:8])
+        ax8 = fig.add_subplot(gs[4:6, 8:10])
 
         # ------------------------------------------------------------------
         # Panel 5 – phase vs MJD  (gap-correct with pcolormesh)
@@ -217,22 +222,23 @@ class ExploreGrid:
         phase_edges = np.linspace(0, 2, self.ngate * 2 + 1)
         mjd_edges   = mjd_start + np.arange(n_days + 1)
 
-        vmin5 = np.nanmean(profile2D_gapped) - np.nanstd(profile2D_gapped)
-        vmax5 = np.nanmean(profile2D_gapped) + 3 * np.nanstd(profile2D_gapped)
+        vmin5 = np.nanmean(profile2D_gapped) - 2 * np.nanstd(profile2D_gapped)
+        vmax5 = np.nanmean(profile2D_gapped) + 5 * np.nanstd(profile2D_gapped)
         ax5.pcolormesh(phase_edges, mjd_edges, profile2D_gapped,
-                       shading='flat', vmin=vmin5, vmax=vmax5)
+                       shading='flat', vmin=vmin5)# vmax=vmax5)
         ax5.set_xlabel("Phase")
-        ax5.set_ylabel("MJD")
         plt.setp(ax5.get_yticklabels(), visible=False)
 
         # ------------------------------------------------------------------
         # Panel 1 – summed profile
         # ------------------------------------------------------------------
         profile_total = self.profiles_aligned.sum(0)
+        profile_SN = (profile_total - np.median(profile_total)) / np.std(np.sort(profile_total)[:self.ngate*3//4])
         phase2 = np.linspace(0, 2, self.ngate * 2, endpoint=False)
-        ax1.plot(phase2, np.tile(profile_total, 2), color='k', lw=1)
+        ax1.plot(phase2, np.tile(profile_SN, 2), color='k', lw=1)
         ax1.set_xlim(0, 2)
-        ax1.set_yticks([])
+        #ax1.set_yticks([])
+        ax1.set_ylabel('S/N')
         plt.setp(ax1.get_xticklabels(), visible=False)
 
         # ------------------------------------------------------------------
@@ -243,34 +249,35 @@ class ExploreGrid:
             cumprof = sorted_profiles[:k + 1].sum(0)
             cumulative_sn[k] = float(np.max(get_SN(cumprof)))
 
-        ax3.plot(cumulative_sn, sorted_mjds, color='tab:blue', lw=1)
+        ax3.plot(cumulative_sn, sorted_mjds+0.5, color='tab:blue', lw=1)
         ax3.invert_xaxis()
-        ax3.set_xlabel("Cum.\nS/N", fontsize=11)
+        ax3.set_xlabel("Cumul. S/N")
         ax3.set_ylabel("MJD")
+        ax3.set_xlim(max(cumulative_sn)*1.2, 0)
         ax3.xaxis.set_major_locator(plt.MaxNLocator(3))
 
         # ------------------------------------------------------------------
         # Panel 4 – per-day S/N vs MJD
         # ------------------------------------------------------------------
         per_day_sn = np.array([float(np.max(get_SN(p))) for p in sorted_profiles])
-        ax4.plot(per_day_sn, sorted_mjds, color='tab:orange', lw=0.8,
-                 marker='o', ms=3)
+        ax4.scatter(per_day_sn, sorted_mjds+0.5, color='tab:orange', marker='o')
         ax4.invert_xaxis()
-        ax4.set_xlabel("Day\nS/N", fontsize=11)
+        ax4.set_xlabel("Daily S/N")
         plt.setp(ax4.get_yticklabels(), visible=False)
         ax4.xaxis.set_major_locator(plt.MaxNLocator(3))
+        ax4.set_xlim(max(per_day_sn)*1.2, 0)
 
         # ------------------------------------------------------------------
         # Panel 2 – chi² vs ΔF0 (marginal over F1)
         # ------------------------------------------------------------------
         f0_uhz       = 1e6 * self.f0_ax
         chi2_marginal = np.max(self.chi2_grid, axis=1)
-        f0best_uhz   = 1e6 * (self.optimal_parameters[0] - self.f0_incoherent)
-
-        ax2.plot(f0_uhz, chi2_marginal, color='k', lw=1)
+        f0best_uhz   = -1e6 * (self.optimal_parameters[0] - self.f0_incoherent)
+        redchi2_marginal = chi2_marginal / self.ngate
+        ax2.plot(f0_uhz, redchi2_marginal, color='k', lw=1)
         ax2.axvline(f0best_uhz, color='tab:orange', ls='--', lw=1)
-        ax2.set_ylabel(r"$\chi^{2}$")
-        ax2.set_yticks([])
+        ax2.set_ylabel(r"Red. $\chi^{2}$")
+        #ax2.set_yticks([])
         plt.setp(ax2.get_xticklabels(), visible=False)
 
         # ------------------------------------------------------------------
@@ -281,7 +288,7 @@ class ExploreGrid:
                        shading='auto')
         ax6.scatter(f0best_uhz, f1best_1e15,
                     color='tab:orange', marker='x', s=60, zorder=5)
-        ax6.set_ylabel(r"$f_1$ ($10^{-15}$ s$^{-2}$)")
+        ax6.set_ylabel(r"$f_1$ ($10^{-15}$ Hz s$^{-1}$)")
         ax6.set_xlabel(r"$\Delta f_0$ ($\mu$Hz)")
 
         # ------------------------------------------------------------------
@@ -351,14 +358,19 @@ class ExploreGrid:
              f"PEPOCH: {self.PEPOCH:.2f}"],
         ]
 
-        table_ax = fig.add_axes([0.05, 0.92, 0.9, 0.06])
+
+        #title_ax = fig.add_axes([0.13, 0.8, 0.2, 0.1])
+        #title_ax.axis("off")
+        #title_ax.text(0, 0, 'Phase Alignment \nMultiday Search', fontsize=26)
+
+        table_ax = fig.add_axes([0.275, 0.89, 0.625, 0.08])
         table_ax.axis("off")
         param_table = table_ax.table(
             cellText=cand_params_text, cellLoc="left", loc="center", edges="open",
         )
         param_table.auto_set_font_size(False)
-        param_table.set_fontsize(13)
-        param_table.scale(1, 1.6)
+        param_table.set_fontsize(22)
+        param_table.scale(1.0, 2.0)
 
         plot_name = (f"{self.directory}/phase_search_"
                      f"{round(self.DM, 2)}_{round(self.f0_incoherent, 2)}.png")
