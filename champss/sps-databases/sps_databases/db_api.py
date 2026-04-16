@@ -1,6 +1,8 @@
 """Simpe API to gather collection data using pymongo."""
 
 import datetime as dt
+from astropy import units as u
+from astropy.coordinates import angular_separation
 
 import pymongo
 import pytz
@@ -718,9 +720,6 @@ def get_nearby_known_sources(ra, dec, radius=5.0):
     """
     db = db_utils.connect()
 
-    from astropy import units as u
-    from astropy.coordinates import angular_separation
-
     return [
         KnownSource.from_db(source)
         for source in db.known_sources.find()
@@ -920,6 +919,44 @@ def delete_followup_source(fs_id):
     if isinstance(fs_id, str):
         fs_id = ObjectId(fs_id)
     return db.followup_sources.find_one_and_delete({"_id": fs_id})
+
+
+def get_nearby_followup_sources(ra, dec, radius=1.0):
+    """
+    Gets all followup sources from the database near the given (ra, dec) position.
+
+    To find all sources, set radius to infinity.
+
+    Parameters
+    ----------
+    ra, dec: float
+        The Right Ascension and Declination, in degrees, of the sky position
+        around which to search for followup sources.
+
+    radius: float
+        The radius, in degrees, within which all known sources will be
+        returned.
+
+    Returns
+    -------
+    known_sources: list of KnownSource
+        The known sources in the database within the desired distance.
+    """
+    db = db_utils.connect()
+
+    return [
+        FollowUpSource.from_db(source)
+        for source in db.followup_sources.find()
+        if angular_separation(
+            ra * u.degree,
+            dec * u.degree,
+            source["ra"] * u.degree,
+            source["dec"] * u.degree,
+        )
+        .to(u.degree)
+        .value
+        < radius
+    ]
 
 
 def create_process(payload, assume_new=False):

@@ -562,6 +562,19 @@ class PowerSpectraSearch:
                                     source.dm,
                                 ]
                             )
+                elif split_manual_cand[0] == "nearby_fs":
+                    followup_sources = db_api.get_nearby_followup_sources(
+                        pspec.ra, pspec.dec, radius=float(split_manual_cand[1])
+                    )
+                    for source in followup_sources:
+                        if np.isfinite(source.f0) and np.isfinite(source.dm):
+                            used_manual_candidates.append(
+                                [
+                                    source.source_name,
+                                    source.f0,
+                                    source.dm,
+                                ]
+                            )
                 elif split_manual_cand[0] == "PSR":
                     source = db_api.get_known_source_by_names(split_manual_cand[1])
                     if len(source):
