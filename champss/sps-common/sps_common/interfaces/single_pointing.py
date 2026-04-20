@@ -455,7 +455,8 @@ class SinglePointingCandidateCollection:
     injections (List(dict)): List describing the injections that were performed
                             beffore the search
     injection_indices (List(int)): Indices of the candidates that were injected
-    real_indices (List(int)): Indices of the candidates that were  not injected
+    real_indices (List(int)): Indices of the candidates resulting from the search
+    manual_indices (List(int)): Indices of the manually created candidates
     """
 
     candidates = attrib(
@@ -464,17 +465,17 @@ class SinglePointingCandidateCollection:
             iterable_validator=instance_of(list),
         )
     )
-    real_indices = attrib(
+    injection_flags = attrib(
         init=False,
         validator=deep_iterable(
-            member_validator=instance_of(int),
+            member_validator=instance_of(bool),
             iterable_validator=instance_of(list),
         ),
     )
-    injection_indices = attrib(
+    manual_flags = attrib(
         init=False,
         validator=deep_iterable(
-            member_validator=instance_of(int),
+            member_validator=instance_of(bool),
             iterable_validator=instance_of(list),
         ),
     )
@@ -488,12 +489,12 @@ class SinglePointingCandidateCollection:
 
     def __attrs_post_init__(self):
         """Find indices of real detections and injections."""
-        all_indices = np.arange(len(self.candidates))
-        injection_flags = np.asarray(
+        self.injection_flags = np.asarray(
             [cand.injection for cand in self.candidates], dtype=bool
         )
-        self.real_indices = all_indices[~injection_flags]
-        self.injection_indices = all_indices[injection_flags]
+        self.manual_flags = np.asarray(
+            [(cand.manual_candidate != "") for cand in self.candidates], dtype=bool
+        )
 
     @classmethod
     def read(cls, filename, verbose=True):
@@ -600,11 +601,27 @@ class SinglePointingCandidateCollection:
     def get_real_candidates(self):
         """Get candidates which have not been injected."""
         # Converting to array for easier slicing, could also change the attribute itself to array
-        return np.asarray(self.candidates)[self.real_indices]
+        return np.asarray(self.candidates)[~self.injection_flags]
+
+    def get_real_search_candidates(self):
+        """Get search candidates which have not been injected."""
+        return np.asarray(self.candidates)[~self.injection_flags & ~self.manual_flags]
 
     def get_injection_candidates(self):
         """Get candidates which have been injected."""
-        return np.asarray(self.candidates)[self.injection_indices]
+        return np.asarray(self.candidates)[self.injection_flags]
+
+    def get_search_injection_candidates(self):
+        """Get search candidates which have been injected."""
+        return np.asarray(self.candidates)[self.injection_flags & ~self.manual_flags]
+
+    def get_manual_injection_candidates(self):
+        """Get manual candidates which have been injected."""
+        return np.asarray(self.candidates)[self.injection_flags & self.manual_flags]
+
+    def get_manual_candidates(self):
+        """Get all manual candidate."""
+        return np.asarray(self.candidates)[self.manual_flags]
 
     def test_injection_performance(self, verbose=True):
         """Return dict containing details fo the injection performance."""
