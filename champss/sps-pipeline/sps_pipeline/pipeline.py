@@ -286,7 +286,17 @@ def dbexcepthook(type, value, tb):
     default=[],
     type=str,
     multiple=True,
-    help="Allow retrieval of manual candidates. Use skip_search to skip the search and only sue manual candidates.",
+    help=(
+        "Allow retrieval of manual candidates. "
+        "Modes:"
+        "'--mc skip_search': Skip normal search; "
+        "'--mc para freq dm': Create candidate at freq and dm; "
+        "'--mc PSR psr_name': Create candidate at known source psr_name; "
+        "'--mc FS fs_id': Create candidate for followup source at given fs_id; "
+        "'--mc nearby_ks 1': Create candidate for all sources within given radius; "
+        "'--mc nearby_fs 1': Create candidate for followup sources within given radius; "
+        "'--mc injections': Create candidates for all injections; "
+    ),
 )
 def main(
     date,
