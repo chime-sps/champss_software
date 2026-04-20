@@ -314,46 +314,6 @@ def run_all_multi_day_folds(
     cleanup_threads = []
     njobs = 5
     for index, row in df_mp.iterrows():
-        # mdf_args = [
-        #     "--candpath",
-        #     row["file_name"],
-        #     "--foldpath",
-        #     foldpath,
-        #     "--datpath",
-        #     datpath,
-        #     "--db-host",
-        #     db_host,
-        #     "--db-port",
-        #     db_port,
-        #     "--db-name",
-        #     db_name,
-        #     "--nday",
-        #     0,
-        #     "--start-date",
-        #     "2025/06/01",
-        #     "--use-workflow",
-        #     "--docker-image-name",
-        #     docker_image_name,
-        # ]
-        # results, product, plots = multidayfold_pipeline.main(
-        #     args=mdf_args,
-        #     standalone_mode=False,
-        # )
-        # # results.append(result)
-        # # Define fields manuall to allow simpler replacement
-        # result_fields_str = ["date", "gridsearch_file", "path_to_plot"]
-        # result_fields_float = ["SN", "f0", "f1"]
-        # if results is None:
-        #     results = {}
-        # for field in result_fields_str:
-        #     df_mp.at[index, f"mdf_{field}"] = results.get(field, "")
-        # for field in result_fields_float:
-        #     df_mp.at[index, f"mdf_{field}"] = results.get(field, np.nan)
-        # if results.get("SN", None):
-        #     df_mp.at[index, "fold_success"] = True
-        # else:
-        #     df_mp.at[index, "fold_success"] = False
-
         if skip_finished:
             if row.get("fold_success"):
                 continue
@@ -1643,25 +1603,6 @@ def start_processing_manager(
                         "num_threads": 64,
                         "run_name": stack_name,
                     }
-                    # Alternative method using
-                    # workflow_params = {
-                    #     "output": basepath,
-                    #     "file_path": None,
-                    #     "get_from_db": True,
-                    #     "plot": True,
-                    #     "plot_cands": True,
-                    #     "plot_all_pulsars": True,
-                    #     "db": True,
-                    #     "csv": True,
-                    #     "plot_threshold": 8,
-                    #     "plot_dm_threshold": 3,
-                    #     "db_port": db_port,
-                    #     "db_host": db_host,
-                    #     "db_name": db_name,
-                    #     "num_threads": 64,
-                    #     "run_name": stack_name,
-                    #     "use_stacks": True,
-                    # }
                     docker_name = f"{docker_service_name_prefix}-{date_string}"
                     workflow_tags = ["mp", "stack", present_date_string]
                 work_id, mp_service_id = schedule_workflow_job(
