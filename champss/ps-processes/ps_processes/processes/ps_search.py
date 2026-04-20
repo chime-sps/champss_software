@@ -541,8 +541,8 @@ class PowerSpectraSearch:
             current_label = 0
         else:
             current_label = max(all_cluster_labels) + 1
+        used_manual_candidates = []
         if manual_candidates:
-            used_manual_candidates = []
             for manual_cand in manual_candidates:
                 split_manual_cand = manual_cand.split(" ")
                 if split_manual_cand[0] == "para":
