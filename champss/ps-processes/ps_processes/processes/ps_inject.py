@@ -432,7 +432,7 @@ class Injection:
             harmonics[i * N : (i + 1) * N] = np.abs(amplitude) ** 2
 
         return bins, harmonics
-
+    
     def get_rednoise_normalisation(self, inj_bins, inj_dms):
         """
         This function retrieves the rednoise information from the power spectrum and
@@ -449,15 +449,9 @@ class Injection:
         """
         rn_scales = self.pspec_obj.rn_scales
         rn_medians = self.pspec_obj.rn_medians
-        normalizer = np.zeros((len(inj_dms), len(inj_bins)))
+        sum_of_medians = np.zeros((len(inj_dms), len(inj_bins)))
 
         for day in range(self.pspec_obj.num_days):
-            day_normalizer = (
-                np.ones((len(inj_dms), len(inj_bins)))
-                / self.pspec_obj.num_days
-                / np.log(2)
-            )
-            # day_medians = rn_medians[day]
             day_medians = (
                 rn_medians[day] / np.min(rn_medians[day], axis=1)[:, np.newaxis]
             )
@@ -469,9 +463,14 @@ class Injection:
             mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype("int")
             for i, inj_dm in enumerate(inj_dms):
                 rn_interpolated = np.interp(inj_bins, mid_bins, day_medians[inj_dm])
-                day_normalizer[i] /= rn_interpolated
-            normalizer += day_normalizer
-        return normalizer
+                sum_of_medians[i] += rn_interpolated
+
+        #convert median to mean
+        sum_of_means = sum_of_medians / np.log(2)
+        #take mean across days
+        mean_of_means = sum_of_means / self.pspec_obj.num_days
+
+        return mean_of_means
 
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
@@ -611,7 +610,7 @@ class Injection:
         # note that harms are POWERS, not amplitudes
 
         harms = np.asarray(harms)
-        harms *= self.get_rednoise_normalisation(
+        harms /= self.get_rednoise_normalisation(
             bins,
             dm_indices,
         )
@@ -661,6 +660,8 @@ class Injection:
             "detection_nharm": detection_nharm,
             "detection_sigma": detection_sigma,
             "injected_nharm": n_harm,
+            "FWHM": self.W * self.f, #in phase,
+            "TPA_idx": self.TPA_idx,
         }
 
         return output_dict
@@ -722,6 +723,8 @@ def main(
     injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
     injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
     injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
+    injection_dict["FWHM"] = injection_output_dict["FWHM"]
+    injection_dict["TPA_idx"] = injection_output_dict["TPA_idx"]
 
     if isinstance(injection_dict["profile"], (np.ndarray, list)):
         injection_dict["profile"] = "custom_profile"
