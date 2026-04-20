@@ -202,11 +202,6 @@ class SinglePointingCandidate:
     #             f"[{MIN_SEARCH_DM}, {MAX_SEARCH_DM}] pc/cc"
     #         )
 
-    # @sigma.validator
-    # def _check_sigma(self, attribute, value):
-    #     if value <= 0:
-    #         raise ValueError(f"Sigma ({attribute.name}={value}) must be greater than 0")
-
     @ra.validator
     def _check_ra(self, attribute, value):
         if not 0 <= value < 360.0:
