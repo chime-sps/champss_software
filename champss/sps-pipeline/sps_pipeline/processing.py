@@ -40,7 +40,7 @@ from sps_pipeline.pipeline import default_datpath
 from sps_pipeline.utils import get_pointings_from_list, merge_images
 from sps_pipeline.candidate_viewer import CandidateViewerRegistrar
 from sps_pipeline.stack_scheduling import find_monthly_search_commands
-from multiday_search import multidayfold_pipeline
+from scheduler.run_as_service import run_as_service
 
 
 log = logging.getLogger()
@@ -305,50 +305,58 @@ def run_all_multi_day_folds(
     docker_image_name,
     docker_service_name_prefix,
     datpath,
+    skip_finished=False,
 ):
     message_slack(f"Folding {len(df_mp)} stack candidates")
 
     # results = []
+    service_ids = []
+    cleanup_threads = []
+    njobs = 5
     for index, row in df_mp.iterrows():
-        mdf_args = [
-            "--candpath",
-            row["file_name"],
-            "--foldpath",
-            foldpath,
-            "--datpath",
-            datpath,
-            "--db-host",
-            db_host,
-            "--db-port",
-            db_port,
-            "--db-name",
-            db_name,
-            "--nday",
-            0,
-            "--start-date",
-            "2025/06/01",
-            "--use-workflow",
-            "--docker-image-name",
-            docker_image_name,
-        ]
-        results, product, plots = multidayfold_pipeline.main(
-            args=mdf_args,
-            standalone_mode=False,
+        if skip_finished:
+            if row.get("fold_success"):
+                continue
+
+        command = f"multidayfold_pipeline --candpath {row['file_name']} --db-host {db_host} --db-port {db_port} --db-name {db_name} --nday 0 --datpath {datpath} --foldpath {foldpath} --use-workflow --start-date 2025/6/01 --docker-image-name {docker_image_name}"
+        service_id, cleanup_thread = run_as_service(
+            command, memory=10, manager=True, image=docker_image_name
         )
-        # results.append(result)
-        # Define fields manuall to allow simpler replacement
-        result_fields_str = ["date", "gridsearch_file", "path_to_plot"]
-        result_fields_float = ["SN", "f0", "f1"]
-        if results is None:
-            results = {}
-        for field in result_fields_str:
-            df_mp.at[index, f"mdf_{field}"] = results.get(field, "")
-        for field in result_fields_float:
-            df_mp.at[index, f"mdf_{field}"] = results.get(field, np.nan)
-        if results.get("SN", None):
-            df_mp.at[index, "fold_success"] = True
+        service_ids.append(service_id)
+        cleanup_threads.append(cleanup_thread)
+
+        while sum([thread.is_alive() for thread in cleanup_threads]) >= njobs:
+            time.sleep(10)
+
+    finished = False
+    while not finished:
+        all_states = [thread.is_alive() for thread in cleanup_threads]
+        finished = not any(all_states)
+        time.sleep(10)
+    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+    for index, row in df_mp.iterrows():
+        db_entry = db.followup_sources.find_one(
+            {"path_to_candidates": row["file_name"]}
+        )
+        coh_history = db_entry.get("coherentsearch_history", [])
+        if len(coh_history):
+            last_mdf = coh_history[-1]
+            # Setting entries on after the other to control types more easily
+            result_fields_str = ["date", "gridsearch_file", "path_to_plot"]
+            result_fields_float = ["SN", "f0", "f1"]
+            if last_mdf is None:
+                last_mdf = {}
+            for field in result_fields_str:
+                df_mp.at[index, f"mdf_{field}"] = last_mdf.get(field, "")
+            for field in result_fields_float:
+                df_mp.at[index, f"mdf_{field}"] = last_mdf.get(field, np.nan)
+            if last_mdf.get("SN", None):
+                df_mp.at[index, "fold_success"] = True
+            else:
+                df_mp.at[index, "fold_success"] = False
         else:
             df_mp.at[index, "fold_success"] = False
+
     return df_mp
 
 
@@ -1595,25 +1603,6 @@ def start_processing_manager(
                         "num_threads": 64,
                         "run_name": stack_name,
                     }
-                    # Alternative method using
-                    # workflow_params = {
-                    #     "output": basepath,
-                    #     "file_path": None,
-                    #     "get_from_db": True,
-                    #     "plot": True,
-                    #     "plot_cands": True,
-                    #     "plot_all_pulsars": True,
-                    #     "db": True,
-                    #     "csv": True,
-                    #     "plot_threshold": 8,
-                    #     "plot_dm_threshold": 3,
-                    #     "db_port": db_port,
-                    #     "db_host": db_host,
-                    #     "db_name": db_name,
-                    #     "num_threads": 64,
-                    #     "run_name": stack_name,
-                    #     "use_stacks": True,
-                    # }
                     docker_name = f"{docker_service_name_prefix}-{date_string}"
                     workflow_tags = ["mp", "stack", present_date_string]
                 work_id, mp_service_id = schedule_workflow_job(
@@ -1835,6 +1824,18 @@ def start_processing_manager(
                         docker_service_name_prefix,
                         datpath,
                     )
+                    # Rerun in case anything failed
+                    df_mp = run_all_multi_day_folds(
+                        df_mp,
+                        db_host,
+                        db_port,
+                        db_name,
+                        foldpath,
+                        docker_image_name,
+                        docker_service_name_prefix,
+                        datpath,
+                        skip_finished=True,
+                    )
 
                 df_mp.to_csv(df_folded_name)
 
@@ -1864,18 +1865,18 @@ def start_processing_manager(
                     else:
                         fold_plot = row["mdf_path_to_plot"]
 
-                    if type(fold_plot) is str:
-                        if not os.path.exists(fold_plot):
-                            continue
-                    else:
-                        continue
-
                     if type(row["plot_path"]) is not str:
                         if not os.path.exists(row["file_name"]):
                             continue
                         mp_cand = MultiPointingCandidate.read(row["file_name"])
                         plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
                         df_mp.at[index, "plot_path"] = plot_path
+
+                    if type(fold_plot) is str:
+                        if not os.path.exists(fold_plot):
+                            continue
+                    else:
+                        continue
 
                     if create_combined_plots:
                         output_path = (
