@@ -142,7 +142,9 @@ def main(
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     source = db_api.get_followup_source(fs_id)
     if source.folding_history:
-        fold_dates = [entry["date"].strftime("%Y%m%d") for entry in source.folding_history]
+        fold_dates = [
+            entry["date"].strftime("%Y%m%d") for entry in source.folding_history
+        ]
     else:
         fold_dates = []
     ra = source.ra
@@ -197,6 +199,8 @@ def main(
                 workflow_params,
                 workflow_tags,
                 cleanup=True,
+                # previous no cleanup used since wait_for_no_tasks_in_states will cleanup and properly create logs
+                # but that cleanup only starts if every job has been scheduled
             )
             if i == 0:
                 # Wait longer after first job so it creates the parfile
