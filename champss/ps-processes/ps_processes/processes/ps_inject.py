@@ -432,7 +432,7 @@ class Injection:
             harmonics[i * N : (i + 1) * N] = np.abs(amplitude) ** 2
 
         return bins, harmonics
-    
+
     def get_rednoise_normalisation(self, inj_bins, inj_dms):
         """
         This function retrieves the rednoise information from the power spectrum and
@@ -465,9 +465,9 @@ class Injection:
                 rn_interpolated = np.interp(inj_bins, mid_bins, day_medians[inj_dm])
                 sum_of_medians[i] += rn_interpolated
 
-        #convert median to mean
+        # convert median to mean
         sum_of_means = sum_of_medians / np.log(2)
-        #take mean across days
+        # take mean across days
         mean_of_means = sum_of_means / self.pspec_obj.num_days
 
         return mean_of_means
@@ -660,7 +660,7 @@ class Injection:
             "detection_nharm": detection_nharm,
             "detection_sigma": detection_sigma,
             "injected_nharm": n_harm,
-            "FWHM": self.W * self.f, #in phase,
+            "FWHM": self.W * self.f,  # in phase,
             "TPA_idx": self.TPA_idx,
         }
 
@@ -725,6 +725,7 @@ def main(
     injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
     injection_dict["FWHM"] = injection_output_dict["FWHM"]
     injection_dict["TPA_idx"] = injection_output_dict["TPA_idx"]
+    injection_dict["injected_powers"] = injection_output_dict["injected_powers"]
 
     if isinstance(injection_dict["profile"], (np.ndarray, list)):
         injection_dict["profile"] = "custom_profile"

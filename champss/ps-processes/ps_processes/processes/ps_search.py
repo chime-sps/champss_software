@@ -295,6 +295,7 @@ class PowerSpectraSearch:
                     injection_dicts.append(injection_dict)
             for injection_index, injection_dict in enumerate(injection_dicts):
                 injection_dict["injection_index"] = injection_index
+            pspec.injections = injection_dicts
         else:
             injection_dicts = []
             log.info("No artificial pulse injected.")
@@ -416,6 +417,7 @@ class PowerSpectraSearch:
             ),
             ("sigma", float),
             ("injection", int),
+            ("injection_overlap", float),
             ("manual_candidate", "30U"),  # For now string with length 30
         ]
         if "skip_search" not in manual_candidates:
@@ -536,6 +538,30 @@ class PowerSpectraSearch:
             detections = np.array([], dtype=detection_dtype)
             cluster_df_spacing = pspec.freq_labels[1]
 
+        # Update db before detections are extended with manual detections
+        log.info(f"Total number of candidate clusters={len(clusters)}")
+        # Only update db for single day obs, proper stack logging tba
+        if len(pspec.obs_id) == 1:
+            if self.update_db:
+                non_injection_detections = detections[
+                    detections["injection_overlap"] == 0.0
+                ]
+                non_injection_cluster_count = int(
+                    sum(
+                        [
+                            (cluster.injection_index == -1)
+                            for cluster in clusters.values()
+                        ]
+                    )
+                )
+                payload = {
+                    "num_detections": len(non_injection_detections),
+                    "num_detections_used": used_detections_len,  # This may still contain injections
+                    "num_clusters": non_injection_cluster_count,
+                    "detection_threshold": clustering_sigma_min,
+                }
+                db_api.update_observation(pspec.obs_id[0], payload)
+
         all_cluster_labels = [int(label) for label in clusters.keys()]
         if len(all_cluster_labels) == 0:
             current_label = 0
@@ -607,7 +633,7 @@ class PowerSpectraSearch:
             )
         for manual_cand in used_manual_candidates:
             man_cand_detections = self.get_detections_from_manual_cand(
-                pspec, manual_cand[1], manual_cand[2], manual_cand[0]
+                pspec, manual_cand[1], manual_cand[2], manual_cand[0], injection_dicts
             )
             man_cand_detections_array = np.array(
                 man_cand_detections, dtype=detection_dtype
@@ -630,22 +656,15 @@ class PowerSpectraSearch:
         #     log.warning("No clusters found. Further processing will not be completed.")
         #     return None
 
-        log.info(f"Total number of candidate clusters={len(clusters)}")
-        # Only update db for single day obs, proper stack logging tba
-        if len(pspec.obs_id) == 1:
-            if self.update_db:
-                payload = {
-                    "num_detections": len(detections),
-                    "num_detections_used": used_detections_len,
-                    "num_clusters": len(clusters),
-                    "detection_threshold": clustering_sigma_min,
-                }
-
-                db_api.update_observation(pspec.obs_id[0], payload)
+        injection_dicts_psdc = []
         for injection_index, injection_dict in enumerate(injection_dicts):
             # remove unneeded dict entries
-            injection_dict.pop("bins")
-            injection_dict.pop("dms")
+            # copy so that property of pspec is not altered
+            injection_dict_copy = injection_dict.copy()
+            injection_dict_copy.pop("bins")
+            injection_dict_copy.pop("dms")
+            injection_dict_copy.pop("injected_powers")
+            injection_dicts_psdc.append(injection_dict_copy)
         return (
             PowerSpectraDetectionClusters(
                 clusters=clusters,
@@ -657,7 +676,7 @@ class PowerSpectraSearch:
                 freq_spacing=cluster_df_spacing,
                 obs_id=pspec.obs_id,
                 datetimes=pspec.datetimes,
-                injection_dicts=injection_dicts,
+                injection_dicts=injection_dicts_psdc,
             ),
             detections,
         )
@@ -818,7 +837,7 @@ class PowerSpectraSearch:
 
                     sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
                     injected_index = -1
-
+                    injection_overlap_fraction = 0.0
                     for list_index, injection_dict in enumerate(injection_dicts):
                         injected_bins = injection_dict["bins"]
                         injected_dms = injection_dict["dms"]
@@ -826,13 +845,17 @@ class PowerSpectraSearch:
                             injection_overlap = np.intersect1d(
                                 sorted_harm_bins, injected_bins
                             )
+                            injection_overlap_fraction = injection_overlap.size / len(
+                                sorted_harm_bins
+                            )
                             if (
-                                injection_overlap.size / len(sorted_harm_bins)
+                                injection_overlap_fraction
                                 >= injection_overlap_threshold
                                 and np.abs(injection_dict["DM"] - dm)
                                 < injection_dm_threshold
                             ):
                                 injected_index = list_index
+                                break  # Assume only one injection is in each detection
 
                     if replace_last:
                         detection_list[-1] = (
@@ -852,6 +875,7 @@ class PowerSpectraSearch:
                             ),
                             sigma,
                             injected_index,
+                            injection_overlap_fraction,
                             "",
                         )
                     else:
@@ -874,6 +898,7 @@ class PowerSpectraSearch:
                                 ),
                                 sigma,
                                 injected_index,
+                                injection_overlap_fraction,
                                 "",
                             )
                         )
@@ -926,7 +951,9 @@ class PowerSpectraSearch:
                 summary[c]["rfi"] = False
         return summary
 
-    def get_detections_from_manual_cand(self, pspec, freq, dm, cand_description):
+    def get_detections_from_manual_cand(
+        self, pspec, freq, dm, cand_description, injection_dicts
+    ):
         all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
         detections = []
         dm_index = np.argmin(np.abs(pspec.dms - dm))
@@ -943,6 +970,18 @@ class PowerSpectraSearch:
             powers = pspec.power_spectra[dm_index, sorted_harm_bins]
             powers_sum = powers.sum()
             sigma = sigma_sum_powers(powers_sum, harmonic * pspec.num_days)
+            # Check injection_overlap
+            injection_overlap_fraction = 0.0
+            for list_index, injection_dict in enumerate(injection_dicts):
+                injected_bins = injection_dict["bins"]
+                injected_dms = injection_dict["dms"]
+                if dm_index in injected_dms:
+                    injection_overlap = np.intersect1d(sorted_harm_bins, injected_bins)
+                    injection_overlap_fraction = injection_overlap.size / len(
+                        sorted_harm_bins
+                    )
+                    if injection_overlap_fraction:
+                        break  # Assume only one injection is in each detection
             detection = (
                 freq,
                 dm,
@@ -956,6 +995,7 @@ class PowerSpectraSearch:
                 ),
                 sigma,
                 injection_index,
+                injection_overlap_fraction,
                 cand_description,
             )
             detections.append(detection)

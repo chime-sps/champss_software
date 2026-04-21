@@ -668,6 +668,7 @@ def main(
                             injection_idx,
                             only_injections,
                         )
+                        power_spectra.remove_injections()
                     gc.collect()
                 if stack:
                     # Depending on the stacking method this may change power_spectra,
@@ -1023,6 +1024,8 @@ def stack_and_search(
                 only_injections,
                 closest_pointing_id,
             )
+        power_spectra_monthly.remove_injections()
+
     else:
         power_spectra_monthly = None
 
@@ -1061,6 +1064,7 @@ def stack_and_search(
                         only_injections,
                         closest_pointing_id,
                     )
+                    # Does not need to remove injection because they were injected after the cumulative have been loaded
     try:
         power_spectra_monthly.unlink_shared_memory()
         log.info("Unlinked shared memory for monthly stack.")

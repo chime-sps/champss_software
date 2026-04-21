@@ -763,7 +763,7 @@ class Clusterer:
                                     break
                     bad_all_freqs = len(filtered_indices)
                     log.info(
-                        "Dbscan filter removed additonal"
+                        "Dbscan filter removed additional"
                         f" {bad_all_freqs - bad_low_dm_freqs} detection with same"
                         " frequencies as already filtered DM clusters."
                     )
