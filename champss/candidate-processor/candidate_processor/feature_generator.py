@@ -590,7 +590,7 @@ class Features:
                             )
                     except Exception as ex:
                         log.exception(
-                            f'{feature_config["feature"]} could not be initialized due'
+                            f"{feature_config['feature']} could not be initialized due"
                             " to the following"
                         )
                         log.exception(ex)
@@ -720,6 +720,7 @@ class Features:
             dm_sigma_1d=dm_sigma_1d_dict,
             sigmas_per_harmonic_sum=sigmas_per_harmonic_sum_dict,
             pspec_freq_resolution=pspec_meta_data.freq_labels[1],
+            manual_candidate=cluster.manual_candidate,
         )
         return SinglePointingCandidate(**spc_init_dict)
 

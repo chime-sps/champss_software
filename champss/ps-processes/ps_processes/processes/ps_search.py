@@ -27,6 +27,7 @@ from sps_common.interfaces.utilities import (
 )
 from sps_common.constants import TSAMP
 from sps_databases import db_api
+from sps_common.interfaces import Cluster
 
 log = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ class PowerSpectraSearch:
         injection_indices=[],
         only_injections=False,
         scale_injections=False,
+        manual_candidates=[],
     ):
         """
         Run the search.
@@ -394,36 +396,6 @@ class PowerSpectraSearch:
             )
             self.full_harm_bins[dummy_harmonics != 0] = 0
 
-        # Calculate the used number of each days in each pixel for each harmonic sum
-        # From that calculate the power_cutoff.
-        # Calculating for each DM trial would be slower.
-        # The harmonics are also currently hard-coded in the search routine currently
-        all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
-        if self.use_nsum_per_bin:
-            power_cutoff_per_harmonic = np.zeros(
-                (6, self.padded_length // 2), dtype=float
-            )
-            nsum_per_harmonic = np.zeros((6, self.padded_length // 2), dtype=int)
-            num_days_per_bin = pspec.get_bin_weights()
-            # For masked bins make sure that 0th bins is 0
-            num_days_per_bin[0] = 0
-            if len(filtered_sources):
-                num_days_per_bin[bad_freq_indices] = 0
-            for idx_harm, harm in enumerate(all_harmonic_vals):
-                nsum_harm_bins = self.full_harm_bins[:harm]
-                nsum_current_harmonic = num_days_per_bin[nsum_harm_bins].sum(0)
-                nsum_per_harmonic[idx_harm, :] = nsum_current_harmonic
-                power_cutoff_per_harmonic[idx_harm, :] = powersum_at_sigma(
-                    self.sigma_min, nsum_current_harmonic
-                )
-                power_cutoff_per_harmonic[idx_harm, nsum_current_harmonic == 0] = np.inf
-        else:
-            nsum_per_harmonic = all_harmonic_vals * pspec.num_days
-            power_cutoff_per_harmonic = powersum_at_sigma(
-                self.sigma_min, nsum_per_harmonic
-            )
-
-        pool = Pool(self.num_threads)
         detection_dtype = [
             ("freq", float),
             ("dm", float),
@@ -444,84 +416,216 @@ class PowerSpectraSearch:
             ),
             ("sigma", float),
             ("injection", int),
+            ("manual_candidate", "30U"),  # For now string with length 30
         ]
-        # multiprocessing pool to run the search as a parallel process.
-        log.info(
-            f"Start searching {len(pspec.dms)} dm trials using"
-            f" {self.num_harm} harmonics."
-        )
-        # Move spectra to shared memory if they are not already.
-        # Alternatively the search_candidates function could be rewritten
-        # to work with shared and non-shared memory
-        pspec.move_to_shared_memory()
-        if not self.mp_chunk_size:
-            self.mp_chunk_size = len(pspec.dms) // self.num_threads + 1
-        log.info(
-            f"Number of dm trials in single multi processing job: {self.mp_chunk_size}"
-        )
+        if "skip_search" not in manual_candidates:
+            # Calculate the used number of each days in each pixel for each harmonic sum
+            # From that calculate the power_cutoff.
+            # Calculating for each DM trial would be slower.
+            # The harmonics are also currently hard-coded in the search routine currently
+            all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
+            if self.use_nsum_per_bin:
+                power_cutoff_per_harmonic = np.zeros(
+                    (6, self.padded_length // 2), dtype=float
+                )
+                nsum_per_harmonic = np.zeros((6, self.padded_length // 2), dtype=int)
+                num_days_per_bin = pspec.get_bin_weights()
+                # For masked bins make sure that 0th bins is 0
+                num_days_per_bin[0] = 0
+                if len(filtered_sources):
+                    num_days_per_bin[bad_freq_indices] = 0
+                for idx_harm, harm in enumerate(all_harmonic_vals):
+                    nsum_harm_bins = self.full_harm_bins[:harm]
+                    nsum_current_harmonic = num_days_per_bin[nsum_harm_bins].sum(0)
+                    nsum_per_harmonic[idx_harm, :] = nsum_current_harmonic
+                    power_cutoff_per_harmonic[idx_harm, :] = powersum_at_sigma(
+                        self.sigma_min, nsum_current_harmonic
+                    )
+                    power_cutoff_per_harmonic[idx_harm, nsum_current_harmonic == 0] = (
+                        np.inf
+                    )
+            else:
+                nsum_per_harmonic = all_harmonic_vals * pspec.num_days
+                power_cutoff_per_harmonic = powersum_at_sigma(
+                    self.sigma_min, nsum_per_harmonic
+                )
 
-        dm_split = [
-            pspec.dms[i : i + self.mp_chunk_size]
-            for i in range(0, len(pspec.dms), self.mp_chunk_size)
-        ]
-        full_indices = np.arange(len(pspec.dms))
-        dm_indices = [
-            full_indices[i : i + self.mp_chunk_size]
-            for i in range(0, len(pspec.dms), self.mp_chunk_size)
-        ]
-        detection_list = pool.starmap(
-            partial(
-                self.search_candidates,
-                pspec.power_spectra_shared.name,
-                pspec.power_spectra.shape,
-                pspec.power_spectra.dtype,
-                self.num_harm,
-                self.full_harm_bins,
-                pspec.freq_labels,
-                nsum_per_harmonic,
-                power_cutoff_per_harmonic,
-                injection_dicts,
-                self.max_search_frequency,
-                self.skip_first_n_bins,
-                self.injection_overlap_threshold,
-                self.injection_dm_threshold,
-            ),
-            zip(dm_indices, dm_split),
-        )
-        pool.close()
-        pool.join()
+            pool = Pool(self.num_threads)
+            # multiprocessing pool to run the search as a parallel process.
+            log.info(
+                f"Start searching {len(pspec.dms)} dm trials using"
+                f" {self.num_harm} harmonics."
+            )
+            # Move spectra to shared memory if they are not already.
+            # Alternatively the search_candidates function could be rewritten
+            # to work with shared and non-shared memory
+            pspec.move_to_shared_memory()
+            if not self.mp_chunk_size:
+                self.mp_chunk_size = len(pspec.dms) // self.num_threads + 1
+            log.info(
+                f"Number of dm trials in single multi processing job: {self.mp_chunk_size}"
+            )
 
-        search_end = time.time()
-        log.debug(f"Took {search_end - search_start} seconds to run search")
+            dm_split = [
+                pspec.dms[i : i + self.mp_chunk_size]
+                for i in range(0, len(pspec.dms), self.mp_chunk_size)
+            ]
+            full_indices = np.arange(len(pspec.dms))
+            dm_indices = [
+                full_indices[i : i + self.mp_chunk_size]
+                for i in range(0, len(pspec.dms), self.mp_chunk_size)
+            ]
+            detection_list = pool.starmap(
+                partial(
+                    self.search_candidates,
+                    pspec.power_spectra_shared.name,
+                    pspec.power_spectra.shape,
+                    pspec.power_spectra.dtype,
+                    self.num_harm,
+                    self.full_harm_bins,
+                    pspec.freq_labels,
+                    nsum_per_harmonic,
+                    power_cutoff_per_harmonic,
+                    injection_dicts,
+                    self.max_search_frequency,
+                    self.skip_first_n_bins,
+                    self.injection_overlap_threshold,
+                    self.injection_dm_threshold,
+                ),
+                zip(dm_indices, dm_split),
+            )
+            pool.close()
+            pool.join()
 
-        # convert the full detection list into a numpy structured array
-        detections = np.array(
-            [j for sub in detection_list for j in sub], dtype=detection_dtype
-        )
-        log.info(f"Total number of detections={len(detections)}")
-        # if len(detections) == 0:
-        #     log.warning("No detections made. Further processing will not be completed.")
-        #     return None
-        log.info("Clustering the detections")
-        clusterer = Clusterer(
-            **self.cluster_config,
-            sigma_detection_threshold=self.sigma_min,
-            num_threads=self.num_threads,
-        )
-        cluster_dm_spacing = pspec.dms[1] - pspec.dms[0]
-        cluster_df_spacing = pspec.freq_labels[1]
-        (
-            clusters,
-            summary,
-            clustering_sigma_min,
-            used_detections_len,
-        ) = clusterer.make_clusters(
-            detections,
-            cluster_dm_spacing,
-            cluster_df_spacing,
-            plot_fname="",
-            only_injections=only_injections,
-        )
+            search_end = time.time()
+            log.debug(f"Took {search_end - search_start} seconds to run search")
+
+            # convert the full detection list into a numpy structured array
+            detections = np.array(
+                [j for sub in detection_list for j in sub], dtype=detection_dtype
+            )
+            log.info(f"Total number of detections={len(detections)}")
+            # if len(detections) == 0:
+            #     log.warning("No detections made. Further processing will not be completed.")
+            #     return None
+            log.info("Clustering the detections")
+            clusterer = Clusterer(
+                **self.cluster_config,
+                sigma_detection_threshold=self.sigma_min,
+                num_threads=self.num_threads,
+            )
+            cluster_dm_spacing = pspec.dms[1] - pspec.dms[0]
+            cluster_df_spacing = pspec.freq_labels[1]
+            (
+                clusters,
+                summary,
+                clustering_sigma_min,
+                used_detections_len,
+            ) = clusterer.make_clusters(
+                detections,
+                cluster_dm_spacing,
+                cluster_df_spacing,
+                plot_fname="",
+                only_injections=only_injections,
+            )
+        else:
+            clusters = {}
+            summary = {}
+            clustering_sigma_min = self.sigma_min
+            used_detections_len = 0
+            detections = np.array([], dtype=detection_dtype)
+            cluster_df_spacing = pspec.freq_labels[1]
+
+        all_cluster_labels = [int(label) for label in clusters.keys()]
+        if len(all_cluster_labels) == 0:
+            current_label = 0
+        else:
+            current_label = max(all_cluster_labels) + 1
+        used_manual_candidates = []
+        if manual_candidates:
+            for manual_cand in manual_candidates:
+                split_manual_cand = manual_cand.split(" ")
+                if split_manual_cand[0] == "para":
+                    freq = float(split_manual_cand[1])
+                    dm = float(split_manual_cand[2])
+                    used_manual_candidates.append([manual_cand, freq, dm])
+                elif split_manual_cand[0] == "nearby_ks":
+                    known_sources = db_api.get_nearby_known_sources(
+                        pspec.ra, pspec.dec, radius=float(split_manual_cand[1])
+                    )
+                    for source in known_sources:
+                        if np.isfinite(source.spin_period_s) and np.isfinite(source.dm):
+                            used_manual_candidates.append(
+                                [
+                                    source.source_name,
+                                    1 / source.spin_period_s,
+                                    source.dm,
+                                ]
+                            )
+                elif split_manual_cand[0] == "nearby_fs":
+                    followup_sources = db_api.get_nearby_followup_sources(
+                        pspec.ra, pspec.dec, radius=float(split_manual_cand[1])
+                    )
+                    for source in followup_sources:
+                        if np.isfinite(source.f0) and np.isfinite(source.dm):
+                            used_manual_candidates.append(
+                                [
+                                    source.source_name,
+                                    source.f0,
+                                    source.dm,
+                                ]
+                            )
+                elif split_manual_cand[0] == "PSR":
+                    source = db_api.get_known_source_by_names(split_manual_cand[1])
+                    if len(source):
+                        source = source[0]
+                        used_manual_candidates.append(
+                            [source.source_name, 1 / source.spin_period_s, source.dm]
+                        )
+                    else:
+                        log.error(f"Source {split_manual_cand[1]} not found in db.")
+                elif split_manual_cand[0] == "FS":
+                    fs = db_api.get_followup_source(split_manual_cand[1])
+                    used_manual_candidates.append([fs.source_name, fs.f0, fs.dm])
+                elif split_manual_cand[0] == "injection":
+                    for injection_index, injection_dict in enumerate(injection_dicts):
+                        used_manual_candidates.append(
+                            [
+                                f"Injection_{injection_index}",
+                                injection_dict["frequency"],
+                                injection_dict["DM"],
+                            ]
+                        )
+                elif split_manual_cand[0] == "skip_search":
+                    continue
+                else:
+                    log.error(
+                        f"Could not create manual candidate for {manual_cand}. Unknown format."
+                    )
+            log.info(
+                f"Will create the following manual candidates: {used_manual_candidates}"
+            )
+        for manual_cand in used_manual_candidates:
+            man_cand_detections = self.get_detections_from_manual_cand(
+                pspec, manual_cand[1], manual_cand[2], manual_cand[0]
+            )
+            man_cand_detections_array = np.array(
+                man_cand_detections, dtype=detection_dtype
+            )
+            man_cand_cluster = Cluster.from_raw_detections(man_cand_detections_array)
+            clusters[current_label] = man_cand_cluster
+            summary[current_label] = dict(
+                freq=man_cand_cluster.freq,
+                dm=man_cand_cluster.dm,
+                sigma=man_cand_cluster.sigma,
+                nharm=man_cand_cluster.nharm,
+                harm_idx=man_cand_cluster.harm_idx,
+                injection=man_cand_cluster.injection_index,
+                manual_candidate=manual_cand[0],
+            )
+            current_label += 1
+            detections = np.append(detections, man_cand_detections_array)
+
         # if len(clusters) == 0:
         #     log.warning("No clusters found. Further processing will not be completed.")
         #     return None
@@ -665,7 +769,7 @@ class PowerSpectraSearch:
                     continue
                 last_detection_freq = None
                 last_detection_sigma = None
-                if type(used_nsum) == np.ndarray:
+                if type(used_nsum) is np.ndarray:
                     used_nsum_detec = used_nsum[detection_idx]
                 else:
                     used_nsum_detec = used_nsum
@@ -683,7 +787,7 @@ class PowerSpectraSearch:
                         break
 
                     if sigmas is None:
-                        if type(used_nsum) == np.ndarray:
+                        if type(used_nsum) is np.ndarray:
                             used_nsum_detec_loop = used_nsum[idx]
                         else:
                             used_nsum_detec_loop = used_nsum
@@ -693,7 +797,7 @@ class PowerSpectraSearch:
                     else:
                         sigma = sigmas[idx_count]
                         if np.isnan(sigma):
-                            if type(used_nsum) == np.ndarray:
+                            if type(used_nsum) is np.ndarray:
                                 used_nsum_detec_loop = used_nsum[idx]
                             else:
                                 used_nsum_detec_loop = used_nsum
@@ -748,6 +852,7 @@ class PowerSpectraSearch:
                             ),
                             sigma,
                             injected_index,
+                            "",
                         )
                     else:
                         detection_list.append(
@@ -769,6 +874,7 @@ class PowerSpectraSearch:
                                 ),
                                 sigma,
                                 injected_index,
+                                "",
                             )
                         )
                     last_detection_freq = detection_freq
@@ -819,3 +925,38 @@ class PowerSpectraSearch:
             else:
                 summary[c]["rfi"] = False
         return summary
+
+    def get_detections_from_manual_cand(self, pspec, freq, dm, cand_description):
+        all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
+        detections = []
+        dm_index = np.argmin(np.abs(pspec.dms - dm))
+        if "Injection" in cand_description:
+            injection_index = int(cand_description.split("_")[-1])
+        else:
+            injection_index = -1
+        for harmonic in all_harmonic_vals:
+            current_freq_labels = pspec.freq_labels / harmonic
+            freq_index = np.argmin(np.abs(current_freq_labels - freq))
+            sorted_harm_bins = sorted(
+                self.full_harm_bins[:harmonic, freq_index].astype(int)
+            )
+            powers = pspec.power_spectra[dm_index, sorted_harm_bins]
+            powers_sum = powers.sum()
+            sigma = sigma_sum_powers(powers_sum, harmonic * pspec.num_days)
+            detection = (
+                freq,
+                dm,
+                1,
+                tuple(np.pad(sorted_harm_bins, (0, 32 - len(sorted_harm_bins)))),
+                tuple(
+                    np.pad(
+                        powers,
+                        (0, 32 - len(powers)),
+                    )
+                ),
+                sigma,
+                injection_index,
+                cand_description,
+            )
+            detections.append(detection)
+        return detections

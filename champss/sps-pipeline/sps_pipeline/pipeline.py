@@ -280,6 +280,24 @@ def dbexcepthook(type, value, tb):
         """For example use --config-options '{"beamform": {"max_mask_frac": 0.1}}' """
     ),
 )
+@click.option(
+    "--manual-candidates",
+    "--mc",
+    default=[],
+    type=str,
+    multiple=True,
+    help=(
+        "Allow retrieval of manual candidates. "
+        "Modes:"
+        "'--mc skip_search': Skip normal search; "
+        "'--mc para freq dm': Create candidate at freq and dm; "
+        "'--mc PSR psr_name': Create candidate at known source psr_name; "
+        "'--mc FS fs_id': Create candidate for followup source at given fs_id; "
+        "'--mc nearby_ks 1': Create candidate for all sources within given radius; "
+        "'--mc nearby_fs 1': Create candidate for followup sources within given radius; "
+        "'--mc injections': Create candidates for all injections; "
+    ),
+)
 def main(
     date,
     stack,
@@ -306,6 +324,7 @@ def main(
     scale_injections,
     datpath,
     config_options,
+    manual_candidates,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -625,6 +644,7 @@ def main(
                         scale_injections,
                         obs_folder,
                         prefix,
+                        manual_candidates=manual_candidates,
                     )
                     if ps_detections is None:
                         power_spectra.unlink_shared_memory()

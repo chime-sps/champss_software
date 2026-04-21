@@ -45,6 +45,7 @@ panels:
   - 
   - injection
   - injection_dict
+  - manual_candidate
 - col_range:
   - 0
   - 2

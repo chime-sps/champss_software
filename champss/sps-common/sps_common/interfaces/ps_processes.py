@@ -240,10 +240,10 @@ class PowerSpectra:
 
     @datetimes.validator
     def _validate_datetimes(self, attribute, value):
-        if type(value) != list:
+        if type(value) is not list:
             raise AttributeError(f"The data type of {attribute.name} is not list.")
         for val in value:
-            if type(val) != datetime:
+            if type(val) is not datetime:
                 raise AttributeError(
                     f"The elements of {attribute.name} are not datetime."
                 )
@@ -483,7 +483,8 @@ class PowerSpectra:
 
             if self.rn_medians is not None:
                 h5f.create_dataset(
-                    "rn medians", data=self.rn_medians, 
+                    "rn medians",
+                    data=self.rn_medians,
                 )
                 h5f.create_dataset("rn scales", data=self.rn_scales)
                 h5f.create_dataset("rn dm indices", data=self.rn_dm_indices)
@@ -744,6 +745,7 @@ class Cluster:
     nharm: int = attrib()
     harm_idx: np.ndarray = attrib()
     injection_index: float = attrib()
+    manual_candidate: str = attrib()
 
     @classmethod
     def from_raw_detections(cls, detections):
@@ -757,6 +759,7 @@ class Cluster:
             harm_idx=max_sig_det["harm_idx"],
             injection_index=max_sig_det["injection"],
             detections=detections,
+            manual_candidate=max_sig_det["manual_candidate"],
         )
         return cls(**init_dict)
 
@@ -881,6 +884,16 @@ class PowerSpectraDetectionClusters:
                 {"freq", "dm", "nharm", "harm_idx", "sigma"},
                 {"freq", "dm", "nharm", "harm_idx", "harm_pow", "sigma"},
                 {"freq", "dm", "nharm", "harm_idx", "harm_pow", "injection", "sigma"},
+                {
+                    "freq",
+                    "dm",
+                    "nharm",
+                    "harm_idx",
+                    "harm_pow",
+                    "injection",
+                    "sigma",
+                    "manual_candidate",
+                },
             ]
             if val_dtype not in acceptable_dtype_names:
                 raise TypeError(
