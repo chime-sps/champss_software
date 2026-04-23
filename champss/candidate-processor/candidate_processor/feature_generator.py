@@ -1021,6 +1021,7 @@ class Features:
             )
             spcs.append(spc)
         """
+        power_spectra.move_to_shared_memory()
         pspec_meta_data = EasyDict(
             {
                 "shared_name": power_spectra.power_spectra_shared.name,
