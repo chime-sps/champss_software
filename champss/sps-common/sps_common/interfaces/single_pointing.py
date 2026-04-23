@@ -172,6 +172,7 @@ class SinglePointingCandidate:
     dm_sigma_1d = attrib(type=dict, default=None)
     sigmas_per_harmonic_sum = attrib(type=dict, default=None)
     injection = attrib(type=bool, default=False)
+    any_injection_overlap = attrib(type=bool, default=False)
     injection_dict = attrib(type=dict, default={})
     datetimes = attrib(
         validator=deep_iterable(
