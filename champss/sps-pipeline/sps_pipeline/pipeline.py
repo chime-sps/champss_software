@@ -964,6 +964,7 @@ def stack_and_search(
     apply_logging_config(config, log_file)
     if path_cumul_stack:
         config.ps_cumul_stack.ps_stack_config.basepath = path_cumul_stack
+
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     # First just look up the pointing without having to create an Observation
     try:
