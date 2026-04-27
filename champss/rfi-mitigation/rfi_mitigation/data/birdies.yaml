@@ -228,3 +228,45 @@ known_bad_frequencies:
     note: Derived from dynamic birdies. Filtered in 99.4% of observations between 20251031
       and 20251101.
     width: 0.01
+
+  b29:
+    frequency: 24.22
+    width: 0.01
+    int_nharm: 1
+    frac_nharm: 0
+    note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
+
+  b30:
+    frequency: 24.61
+    width: 0.01
+    int_nharm: 1
+    frac_nharm: 0
+    note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
+
+  b31:
+    frequency: 25.39
+    width: 0.01
+    int_nharm: 1
+    frac_nharm: 0
+    note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
+
+  b32:
+  frequency: 25.78
+  width: 0.01
+  int_nharm: 1
+  frac_nharm: 0
+  note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
+
+  b33:
+    frequency: 49.22
+    width: 0.01
+    int_nharm: 1
+    frac_nharm: 0
+    note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
+
+  b34:
+  frequency: 50.78
+  width: 0.01
+  int_nharm: 1
+  frac_nharm: 0
+  note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
