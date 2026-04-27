@@ -852,6 +852,8 @@ def run_all_pipeline_processes(
             "using_docker": True,
             "config_options": pipeline_config_options,
             "known_source_threshold": 10,
+            "manual_candidates": ["nearby_ks 0.5 search"],
+            "injection_path": "random",
         }
         if pipeline_arguments != "":
             split_args = pipeline_arguments.split("--")
