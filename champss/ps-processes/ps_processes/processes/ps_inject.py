@@ -64,18 +64,18 @@ def generate_injection(pspec, f_nyquist=508):
     This function generates a random injection and its parameters.
     """
     f_dist = np.loadtxt(os.path.dirname(__file__) + "/atnf_freqs.txt", usecols=[1])
-    f_log = np.logspace(-3, 2.7, int((4 / 6) * len(f_dist)))
+    f_log = np.logspace(-1, 1, int((4 / 6) * len(f_dist)))
     f_choices = np.concatenate([f_dist, f_log])
     f_choices = f_choices[f_choices < f_nyquist]
     f = np.random.choice(f_choices)
 
-    dm_spread = np.linspace(0, pspec.dms[-1], 10000)
+    dm_spread = np.linspace(1, pspec.dms[-1], 10000)
     dm_weights = 0.6 * dm_distribution(dm_spread, 24, 24, 0.02)
     dm_weights += 0.4 / len(dm_spread)
     # 24 is chosen as the maximum DM value at b = 90 deg from NE2001
     dm = np.random.choice(dm_spread, p=dm_weights)
 
-    S_choices = np.logspace(-2, 1, 10000)
+    S_choices = np.logspace(5e-2, 5e-1, 10000)
     S = np.random.choice(S_choices)
 
     prof_idx = np.random.choice(range(len(TPA_profiles.keys())))
