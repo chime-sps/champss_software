@@ -246,27 +246,13 @@ known_bad_frequencies:
   b31:
     frequency: 25.39
     width: 0.01
-    int_nharm: 1
+    int_nharm: 2
     frac_nharm: 0
     note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
 
   b32:
-  frequency: 25.78
-  width: 0.01
-  int_nharm: 1
-  frac_nharm: 0
-  note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
-
-  b33:
-    frequency: 49.22
+    frequency: 25.78
     width: 0.01
-    int_nharm: 1
+    int_nharm: 2
     frac_nharm: 0
     note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
-
-  b34:
-  frequency: 50.78
-  width: 0.01
-  int_nharm: 1
-  frac_nharm: 0
-  note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
