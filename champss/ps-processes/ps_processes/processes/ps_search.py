@@ -373,7 +373,7 @@ class PowerSpectraSearch:
             static_filter = StaticPeriodicFilter()
             bad_freq_indices = static_filter.apply_static_mask(pspec.freq_labels, 0)
 
-            dummy_spec = np.zeros(self.padded_length // 2)
+            dummy_spec = np.zeros(len(pspec.freq_labels))
             dummy_spec[bad_freq_indices] = 1
             dummy_harmonics = dummy_spec[self.full_harm_bins]
             log.info(f"Filter {len(bad_freq_indices)} indices based on birdie list.")
