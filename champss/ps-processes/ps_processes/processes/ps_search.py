@@ -45,13 +45,6 @@ class PowerSpectraSearch:
     sigma_min: float
         The minimum sigma to determine a candidate. Default = 5.0
 
-    padded_length: int
-        The padded length of the time series (default is 2**20 = 1048576), but this
-        will depend on declination. The power spectra will have half the size.
-
-    precompute_harms: bool
-        Whether to precompute the harmonic bins prior to the search process. Default = True
-
     num_threads: int
         The number of threads to run the parallel processing of the FFT process. Default = 8
 
@@ -130,8 +123,6 @@ class PowerSpectraSearch:
     arc_filter_config = attribute(validator=instance_of(dict))
     num_harm = attribute(validator=instance_of(int), default=32)
     sigma_min = attribute(validator=instance_of(float), default=5.0)
-    padded_length = attribute(validator=instance_of(int), default=1048576)
-    precompute_harms = attribute(validator=instance_of(bool), default=True)
     num_threads = attribute(validator=instance_of(int), default=8)
     cluster_scale_factor: float = attribute(default=10)
     use_nsum_per_bin: bool = attribute(default=False)
@@ -147,19 +138,9 @@ class PowerSpectraSearch:
     filter_birdies: bool = attribute(default=False)
     mean_bin_sigma_threshold: float = attribute(default=0)
     only_use_stack_threshold = attribute(validator=instance_of(bool), default=False)
-    full_harm_bins = attribute(init=False)
+    full_harm_bins = attribute(default=None)
     update_db = attribute(default=True, validator=instance_of(bool))
     max_search_frequency: float = attribute(default=np.inf)
-
-    def __attrs_post_init__(self):
-        """Precompute bins used in harmonic summing."""
-        if self.precompute_harms:
-            self.full_harm_bins = np.vstack(
-                (
-                    np.arange(0, self.padded_length // 2),
-                    harmonic_sum(self.num_harm, np.zeros(self.padded_length // 2))[1],
-                )
-            ).astype(np.int32)
 
     @num_harm.validator
     def _validate_num_harm(self, attribute, value):
@@ -219,13 +200,14 @@ class PowerSpectraSearch:
         # Spawn multiprocessing method does not work nicely with shared arrays
         set_start_method("forkserver", force=True)
 
-        ps_length = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
+        ps_length = len(pspec.freq_labels)
+        ps_length_search = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         # compute harmonic bins based on power spectra properties
-        if not self.precompute_harms:
+        if self.full_harm_bins is not None:
             self.full_harm_bins = np.vstack(
                 (
-                    np.arange(0, ps_length),
-                    harmonic_sum(self.num_harm, np.zeros(ps_length))[1],
+                    np.arange(0, ps_length_search),
+                    harmonic_sum(self.num_harm, np.zeros(ps_length_search))[1],
                 )
             ).astype(np.int32)
 
@@ -374,7 +356,7 @@ class PowerSpectraSearch:
             static_filter = StaticPeriodicFilter()
             bad_freq_indices = static_filter.apply_static_mask(pspec.freq_labels, 0)
 
-            dummy_spec = np.zeros(self.padded_length // 2)
+            dummy_spec = np.zeros(ps_length)
             dummy_spec[bad_freq_indices] = 1
             dummy_harmonics = dummy_spec[self.full_harm_bins]
             log.info(f"Filter {len(bad_freq_indices)} indices based on birdie list.")
@@ -388,7 +370,7 @@ class PowerSpectraSearch:
                 mean_sigma >= self.mean_bin_sigma_threshold
             ]
 
-            dummy_spec = np.zeros(self.padded_length // 2)
+            dummy_spec = np.zeros(ps_length)
             dummy_spec[bad_freq_indices] = 1
             dummy_harmonics = dummy_spec[self.full_harm_bins]
             log.info(
@@ -427,10 +409,8 @@ class PowerSpectraSearch:
             # The harmonics are also currently hard-coded in the search routine currently
             all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
             if self.use_nsum_per_bin:
-                power_cutoff_per_harmonic = np.zeros(
-                    (6, self.padded_length // 2), dtype=float
-                )
-                nsum_per_harmonic = np.zeros((6, self.padded_length // 2), dtype=int)
+                power_cutoff_per_harmonic = np.zeros((6, ps_length_search), dtype=float)
+                nsum_per_harmonic = np.zeros((6, ps_length_search), dtype=int)
                 num_days_per_bin = pspec.get_bin_weights()
                 # For masked bins make sure that 0th bins is 0
                 num_days_per_bin[0] = 0
