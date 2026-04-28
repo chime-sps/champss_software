@@ -11,6 +11,7 @@ import sys
 import time
 from contextlib import nullcontext
 from glob import glob
+from copy import deepcopy
 
 import click
 import numpy as np
@@ -502,8 +503,10 @@ def main(
             )
             config.beamform.beam_to_normalise = None
         padded_length = config.ps_creation.padded_length
+        original_components = deepcopy(components)
 
         for i_ap, active_pointing in enumerate(active_pointings):
+            components = deepcopy(original_components)
             log.info(f"Processing active_pointing {i_ap + 1} of {N_ap}")
             active_process = db_api.get_process_from_active_pointing(
                 active_pointings[0]
@@ -894,24 +897,6 @@ def main(
     type=str,
     help="Additional options that overwrite the config options. Provide a string that would define a python dictionary",
 )
-@click.option(
-    "--manual-candidates",
-    "--mc",
-    default=[],
-    type=str,
-    multiple=True,
-    help=(
-        "Allow retrieval of manual candidates. "
-        "Modes:"
-        "'--mc skip_search': Skip normal search; "
-        "'--mc para freq dm': Create candidate at freq and dm; "
-        "'--mc PSR psr_name': Create candidate at known source psr_name; "
-        "'--mc FS fs_id': Create candidate for followup source at given fs_id; "
-        "'--mc nearby_ks 1': Create candidate for all sources within given radius; "
-        "'--mc nearby_fs 1': Create candidate for followup sources within given radius; "
-        "'--mc injections': Create candidates for all injections; "
-    ),
-)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -931,7 +916,6 @@ def stack_and_search(
     scale_injections,
     config_file,
     config_options,
-    manual_candidates,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -964,7 +948,6 @@ def stack_and_search(
     apply_logging_config(config, log_file)
     if path_cumul_stack:
         config.ps_cumul_stack.ps_stack_config.basepath = path_cumul_stack
-
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     # First just look up the pointing without having to create an Observation
     try:
@@ -1021,7 +1004,6 @@ def stack_and_search(
             only_injections,
             scale_injections,
             file=file,
-            manual_candidates=manual_candidates,
         )
         if db_connection:
             ps_stack = db_api.get_ps_stack(closest_pointing_id)
