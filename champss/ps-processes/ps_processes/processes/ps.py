@@ -323,11 +323,11 @@ class PowerSpectraCreation:
 
                 medians = np.asarray(medians)
                 median_dm_indices = np.asarray(median_dm_indices)
-                scales = np.asarray(scales[0]) #same for each DM
-                #this is the jankiest way of getting the freq_labels but I'm not sure how else to do it
-                rn_all_freqs = rfftfreq(2 * (power_spectra.shape[1] - 1), d = TSAMP)
+                scales = np.asarray(scales[0])  # same for each DM
+                # this is the jankiest way of getting the freq_labels but I'm not sure how else to do it
+                rn_all_freqs = rfftfreq(2 * (power_spectra.shape[1] - 1), d=TSAMP)
                 rn_freq_labels = rn_all_freqs[np.cumsum(scales)]
-            
+
             if self.save_medians:
                 rn_medians = medians[np.newaxis, :]
                 rn_dm_indices = median_dm_indices[np.newaxis, :]
@@ -366,7 +366,7 @@ class PowerSpectraCreation:
         datetimes = Time(dedisp_time_series.start_mjd, format="mjd").datetime.replace(
             tzinfo=pytz.utc
         )
-        
+
         return PowerSpectra(
             power_spectra=power_spectra,
             dms=dedisp_time_series.dms,
@@ -921,7 +921,6 @@ class PowerSpectraCreation:
         else:
             compared_obs = []
             birdies = []
-
         return bad_freq_indices, compared_obs, birdies, medians_path
 
     def compare_birdies(
