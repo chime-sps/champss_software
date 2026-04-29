@@ -203,7 +203,7 @@ class PowerSpectraSearch:
         ps_length = len(pspec.freq_labels)
         ps_length_search = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         # compute harmonic bins based on power spectra properties
-        if self.full_harm_bins is not None:
+        if self.full_harm_bins is None:
             self.full_harm_bins = np.vstack(
                 (
                     np.arange(0, ps_length_search),
