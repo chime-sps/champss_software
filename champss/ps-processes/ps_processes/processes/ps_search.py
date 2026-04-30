@@ -836,6 +836,7 @@ class PowerSpectraSearch:
                             replace_last = True
 
                     sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
+                    overlapped_injections = []
                     all_injection_overlaps = []
                     for list_index, injection_dict in enumerate(injection_dicts):
                         injected_bins = injection_dict["bins"]
@@ -847,22 +848,28 @@ class PowerSpectraSearch:
                             injection_overlap_fraction = injection_overlap.size / len(
                                 sorted_harm_bins
                             )
+                            overlapped_injections.append(list_index)
                             all_injection_overlaps.append(injection_overlap_fraction)
 
                     injected_index = -1
                     injection_overlap_fraction = 0.0
-                    if len(injection_dicts):
-                        if np.max(all_injection_overlaps) > 0.:
+                    if len(all_injection_overlaps):
+                        if np.max(all_injection_overlaps) > 0.0:
                             sort_overlaps = np.argsort(all_injection_overlaps)[::-1]
                             injection_overlap_fraction = 0.0
                             for index in sort_overlaps:
                                 if (
                                     all_injection_overlaps[index]
                                     >= injection_overlap_threshold
-                                    and np.abs(injection_dict["DM"] - dm)
+                                    and np.abs(
+                                        injection_dicts[overlapped_injections[index]][
+                                            "DM"
+                                        ]
+                                        - dm
+                                    )
                                     < injection_dm_threshold
                                 ):
-                                    injected_index = index
+                                    injected_index = overlapped_injections[index]
                                     injection_overlap_fraction = all_injection_overlaps[
                                         index
                                     ]
