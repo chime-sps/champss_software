@@ -849,29 +849,28 @@ class PowerSpectraSearch:
                             )
                             all_injection_overlaps.append(injection_overlap_fraction)
                     injected_index = -1
-                    if max(all_injection_overlaps) > 0.0:
-                        sort_overlaps = np.arsort(all_injection_overlaps)[::-1]
-                        injection_overlap_fraction = 0.0
-                        for index in sort_overlaps:
-                            if (
-                                all_injection_overlaps[index]
-                                >= injection_overlap_threshold
-                                and np.abs(injection_dict["DM"] - dm)
-                                < injection_dm_threshold
-                            ):
-                                injected_index = index
-                                injection_overlap_fraction = all_injection_overlaps[
-                                    index
-                                ]
-                                break
-                        if injected_index == -1:
-                            injection_overlap_fraction = max(all_injection_overlaps)
-                    else:
-                        injected_index = best_injection
-                        injection_overlap_fraction = 0.0
+                    injection_overlap_fraction = 0.0
+                    if len(injection_dicts):
+                        if np.max(all_injection_overlaps) > 0.:
+                            sort_overlaps = np.arsort(all_injection_overlaps)[::-1]
+                            injection_overlap_fraction = 0.0
+                            for index in sort_overlaps:
+                                if (
+                                    all_injection_overlaps[index]
+                                    >= injection_overlap_threshold
+                                    and np.abs(injection_dict["DM"] - dm)
+                                    < injection_dm_threshold
+                                ):
+                                    injected_index = index
+                                    injection_overlap_fraction = all_injection_overlaps[
+                                        index
+                                    ]
+                                    break
+                            if injected_index == -1:
+                                injection_overlap_fraction = max(all_injection_overlaps)
 
                     if replace_last:
-                        detection_list[-1] = (
+                        detection_list[-1] best_injection= (
                             detection_freq,
                             dm,
                             harm,
