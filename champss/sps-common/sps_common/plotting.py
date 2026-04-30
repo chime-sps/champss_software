@@ -346,9 +346,13 @@ def plot_candidate(
         exit(1)
 
     os.makedirs(folder, exist_ok=True)
+    if sp_candidate.manual_candidate != "":
+        manual = "_manual"
+    else:
+        manual = ""
 
     file_name = (
-        f"{folder}/{prefix}_{sp_candidate.ra:.2f}_"
+        f"{folder}/{prefix}{manual}_{sp_candidate.ra:.2f}_"
         f"{sp_candidate.dec:.2f}_{sp_candidate.sigma:06.2f}_"
         f"{sp_candidate.freq:.5f}_{sp_candidate.dm:.3f}_"
         f"{sp_candidate.datetimes[-1].strftime('%Y%m%d')}.png"

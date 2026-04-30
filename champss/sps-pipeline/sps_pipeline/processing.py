@@ -1845,7 +1845,6 @@ def start_processing_manager(
                 df_mp.to_csv(df_folded_name)
 
                 # Merge candidates
-                # breakpoint()
                 log.info("Creating merged candidate plots.")
                 merged_candidate_path = (
                     basepath + "/combined_candidates/" + date_string + "/"

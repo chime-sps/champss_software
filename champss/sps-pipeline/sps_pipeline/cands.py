@@ -233,7 +233,7 @@ def run_interface(
         # Turned it on again
         payload = {
             "path_candidate_file": path.abspath(ps_candidates),
-            "num_total_candidates": len(spcc.candidates),
+            "num_total_candidates": len(spcc.get_real_search_candidates()),
         }
         db_api.append_ps_stack(closest_pointing_id, payload)
     if plot:

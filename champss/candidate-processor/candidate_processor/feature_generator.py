@@ -696,6 +696,7 @@ class Features:
         else:
             injected = False
             injection_dict = {}
+        any_injection_overlap = bool(max(cluster.detections["injection_overlap"]))
         spc_init_dict = dict(
             freq=cluster.freq,
             dm=cluster.dm,
@@ -706,6 +707,7 @@ class Features:
             unique_dms=cluster.unique_dms,
             sigma=cluster.sigma,
             injection=injected,
+            any_injection_overlap=any_injection_overlap,
             injection_dict=injection_dict,
             ra=cluster_dict.ra,
             dec=cluster_dict.dec,
