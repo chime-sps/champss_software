@@ -338,6 +338,9 @@ def run_all_multi_day_folds(
         db_entry = db.followup_sources.find_one(
             {"path_to_candidates": row["file_name"]}
         )
+        if db_entry is None:
+            log.error(f"Could not grab fs source for {row['file_name']}")
+            continue
         coh_history = db_entry.get("coherentsearch_history", [])
         if len(coh_history):
             last_mdf = coh_history[-1]
@@ -852,6 +855,8 @@ def run_all_pipeline_processes(
             "using_docker": True,
             "config_options": pipeline_config_options,
             "known_source_threshold": 10,
+            "manual_candidates": ["nearby_ks 0.5 search"],
+            "injection_path": "random",
         }
         if pipeline_arguments != "":
             split_args = pipeline_arguments.split("--")

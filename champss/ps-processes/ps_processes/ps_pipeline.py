@@ -322,6 +322,7 @@ class StackSearchPipeline:
         only_store_injections=False,
         scale_injections=False,
         file=None,
+        manual_candidates=[],
     ):
         """
         Process the monthly stack.
@@ -405,6 +406,7 @@ class StackSearchPipeline:
                     injection_idx,
                     only_store_injections,
                     scale_injections,
+                    manual_candidates=manual_candidates,
                 )
             else:
                 monthly_power_spectra_detection_clusters = None
@@ -422,6 +424,7 @@ class StackSearchPipeline:
         injection_idx=None,
         only_store_injections=False,
         scale_injections=False,
+        manual_candidates=[],
     ):
         """
         Process the cumulative stack.
@@ -464,6 +467,7 @@ class StackSearchPipeline:
                         injection_idx,
                         only_store_injections,
                         scale_injections,
+                        manual_candidates=manual_candidates,
                     )
                 stacked_power_spectra = self._ps_stack.stack(monthly_power_spectra)
                 (
@@ -517,6 +521,7 @@ class StackSearchPipeline:
                 injection_idx,
                 only_store_injections,
                 scale_injections,
+                manual_candidates=manual_candidates,
             )
             if self.write_ps_detections:
                 stack_detection_file = (
