@@ -848,7 +848,7 @@ class PowerSpectraSearch:
                                 sorted_harm_bins
                             )
                             all_injection_overlaps.append(injection_overlap_fraction)
-                            
+
                     injected_index = -1
                     injection_overlap_fraction = 0.0
                     if len(injection_dicts):
@@ -871,7 +871,7 @@ class PowerSpectraSearch:
                                 injection_overlap_fraction = max(all_injection_overlaps)
 
                     if replace_last:
-                        detection_list[-1] best_injection= (
+                        detection_list[-1] = (
                             detection_freq,
                             dm,
                             harm,
