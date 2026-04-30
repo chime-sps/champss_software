@@ -355,7 +355,6 @@ class PowerSpectraSearch:
             # if some birdies were not filtered during ps creation
             static_filter = StaticPeriodicFilter()
             bad_freq_indices = static_filter.apply_static_mask(pspec.freq_labels, 0)
-
             dummy_spec = np.zeros(ps_length)
             dummy_spec[bad_freq_indices] = 1
             dummy_harmonics = dummy_spec[self.full_harm_bins]
@@ -551,14 +550,17 @@ class PowerSpectraSearch:
         if manual_candidates:
             for manual_cand in manual_candidates:
                 split_manual_cand = manual_cand.split(" ")
+                man_search = False
                 if split_manual_cand[0] == "para":
                     freq = float(split_manual_cand[1])
                     dm = float(split_manual_cand[2])
-                    used_manual_candidates.append([manual_cand, freq, dm])
+                    used_manual_candidates.append([manual_cand, freq, dm, man_search])
                 elif split_manual_cand[0] == "nearby_ks":
                     known_sources = db_api.get_nearby_known_sources(
                         pspec.ra, pspec.dec, radius=float(split_manual_cand[1])
                     )
+                    if "search" in split_manual_cand:
+                        man_search = True
                     for source in known_sources:
                         if np.isfinite(source.spin_period_s) and np.isfinite(source.dm):
                             used_manual_candidates.append(
@@ -566,6 +568,7 @@ class PowerSpectraSearch:
                                     source.source_name,
                                     1 / source.spin_period_s,
                                     source.dm,
+                                    man_search,
                                 ]
                             )
                 elif split_manual_cand[0] == "nearby_fs":
@@ -575,18 +578,19 @@ class PowerSpectraSearch:
                     for source in followup_sources:
                         if np.isfinite(source.f0) and np.isfinite(source.dm):
                             used_manual_candidates.append(
-                                [
-                                    source.source_name,
-                                    source.f0,
-                                    source.dm,
-                                ]
+                                [source.source_name, source.f0, source.dm, man_search]
                             )
                 elif split_manual_cand[0] == "PSR":
                     source = db_api.get_known_source_by_names(split_manual_cand[1])
                     if len(source):
                         source = source[0]
                         used_manual_candidates.append(
-                            [source.source_name, 1 / source.spin_period_s, source.dm]
+                            [
+                                source.source_name,
+                                1 / source.spin_period_s,
+                                source.dm,
+                                man_search,
+                            ]
                         )
                     else:
                         log.error(f"Source {split_manual_cand[1]} not found in db.")
@@ -600,6 +604,7 @@ class PowerSpectraSearch:
                                 f"Injection_{injection_index}",
                                 injection_dict["frequency"],
                                 injection_dict["DM"],
+                                man_search,
                             ]
                         )
                 elif split_manual_cand[0] == "skip_search":
@@ -613,7 +618,7 @@ class PowerSpectraSearch:
             )
         for manual_cand in used_manual_candidates:
             man_cand_detections = self.get_detections_from_manual_cand(
-                pspec, manual_cand[1], manual_cand[2], manual_cand[0], injection_dicts
+                pspec, manual_cand[1], manual_cand[2], manual_cand[0], injection_dicts, search=manual_cand[3]
             )
             man_cand_detections_array = np.array(
                 man_cand_detections, dtype=detection_dtype
@@ -952,7 +957,7 @@ class PowerSpectraSearch:
         return summary
 
     def get_detections_from_manual_cand(
-        self, pspec, freq, dm, cand_description, injection_dicts
+        self, pspec, freq, dm, cand_description, injection_dicts, search=False
     ):
         all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
         detections = []
@@ -964,38 +969,43 @@ class PowerSpectraSearch:
             injection_index = -1
         for harmonic in all_harmonic_vals:
             current_freq_labels = pspec.freq_labels / harmonic
-            freq_index = np.argmin(np.abs(current_freq_labels - freq))
-            sorted_harm_bins = sorted(
-                self.full_harm_bins[:harmonic, freq_index].astype(int)
-            )
-            powers = pspec.power_spectra[dm_index, sorted_harm_bins]
-            powers_sum = powers.sum()
-            sigma = sigma_sum_powers(powers_sum, harmonic * pspec.num_days)
-            # Check injection_overlap
-            injection_overlap_fraction = 0.0
-            if injection_index != -1:
-                injected_bins = injection_dict["bins"]
-                injected_dms = injection_dict["dms"]
-                if dm_index in injected_dms:
-                    injection_overlap = np.intersect1d(sorted_harm_bins, injected_bins)
-                    injection_overlap_fraction = injection_overlap.size / len(
+            if not search:
+                freq_indices = [np.argmin(np.abs(current_freq_labels - freq))]
+            else:
+                freq_indices_bool = np.abs(current_freq_labels - freq) < 0.001
+                freq_indices = np.arange(len(current_freq_labels))[freq_indices_bool]
+            for freq_index in freq_indices:
+                sorted_harm_bins = sorted(
+                    self.full_harm_bins[:harmonic, freq_index].astype(int)
+                )
+                powers = pspec.power_spectra[dm_index, sorted_harm_bins]
+                powers_sum = powers.sum()
+                sigma = sigma_sum_powers(powers_sum, harmonic * pspec.num_days)
+                # Check injection_overlap
+                injection_overlap_fraction = 0.0
+                if injection_index != -1:
+                    injected_bins = injection_dict["bins"]
+                    injected_dms = injection_dict["dms"]
+                    if dm_index in injected_dms:
+                        injection_overlap = np.intersect1d(sorted_harm_bins, injected_bins)
+                        injection_overlap_fraction = injection_overlap.size / len(
                         sorted_harm_bins
                     )
-            detection = (
-                freq,
-                dm,
-                1,
-                tuple(np.pad(sorted_harm_bins, (0, 32 - len(sorted_harm_bins)))),
-                tuple(
-                    np.pad(
-                        powers,
-                        (0, 32 - len(powers)),
-                    )
-                ),
-                sigma,
-                injection_index,
-                injection_overlap_fraction,
-                cand_description,
-            )
-            detections.append(detection)
+                detection = (
+                    current_freq_labels[freq_index],
+                    pspec.dms[dm_index],
+                    1,
+                    tuple(np.pad(sorted_harm_bins, (0, 32 - len(sorted_harm_bins)))),
+                    tuple(
+                        np.pad(
+                            powers,
+                            (0, 32 - len(powers)),
+                        )
+                    ),
+                    sigma,
+                    injection_index,
+                    injection_overlap_fraction,
+                    cand_description,
+                )
+                detections.append(detection)
         return detections

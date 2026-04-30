@@ -11,6 +11,7 @@ import sys
 import time
 from contextlib import nullcontext
 from glob import glob
+from copy import deepcopy
 
 import click
 import numpy as np
@@ -502,8 +503,10 @@ def main(
             )
             config.beamform.beam_to_normalise = None
         padded_length = config.ps_creation.padded_length
+        original_components = deepcopy(components)
 
         for i_ap, active_pointing in enumerate(active_pointings):
+            components = deepcopy(original_components)
             log.info(f"Processing active_pointing {i_ap + 1} of {N_ap}")
             active_process = db_api.get_process_from_active_pointing(
                 active_pointings[0]
