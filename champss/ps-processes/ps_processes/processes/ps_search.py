@@ -985,7 +985,6 @@ class PowerSpectraSearch:
             sigma = sigma_sum_powers(powers_sum, harmonic * pspec.num_days)
             # Check injection_overlap
             injection_overlap_fraction = 0.0
-            # for list_index, injection_dict in enumerate(injection_dicts):
             if injection_index != -1:
                 injected_bins = injection_dict["bins"]
                 injected_dms = injection_dict["dms"]
