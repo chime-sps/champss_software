@@ -848,6 +848,7 @@ class PowerSpectraSearch:
                                 sorted_harm_bins
                             )
                             all_injection_overlaps.append(injection_overlap_fraction)
+                            
                     injected_index = -1
                     injection_overlap_fraction = 0.0
                     if len(injection_dicts):
