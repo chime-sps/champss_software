@@ -64,7 +64,7 @@ def generate_injection(pspec, f_nyquist=508):
     This function generates a random injection and its parameters.
     """
     f_dist = np.loadtxt(os.path.dirname(__file__) + "/atnf_freqs.txt", usecols=[1])
-    f_log = np.logspace(-1, 1, int((4 / 6) * len(f_dist)))
+    f_log = np.logspace(-3, 2.7, int((4 / 6) * len(f_dist)))
     f_choices = np.concatenate([f_dist, f_log])
     f_choices = f_choices[f_choices < f_nyquist]
     f = np.random.choice(f_choices)
