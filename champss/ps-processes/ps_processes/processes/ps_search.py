@@ -853,7 +853,7 @@ class PowerSpectraSearch:
                     injection_overlap_fraction = 0.0
                     if len(injection_dicts):
                         if np.max(all_injection_overlaps) > 0.:
-                            sort_overlaps = np.arsort(all_injection_overlaps)[::-1]
+                            sort_overlaps = np.argsort(all_injection_overlaps)[::-1]
                             injection_overlap_fraction = 0.0
                             for index in sort_overlaps:
                                 if (
