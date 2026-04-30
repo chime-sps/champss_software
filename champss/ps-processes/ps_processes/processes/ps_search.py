@@ -848,21 +848,24 @@ class PowerSpectraSearch:
                                 sorted_harm_bins
                             )
                             all_injection_overlaps.append(injection_overlap_fraction)
+                    injected_index = -1
                     if max(all_injection_overlaps) > 0.0:
-                        best_injection = np.argmax(all_injection_overlaps)
-                        if (
-                            all_injection_overlaps[best_injection]
-                            >= injection_overlap_threshold
-                            and np.abs(injection_dict["DM"] - dm)
-                            < injection_dm_threshold
-                        ):
-                            injected_index = best_injection
-                            injection_overlap_fraction = all_injection_overlaps[
-                                best_injection
-                            ]
-                        else:
-                            injected_index = best_injection
-                            injection_overlap_fraction = 0.0
+                        sort_overlaps = np.arsort(all_injection_overlaps)[::-1]
+                        injection_overlap_fraction = 0.0
+                        for index in sort_overlaps:
+                            if (
+                                all_injection_overlaps[index]
+                                >= injection_overlap_threshold
+                                and np.abs(injection_dict["DM"] - dm)
+                                < injection_dm_threshold
+                            ):
+                                injected_index = index
+                                injection_overlap_fraction = all_injection_overlaps[
+                                    index
+                                ]
+                                break
+                        if injected_index == -1:
+                            injection_overlap_fraction = max(all_injection_overlaps)
                     else:
                         injected_index = best_injection
                         injection_overlap_fraction = 0.0
