@@ -836,8 +836,7 @@ class PowerSpectraSearch:
                             replace_last = True
 
                     sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
-                    injected_index = -1
-                    injection_overlap_fraction = 0.0
+                    all_injection_overlaps = []
                     for list_index, injection_dict in enumerate(injection_dicts):
                         injected_bins = injection_dict["bins"]
                         injected_dms = injection_dict["dms"]
@@ -848,14 +847,25 @@ class PowerSpectraSearch:
                             injection_overlap_fraction = injection_overlap.size / len(
                                 sorted_harm_bins
                             )
-                            if (
-                                injection_overlap_fraction
-                                >= injection_overlap_threshold
-                                and np.abs(injection_dict["DM"] - dm)
-                                < injection_dm_threshold
-                            ):
-                                injected_index = list_index
-                                break  # Assume only one injection is in each detection
+                            all_injection_overlaps.append(injection_overlap_fraction)
+                    if max(all_injection_overlaps) > 0.0:
+                        best_injection = np.argmax(all_injection_overlaps)
+                        if (
+                            all_injection_overlaps[best_injection]
+                            >= injection_overlap_threshold
+                            and np.abs(injection_dict["DM"] - dm)
+                            < injection_dm_threshold
+                        ):
+                            injected_index = best_injection
+                            injection_overlap_fraction = all_injection_overlaps[
+                                best_injection
+                            ]
+                        else:
+                            injected_index = best_injection
+                            injection_overlap_fraction = 0.0
+                    else:
+                        injected_index = best_injection
+                        injection_overlap_fraction = 0.0
 
                     if replace_last:
                         detection_list[-1] = (
@@ -959,6 +969,7 @@ class PowerSpectraSearch:
         dm_index = np.argmin(np.abs(pspec.dms - dm))
         if "Injection" in cand_description:
             injection_index = int(cand_description.split("_")[-1])
+            injection_dict = injection_dicts[injection_index]
         else:
             injection_index = -1
         for harmonic in all_harmonic_vals:
@@ -972,7 +983,8 @@ class PowerSpectraSearch:
             sigma = sigma_sum_powers(powers_sum, harmonic * pspec.num_days)
             # Check injection_overlap
             injection_overlap_fraction = 0.0
-            for list_index, injection_dict in enumerate(injection_dicts):
+            # for list_index, injection_dict in enumerate(injection_dicts):
+            if injection_index != -1:
                 injected_bins = injection_dict["bins"]
                 injected_dms = injection_dict["dms"]
                 if dm_index in injected_dms:
@@ -980,8 +992,6 @@ class PowerSpectraSearch:
                     injection_overlap_fraction = injection_overlap.size / len(
                         sorted_harm_bins
                     )
-                    if injection_overlap_fraction:
-                        break  # Assume only one injection is in each detection
             detection = (
                 freq,
                 dm,
