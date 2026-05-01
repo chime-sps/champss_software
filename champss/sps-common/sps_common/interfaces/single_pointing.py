@@ -594,30 +594,48 @@ class SinglePointingCandidateCollection:
         attribute_list = [getattr(cand, attribute, None) for cand in self.candidates]
         return np.asarray(attribute_list)
 
-    def get_real_candidates(self):
+    def get_real_candidates(self, return_indices=False):
         """Get candidates which have not been injected."""
         # Converting to array for easier slicing, could also change the attribute itself to array
-        return np.asarray(self.candidates)[~self.injection_flags]
+        if return_indices:
+            return np.arange(len(self.candidates))[~self.injection_flags], np.asarray(self.candidates)[~self.injection_flags]
+        else:
+            return np.asarray(self.candidates)[~self.injection_flags]
 
-    def get_real_search_candidates(self):
+    def get_real_search_candidates(self, return_indices=False):
         """Get search candidates which have not been injected."""
-        return np.asarray(self.candidates)[~self.injection_flags & ~self.manual_flags]
+        if return_indices:
+            return np.arange(len(self.candidates))[~self.injection_flags & ~self.manual_flags], np.asarray(self.candidates)[~self.injection_flags & ~self.manual_flags]
+        else:
+            return np.asarray(self.candidates)[~self.injection_flags & ~self.manual_flags]
 
-    def get_injection_candidates(self):
+    def get_injection_candidates(self, return_indices=False):
         """Get candidates which have been injected."""
-        return np.asarray(self.candidates)[self.injection_flags]
+        if return_indices:
+            return np.arange(len(self.candidates))[self.injection_flags], np.asarray(self.candidates)[self.injection_flags]
+        else:
+            return np.asarray(self.candidates)[self.injection_flags]
 
-    def get_search_injection_candidates(self):
+    def get_search_injection_candidates(self, return_indices=False):
         """Get search candidates which have been injected."""
-        return np.asarray(self.candidates)[self.injection_flags & ~self.manual_flags]
+        if return_indices:
+            return  np.arange(len(self.candidates))[self.injection_flags & ~self.manual_flags], np.asarray(self.candidates)[self.injection_flags & ~self.manual_flags]
+        else:
+            return np.asarray(self.candidates)[self.injection_flags & ~self.manual_flags]
 
-    def get_manual_injection_candidates(self):
+    def get_manual_injection_candidates(self, return_indices=False):
         """Get manual candidates which have been injected."""
-        return np.asarray(self.candidates)[self.injection_flags & self.manual_flags]
+        if return_indices:
+            return np.arange(len(self.candidates))[self.injection_flags & self.manual_flags], np.asarray(self.candidates)[self.injection_flags & self.manual_flags]
+        else:
+            return np.asarray(self.candidates)[self.injection_flags & self.manual_flags]
 
-    def get_manual_candidates(self):
+    def get_manual_candidates(self, return_indices=False):
         """Get all manual candidate."""
-        return np.asarray(self.candidates)[self.manual_flags]
+        if return_indices:
+            return np.arange(len(self.candidates))[self.manual_flags], np.asarray(self.candidates)[self.manual_flags]
+        else:
+            return np.asarray(self.candidates)[self.manual_flags]
 
     def test_injection_performance(self, verbose=True):
         """Return dict containing details fo the injection performance."""

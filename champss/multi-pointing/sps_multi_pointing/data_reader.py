@@ -59,7 +59,7 @@ def read_cands_summaries(file, sigma_threshold=0):
 
         if len(spcc.candidates):
             datetimes = spcc.candidates[0].datetimes
-            for cand_index, candidate in enumerate(spcc.get_real_search_candidates()):
+            for cand_index, candidate in enumerate(spcc.get_real_search_candidates(return_indices=True)): 
                 if candidate.sigma < sigma_threshold:
                     continue
                 cand_summary = EasyDict(candidate.summary)
