@@ -427,7 +427,7 @@ def schedule_workflow_job(
             # Labels allow for easy filtering with Docker CLI
             "labels": {"type": "processing"},
             # The labels on the Docker Nodes are pre-empetively set beforehand
-            "constraints": ["node.labels.compute == true"],
+            "constraints": ["node.hostname == sps-compute1"],
             # Must be in bytes
             "resources": docker.types.Resources(
                 mem_reservation=int(docker_memory_reservation * 1e9)
