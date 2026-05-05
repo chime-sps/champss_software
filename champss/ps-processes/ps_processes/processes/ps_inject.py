@@ -343,6 +343,65 @@ class Injection:
 
         return prof_fft, phases
 
+    def scattering(self, prof_fft, n_harm, alpha=-4.4, beta=-1.0,
+                   nuref=600.0, tauref=0.01, tsamp=TSAMP*1000, nbin=None):
+        """
+        This function applies scattering to a pulse profile by computing
+        a frequency-summed scattering kernel and multiplying it with the
+        profile harmonics in the Fourier domain. This code was written by Hudson Bridgwater.
+
+        Inputs:
+        -------
+                prof_fft (arr)   : FFT of the pulse profile, excluding the zeroth harmonic,
+                                   with length n_harm
+                n_harm   (int)   : number of harmonics
+                tauref   (float) : scattering timescale at nuref in milliseconds. Default: 0.01
+                alpha    (float) : power-law spectral index of the scattering timescale (freq scaling).
+                                   Default: 0.0
+                beta     (float) : spectral weighting index for frequency averaging.
+                                   Default: 0.0
+                nuref    (float) : reference frequency in MHz. Default: 600.0
+                tsamp    (float) : sampling time in milliseconds. Default: TSAMP * 1000
+                nbin     (int)   : number of phase bins in the profile. If None, uses
+                                   len(self.phase_prof). Default: None
+
+        Returns:
+        --------
+                prof_fft (arr)   : scattered FFT of the pulse profile, with length n_harm
+        """
+        if nbin is None:
+            nbin = len(self.phase_prof)
+        if tauref == 0.0:
+            return prof_fft
+
+        # CHIME constants
+        bandmin = 400.0
+        bandmax = 800.0
+        nchan = 16384
+
+        # Time based kernel
+        dnu = (bandmax - bandmin) / nchan
+        bstart = bandmin + dnu / 2.0
+        bend = bandmax - dnu / 2.0
+        obsfreq = np.linspace(bstart, bend, nchan)
+        t0 = np.arange(nbin) * tsamp
+        nu = obsfreq[:, None]
+        t = t0[None, :]
+
+        tau_ms = tauref * (nu / nuref) ** (alpha)
+        k_i = (1.0 / tau_ms) * np.exp(-t / tau_ms)
+        w_i = (nu / nuref) ** (beta)
+        scatt = k_i * w_i
+        k_eff = np.sum(scatt, axis=0) / np.sum(w_i, axis=0)
+        k_eff /= np.sum(k_eff)
+
+        # Transform kernel to Fourier harmonics
+        K = rfft(k_eff, n=nbin)
+        K_harm = K[1 : n_harm + 1]
+        prof_fft *= K_harm
+
+        return prof_fft
+
     def time_windowing(self, prof_fft):
         # apply Van der Klis Eq 2.19 for time-bin windowing effect
         harmonic_freqs = np.arange(1, len(prof_fft) + 1) * self.f
@@ -591,7 +650,8 @@ class Injection:
         else:
             n_harm = len(scaled_prof_fft)
 
-        windowed_prof_fft = self.time_windowing(scaled_prof_fft)
+        scattered_prof_fft = self.scattering(scaled_prof_fft, n_harm=n_harm)
+        windowed_prof_fft = self.time_windowing(scattered_prof_fft)
         smeared_prof_fft = self.smear_fft(windowed_prof_fft)
 
         log.info(f"Injecting {n_harm} harmonics.")
