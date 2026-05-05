@@ -157,6 +157,10 @@ class Injection:
         flux=None,
         sigma=None,
         TPA_idx=None,
+        tauref=0.0,
+        alpha=0.0,
+        beta=0.0,
+        nuref=600.0,
     ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
@@ -178,6 +182,10 @@ class Injection:
         self.full_harm_bins = full_harm_bins
         self.rescale_to_expected_sigma = scale_injections
         self.use_rfi_information = True
+        self.tauref = tauref
+        self.alpha = alpha
+        self.beta = beta
+        self.nuref = nuref
         self.W = self.get_fwhm()
         self.Tsky = self.get_tsky()
         if flux is not None:
@@ -343,8 +351,9 @@ class Injection:
 
         return prof_fft, phases
 
-    def scattering(self, prof_fft, n_harm, alpha=-4.4, beta=-1.0,
-                   nuref=600.0, tauref=0.01, tsamp=TSAMP*1000, nbin=None):
+# --
+    def scattering(self, prof_fft, n_harm, alpha=-4.4, beta=-1.6,
+                   nuref=600.0, tauref=0.01, nbin=None):
         """
         This function applies scattering to a pulse profile by computing
         a frequency-summed scattering kernel and multiplying it with the
@@ -355,13 +364,13 @@ class Injection:
                 prof_fft (arr)   : FFT of the pulse profile, excluding the zeroth harmonic,
                                    with length n_harm
                 n_harm   (int)   : number of harmonics
-                tauref   (float) : scattering timescale at nuref in milliseconds. Default: 0.01
+                tauref   (float) : scattering timescale at nuref in milliseconds.
+                                   Default: 0.01
                 alpha    (float) : power-law spectral index of the scattering timescale (freq scaling).
-                                   Default: 0.0
+                                   Default: -4.4
                 beta     (float) : spectral weighting index for frequency averaging.
-                                   Default: 0.0
+                                   Default: -1.6
                 nuref    (float) : reference frequency in MHz. Default: 600.0
-                tsamp    (float) : sampling time in milliseconds. Default: TSAMP * 1000
                 nbin     (int)   : number of phase bins in the profile. If None, uses
                                    len(self.phase_prof). Default: None
 
@@ -384,6 +393,7 @@ class Injection:
         bstart = bandmin + dnu / 2.0
         bend = bandmax - dnu / 2.0
         obsfreq = np.linspace(bstart, bend, nchan)
+        tsamp = 1000.0 / (self.f * nbin)
         t0 = np.arange(nbin) * tsamp
         nu = obsfreq[:, None]
         t = t0[None, :]
@@ -649,8 +659,12 @@ class Injection:
             scaled_prof_fft = scaled_prof_fft[:n_harm]
         else:
             n_harm = len(scaled_prof_fft)
-
-        scattered_prof_fft = self.scattering(scaled_prof_fft, n_harm=n_harm)
+        
+        scattered_prof_fft = self.scattering(
+            scaled_prof_fft, n_harm=n_harm,
+            tauref=self.tauref, alpha=self.alpha, beta=self.beta, nuref=self.nuref,
+        )
+        
         windowed_prof_fft = self.time_windowing(scattered_prof_fft)
         smeared_prof_fft = self.smear_fft(windowed_prof_fft)
 
