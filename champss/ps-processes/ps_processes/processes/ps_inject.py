@@ -663,6 +663,7 @@ class Injection:
             "FWHM": self.W * self.f,  # in phase,
             "TPA_idx": self.TPA_idx,
         }
+        np.save("inject.npy", output_dict, allow_pickle=True)
 
         return output_dict
 

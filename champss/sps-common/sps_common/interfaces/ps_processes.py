@@ -463,9 +463,9 @@ class PowerSpectra:
         # Otherwise the pipeline may destroy perfectly fine stacks
 
         self.convert_to_nparray()
-        if self.injections != []:
-            log.error("Injections have not been removed yet.")
-            self.remove_injections()
+        # if self.injections != []:
+        #     log.error("Injections have not been removed yet.")
+        #     self.remove_injections()
         with h5py.File(filename, "w") as h5f:
             h5f.create_dataset(
                 "power spectra",

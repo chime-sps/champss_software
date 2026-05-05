@@ -486,6 +486,8 @@ class PowerSpectraSearch:
                 [j for sub in detection_list for j in sub], dtype=detection_dtype
             )
             log.info(f"Total number of detections={len(detections)}")
+            np.save("detections.npy", detections)
+            pspec.write("pspec.hdf5")
             # if len(detections) == 0:
             #     log.warning("No detections made. Further processing will not be completed.")
             #     return None
@@ -780,6 +782,7 @@ class PowerSpectraSearch:
                 sigmas = sigma_sum_powers(
                     harm_sum_powers[detection_idx], used_nsum_detec
                 )
+                
                 for idx_count, idx in enumerate(detection_idx):
                     replace_last = False
                     detection_freq = freq_labels[idx] / harm
@@ -810,6 +813,8 @@ class PowerSpectraSearch:
                             sigma = sigma_sum_powers(
                                 harm_sum_powers[idx], used_nsum_detec_loop
                             )
+                    if sigma > 15:
+                        print(idx_count, dm_index, sigma, harm_sum_powers[idx])
                     if (
                         last_detection_freq
                         and np.abs(detection_freq - last_detection_freq)
