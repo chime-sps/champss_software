@@ -5,6 +5,7 @@ from datetime import datetime
 from glob import glob
 from multiprocessing import shared_memory
 from typing import List
+from scipy.stats import mode
 
 import astropy.units as u
 import h5py
@@ -779,7 +780,7 @@ class Cluster:
             sigma=max_sig_det["sigma"],
             nharm=max_sig_det["nharm"],
             harm_idx=max_sig_det["harm_idx"],
-            injection_index=max_sig_det["injection"],
+            injection_index=mode(detections["injection"]).mode,
             detections=detections,
             manual_candidate=max_sig_det["manual_candidate"],
         )
