@@ -597,7 +597,7 @@ class PowerSpectraSearch:
                 elif split_manual_cand[0] == "FS":
                     fs = db_api.get_followup_source(split_manual_cand[1])
                     used_manual_candidates.append([fs.source_name, fs.f0, fs.dm])
-                elif split_manual_cand[0] == "injection":
+                elif split_manual_cand[0] == "injections":
                     for injection_index, injection_dict in enumerate(injection_dicts):
                         used_manual_candidates.append(
                             [
