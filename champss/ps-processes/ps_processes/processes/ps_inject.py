@@ -351,7 +351,6 @@ class Injection:
 
         return prof_fft, phases
 
-# --
     def scattering(self, prof_fft, n_harm, alpha=-4.4, beta=-1.6,
                    nuref=600.0, tauref=0.01, nbin=None):
         """
@@ -370,7 +369,8 @@ class Injection:
                                    Default: -4.4
                 beta     (float) : spectral weighting index for frequency averaging.
                                    Default: -1.6
-                nuref    (float) : reference frequency in MHz. Default: 600.0
+                nuref    (float) : reference frequency in MHz.
+                                   Default: 600.0
                 nbin     (int)   : number of phase bins in the profile. If None, uses
                                    len(self.phase_prof). Default: None
 
