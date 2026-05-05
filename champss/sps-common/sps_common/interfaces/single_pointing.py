@@ -621,7 +621,7 @@ class SinglePointingCandidateCollection:
 
     def test_injection_performance(self, verbose=True):
         """Return dict containing details fo the injection performance."""
-        injected_candidates = self.get_injection_candidates()
+        injected_candidates = self.get_search_injection_candidates()
         injected_indices = np.asarray(
             [cand.injection_dict["injection_index"] for cand in injected_candidates]
         )
