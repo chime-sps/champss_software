@@ -773,6 +773,9 @@ class Cluster:
     @classmethod
     def from_raw_detections(cls, detections):
         max_sig_det = detections[np.argmax(detections["sigma"])]
+        injection_index = max_sig_det["injection"]
+        if injection_index == -1:
+            injection_index = mode(detections["injection"]).mode
         init_dict = dict(
             max_sig_det=max_sig_det,
             freq=max_sig_det["freq"],
@@ -780,7 +783,7 @@ class Cluster:
             sigma=max_sig_det["sigma"],
             nharm=max_sig_det["nharm"],
             harm_idx=max_sig_det["harm_idx"],
-            injection_index=mode(detections["injection"]).mode,
+            injection_index=injection_index,
             detections=detections,
             manual_candidate=max_sig_det["manual_candidate"],
         )
