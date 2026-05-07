@@ -239,6 +239,8 @@ class SinglePointingCandidate:
             "dec": self.dec,
             "obs_id": self.obs_id,
             "datetimes": self.datetimes,
+            "injection": self.injection,
+            "any_injection_overlap": self.any_injection_overlap,
         }
         return out_dict
 
