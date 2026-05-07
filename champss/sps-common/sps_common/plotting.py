@@ -57,7 +57,7 @@ def plot_text(fig, panel, grid_points, candidate):
                     getattr(candidate.best_candidate, value)
                 )
                 text += f"{value}: {val_string} \n"
-    ax_text.text(0, 1, text, ha="left", va="top", fontsize=10)
+    ax_text.text(0.1, 1, text, ha="left", va="top", fontsize=10,transform=ax_text.transAxes)
 
 
 def plot_dm_freq_3(fig, panel, grid_points, candidate):
@@ -236,7 +236,13 @@ def plot_raw_harm_all(fig, panel, grid_points, candidate):
     raw_powers = candidate.raw_harmonic_powers_array["powers"][:, :, 0]
     dm_values = candidate.raw_harmonic_powers_array["dms"]
 
-    ax_raw = fig.add_subplot(grid_points)
+    # Allows empty space above this plot. Manually added to make room for test without changing the grid
+    sgs = grid_points.subgridspec(
+        2, 1,
+        height_ratios=[0.2, 1]
+    )
+
+    ax_raw = fig.add_subplot(sgs[1])
     ax_raw.plot(dm_values, raw_powers, c="black")
     ax_raw.grid()
 

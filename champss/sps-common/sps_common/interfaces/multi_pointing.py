@@ -16,6 +16,7 @@ from sps_common.constants import (
 )
 from sps_common.interfaces.single_pointing import (
     SinglePointingCandidate,
+    SinglePointingCandidateCollection,
 )
 from sps_common.interfaces.utilities import within_range
 from sps_common.plotting import plot_candidate
@@ -448,6 +449,22 @@ class MultiPointingCandidate:
         ]
         self.all_summaries = all_summaries
         return all_summaries
+
+    def get_spcc(self, index):
+        """Load a SinglePointingCandidateCollection based on an index."""
+        spcc = SinglePointingCandidateCollection.read(
+            self.all_spcc_files[index],
+        )
+        return spcc
+
+    def get_injections_in_spcc(self, index):
+        """Get all injections in a SinglePointingCandidateCollection based on an index."""
+        spcc = self.get_spcc(index)
+        return spcc.injections
+
+    def get_injection_in_best_observation(self):
+        """Get all injections in the SinglePointingCandidateCollection of the strongest candidate."""
+        return self.get_injections_in_spcc(0)
 
     def as_dict(self):
         """Return this candidate's properties as a Python dictionary."""
