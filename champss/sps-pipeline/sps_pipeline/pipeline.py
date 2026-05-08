@@ -570,6 +570,7 @@ def main(
                     insufficient_data = True
                 else:
                     insufficient_data = False
+            np.save("skybeam.npy", skybeam.spectra)
             if "dedisp" in components:
                 if fdmt:
                     from sps_pipeline import dedisp
