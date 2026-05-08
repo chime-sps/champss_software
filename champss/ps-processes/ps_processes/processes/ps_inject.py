@@ -453,7 +453,7 @@ class Injection:
 
         for day in range(self.pspec_obj.num_days):
             day_medians = (
-                rn_medians[day] / np.min(rn_medians[day,:,1:], axis=1)[:, np.newaxis]
+                rn_medians[day] / np.min(rn_medians[day,:,5:], axis=1)[:, np.newaxis]
             )
             day_scales = rn_scales[day]
 
