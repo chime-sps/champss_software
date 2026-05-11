@@ -75,7 +75,7 @@ def generate_injection(pspec, f_nyquist=508):
     # 24 is chosen as the maximum DM value at b = 90 deg from NE2001
     dm = np.random.choice(dm_spread, p=dm_weights)
 
-    S_choices = np.logspace(5e-2, 5e-1, 10000)
+    S_choices = np.logspace(np.log10(5e-2), np.log10(5e-1), 10000)
     S = np.random.choice(S_choices)
 
     prof_idx = np.random.choice(range(len(TPA_profiles.keys())))
@@ -453,7 +453,7 @@ class Injection:
 
         for day in range(self.pspec_obj.num_days):
             day_medians = (
-                rn_medians[day] / np.min(rn_medians[day], axis=1)[:, np.newaxis]
+                rn_medians[day] / np.min(rn_medians[day,:,5:], axis=1)[:, np.newaxis]
             )
             day_scales = rn_scales[day]
 
