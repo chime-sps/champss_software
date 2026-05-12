@@ -323,11 +323,11 @@ class PowerSpectraCreation:
 
                 medians = np.asarray(medians)
                 median_dm_indices = np.asarray(median_dm_indices)
-                scales = np.asarray(scales[0]) #same for each DM
-                #this is the jankiest way of getting the freq_labels but I'm not sure how else to do it
-                rn_all_freqs = rfftfreq(2 * (power_spectra.shape[1] - 1), d = TSAMP)
+                scales = np.asarray(scales[0])  # same for each DM
+                # this is the jankiest way of getting the freq_labels but I'm not sure how else to do it
+                rn_all_freqs = rfftfreq(2 * (power_spectra.shape[1] - 1), d=TSAMP)
                 rn_freq_labels = rn_all_freqs[np.cumsum(scales)]
-            
+
             if self.save_medians:
                 rn_medians = medians[np.newaxis, :]
                 rn_dm_indices = median_dm_indices[np.newaxis, :]
@@ -338,7 +338,7 @@ class PowerSpectraCreation:
                 rn_dm_indices = None
 
             if self.write_medians:
-                medians_path = f"{os.path.abspath(observation.datapath)}/medians.npz"
+                medians_path = f"{os.path.abspath(observation.datapath)}/medians_{observation.sub_pointing}.npz"
                 log.info(f"Saving rednoise information to {medians_path}.")
                 np.savez(
                     medians_path,
@@ -366,7 +366,7 @@ class PowerSpectraCreation:
         datetimes = Time(dedisp_time_series.start_mjd, format="mjd").datetime.replace(
             tzinfo=pytz.utc
         )
-        
+
         return PowerSpectra(
             power_spectra=power_spectra,
             dms=dedisp_time_series.dms,
@@ -701,7 +701,7 @@ class PowerSpectraCreation:
         """Prepare and deliver the payload to the observation database."""
 
         if self.run_dynamic_filter:
-            birdie_path = f"{os.path.abspath(observation.datapath)}/birdie_info.npz"
+            birdie_path = f"{os.path.abspath(observation.datapath)}/birdie_info_{observation.sub_pointing}.npz"
             np.savez(
                 birdie_path,
                 birdies=bad_freq_indices,
@@ -850,9 +850,7 @@ class PowerSpectraCreation:
                 beta=beta,
             )
             if self.write_zero_dm_medians:
-                medians_path = (
-                    f"{os.path.abspath(observation.datapath)}/zero_dm_medians.npz"
-                )
+                medians_path = f"{os.path.abspath(observation.datapath)}/zero_dm_medians_{observation.sub_pointing}.npz"
                 log.info(f"Saving zero-DM medians to {medians_path}.")
                 np.savez(
                     medians_path,
