@@ -61,6 +61,7 @@ class PointingStrategist:
             self.create_db = False
         # Initialize DM mapper for arbitrary pointing calculations
         from beamformer.strategist.mapper import PointingMapper
+
         self._mapper = PointingMapper()
 
     def get_pointings(self, utc_start, utc_end, beam_row):
@@ -179,7 +180,7 @@ class PointingStrategist:
                         max_beams=split_max_beams[i],
                         beam_row=pointing.beam_row,
                         sub_pointing=i,
-                        pointing_id=getattr(pointing, '_id', None),
+                        pointing_id=getattr(pointing, "_id", None),
                     )
                 )
         else:
@@ -192,7 +193,7 @@ class PointingStrategist:
                     maxdm=pointing.maxdm,
                     max_beams=max_beams,
                     beam_row=pointing.beam_row,
-                    pointing_id=getattr(pointing, '_id', None),
+                    pointing_id=getattr(pointing, "_id", None),
                 )
             ]
         if self.create_db:
@@ -216,14 +217,15 @@ class PointingStrategist:
             The beam row (0-223) with the closest declination to the target
         """
         from datetime import datetime
+
         # Use a reference time to get equatorial coordinates for each beam_row
         ref_time = datetime(2021, 3, 20, 20, 5, 17)
         decs = []
         # Only check upper transit beam_rows (0-223) to avoid circumpolar degeneracy
         for i in range(224):
             ra_beam, dec_beam = beammod.get_equatorial_from_position(
-                            0, beammod.reference_angles[i], ref_time
-                            )
+                0, beammod.reference_angles[i], ref_time
+            )
             decs.append(dec_beam)
         decs = np.array(decs)
 
@@ -251,11 +253,14 @@ class PointingStrategist:
         beam_row = self._find_beam_row_for_dec(dec)
         ymw16_dm, ne2025_dm = self._mapper.get_ne2025_ymw16(ra, dec)
         maxdm = self._mapper.get_max_dm(
-            ra, dec, ymw16_dm, ne2025_dm,
+            ra,
+            dec,
+            ymw16_dm,
+            ne2025_dm,
             exp=self._mapper.exp,
             excess=self._mapper.excess,
             excess_fac=self._mapper.excess_fac,
-            extragalactic=self._mapper.extragalactic
+            extragalactic=self._mapper.extragalactic,
         )
         nchans = self._mapper.get_nchans(maxdm)
 
@@ -271,7 +276,7 @@ class PointingStrategist:
             ne2025dm=ne2025_dm,
             ymw16dm=ymw16_dm,
             maxdm=maxdm,
-            nchans=nchans
+            nchans=nchans,
         )
 
         return pointing
@@ -629,6 +634,7 @@ class PointingStrategist:
                 ),
                 "status": spsdb_models.ObservationStatus.scheduled,
                 "datetime": p_start_time_dt,
+                "sub_pointing": active_pointing.sub_pointing,
             }
         )
         active_pointing.obs_id = observation._id
