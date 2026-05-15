@@ -1010,6 +1010,23 @@ class PowerSpectraSearch:
                         injection_overlap_fraction = injection_overlap.size / len(
                             sorted_harm_bins
                         )
+                else:
+                    # For manual candidates, that are not injections, only check if there is any overlap
+                    overlapped_injections = []
+                    all_injection_overlaps = []
+                    for list_index, injection_dict in enumerate(injection_dicts):
+                        injected_bins = injection_dict["bins"]
+                        injected_dms = injection_dict["dms"]
+                        if dm_index in injected_dms:
+                            injection_overlap = np.intersect1d(
+                                sorted_harm_bins, injected_bins
+                            )
+                            injection_overlap_fraction = injection_overlap.size / len(
+                                sorted_harm_bins
+                            )
+                            overlapped_injections.append(list_index)
+                            all_injection_overlaps.append(injection_overlap_fraction)
+                    injection_overlap_fraction = max(all_injection_overlaps)
                 detection = (
                     current_freq_labels[freq_index],
                     pspec.dms[dm_index],
