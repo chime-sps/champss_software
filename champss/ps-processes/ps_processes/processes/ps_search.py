@@ -204,6 +204,7 @@ class PowerSpectraSearch:
 
         ps_length = len(pspec.freq_labels)
         ps_length_search = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
+        all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
         # compute harmonic bins based on power spectra properties
         if self.full_harm_bins is None:
             self.full_harm_bins = np.vstack(
@@ -216,6 +217,18 @@ class PowerSpectraSearch:
         if self.full_harm_bins_raw is None and len(manual_candidates):
             # Could potentially add some protection against superflous copies
             self.full_harm_bins_raw = copy.deepcopy(self.full_harm_bins)
+            if self.use_nsum_per_bin:
+                # power_cutoff_per_harmonic = np.zeros((6, ps_length_search), dtype=float)
+                nsum_per_harmonic_raw = np.zeros((6, ps_length_search), dtype=int)
+                num_days_per_bin = pspec.get_bin_weights()
+                # For masked bins make sure that 0th bins is 0
+                num_days_per_bin[0] = 0
+                for idx_harm, harm in enumerate(all_harmonic_vals):
+                    nsum_harm_bins = self.full_harm_bins[:harm]
+                    nsum_current_harmonic = num_days_per_bin[nsum_harm_bins].sum(0)
+                    nsum_per_harmonic_raw[idx_harm, :] = nsum_current_harmonic
+            else:
+                nsum_per_harmonic_raw = all_harmonic_vals * pspec.num_days
 
         if injection_path is not None:
             injection_dicts = []
@@ -622,13 +635,17 @@ class PowerSpectraSearch:
                 f"Will create the following manual candidates: {used_manual_candidates}"
             )
         for manual_cand in used_manual_candidates:
+            if "Injection" in manual_cand[0]:
+                used_nsum = nsum_per_harmonic
+            else:
+                used_nsum = nsum_per_harmonic_raw
             man_cand_detections = self.get_detections_from_manual_cand(
                 pspec,
                 manual_cand[1],
                 manual_cand[2],
                 manual_cand[0],
                 injection_dicts,
-                nsum_per_harmonic=nsum_per_harmonic,
+                nsum_per_harmonic=used_nsum,
                 search=manual_cand[3],
             )
             man_cand_detections_array = np.array(
