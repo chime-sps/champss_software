@@ -6,6 +6,7 @@ from functools import partial
 import yaml
 from multiprocessing import Pool, shared_memory, set_start_method
 import datetime
+import copy
 
 import numpy as np
 import pandas as pd
@@ -139,6 +140,7 @@ class PowerSpectraSearch:
     mean_bin_sigma_threshold: float = attribute(default=0)
     only_use_stack_threshold = attribute(validator=instance_of(bool), default=False)
     full_harm_bins = attribute(default=None)
+    full_harm_bins_raw = attribute(default=None)
     update_db = attribute(default=True, validator=instance_of(bool))
     max_search_frequency: float = attribute(default=np.inf)
 
@@ -210,6 +212,10 @@ class PowerSpectraSearch:
                     harmonic_sum(self.num_harm, np.zeros(ps_length_search))[1],
                 )
             ).astype(np.int32)
+        # Manual candidates may want to exlcude the ks filter
+        if self.full_harm_bins_raw is None and len(manual_candidates):
+            # Could potentially add some protection against superflous copies
+            self.full_harm_bins_raw = copy.deepcopy(self.full_harm_bins)
 
         if injection_path is not None:
             injection_dicts = []
@@ -618,7 +624,12 @@ class PowerSpectraSearch:
             )
         for manual_cand in used_manual_candidates:
             man_cand_detections = self.get_detections_from_manual_cand(
-                pspec, manual_cand[1], manual_cand[2], manual_cand[0], injection_dicts, search=manual_cand[3]
+                pspec,
+                manual_cand[1],
+                manual_cand[2],
+                manual_cand[0],
+                injection_dicts,
+                search=manual_cand[3],
             )
             man_cand_detections_array = np.array(
                 man_cand_detections, dtype=detection_dtype
@@ -959,6 +970,12 @@ class PowerSpectraSearch:
     def get_detections_from_manual_cand(
         self, pspec, freq, dm, cand_description, injection_dicts, search=False
     ):
+        if "Injection" in cand_description:
+            # When injections use the actually used sum
+            used_full_harm_bins = self.full_harm_bins
+        else:
+            # Otherwise use raw sum
+            used_full_harm_bins = self.full_harm_bins_raw
         all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
         detections = []
         dm_index = np.argmin(np.abs(pspec.dms - dm))
@@ -976,7 +993,7 @@ class PowerSpectraSearch:
                 freq_indices = np.arange(len(current_freq_labels))[freq_indices_bool]
             for freq_index in freq_indices:
                 sorted_harm_bins = sorted(
-                    self.full_harm_bins[:harmonic, freq_index].astype(int)
+                    used_full_harm_bins[:harmonic, freq_index].astype(int)
                 )
                 powers = pspec.power_spectra[dm_index, sorted_harm_bins]
                 powers_sum = powers.sum()
@@ -987,10 +1004,12 @@ class PowerSpectraSearch:
                     injected_bins = injection_dict["bins"]
                     injected_dms = injection_dict["dms"]
                     if dm_index in injected_dms:
-                        injection_overlap = np.intersect1d(sorted_harm_bins, injected_bins)
+                        injection_overlap = np.intersect1d(
+                            sorted_harm_bins, injected_bins
+                        )
                         injection_overlap_fraction = injection_overlap.size / len(
-                        sorted_harm_bins
-                    )
+                            sorted_harm_bins
+                        )
                 detection = (
                     current_freq_labels[freq_index],
                     pspec.dms[dm_index],
