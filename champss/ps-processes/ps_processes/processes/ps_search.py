@@ -407,36 +407,35 @@ class PowerSpectraSearch:
             ("injection_overlap", float),
             ("manual_candidate", "30U"),  # For now string with length 30
         ]
-        if "skip_search" not in manual_candidates:
-            # Calculate the used number of each days in each pixel for each harmonic sum
-            # From that calculate the power_cutoff.
-            # Calculating for each DM trial would be slower.
-            # The harmonics are also currently hard-coded in the search routine currently
-            all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
-            if self.use_nsum_per_bin:
-                power_cutoff_per_harmonic = np.zeros((6, ps_length_search), dtype=float)
-                nsum_per_harmonic = np.zeros((6, ps_length_search), dtype=int)
-                num_days_per_bin = pspec.get_bin_weights()
-                # For masked bins make sure that 0th bins is 0
-                num_days_per_bin[0] = 0
-                if len(filtered_sources):
-                    num_days_per_bin[bad_freq_indices] = 0
-                for idx_harm, harm in enumerate(all_harmonic_vals):
-                    nsum_harm_bins = self.full_harm_bins[:harm]
-                    nsum_current_harmonic = num_days_per_bin[nsum_harm_bins].sum(0)
-                    nsum_per_harmonic[idx_harm, :] = nsum_current_harmonic
-                    power_cutoff_per_harmonic[idx_harm, :] = powersum_at_sigma(
-                        self.sigma_min, nsum_current_harmonic
-                    )
-                    power_cutoff_per_harmonic[idx_harm, nsum_current_harmonic == 0] = (
-                        np.inf
-                    )
-            else:
-                nsum_per_harmonic = all_harmonic_vals * pspec.num_days
-                power_cutoff_per_harmonic = powersum_at_sigma(
-                    self.sigma_min, nsum_per_harmonic
-                )
 
+        # Calculate the used number of each days in each pixel for each harmonic sum
+        # From that calculate the power_cutoff.
+        # Calculating for each DM trial would be slower.
+        # The harmonics are also currently hard-coded in the search routine currently
+        all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
+        if self.use_nsum_per_bin:
+            power_cutoff_per_harmonic = np.zeros((6, ps_length_search), dtype=float)
+            nsum_per_harmonic = np.zeros((6, ps_length_search), dtype=int)
+            num_days_per_bin = pspec.get_bin_weights()
+            # For masked bins make sure that 0th bins is 0
+            num_days_per_bin[0] = 0
+            if len(filtered_sources):
+                num_days_per_bin[bad_freq_indices] = 0
+            for idx_harm, harm in enumerate(all_harmonic_vals):
+                nsum_harm_bins = self.full_harm_bins[:harm]
+                nsum_current_harmonic = num_days_per_bin[nsum_harm_bins].sum(0)
+                nsum_per_harmonic[idx_harm, :] = nsum_current_harmonic
+                power_cutoff_per_harmonic[idx_harm, :] = powersum_at_sigma(
+                    self.sigma_min, nsum_current_harmonic
+                )
+                power_cutoff_per_harmonic[idx_harm, nsum_current_harmonic == 0] = np.inf
+        else:
+            nsum_per_harmonic = all_harmonic_vals * pspec.num_days
+            power_cutoff_per_harmonic = powersum_at_sigma(
+                self.sigma_min, nsum_per_harmonic
+            )
+
+        if "skip_search" not in manual_candidates:
             pool = Pool(self.num_threads)
             # multiprocessing pool to run the search as a parallel process.
             log.info(
@@ -629,6 +628,7 @@ class PowerSpectraSearch:
                 manual_cand[2],
                 manual_cand[0],
                 injection_dicts,
+                nsum_per_harmonic=nsum_per_harmonic,
                 search=manual_cand[3],
             )
             man_cand_detections_array = np.array(
@@ -968,7 +968,14 @@ class PowerSpectraSearch:
         return summary
 
     def get_detections_from_manual_cand(
-        self, pspec, freq, dm, cand_description, injection_dicts, search=False
+        self,
+        pspec,
+        freq,
+        dm,
+        cand_description,
+        injection_dicts,
+        nsum_per_harmonic,
+        search=False,
     ):
         if "Injection" in cand_description:
             # When injections use the actually used sum
@@ -984,8 +991,9 @@ class PowerSpectraSearch:
             injection_dict = injection_dicts[injection_index]
         else:
             injection_index = -1
-        for harmonic in all_harmonic_vals:
+        for idx_harm, harmonic in enumerate(all_harmonic_vals):
             current_freq_labels = pspec.freq_labels / harmonic
+            used_nsum = nsum_per_harmonic[idx_harm]
             if not search:
                 freq_indices = [np.argmin(np.abs(current_freq_labels - freq))]
             else:
@@ -997,7 +1005,8 @@ class PowerSpectraSearch:
                 )
                 powers = pspec.power_spectra[dm_index, sorted_harm_bins]
                 powers_sum = powers.sum()
-                sigma = sigma_sum_powers(powers_sum, harmonic * pspec.num_days)
+                used_nsum_detec = used_nsum[freq_index]
+                sigma = sigma_sum_powers(powers_sum, used_nsum_detec)
                 # Check injection_overlap
                 injection_overlap_fraction = 0.0
                 if injection_index != -1:
