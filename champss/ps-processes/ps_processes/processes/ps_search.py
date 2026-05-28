@@ -1052,11 +1052,13 @@ class PowerSpectraSearch:
                             )
                             overlapped_injections.append(list_index)
                             all_injection_overlaps.append(injection_overlap_fraction)
-                    injection_overlap_fraction = np.max(all_injection_overlaps, initial=0.)
+                    injection_overlap_fraction = np.max(
+                        all_injection_overlaps, initial=0.0
+                    )
                 detection = (
                     current_freq_labels[freq_index],
                     pspec.dms[dm_index],
-                    1,
+                    harmonic,
                     tuple(np.pad(sorted_harm_bins, (0, 32 - len(sorted_harm_bins)))),
                     tuple(
                         np.pad(
