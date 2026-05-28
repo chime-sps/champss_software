@@ -330,13 +330,19 @@ class SinglePointingCandidate:
     @property
     def best_harmonic_sum(self):
         """Returns the number of summed harmonics which results in the highest sigma."""
-        best_harmonic_sum_index = np.nanargmax(self.harm_sigma_curve) + 1
+        try:
+            best_harmonic_sum_index = np.nanargmax(self.harm_sigma_curve) + 1
+        except ValueError:
+            return np.nan
         return best_harmonic_sum_index
 
     @property
     def strongest_harmonic_frequency(self):
         """Returns the frequency of the harmonic which has the strongest raw power."""
-        strongest_harm_index = np.nanargmax(self.best_raw_harmonic_powers)
+        try:
+            strongest_harm_index = np.nanargmax(self.best_raw_harmonic_powers)
+        except ValueError:
+            return np.nan
         dm_index = np.nanargmin(np.abs(self.raw_harmonic_powers_array["dms"] - self.dm))
         freq_labels = self.raw_harmonic_powers_array["freqs"][dm_index, :, 0]
         strongest_freq = freq_labels[strongest_harm_index]
@@ -372,12 +378,15 @@ class SinglePointingCandidate:
     @property
     def masked_fraction_at_best_sigma(self):
         """Returns the fraction of masked bins at the the best weighted sigma."""
-        return (
-            1
-            - self.sigmas_per_harmonic_sum["weight_fraction"][
-                np.nanargmax(self.sigmas_per_harmonic_sum["sigmas_weighted"])
-            ]
-        )
+        try:
+            return (
+                1
+                - self.sigmas_per_harmonic_sum["weight_fraction"][
+                    np.nanargmax(self.sigmas_per_harmonic_sum["sigmas_weighted"])
+                ]
+            )
+        except ValueError:
+            return np.nan
 
     @property
     def sorted_datetimes(self):
