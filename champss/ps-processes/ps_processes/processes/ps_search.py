@@ -1022,7 +1022,7 @@ class PowerSpectraSearch:
                 if not search:
                     freq_indices = [np.argmin(np.abs(current_freq_labels - freq))]
                 else:
-                    freq_indices_bool = np.abs(current_freq_labels - freq) < 0.001
+                    freq_indices_bool = np.abs(current_freq_labels - freq) < 0.01
                     freq_indices = np.arange(len(current_freq_labels))[
                         freq_indices_bool
                     ]
