@@ -15,6 +15,7 @@ def run(
     injection_idx=None,
     only_injections=False,
     scale_injections=False,
+    manual_candidates=[],
 ):
     """
     Run the power spectra stacking and searching process.
@@ -68,6 +69,7 @@ def run(
             injection_idx,
             only_injections,
             scale_injections,
+            manual_candidates=manual_candidates,
         )
     return ps_detections, power_spectra
 

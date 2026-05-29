@@ -1002,45 +1002,41 @@ class PowerSpectraSearch:
             used_full_harm_bins = self.full_harm_bins_raw
         all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
         detections = []
-        dm_index = np.argmin(np.abs(pspec.dms - dm))
+        dm_index_ini = np.argmin(np.abs(pspec.dms - dm))
+        if not search:
+            dm_indices = [dm_index_ini]
+        else:
+            dm_search_range = 5
+            dm_start = max(dm_index_ini - dm_search_range, 0)
+            dm_end = min(dm_index_ini + dm_search_range, len(pspec.dms))
+            dm_indices = np.arange(dm_start, dm_end)
         if "Injection" in cand_description:
             injection_index = int(cand_description.split("_")[-1])
             injection_dict = injection_dicts[injection_index]
         else:
             injection_index = -1
-        for idx_harm, harmonic in enumerate(all_harmonic_vals):
-            current_freq_labels = pspec.freq_labels / harmonic
-            used_nsum = nsum_per_harmonic[idx_harm]
-            if not search:
-                freq_indices = [np.argmin(np.abs(current_freq_labels - freq))]
-            else:
-                freq_indices_bool = np.abs(current_freq_labels - freq) < 0.001
-                freq_indices = np.arange(len(current_freq_labels))[freq_indices_bool]
-            for freq_index in freq_indices:
-                sorted_harm_bins = sorted(
-                    used_full_harm_bins[:harmonic, freq_index].astype(int)
-                )
-                powers = pspec.power_spectra[dm_index, sorted_harm_bins]
-                powers_sum = powers.sum()
-                used_nsum_detec = used_nsum[freq_index]
-                sigma = sigma_sum_powers(powers_sum, used_nsum_detec)
-                # Check injection_overlap
-                injection_overlap_fraction = 0.0
-                if injection_index != -1:
-                    injected_bins = injection_dict["bins"]
-                    injected_dms = injection_dict["dms"]
-                    if dm_index in injected_dms:
-                        injection_overlap = np.intersect1d(
-                            sorted_harm_bins, injected_bins
-                        )
-                        injection_overlap_fraction = injection_overlap.size / len(
-                            sorted_harm_bins
-                        )
+        for dm_index in dm_indices:
+            for idx_harm, harmonic in enumerate(all_harmonic_vals):
+                current_freq_labels = pspec.freq_labels / harmonic
+                used_nsum = nsum_per_harmonic[idx_harm]
+                if not search:
+                    freq_indices = [np.argmin(np.abs(current_freq_labels - freq))]
                 else:
-                    # For manual candidates, that are not injections, only check if there is any overlap
-                    overlapped_injections = []
-                    all_injection_overlaps = []
-                    for list_index, injection_dict in enumerate(injection_dicts):
+                    freq_indices_bool = np.abs(current_freq_labels - freq) < 0.01
+                    freq_indices = np.arange(len(current_freq_labels))[
+                        freq_indices_bool
+                    ]
+                for freq_index in freq_indices:
+                    sorted_harm_bins = sorted(
+                        used_full_harm_bins[:harmonic, freq_index].astype(int)
+                    )
+                    powers = pspec.power_spectra[dm_index, sorted_harm_bins]
+                    powers_sum = powers.sum()
+                    used_nsum_detec = used_nsum[freq_index]
+                    sigma = sigma_sum_powers(powers_sum, used_nsum_detec)
+                    # Check injection_overlap
+                    injection_overlap_fraction = 0.0
+                    if injection_index != -1:
                         injected_bins = injection_dict["bins"]
                         injected_dms = injection_dict["dms"]
                         if dm_index in injected_dms:
@@ -1050,24 +1046,44 @@ class PowerSpectraSearch:
                             injection_overlap_fraction = injection_overlap.size / len(
                                 sorted_harm_bins
                             )
-                            overlapped_injections.append(list_index)
-                            all_injection_overlaps.append(injection_overlap_fraction)
-                    injection_overlap_fraction = np.max(all_injection_overlaps, initial=0.)
-                detection = (
-                    current_freq_labels[freq_index],
-                    pspec.dms[dm_index],
-                    1,
-                    tuple(np.pad(sorted_harm_bins, (0, 32 - len(sorted_harm_bins)))),
-                    tuple(
-                        np.pad(
-                            powers,
-                            (0, 32 - len(powers)),
+                    else:
+                        # For manual candidates, that are not injections, only check if there is any overlap
+                        overlapped_injections = []
+                        all_injection_overlaps = []
+                        for list_index, injection_dict in enumerate(injection_dicts):
+                            injected_bins = injection_dict["bins"]
+                            injected_dms = injection_dict["dms"]
+                            if dm_index in injected_dms:
+                                injection_overlap = np.intersect1d(
+                                    sorted_harm_bins, injected_bins
+                                )
+                                injection_overlap_fraction = (
+                                    injection_overlap.size / len(sorted_harm_bins)
+                                )
+                                overlapped_injections.append(list_index)
+                                all_injection_overlaps.append(
+                                    injection_overlap_fraction
+                                )
+                        injection_overlap_fraction = np.max(
+                            all_injection_overlaps, initial=0.0
                         )
-                    ),
-                    sigma,
-                    injection_index,
-                    injection_overlap_fraction,
-                    cand_description,
-                )
-                detections.append(detection)
+                    detection = (
+                        current_freq_labels[freq_index],
+                        pspec.dms[dm_index],
+                        harmonic,
+                        tuple(
+                            np.pad(sorted_harm_bins, (0, 32 - len(sorted_harm_bins)))
+                        ),
+                        tuple(
+                            np.pad(
+                                powers,
+                                (0, 32 - len(powers)),
+                            )
+                        ),
+                        sigma,
+                        injection_index,
+                        injection_overlap_fraction,
+                        cand_description,
+                    )
+                    detections.append(detection)
         return detections

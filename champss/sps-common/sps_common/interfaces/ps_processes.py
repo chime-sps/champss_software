@@ -772,7 +772,10 @@ class Cluster:
 
     @classmethod
     def from_raw_detections(cls, detections):
-        max_sig_det = detections[np.argmax(detections["sigma"])]
+        try:
+            max_sig_det = detections[np.nanargmax(detections["sigma"])]
+        except ValueError:
+            max_sig_det = detections[0]
         injection_index = max_sig_det["injection"]
         if injection_index == -1:
             injection_index = mode(detections["injection"]).mode
