@@ -4,6 +4,7 @@ import logging
 import threading
 import click
 import getpass
+import time
 
 
 from scheduler.workflow import wait_until_service_not_pending, remove_finished_service
@@ -51,6 +52,7 @@ def run_as_service(
     memory=50,
     cleanup=True,
     manager=False,
+    wait_on_finish=False,
 ):
     docker_client = docker.from_env()
     command_start = command.split(" ")[0]
@@ -105,12 +107,15 @@ def run_as_service(
     service_id = service.attrs["ID"]
     status = wait_until_service_not_pending(service_id)
     log.info(f"Service {service.name} started with id {service_id}")
-    if cleanup:
+    if cleanup or wait_on_finish:
         remove_service_thread = threading.Thread(
             target=remove_finished_service, args=(service_id,)
         )
         remove_service_thread.start()
         log.info("Cleanup thread started. Will remove service once finished.")
+        if wait_on_finish:
+            while remove_service_thread.is_alive():
+                time.sleep(1)
         return service_id, remove_service_thread
     else:
         log.info("Started without cleanup.")
