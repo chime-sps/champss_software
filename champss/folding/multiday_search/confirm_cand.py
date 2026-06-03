@@ -20,6 +20,7 @@ from multiday_search.summary_plot import create_summary_pdf
 from sps_databases import db_api, db_utils
 
 
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--fs_id",
