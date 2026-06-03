@@ -449,7 +449,7 @@ class Injection:
         """
         rn_scales = self.pspec_obj.rn_scales
         rn_medians = self.pspec_obj.rn_medians
-        sum_of_medians = np.zeros((len(inj_dms), len(inj_bins)))
+        harmonic_sum = np.zeros((len(inj_dms), len(inj_bins)))
 
         for day in range(self.pspec_obj.num_days):
             day_medians = (
@@ -463,14 +463,12 @@ class Injection:
             mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype("int")
             for i, inj_dm in enumerate(inj_dms):
                 rn_interpolated = np.interp(inj_bins, mid_bins, day_medians[inj_dm])
-                sum_of_medians[i] += rn_interpolated
+                harmonic_sum[i] += 1/rn_interpolated
 
-        # convert median to mean
-        sum_of_means = sum_of_medians / np.log(2)
         # take mean across days
-        mean_of_means = sum_of_means / self.pspec_obj.num_days
+        harmonic_sum =/ self.pspec_obj.num_days
 
-        return mean_of_means
+        return harmonic_sum_of_means
 
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
