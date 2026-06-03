@@ -88,7 +88,7 @@ def generate_injection(pspec, f_nyquist=508):
         "frequency": f,
         "DM": dm,
     }
-
+     
     return injection_dict
 
 
@@ -465,7 +465,6 @@ class Injection:
                 rn_interpolated = np.interp(inj_bins, mid_bins, day_medians[inj_dm])
                 harmonic_sum[i] += 1/rn_interpolated
 
-        # take mean across days
         harmonic_sum /= self.pspec_obj.num_days
 
         return harmonic_sum
