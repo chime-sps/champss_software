@@ -466,7 +466,7 @@ class Injection:
                 harmonic_sum[i] += 1/rn_interpolated
 
         # take mean across days
-        harmonic_sum =/ self.pspec_obj.num_days
+        harmonic_sum /= self.pspec_obj.num_days
 
         return harmonic_sum
 
