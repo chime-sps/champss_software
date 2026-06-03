@@ -468,7 +468,7 @@ class Injection:
         # take mean across days
         harmonic_sum =/ self.pspec_obj.num_days
 
-        return harmonic_sum_of_means
+        return harmonic_sum
 
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
@@ -608,7 +608,7 @@ class Injection:
         # note that harms are POWERS, not amplitudes
 
         harms = np.asarray(harms)
-        harms /= self.get_rednoise_normalisation(
+        harms *= self.get_rednoise_normalisation(
             bins,
             dm_indices,
         )
