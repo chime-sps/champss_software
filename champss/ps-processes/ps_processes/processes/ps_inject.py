@@ -487,7 +487,6 @@ class Injection:
         --------
             normalizer (arr): the scaling factor for each injection bin
         """
-        
         rn_scales = self.pspec_obj.rn_scales
         rn_medians = self.pspec_obj.rn_medians
         harmonic_sum = np.zeros((len(inj_dms), len(inj_bins)))
