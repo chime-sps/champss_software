@@ -580,6 +580,7 @@ class Injection:
             rescale_factor = 1
         return harms, best_nharm, best_sigma, rescale_factor
 
+
     def injection(self):
         """
         This function creates the fake power spectrum and then interpolates it onto the
@@ -699,7 +700,7 @@ class Injection:
             "detection_nharm": detection_nharm,
             "detection_sigma": detection_sigma,
             "injected_nharm": n_harm,
-            "FWHM": self.W * self.f, #in phase
+            "FWHM": self.W * self.f,  # in phase,
             "TPA_idx": self.TPA_idx,
         }
 
@@ -764,6 +765,7 @@ def main(
     injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
     injection_dict["FWHM"] = injection_output_dict["FWHM"]
     injection_dict["TPA_idx"] = injection_output_dict["TPA_idx"]
+    injection_dict["injected_powers"] = injection_output_dict["injected_powers"]
 
     if isinstance(injection_dict["profile"], (np.ndarray, list)):
         injection_dict["profile"] = "custom_profile"
@@ -781,5 +783,5 @@ def main(
         ].astype(pspec.power_spectra.dtype)
 
     pspec.power_spectra[:, zero_bins] = 0
- 
+
     return injection_dict
