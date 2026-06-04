@@ -1,7 +1,7 @@
 import logging
 import math
 import os
-
+import json
 import numpy as np
 import scipy.stats as stats
 from scipy.fft import rfft
@@ -49,6 +49,25 @@ def gaussian(mu, sig):
 def lorentzian(phi, gamma, x0=0.5):
     return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
 
+def get_nchans(maxdm):
+    """
+    Inputs a pointing dict with ra, dec, maxdm and returns nchans.
+
+    Inputs
+    pointing - A dict of ra, dec, maxdm
+    """
+    if maxdm <= 212.5:
+        nchans = 1024
+    elif maxdm <= 425:
+        nchans = 2048
+    elif maxdm <= 850:
+        nchans = 4096
+    elif maxdm <= 1700:
+        nchans = 8192
+    else:
+        nchans = 16384
+    return nchans
+
 
 def dm_distribution(x, mu, sig, l):
     gauss = l * np.exp(l * (2 * mu + l * sig**2 - 2 * x) / 2) / 2
@@ -69,13 +88,13 @@ def generate_injection(pspec, f_nyquist=508):
     f_choices = f_choices[f_choices < f_nyquist]
     f = np.random.choice(f_choices)
 
-    dm_spread = np.linspace(1, pspec.dms[-1], 10000)
+    dm_spread = np.linspace(0, pspec.dms[-1], 10000)
     dm_weights = 0.6 * dm_distribution(dm_spread, 24, 24, 0.02)
     dm_weights += 0.4 / len(dm_spread)
     # 24 is chosen as the maximum DM value at b = 90 deg from NE2001
     dm = np.random.choice(dm_spread, p=dm_weights)
 
-    S_choices = np.logspace(5e-2, 5e-1, 10000)
+    S_choices = np.logspace(-2, 1, 10000)
     S = np.random.choice(S_choices)
 
     prof_idx = np.random.choice(range(len(TPA_profiles.keys())))
@@ -226,10 +245,10 @@ class Injection:
         return deltaDM
 
     def smear_fft(self, scaled_fft):
-        mode = "database"
-        db = db_utils.connect(host="sps-archiver1", name="test")
-        ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)
-        nchan = str(ap.nchans)
+        with open(os.path.dirname(__file__)+'/stack_maxdm.json', 'r') as f:
+            maxdm_dict = json.load(f)
+        maxdm = maxdm_dict[f'{self.pspec_obj.ra:.2f} {self.pspec_obj.dec:.2f}']
+        nchan = str(get_nchans(maxdm))
 
         quadratic_terms = {
             "1024": 1e-8,
@@ -470,6 +489,7 @@ class Injection:
 
         return harmonic_sum
 
+
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
         This function predicts the sigma of an injection and scales it to a specific
@@ -658,7 +678,7 @@ class Injection:
             "detection_nharm": detection_nharm,
             "detection_sigma": detection_sigma,
             "injected_nharm": n_harm,
-            "FWHM": self.W * self.f,  # in phase,
+            "FWHM": self.W * self.f, #in phase
             "TPA_idx": self.TPA_idx,
         }
 
@@ -723,7 +743,6 @@ def main(
     injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
     injection_dict["FWHM"] = injection_output_dict["FWHM"]
     injection_dict["TPA_idx"] = injection_output_dict["TPA_idx"]
-    injection_dict["injected_powers"] = injection_output_dict["injected_powers"]
 
     if isinstance(injection_dict["profile"], (np.ndarray, list)):
         injection_dict["profile"] = "custom_profile"
@@ -741,5 +760,5 @@ def main(
         ].astype(pspec.power_spectra.dtype)
 
     pspec.power_spectra[:, zero_bins] = 0
-
+ 
     return injection_dict
