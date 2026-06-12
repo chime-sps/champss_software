@@ -137,7 +137,7 @@ class PowerSpectraSearch:
         converter=converters.optional(float),
     )
     filter_birdies: bool = attribute(default=False)
-    mean_bin_sigma_threshold: float = attribute(default=0)
+    mean_bin_sigma_threshold: float = attribute(default=5)
     only_use_stack_threshold = attribute(validator=instance_of(bool), default=False)
     full_harm_bins = attribute(default=None)
     full_harm_bins_raw = attribute(default=None)
