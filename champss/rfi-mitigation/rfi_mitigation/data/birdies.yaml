@@ -292,3 +292,9 @@ known_bad_frequencies:
     int_nharm: 8
     note: Candidates in stacked spectra from 2026 03 run. Estimated from stack candidate frequency without barycentric correction
     width: 0.01
+  b39:
+    frac_nharm: 0
+    frequency: 80
+    int_nharm: 2
+    note: Candidates in stacked spectra from 2026 03 run. Estimated from stack candidate frequency without barycentric correction
+    width: 0.01
