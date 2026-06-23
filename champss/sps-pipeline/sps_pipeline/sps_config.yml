@@ -378,6 +378,8 @@ ps_cumul_stack:
       use_sparse: True
       group_duplicate_freqs: True
       grouped_freq_dm_scale: 1
+      dbscan_filter_broad_dm: True
+      dbscan_filter_broad_threshold: 100
     arc_filter_config:
       filter_if_kst_active: True
       default_arc_length: 5
