@@ -256,3 +256,45 @@ known_bad_frequencies:
     int_nharm: 2
     frac_nharm: 0
     note: "Candidates in stacked spectra from 2026 02 run. Estimated from stack candidate frequency without barycentric correction."
+  b33:
+    frac_nharm: 0
+    frequency: 9.7658
+    int_nharm: 4
+    note: Candidates in stacked spectra from 2026 03 run. Estimated from stack candidate frequency without barycentric correction
+    width: 0.01
+  b34:
+    frac_nharm: 0
+    frequency: 0.5208
+    int_nharm: 8
+    note: Candidates in stacked spectra from 2026 03 run. Estimated from stack candidate frequency without barycentric correction
+    width: 0.01
+  b35:
+    frac_nharm: 0
+    frequency: 41.328
+    int_nharm: 8
+    note: Candidates in stacked spectra from 2026 03 run. Estimated from stack candidate frequency without barycentric correction
+    width: 0.01
+  b36:
+    frac_nharm: 0
+    frequency: 0.1
+    int_nharm: 8
+    note: Candidates in stacked spectra from 2026 03 run. Estimated from stack candidate frequency without barycentric correction
+    width: 0.01
+  b37:
+    frac_nharm: 0
+    frequency: 18.0185
+    int_nharm: 8
+    note: Candidates in stacked spectra from 2026 03 run. Estimated from stack candidate frequency without barycentric correction
+    width: 0.01
+  b38:
+    frac_nharm: 0
+    frequency: 0.1333
+    int_nharm: 8
+    note: Candidates in stacked spectra from 2026 03 run. Estimated from stack candidate frequency without barycentric correction
+    width: 0.01
+  b39:
+    frac_nharm: 0
+    frequency: 80
+    int_nharm: 2
+    note: Candidates in stacked spectra from 2026 03 run. Estimated from stack candidate frequency without barycentric correction
+    width: 0.01
