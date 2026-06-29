@@ -18,7 +18,11 @@ from ps_processes.processes import ps_inject
 from ps_processes.processes.clustering import Clusterer
 from rfi_mitigation.cleaners.periodic import StaticPeriodicFilter
 from sps_common.constants import MIN_SEARCH_FREQ
-from sps_common.interfaces import PowerSpectraDetectionClusters, SearchAlgorithm
+from sps_common.interfaces import (
+    PowerSpectraDetectionClusters,
+    SearchAlgorithm,
+    SinglePointingCandidateCollection,
+)
 from sps_common.interfaces.utilities import (
     harmonic_sum,
     powersum_at_sigma,
@@ -256,7 +260,6 @@ class PowerSpectraSearch:
                     "flux": float(split_parameters[4]),
                     "profile": [],
                 }
-                injection_dicts.append(injection_dict)
                 log.info("Injecting at:")
                 log.info(f"DM: {injection_dict['DM']}")
                 log.info(f"frequency: {injection_dict['frequency']}")
@@ -267,26 +270,45 @@ class PowerSpectraSearch:
                     injection_dict,
                     scale_injections=scale_injections,
                 )
+                injection_dicts.append(injection_dict)
             else:
-                try:
-                    with open(injection_path) as file:
-                        injection_list = yaml.safe_load(file)
-                    injection_df = pd.DataFrame(injection_list)
-                except:
-                    injection_df = pd.read_pickle(injection_path)
-                # injection_df are the initial injection parameters
+                if ".npz" in injection_path:
+                    spcc = SinglePointingCandidateCollection.read(injection_path)
+                    if len(injection_indices) == 0:
+                        injection_indices = np.arange(len(spcc.injections))
+                    injection_dicts_input = []
+                    for injection_index in injection_indices:
+                        injection = spcc.injections[injection_index]
+                        injection_dict = {
+                            "TPA_idx": injection["TPA_idx"],
+                            "frequency": injection["frequency"],
+                            "DM": injection["DM"],
+                            "flux": injection["flux"],
+                            "profile": [],
+                        }
+                        injection_dicts_input.append(injection_dict)
+                else:
+                    try:
+                        with open(injection_path) as file:
+                            injection_list = yaml.safe_load(file)
+                        injection_df = pd.DataFrame(injection_list)
+                    except:
+                        injection_df = pd.read_pickle(injection_path)
+                    if len(injection_indices) == 0:
+                        injection_indices = np.arange(len(injection_df))
+                    injection_dicts_input = []
+                    for injection_index in injection_indices:
+                        injection_dicts_input.append(
+                            injection_df.iloc[injection_index].to_dict()
+                        )
+                # injection_dicts_input are the initial injection parameters
                 # injection_dicts are final injection parameters
                 # Some entries from injection_list may create multiple injection or none
-                if len(injection_indices) == 0:
-                    injection_indices = np.arange(len(injection_df))
-                for injection_index in injection_indices:
+                for injection_dict in injection_dicts_input:
                     log.info("Injecting at:")
-                    log.info(f"DM: {injection_df.iloc[injection_index]['DM']}")
-                    log.info(
-                        f"frequency: {injection_df.iloc[injection_index]['frequency']}"
-                    )
-                    injection_dict = injection_df.iloc[injection_index].to_dict()
-
+                    log.info(f"DM: {injection_dict['DM']}")
+                    log.info(f"frequency: {injection_dict['frequency']}")
+                    print(injection_dict)
                     injection_dict = ps_inject.main(
                         pspec,
                         self.full_harm_bins,
