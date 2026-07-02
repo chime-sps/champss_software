@@ -245,7 +245,8 @@ def dbexcepthook(type, value, tb):
     type=str,
     help=(
         "Path to yml or pd pickle file containing injection. "
-        "Can also inject when the string is 'random' or 'single tpa_index frequency DM flux'"
+        "Can also inject when the string is 'random' or 'single tpa_index frequency DM flux'. "
+        "Can also point to a SinglepointingCandidateCollection .npz file to recreate injections."
     ),
 )
 @click.option(
