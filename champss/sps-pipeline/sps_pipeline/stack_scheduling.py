@@ -69,7 +69,7 @@ def find_monthly_search_commands(db_port, db_host, db_name, candpath, day_thresh
             "known_source_threshold": 10,
             "cand_path": candpath,
             "manual_candidates": ["nearby_ks 0.5 search"],
-            "config_options"=config_options,
+            "config_options": config_options,
         }
         all_commands.append(
             {
