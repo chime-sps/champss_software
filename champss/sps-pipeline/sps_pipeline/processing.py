@@ -886,7 +886,12 @@ def run_all_pipeline_processes(
         )
     elif mode == "stack-search":
         all_processes = find_monthly_search_commands(
-            db_port, db_host, db_name, basepath + f"/stack_runs/{stack_name}/", 10
+            db_port,
+            db_host,
+            db_name,
+            basepath + f"/stack_runs/{stack_name}/",
+            10,
+            config_options=pipeline_config_options,
         )
         process_ids = []
         pool = Pool(4)
