@@ -890,7 +890,7 @@ def run_all_pipeline_processes(
             db_host,
             db_name,
             basepath + f"/stack_runs/{stack_name}/",
-            10,
+            4,
             config_options=pipeline_config_options,
         )
         process_ids = []
