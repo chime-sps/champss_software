@@ -590,7 +590,7 @@ class Features:
                             )
                     except Exception as ex:
                         log.exception(
-                            f'{feature_config["feature"]} could not be initialized due'
+                            f"{feature_config['feature']} could not be initialized due"
                             " to the following"
                         )
                         log.exception(ex)
@@ -696,6 +696,7 @@ class Features:
         else:
             injected = False
             injection_dict = {}
+        any_injection_overlap = bool(max(cluster.detections["injection_overlap"]))
         spc_init_dict = dict(
             freq=cluster.freq,
             dm=cluster.dm,
@@ -706,6 +707,7 @@ class Features:
             unique_dms=cluster.unique_dms,
             sigma=cluster.sigma,
             injection=injected,
+            any_injection_overlap=any_injection_overlap,
             injection_dict=injection_dict,
             ra=cluster_dict.ra,
             dec=cluster_dict.dec,
@@ -720,6 +722,7 @@ class Features:
             dm_sigma_1d=dm_sigma_1d_dict,
             sigmas_per_harmonic_sum=sigmas_per_harmonic_sum_dict,
             pspec_freq_resolution=pspec_meta_data.freq_labels[1],
+            manual_candidate=cluster.manual_candidate,
         )
         return SinglePointingCandidate(**spc_init_dict)
 
@@ -1020,6 +1023,7 @@ class Features:
             )
             spcs.append(spc)
         """
+        power_spectra.move_to_shared_memory()
         pspec_meta_data = EasyDict(
             {
                 "shared_name": power_spectra.power_spectra_shared.name,

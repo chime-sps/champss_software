@@ -4,6 +4,7 @@ import logging
 import threading
 import click
 import getpass
+import time
 
 
 from scheduler.workflow import wait_until_service_not_pending, remove_finished_service
@@ -34,8 +35,15 @@ log = logging.getLogger()
     default=True,
     help="Whether to remove the service after finishing or not. With cleanup enabled the script will only finish after cleanup.",
 )
-def run_as_service_cli(command, image, memory, cleanup):
-    run_as_service(command, image=image, memory=memory, cleanup=cleanup)
+@click.option(
+    "--manager/--no-manager",
+    default=False,
+    help="Only run job on manager node.",
+)
+def run_as_service_cli(command, image, memory, cleanup, manager):
+    run_as_service(
+        command, image=image, memory=memory, cleanup=cleanup, manager=manager
+    )
 
 
 def run_as_service(
@@ -43,6 +51,8 @@ def run_as_service(
     image="sps-archiver1.chime:5000/champss_software:latest",
     memory=50,
     cleanup=True,
+    manager=False,
+    wait_on_finish=False,
 ):
     docker_client = docker.from_env()
     command_start = command.split(" ")[0]
@@ -69,6 +79,11 @@ def run_as_service(
     ]
     service_name = f"{command_start.replace('.', '_').replace('/', '')}-{id}"
     user = getpass.getuser()
+
+    if manager:
+        constraints = ["node.role == manager"]
+    else:
+        constraints = ["node.labels.compute == true"]
     docker_service = {
         "image": image,
         "name": service_name,
@@ -77,7 +92,7 @@ def run_as_service(
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
         "labels": {"type": "run-as-service", "user": user},
-        "constraints": ["node.labels.compute == true"],
+        "constraints": constraints,
         # Must be in bytes
         "resources": docker.types.Resources(mem_reservation=int(memory * 1e9)),
         "mounts": docker_volumes,
@@ -92,16 +107,19 @@ def run_as_service(
     service_id = service.attrs["ID"]
     status = wait_until_service_not_pending(service_id)
     log.info(f"Service {service.name} started with id {service_id}")
-    if cleanup:
+    if cleanup or wait_on_finish:
         remove_service_thread = threading.Thread(
             target=remove_finished_service, args=(service_id,)
         )
         remove_service_thread.start()
         log.info("Cleanup thread started. Will remove service once finished.")
-        return
+        if wait_on_finish:
+            while remove_service_thread.is_alive():
+                time.sleep(1)
+        return service_id, remove_service_thread
     else:
         log.info("Started without cleanup.")
         log.info(
             f"Consider cleaning up after finish with: \n docker service ls --filter 'label=user={user}' --quiet | xargs docker service rm"
         )
-        return
+        return service_id

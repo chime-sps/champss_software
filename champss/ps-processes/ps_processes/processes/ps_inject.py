@@ -69,13 +69,13 @@ def generate_injection(pspec, f_nyquist=508):
     f_choices = f_choices[f_choices < f_nyquist]
     f = np.random.choice(f_choices)
 
-    dm_spread = np.linspace(0, pspec.dms[-1], 10000)
+    dm_spread = np.linspace(1, pspec.dms[-1], 10000)
     dm_weights = 0.6 * dm_distribution(dm_spread, 24, 24, 0.02)
     dm_weights += 0.4 / len(dm_spread)
     # 24 is chosen as the maximum DM value at b = 90 deg from NE2001
     dm = np.random.choice(dm_spread, p=dm_weights)
 
-    S_choices = np.logspace(-2, 1, 10000)
+    S_choices = np.logspace(np.log10(5e-2), np.log10(5e-1), 10000)
     S = np.random.choice(S_choices)
 
     prof_idx = np.random.choice(range(len(TPA_profiles.keys())))
@@ -449,17 +449,11 @@ class Injection:
         """
         rn_scales = self.pspec_obj.rn_scales
         rn_medians = self.pspec_obj.rn_medians
-        normalizer = np.zeros((len(inj_dms), len(inj_bins)))
+        sum_of_medians = np.zeros((len(inj_dms), len(inj_bins)))
 
         for day in range(self.pspec_obj.num_days):
-            day_normalizer = (
-                np.ones((len(inj_dms), len(inj_bins)))
-                / self.pspec_obj.num_days
-                / np.log(2)
-            )
-            # day_medians = rn_medians[day]
             day_medians = (
-                rn_medians[day] / np.min(rn_medians[day], axis=1)[:, np.newaxis]
+                rn_medians[day] / np.min(rn_medians[day,:,5:], axis=1)[:, np.newaxis]
             )
             day_scales = rn_scales[day]
 
@@ -469,9 +463,14 @@ class Injection:
             mid_bins = ((scale_sum[1:] + scale_sum[:-1]) / 2).astype("int")
             for i, inj_dm in enumerate(inj_dms):
                 rn_interpolated = np.interp(inj_bins, mid_bins, day_medians[inj_dm])
-                day_normalizer[i] /= rn_interpolated
-            normalizer += day_normalizer
-        return normalizer
+                sum_of_medians[i] += rn_interpolated
+
+        # convert median to mean
+        sum_of_means = sum_of_medians / np.log(2)
+        # take mean across days
+        mean_of_means = sum_of_means / self.pspec_obj.num_days
+
+        return mean_of_means
 
     def predict_sigma(self, harms, bins, dm_indices, used_nharm, add_expected_mean):
         """
@@ -611,7 +610,7 @@ class Injection:
         # note that harms are POWERS, not amplitudes
 
         harms = np.asarray(harms)
-        harms *= self.get_rednoise_normalisation(
+        harms /= self.get_rednoise_normalisation(
             bins,
             dm_indices,
         )
@@ -661,6 +660,8 @@ class Injection:
             "detection_nharm": detection_nharm,
             "detection_sigma": detection_sigma,
             "injected_nharm": n_harm,
+            "FWHM": self.W * self.f,  # in phase,
+            "TPA_idx": self.TPA_idx,
         }
 
         return output_dict
@@ -722,6 +723,9 @@ def main(
     injection_dict["detection_nharm"] = injection_output_dict["detection_nharm"]
     injection_dict["detection_sigma"] = injection_output_dict["detection_sigma"]
     injection_dict["injected_nharm"] = injection_output_dict["injected_nharm"]
+    injection_dict["FWHM"] = injection_output_dict["FWHM"]
+    injection_dict["TPA_idx"] = injection_output_dict["TPA_idx"]
+    injection_dict["injected_powers"] = injection_output_dict["injected_powers"]
 
     if isinstance(injection_dict["profile"], (np.ndarray, list)):
         injection_dict["profile"] = "custom_profile"

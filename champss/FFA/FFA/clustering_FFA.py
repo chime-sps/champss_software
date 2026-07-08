@@ -24,7 +24,6 @@ from .interfaces_FFA import Cluster_FFA
 warnings.filterwarnings("ignore", category=SparseEfficiencyWarning)
 
 
-
 log = logging.getLogger(__name__)
 
 
@@ -61,7 +60,7 @@ def set_merge(data, out="bins"):
     Credit: alexis on stackoverflow https://stackoverflow.com/a/9453249/18740127
     """
     if not isinstance(data[0], set):
-        raise TypeError(f"data must be a list of sets")
+        raise TypeError("data must be a list of sets")
     bins = list(range(len(data)))  # Initialize each bin[n] == n
     nums = dict()
 
@@ -227,6 +226,7 @@ def intersect2d_ind_filter0(ar1, ar2):
     ar2_indices_split = np.split(ar2_indices, np.cumsum(take)[:-1])
     return int2d_split, ar1_indices_split, ar2_indices_split
 
+
 def rogue_width_filter_presto(detections):
     """
     Filter out detections where one harmonic is much stronger than the others Based on
@@ -242,9 +242,7 @@ def rogue_width_filter_presto(detections):
         detections (np.array): detections output from PowerSpectra search - numpy structured array with fields "dm", "freq", "sigma", "nharm", "harm_idx", "harm_pow"
     """
     if "width" not in detections.dtype.names:
-        log.warning(
-            "No width field in detections, cannot filter out rogue width bins"
-        )
+        log.warning("No width field in detections, cannot filter out rogue width bins")
         return detections
 
     filter_out_idx = set()
@@ -266,7 +264,6 @@ def rogue_width_filter_presto(detections):
             filter_out_idx.add(i)
     filter_out_idx = sorted(list(filter_out_idx))
     return np.delete(detections, filter_out_idx)
-
 
 
 @attrs(slots=True)
@@ -331,7 +328,6 @@ class Clusterer_FFA:
     use_dbscan_filter: bool = attribute(default=True)
     dbscan_filter_whole_freqs: bool = attribute(default=False)
 
-
     @clustering_method.validator
     def _validate_clustering_method(self, attribute, value):
         assert value in [
@@ -339,18 +335,17 @@ class Clusterer_FFA:
             "HDBSCAN",
         ], "clustering_method must be either 'DBSCAN' or 'HDBSCAN'"
 
-
     def cluster(
         self,
         detections,
         cluster_dm_spacing,
         cluster_df_spacing,
-        scheme = "dmfreq",  # scheme="combined", (not implemented yet)
+        scheme="dmfreq",  # scheme="combined", (not implemented yet)
         plot_fname="",
     ):
         """
         Cluster FFA detections in freq-dm-width space.
-        To thin down the number of detections, if the number of detections is > self.max_ndetect, raise the sigma threshold 
+        To thin down the number of detections, if the number of detections is > self.max_ndetect, raise the sigma threshold
         until the number of detections is less than self.max_ndetect. This subset is what will be clustered.
 
         Args:
@@ -378,12 +373,8 @@ class Clusterer_FFA:
             log.info("Running dbscan filter")
             data_filter = np.vstack(
                 (
-                    detections["dm"]
-                    / cluster_dm_spacing
-                    * self.dm_scale_factor,
-                    detections["freq"]
-                    / cluster_df_spacing
-                    * self.freq_scale_factor,
+                    detections["dm"] / cluster_dm_spacing * self.dm_scale_factor,
+                    detections["freq"] / cluster_df_spacing * self.freq_scale_factor,
                 ),
                 dtype=np.float32,
             ).T
@@ -399,14 +390,12 @@ class Clusterer_FFA:
                 metric="precomputed",
             ).fit(metric_array)
             labels = db_filter.labels_
-            
+
             filtered_indices = []
             bad_freqs = []
             filtered_labels = []
             for i in range(max(db_filter.labels_) + 1):
-                current_indices = np.arange(detections.shape[0])[
-                    db_filter.labels_ == i
-                ]
+                current_indices = np.arange(detections.shape[0])[db_filter.labels_ == i]
                 det_sample = detections[current_indices]
                 det_max_sigma_pos = np.argmax(det_sample["sigma"])
                 det_max_sigma_dm = det_sample["dm"][det_max_sigma_pos]
@@ -426,7 +415,7 @@ class Clusterer_FFA:
                 f"Dbscan filter removed {bad_low_dm_freqs} detections in low DM"
                 " clusters."
             )
-            
+
             if self.dbscan_filter_whole_freqs:
                 for i in range(max(db_filter.labels_) + 1):
                     if i not in filtered_labels:
@@ -441,7 +430,7 @@ class Clusterer_FFA:
                                 break
                 bad_all_freqs = len(filtered_indices)
                 log.info(
-                    "Dbscan filter removed additonal"
+                    "Dbscan filter removed additional"
                     f" {bad_all_freqs - bad_low_dm_freqs} detection with same"
                     " frequencies as low DM clusters."
                 )
@@ -449,7 +438,7 @@ class Clusterer_FFA:
             mask[filtered_indices] = False
             detections = detections[mask]
             labels = labels[mask]
-            
+
             # mask = np.where(labels != -1)[0]
             # detections = detections[mask]
             # labels = labels[mask]
@@ -458,9 +447,7 @@ class Clusterer_FFA:
             del metric_array
             del db_filter
 
-        detections = detections[
-            detections["sigma"] > self.sigma_detection_threshold
-        ]
+        detections = detections[detections["sigma"] > self.sigma_detection_threshold]
 
         # thin down detections if there are too many
         log.info(
@@ -784,7 +771,9 @@ class Clusterer_FFA:
             for lbl in unique_labels:
                 if lbl == -1:
                     continue
-                cluster = Cluster_FFA.from_raw_detections(detections[cluster_labels == lbl])
+                cluster = Cluster_FFA.from_raw_detections(
+                    detections[cluster_labels == lbl]
+                )
                 if self.cluster_dm_cut >= cluster.dm:
                     zero_dm_count += 1
                     continue
@@ -795,7 +784,7 @@ class Clusterer_FFA:
                     freq=cluster.freq,
                     dm=cluster.dm,
                     sigma=cluster.sigma,
-                    width=cluster.width
+                    width=cluster.width,
                 )
                 current_label += 1
         if zero_dm_count:
@@ -873,7 +862,7 @@ def plot_clusters(
     preamble = "Estimated"
     title = f"{preamble} number of clusters: {n_clusters_}"
     if labels_want is not None:
-        title += f" | clusters: " + ",".join([f"{lw}" for lw in labels_want])
+        title += " | clusters: " + ",".join([f"{lw}" for lw in labels_want])
     if parameters is not None:
         parameters_str = ", ".join(f"{k}={v}" for k, v in parameters.items())
         title += f"\n{parameters_str}"

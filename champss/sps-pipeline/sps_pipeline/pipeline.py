@@ -11,6 +11,7 @@ import sys
 import time
 from contextlib import nullcontext
 from glob import glob
+from copy import deepcopy
 
 import click
 import numpy as np
@@ -280,6 +281,24 @@ def dbexcepthook(type, value, tb):
         """For example use --config-options '{"beamform": {"max_mask_frac": 0.1}}' """
     ),
 )
+@click.option(
+    "--manual-candidates",
+    "--mc",
+    default=[],
+    type=str,
+    multiple=True,
+    help=(
+        "Allow retrieval of manual candidates. "
+        "Modes:"
+        "'--mc skip_search': Skip normal search; "
+        "'--mc para freq dm': Create candidate at freq and dm; "
+        "'--mc PSR psr_name': Create candidate at known source psr_name; "
+        "'--mc FS fs_id': Create candidate for followup source at given fs_id; "
+        "'--mc nearby_ks 1': Create candidate for all sources within given radius; "
+        "'--mc nearby_fs 1': Create candidate for followup sources within given radius; "
+        "'--mc injections': Create candidates for all injections; "
+    ),
+)
 def main(
     date,
     stack,
@@ -306,6 +325,7 @@ def main(
     scale_injections,
     datpath,
     config_options,
+    manual_candidates,
 ):
     """
     Runner script for the Slow Pulsar Search prototype pipeline v0.
@@ -483,8 +503,10 @@ def main(
             )
             config.beamform.beam_to_normalise = None
         padded_length = config.ps_creation.padded_length
+        original_components = deepcopy(components)
 
         for i_ap, active_pointing in enumerate(active_pointings):
+            components = deepcopy(original_components)
             log.info(f"Processing active_pointing {i_ap + 1} of {N_ap}")
             active_process = db_api.get_process_from_active_pointing(
                 active_pointings[0]
@@ -625,6 +647,7 @@ def main(
                         scale_injections,
                         obs_folder,
                         prefix,
+                        manual_candidates=manual_candidates,
                     )
                     if ps_detections is None:
                         power_spectra.unlink_shared_memory()
@@ -648,6 +671,7 @@ def main(
                             injection_idx,
                             only_injections,
                         )
+                        power_spectra.remove_injections()
                     gc.collect()
                 if stack:
                     # Depending on the stacking method this may change power_spectra,
@@ -874,6 +898,24 @@ def main(
     type=str,
     help="Additional options that overwrite the config options. Provide a string that would define a python dictionary",
 )
+@click.option(
+    "--manual-candidates",
+    "--mc",
+    default=[],
+    type=str,
+    multiple=True,
+    help=(
+        "Allow retrieval of manual candidates. "
+        "Modes:"
+        "'--mc skip_search': Skip normal search; "
+        "'--mc para freq dm': Create candidate at freq and dm; "
+        "'--mc PSR psr_name': Create candidate at known source psr_name; "
+        "'--mc FS fs_id': Create candidate for followup source at given fs_id; "
+        "'--mc nearby_ks 1': Create candidate for all sources within given radius; "
+        "'--mc nearby_fs 1': Create candidate for followup sources within given radius; "
+        "'--mc injections': Create candidates for all injections; "
+    ),
+)
 def stack_and_search(
     plot,
     plot_threshold,
@@ -893,6 +935,7 @@ def stack_and_search(
     scale_injections,
     config_file,
     config_options,
+    manual_candidates,
 ):
     """
     Runner script to stack monthly PS into cumulative PS and search the eventual stack.
@@ -981,6 +1024,7 @@ def stack_and_search(
             only_injections,
             scale_injections,
             file=file,
+            manual_candidates=manual_candidates,
         )
         if db_connection:
             ps_stack = db_api.get_ps_stack(closest_pointing_id)
@@ -1003,6 +1047,8 @@ def stack_and_search(
                 only_injections,
                 closest_pointing_id,
             )
+        power_spectra_monthly.remove_injections()
+
     else:
         power_spectra_monthly = None
 
@@ -1015,6 +1061,7 @@ def stack_and_search(
             injection_idx,
             only_injections,
             scale_injections,
+            manual_candidates=manual_candidates,
         )
         if to_search:
             if not ps_detections:
@@ -1041,6 +1088,7 @@ def stack_and_search(
                         only_injections,
                         closest_pointing_id,
                     )
+                    # Does not need to remove injection because they were injected after the cumulative have been loaded
     try:
         power_spectra_monthly.unlink_shared_memory()
         log.info("Unlinked shared memory for monthly stack.")

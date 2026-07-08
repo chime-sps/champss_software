@@ -3,6 +3,7 @@
 import glob
 import logging
 import os
+import numpy as np
 
 from easydict import EasyDict
 from sps_common.interfaces import MultiPointingCandidate
@@ -59,7 +60,12 @@ def read_cands_summaries(file, sigma_threshold=0):
 
         if len(spcc.candidates):
             datetimes = spcc.candidates[0].datetimes
-            for cand_index, candidate in enumerate(spcc.candidates):
+            real_search_indices = np.arange(len(spcc.candidates))[
+                ~spcc.injection_flags & ~spcc.manual_flags
+            ]
+            for cand_index, candidate in zip(
+                real_search_indices, spcc.get_real_search_candidates()
+            ):
                 if candidate.sigma < sigma_threshold:
                     continue
                 cand_summary = EasyDict(candidate.summary)

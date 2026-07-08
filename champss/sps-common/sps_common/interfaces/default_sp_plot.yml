@@ -40,7 +40,9 @@ panels:
   - best_harmonic_sum
   - strongest_harmonic_frequency
   - strongest_harmonic_period
-  - 
+
+  - any_injection_overlap
+  - manual_candidate
   - injection
   - injection_dict
 - col_range:

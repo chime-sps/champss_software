@@ -201,7 +201,7 @@ def stop_all_beams(
     "--logid",
     type=str,
     default="",
-    help="Additonal identifier to sepearte the log_files.",
+    help="Additional identifier to sepearte the log_files.",
 )
 @click.option(
     "--channels",

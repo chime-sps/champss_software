@@ -5,6 +5,7 @@ from datetime import datetime
 from glob import glob
 from multiprocessing import shared_memory
 from typing import List
+from scipy.stats import mode
 
 import astropy.units as u
 import h5py
@@ -205,24 +206,27 @@ class PowerSpectra:
     rn_scales = attrib(type=np.ndarray, default=None)
     rn_dm_indices = attrib(type=np.ndarray, default=None)
     power_spectra_shared = attrib(default=None)
+    injections = attrib(
+        type=List, default=[]
+    )  # Injections are not stored in the written hdf5
 
     def __attrs_post_init__(self):
         """Convert list to arrays."""
-        if type(self.dms) != np.ndarray:
+        if type(self.dms) is not np.ndarray:
             self.dms = np.asarray(self.dms)
-        if type(self.freq_labels) != np.ndarray:
+        if type(self.freq_labels) is not np.ndarray:
             self.freq_labels = np.asarray(self.freq_labels)
 
     @power_spectra.validator
     def _validate_power_spectra_shape(self, attribute, value):
-        if type(value) == np.ndarray:
+        if type(value) is np.ndarray:
             if value.shape != (self.dms.size, self.freq_labels.size):
                 raise ValueError(
                     f"{attribute.name} does not have the shape (dms.size,"
                     f" freq_labels.size) of ({self.dms.size}, {self.freq_labels.size}"
                 )
-        elif type(value) == list:
-            if type(value[0]) != np.ndarray:
+        elif type(value) is list:
+            if type(value[0]) is not np.ndarray:
                 raise TypeError(
                     f"{attribute.name} must be either an np.ndarray or a list of"
                     " np.ndarray"
@@ -240,10 +244,10 @@ class PowerSpectra:
 
     @datetimes.validator
     def _validate_datetimes(self, attribute, value):
-        if type(value) != list:
+        if type(value) is not list:
             raise AttributeError(f"The data type of {attribute.name} is not list.")
         for val in value:
-            if type(val) != datetime:
+            if type(val) is not datetime:
                 raise AttributeError(
                     f"The elements of {attribute.name} are not datetime."
                 )
@@ -268,12 +272,12 @@ class PowerSpectra:
 
             # if length:
             if len(val):
-                if type(val) == list:
-                    if type(val[0]) != int:
+                if type(val) is list:
+                    if type(val[0]) is not int:
                         raise AttributeError(
                             f"The elements of {attribute.name} are not int."
                         )
-                elif type(val) == np.ndarray:
+                elif type(val) is np.ndarray:
                     if not np.issubdtype(val.dtype, np.integer):
                         raise AttributeError(
                             f"The elements of {attribute.name} are not int."
@@ -286,10 +290,10 @@ class PowerSpectra:
 
     @obs_id.validator
     def _validate_obs_id(self, attribute, value):
-        if type(value) != list:
+        if type(value) is not list:
             raise AttributeError(f"The data type of {attribute.name} is not list.")
         for val in value:
-            if type(val) != str:
+            if type(val) is not str:
                 raise AttributeError(f"The elements of {attribute.name} are not str.")
 
     @ra.validator
@@ -460,6 +464,9 @@ class PowerSpectra:
         # Otherwise the pipeline may destroy perfectly fine stacks
 
         self.convert_to_nparray()
+        if self.injections != []:
+            log.error("Injections have not been removed yet.")
+            self.remove_injections()
         with h5py.File(filename, "w") as h5f:
             h5f.create_dataset(
                 "power spectra",
@@ -483,7 +490,8 @@ class PowerSpectra:
 
             if self.rn_medians is not None:
                 h5f.create_dataset(
-                    "rn medians", data=self.rn_medians, 
+                    "rn medians",
+                    data=self.rn_medians,
                 )
                 h5f.create_dataset("rn scales", data=self.rn_scales)
                 h5f.create_dataset("rn dm indices", data=self.rn_dm_indices)
@@ -533,7 +541,7 @@ class PowerSpectra:
 
     def convert_to_nparray(self):
         """Convert power_spectra attribute to single array if it is a list of arrays."""
-        if type(self.power_spectra) == list:
+        if type(self.power_spectra) is list:
             self.power_spectra = np.array(
                 self.power_spectra, dtype=self.power_spectra[0].dtype
             )
@@ -592,6 +600,22 @@ class PowerSpectra:
             self.power_spectra = power_spectra
             self.power_spectra_shared = power_spectra_shared
             log.info("Moved power spectra to shared memory.")
+
+    def remove_injections(self):
+        """Remove injections from spectra."""
+        for injection in self.injections:
+            log.info(
+                f"Removing injection {injection['injection_index']}: Freq: {injection['frequency']} DM: {injection['DM']}"
+            )
+            injected_indices = np.ix_(
+                injection["dms"],
+                injection["bins"],
+            )
+
+            self.power_spectra[injected_indices] -= injection["injected_powers"].astype(
+                self.power_spectra.dtype
+            )
+        self.injections = []
 
 
 @attrs
@@ -744,10 +768,17 @@ class Cluster:
     nharm: int = attrib()
     harm_idx: np.ndarray = attrib()
     injection_index: float = attrib()
+    manual_candidate: str = attrib()
 
     @classmethod
     def from_raw_detections(cls, detections):
-        max_sig_det = detections[np.argmax(detections["sigma"])]
+        try:
+            max_sig_det = detections[np.nanargmax(detections["sigma"])]
+        except ValueError:
+            max_sig_det = detections[0]
+        injection_index = max_sig_det["injection"]
+        if injection_index == -1:
+            injection_index = mode(detections["injection"]).mode
         init_dict = dict(
             max_sig_det=max_sig_det,
             freq=max_sig_det["freq"],
@@ -755,8 +786,9 @@ class Cluster:
             sigma=max_sig_det["sigma"],
             nharm=max_sig_det["nharm"],
             harm_idx=max_sig_det["harm_idx"],
-            injection_index=max_sig_det["injection"],
+            injection_index=injection_index,
             detections=detections,
+            manual_candidate=max_sig_det["manual_candidate"],
         )
         return cls(**init_dict)
 
@@ -881,6 +913,17 @@ class PowerSpectraDetectionClusters:
                 {"freq", "dm", "nharm", "harm_idx", "sigma"},
                 {"freq", "dm", "nharm", "harm_idx", "harm_pow", "sigma"},
                 {"freq", "dm", "nharm", "harm_idx", "harm_pow", "injection", "sigma"},
+                {
+                    "freq",
+                    "dm",
+                    "nharm",
+                    "harm_idx",
+                    "harm_pow",
+                    "injection",
+                    "sigma",
+                    "manual_candidate",
+                    "injection_overlap",
+                },
             ]
             if val_dtype not in acceptable_dtype_names:
                 raise TypeError(

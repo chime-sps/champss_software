@@ -172,6 +172,7 @@ class SinglePointingCandidate:
     dm_sigma_1d = attrib(type=dict, default=None)
     sigmas_per_harmonic_sum = attrib(type=dict, default=None)
     injection = attrib(type=bool, default=False)
+    any_injection_overlap = attrib(type=bool, default=False)
     injection_dict = attrib(type=dict, default={})
     datetimes = attrib(
         validator=deep_iterable(
@@ -180,6 +181,7 @@ class SinglePointingCandidate:
         ),
         default=[],
     )
+    manual_candidate = attrib(type=str, default="")
     # Note `ra`, `dec`, `obs_id` and `detection_statistic` are populated from
     # `SinglePointingCandidateCollection`.
     # they are attributes here too because multi-pointing then uses the
@@ -200,11 +202,6 @@ class SinglePointingCandidate:
     #             f"DM attribute ({attribute.name}={value}) outside range "
     #             f"[{MIN_SEARCH_DM}, {MAX_SEARCH_DM}] pc/cc"
     #         )
-
-    @sigma.validator
-    def _check_sigma(self, attribute, value):
-        if value <= 0:
-            raise ValueError(f"Sigma ({attribute.name}={value}) must be greater than 0")
 
     @ra.validator
     def _check_ra(self, attribute, value):
@@ -242,6 +239,8 @@ class SinglePointingCandidate:
             "dec": self.dec,
             "obs_id": self.obs_id,
             "datetimes": self.datetimes,
+            "injection": self.injection,
+            "any_injection_overlap": self.any_injection_overlap,
         }
         return out_dict
 
@@ -331,13 +330,19 @@ class SinglePointingCandidate:
     @property
     def best_harmonic_sum(self):
         """Returns the number of summed harmonics which results in the highest sigma."""
-        best_harmonic_sum_index = np.nanargmax(self.harm_sigma_curve) + 1
+        try:
+            best_harmonic_sum_index = np.nanargmax(self.harm_sigma_curve) + 1
+        except ValueError:
+            return np.nan
         return best_harmonic_sum_index
 
     @property
     def strongest_harmonic_frequency(self):
         """Returns the frequency of the harmonic which has the strongest raw power."""
-        strongest_harm_index = np.nanargmax(self.best_raw_harmonic_powers)
+        try:
+            strongest_harm_index = np.nanargmax(self.best_raw_harmonic_powers)
+        except ValueError:
+            return np.nan
         dm_index = np.nanargmin(np.abs(self.raw_harmonic_powers_array["dms"] - self.dm))
         freq_labels = self.raw_harmonic_powers_array["freqs"][dm_index, :, 0]
         strongest_freq = freq_labels[strongest_harm_index]
@@ -373,12 +378,15 @@ class SinglePointingCandidate:
     @property
     def masked_fraction_at_best_sigma(self):
         """Returns the fraction of masked bins at the the best weighted sigma."""
-        return (
-            1
-            - self.sigmas_per_harmonic_sum["weight_fraction"][
-                np.nanargmax(self.sigmas_per_harmonic_sum["sigmas_weighted"])
-            ]
-        )
+        try:
+            return (
+                1
+                - self.sigmas_per_harmonic_sum["weight_fraction"][
+                    np.nanargmax(self.sigmas_per_harmonic_sum["sigmas_weighted"])
+                ]
+            )
+        except ValueError:
+            return np.nan
 
     @property
     def sorted_datetimes(self):
@@ -454,7 +462,8 @@ class SinglePointingCandidateCollection:
     injections (List(dict)): List describing the injections that were performed
                             beffore the search
     injection_indices (List(int)): Indices of the candidates that were injected
-    real_indices (List(int)): Indices of the candidates that were  not injected
+    real_indices (List(int)): Indices of the candidates resulting from the search
+    manual_indices (List(int)): Indices of the manually created candidates
     """
 
     candidates = attrib(
@@ -463,17 +472,17 @@ class SinglePointingCandidateCollection:
             iterable_validator=instance_of(list),
         )
     )
-    real_indices = attrib(
+    injection_flags = attrib(
         init=False,
         validator=deep_iterable(
-            member_validator=instance_of(int),
+            member_validator=instance_of(bool),
             iterable_validator=instance_of(list),
         ),
     )
-    injection_indices = attrib(
+    manual_flags = attrib(
         init=False,
         validator=deep_iterable(
-            member_validator=instance_of(int),
+            member_validator=instance_of(bool),
             iterable_validator=instance_of(list),
         ),
     )
@@ -487,12 +496,12 @@ class SinglePointingCandidateCollection:
 
     def __attrs_post_init__(self):
         """Find indices of real detections and injections."""
-        all_indices = np.arange(len(self.candidates))
-        injection_flags = np.asarray(
+        self.injection_flags = np.asarray(
             [cand.injection for cand in self.candidates], dtype=bool
         )
-        self.real_indices = all_indices[~injection_flags]
-        self.injection_indices = all_indices[injection_flags]
+        self.manual_flags = np.asarray(
+            [(cand.manual_candidate != "") for cand in self.candidates], dtype=bool
+        )
 
     @classmethod
     def read(cls, filename, verbose=True):
@@ -573,7 +582,7 @@ class SinglePointingCandidateCollection:
             plots = []
             for candidate in self.candidates:
                 if candidate.sigma > sigma_threshold:
-                    if candidate.dm > dm_threshold:
+                    if candidate.dm > dm_threshold or candidate.manual_candidate != "":
                         plot = candidate.plot_candidate(folder=folder, config=config)
                         plots.append(plot)
         else:
@@ -583,6 +592,7 @@ class SinglePointingCandidateCollection:
                     cand.plot_candidate
                     for cand in self.candidates
                     if ((cand.sigma > sigma_threshold) and (cand.dm > dm_threshold))
+                    or (cand.manual_candidate != "")
                 ]
                 arguments = (folder, config)
                 tasks = zip(functions, repeat(arguments))
@@ -598,15 +608,31 @@ class SinglePointingCandidateCollection:
     def get_real_candidates(self):
         """Get candidates which have not been injected."""
         # Converting to array for easier slicing, could also change the attribute itself to array
-        return np.asarray(self.candidates)[self.real_indices]
+        return np.asarray(self.candidates)[~self.injection_flags]
+
+    def get_real_search_candidates(self):
+        """Get search candidates which have not been injected."""
+        return np.asarray(self.candidates)[~self.injection_flags & ~self.manual_flags]
 
     def get_injection_candidates(self):
         """Get candidates which have been injected."""
-        return np.asarray(self.candidates)[self.injection_indices]
+        return np.asarray(self.candidates)[self.injection_flags]
+
+    def get_search_injection_candidates(self):
+        """Get search candidates which have been injected."""
+        return np.asarray(self.candidates)[self.injection_flags & ~self.manual_flags]
+
+    def get_manual_injection_candidates(self):
+        """Get manual candidates which have been injected."""
+        return np.asarray(self.candidates)[self.injection_flags & self.manual_flags]
+
+    def get_manual_candidates(self):
+        """Get all manual candidate."""
+        return np.asarray(self.candidates)[self.manual_flags]
 
     def test_injection_performance(self, verbose=True):
         """Return dict containing details fo the injection performance."""
-        injected_candidates = self.get_injection_candidates()
+        injected_candidates = self.get_search_injection_candidates()
         injected_indices = np.asarray(
             [cand.injection_dict["injection_index"] for cand in injected_candidates]
         )

@@ -156,6 +156,7 @@ class Observation:
         converter=converters.optional(bool),
         on_setattr=convert,  # type: ignore
     )
+    sub_pointing = attrib(default=0, type=dict)
     birdies = attrib(
         default=None,
         converter=converters.optional(np.asarray),
