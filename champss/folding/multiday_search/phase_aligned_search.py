@@ -132,6 +132,8 @@ class ExploreGrid:
         self.f1_points = f1_points
         f0_ax = np.linspace(*self.f0_lims, self.f0_points) - self.f0_incoherent
         f1_ax = np.linspace(*self.f1_lims, self.f1_points)
+        self.f0_ax = f0_ax          # ΔF0 axis (Hz)
+        self.f1_ax = f1_ax          # F1 axis  (s/s)
         self.f0s, self.f1s = np.meshgrid(f0_ax, f1_ax)
 
         self.chi2_grid = phase_loop(self.profiles, self.dts, f0_ax, f1_ax)
@@ -156,144 +158,222 @@ class ExploreGrid:
         return self.f0s, self.f1s, self.chi2_grid, self.optimal_parameters
 
     def plot(self, fullplot=True):
-        plt.rcParams.update({"font.size": 25})
+        """
+        Grid layout
+        -----------
+        xx11112222
+        3455556666
+        3455556666
+        3455557788
+        3455557788
+
+        1 – summed profile (phase, shared x with 5)
+        2 – chi² vs ΔF0 marginal (shared x with 6)
+        3 – cumulative S/N vs MJD (shared y with 5)
+        4 – per-day S/N vs MJD (shared y with 5)
+        5 – phase vs MJD  (main 2-D panel)
+        6 – ΔF0 vs F1 search grid (shared x with 2)
+        7 – phase vs frequency  (fullplot only)
+        8 – phase vs time       (fullplot only)
+        """
+        plt.rcParams.update({
+            'axes.labelsize': 20,      # Size of x and y labels
+            'xtick.labelsize': 16,     # Size of x-tick labels
+            'ytick.labelsize': 16,     # Size of y-tick labels
+            'axes.titlesize': 22       # Size of the plot title
+        })
+
+        # ------------------------------------------------------------------
+        # Build figure and axes
+        # ------------------------------------------------------------------
+        fig = plt.figure(figsize=(26, 18))
+        from matplotlib.gridspec import GridSpec as GS
+        gs = GS(6, 10, figure=fig,
+                height_ratios=[2, 2, 2, 0.6, 2, 3],
+                width_ratios=[2, 2, 2, 2, 2, 1.2, 2, 2, 2, 2],
+                hspace=0.06, wspace=0.12)
+
+        # create ax5 first so others can share its axes
+        ax5 = fig.add_subplot(gs[1:6, 2:5])
+        ax1 = fig.add_subplot(gs[0,   2:5], sharex=ax5)
+        ax3 = fig.add_subplot(gs[1:6, 0  ], sharey=ax5)
+        ax4 = fig.add_subplot(gs[1:6, 1  ], sharey=ax5)
+        ax2 = fig.add_subplot(gs[0,   6:10])
+        ax6 = fig.add_subplot(gs[1:3, 6:10], sharex=ax2)
+        ax7 = fig.add_subplot(gs[4:6, 6:8])
+        ax8 = fig.add_subplot(gs[4:6, 8:10])
+
+        # ------------------------------------------------------------------
+        # Panel 5 – phase vs MJD  (gap-correct with pcolormesh)
+        # ------------------------------------------------------------------
+        obs_mjds  = self.PEPOCH + self.dts / 86400.0
+        mjd_start = obs_mjds.min()
+        sort_idx  = np.argsort(obs_mjds)
+        sorted_mjds     = obs_mjds[sort_idx]
+        sorted_profiles = self.profiles_aligned[sort_idx]
+
+        day_indices = np.round(obs_mjds - mjd_start).astype(int)
+        n_days      = int(day_indices.max()) + 1
+
+        profile2D_gapped = np.zeros((n_days, self.ngate * 2))
+        for k in range(len(self.profiles_aligned)):
+            profile2D_gapped[day_indices[k], :] = np.tile(self.profiles_aligned[k], 2)
+
+        phase_edges = np.linspace(0, 2, self.ngate * 2 + 1)
+        mjd_edges   = mjd_start + np.arange(n_days + 1)
+
+        vmin5 = np.nanmean(profile2D_gapped) - 2 * np.nanstd(profile2D_gapped)
+        vmax5 = np.nanmean(profile2D_gapped) + 5 * np.nanstd(profile2D_gapped)
+        ax5.pcolormesh(phase_edges, mjd_edges, profile2D_gapped,
+                       shading='flat', vmin=vmin5)# vmax=vmax5)
+        ax5.set_xlabel("Phase")
+        plt.setp(ax5.get_yticklabels(), visible=False)
+
+        # ------------------------------------------------------------------
+        # Panel 1 – summed profile
+        # ------------------------------------------------------------------
+        profile_total = self.profiles_aligned.sum(0)
+        profile_SN = (profile_total - np.median(profile_total)) / np.std(np.sort(profile_total)[:self.ngate*3//4])
+        phase2 = np.linspace(0, 2, self.ngate * 2, endpoint=False)
+        ax1.plot(phase2, np.tile(profile_SN, 2), color='k', lw=1)
+        ax1.set_xlim(0, 2)
+        #ax1.set_yticks([])
+        ax1.set_ylabel('S/N')
+        plt.setp(ax1.get_xticklabels(), visible=False)
+
+        # ------------------------------------------------------------------
+        # Panel 3 – cumulative S/N vs MJD
+        # ------------------------------------------------------------------
+        cumulative_sn = np.zeros(len(sorted_mjds))
+        for k in range(len(sorted_mjds)):
+            cumprof = sorted_profiles[:k + 1].sum(0)
+            cumulative_sn[k] = float(np.max(get_SN(cumprof)))
+
+        ax3.plot(cumulative_sn, sorted_mjds+0.5, color='tab:blue', lw=1)
+        ax3.invert_xaxis()
+        ax3.set_xlabel("Cumul. S/N")
+        ax3.set_ylabel("MJD")
+        ax3.set_xlim(max(cumulative_sn)*1.2, 0)
+        ax3.xaxis.set_major_locator(plt.MaxNLocator(3))
+
+        # ------------------------------------------------------------------
+        # Panel 4 – per-day S/N vs MJD
+        # ------------------------------------------------------------------
+        per_day_sn = np.array([float(np.max(get_SN(p))) for p in sorted_profiles])
+        ax4.scatter(per_day_sn, sorted_mjds+0.5, color='tab:orange', marker='o')
+        ax4.invert_xaxis()
+        ax4.set_xlabel("Daily S/N")
+        plt.setp(ax4.get_yticklabels(), visible=False)
+        ax4.xaxis.set_major_locator(plt.MaxNLocator(3))
+        ax4.set_xlim(max(per_day_sn)*1.2, 0)
+
+        # ------------------------------------------------------------------
+        # Panel 2 – chi² vs ΔF0 (marginal over F1)
+        # ------------------------------------------------------------------
+        f0_uhz       = 1e6 * self.f0_ax
+        chi2_marginal = np.max(self.chi2_grid, axis=1)
+        f0best_uhz   = -1e6 * (self.optimal_parameters[0] - self.f0_incoherent)
+        redchi2_marginal = chi2_marginal / self.ngate
+        ax2.plot(f0_uhz, redchi2_marginal, color='k', lw=1)
+        ax2.axvline(f0best_uhz, color='tab:orange', ls='--', lw=1)
+        ax2.set_ylabel(r"Red. $\chi^{2}$")
+        #ax2.set_yticks([])
+        plt.setp(ax2.get_xticklabels(), visible=False)
+
+        # ------------------------------------------------------------------
+        # Panel 6 – ΔF0 vs F1 search grid
+        # ------------------------------------------------------------------
+        f1best_1e15 = 1e15 * self.optimal_parameters[1]
+        ax6.pcolormesh(f0_uhz, 1e15 * self.f1_ax, self.chi2_grid.T,
+                       shading='auto')
+        ax6.scatter(f0best_uhz, f1best_1e15,
+                    color='tab:orange', marker='x', s=60, zorder=5)
+        ax6.set_ylabel(r"$f_1$ ($10^{-15}$ Hz s$^{-1}$)")
+        ax6.set_xlabel(r"$\Delta f_0$ ($\mu$Hz)")
+
+        # ------------------------------------------------------------------
+        # Panels 7 & 8 – phase vs frequency / time (fullplot only)
+        # ------------------------------------------------------------------
         if fullplot:
-            fig, axs = plt.subplots(
-                2,
-                3,
-                figsize=(20, 20),
-                gridspec_kw={"width_ratios": [1, 2, 2], "height_ratios": [1, 2]},
+            data_T, data_F = load_unwrapped_archives(
+                self.archives, self.optimal_parameters
             )
+            vfmin = np.nanmean(data_F) - 2 * np.nanstd(data_F)
+            vfmax = np.nanmean(data_F) + 5 * np.nanstd(data_F)
+            vtmin = np.nanmean(data_T) - 2 * np.nanstd(data_T)
+            vtmax = np.nanmean(data_T) + 5 * np.nanstd(data_T)
+
+            data_T2 = np.tile(data_T, (1, 2))
+            data_F2 = np.tile(data_F, (1, 2))
+
+            ax7.imshow(data_F2, aspect='auto', interpolation='nearest',
+                       vmin=vfmin, vmax=vfmax,
+                       extent=[0, 2, 400, 800])
+            ax7.set_xlabel("Phase")
+            ax7.set_ylabel("Freq (MHz)")
+
+            ax8.imshow(data_T2, aspect='auto', interpolation='nearest',
+                       vmin=vtmin, vmax=vtmax,
+                       extent=[0, 2, 0, data_T.shape[0]])
+            ax8.set_xlabel("Phase")
+            ax8.set_ylabel("T (subints)")
+            ax8.yaxis.tick_right()
+            ax8.yaxis.set_label_position('right')
         else:
-            fig, axs = plt.subplots(
-                2, 2, figsize=(20, 20), gridspec_kw={"width_ratios": [1, 2]}
-            )
-        profile = self.profiles_aligned.sum(0)
-        profile2D = self.profiles_aligned
-        profile = np.tile(profile, 2)
-        profile2D = np.tile(profile2D, (1, 2))
+            ax7.axis('off')
+            ax8.axis('off')
 
-        # Search grid plot
-        f0best_plot = (self.optimal_parameters[0] - self.f0_incoherent) * 1e6
-        f1best_plot = self.optimal_parameters[1] * 1e15
-        axs[0, 0].pcolormesh(1e6 * self.f0s, 1e15 * self.f1s, self.chi2_grid.T)
-        axs[0, 0].scatter(
-            -f0best_plot, f1best_plot, color="tab:orange", marker="x", s=20
-        )
-        axs[0, 0].set_xlabel(r"$\Delta f_0 (\mu Hz)$")
-        axs[0, 0].set_ylabel(r"$f_1$ (1e-15 s/s)")
-
-        # Aliasing plot
-        axs[1, 0].plot(
-            np.max(self.chi2_grid, axis=1).T, (self.f0s[0]) / 1e-6, "b", alpha=0.6
-        )
-        axs[1, 0].set_ylabel(r"$\Delta f_0  (\mu Hz)$")
-        axs[1, 0].set_xlabel(r"$\chi^{2}$")
-
-        plt.subplots_adjust(hspace=0.15)
-        plt.subplots_adjust(wspace=0.4)
-        axs[1, 0].set_xticks(
-            axs[1, 0].get_xticks(), axs[1, 0].get_xticklabels(), rotation=45, ha="right"
-        )
-
-        # Total summed pulse profile plot
-        axs[0, 1].plot(
-            np.linspace(0, 2, self.ngate * 2), profile, color="k", label="Aligned sum"
-        )
-        axs[0, 1].label_outer()
-        axs[0, 1].set_xlim(0, 2)
-
-        # Days vs Phase vs Intensity plot
-        axs[1, 1].imshow(
-            profile2D,
-            aspect="auto",
-            interpolation="Nearest",
-            extent=[0, 2, 0, len(self.profiles_aligned)],
-        )
-        axs[1, 1].set_xlabel("Phase")
-        axs[1, 1].set_ylabel("Days")
-        axs[1, 1].xaxis.get_major_ticks()[0].label1.set_visible(False)
-
-        SNR = float(np.max(self.SNmax))
-        F0_best = round(self.optimal_parameters[0], 6)
-        F1plot = f"{self.optimal_parameters[1]:.1e}"
-        P0 = 1 / self.f0_incoherent
-        P0_best = 1 / self.optimal_parameters[0]
+        # ------------------------------------------------------------------
+        # Candidate parameter table (suptitle area)
+        # ------------------------------------------------------------------
+        SNR      = float(np.max(self.SNmax))
+        F0_best  = round(self.optimal_parameters[0], 6)
+        F1plot   = f"{self.optimal_parameters[1]:.1e}"
+        P0       = 1 / self.f0_incoherent
+        P0_best  = 1 / self.optimal_parameters[0]
 
         gal_coord = SkyCoord(
             ra=self.RA * u.degree, dec=self.DEC * u.degree, frame="icrs"
         )
         gal_l = gal_coord.galactic.l.deg
         gal_b = gal_coord.galactic.b.deg
-        pointing = find_closest_pointing(self.RA, self.DEC)
-        max_dm = pointing.maxdm
-        beam_str = f"{pointing.beam_row}"
-
-        start_date = Time(self.PEPOCH + min(self.dts) / 86400.0, format="mjd").isot[:10]
-
+        pointing     = find_closest_pointing(self.RA, self.DEC)
+        max_dm       = pointing.maxdm
+        beam_str     = f"{pointing.beam_row}"
+        start_date   = Time(self.PEPOCH + min(self.dts) / 86400.0, format="mjd").isot[:10]
         dm_ne2025_str = f"{pointing.ne2025dm:.1f}"
-        dm_ymw16_str = f"{pointing.ymw16dm:.1f}"
-
-        sigma_str = f"$\\sigma$: {self.candidate_sigma:.2f}" if self.candidate_sigma is not None else ""
+        dm_ymw16_str  = f"{pointing.ymw16dm:.1f}"
+        sigma_str     = (f"σ: {self.candidate_sigma:.2f}"
+                         if self.candidate_sigma is not None else "")
 
         cand_params_text = [
-            [f"{self.psr_name}", f"RA: {self.RA:.2f}", rf"$g_l$: {gal_l:.2f}", f"DM$_{{max}}$: {max_dm:.1f}", f"F0$_{{best}}$: {F0_best}"],
-            [f"{start_date}", f"Dec: {self.DEC:.2f}", rf"$g_b$: {gal_b:.2f}", f"DM$_{{ne2025}}$: {dm_ne2025_str}", f"P0$_{{best}}$: {P0_best:.5f}"],
-            [f"{sigma_str}", f"DM: {self.DM:.2f}", f"Beam: {beam_str}", f"DM$_{{ymw16}}$: {dm_ymw16_str}", f"$f_1$: {F1plot}"],
-            [f"SNR: {SNR:.2f}", f"$f_0$: {self.f0_incoherent:.5f}", f"P0: {P0:.5f}", f"Nday: {len(self.profiles)}", f"PEPOCH: {self.PEPOCH:.2f}"],
+            [f"{self.psr_name}", f"RA: {self.RA:.2f}", f"gl: {gal_l:.2f}",
+             f"DMmax: {max_dm:.1f}", f"F0_best: {F0_best}"],
+            [f"{start_date}", f"Dec: {self.DEC:.2f}", f"gb: {gal_b:.2f}",
+             f"DM_ne2025: {dm_ne2025_str}", f"P0_best: {P0_best:.5f}"],
+            [sigma_str, f"DM: {self.DM:.2f}", f"Beam: {beam_str}",
+             f"DM_ymw16: {dm_ymw16_str}", f"f1: {F1plot}"],
+            [f"SNR: {SNR:.2f}", f"f0: {self.f0_incoherent:.5f}",
+             f"P0: {P0:.5f}", f"Nday: {len(self.profiles)}",
+             f"PEPOCH: {self.PEPOCH:.2f}"],
         ]
 
-        table_ax = fig.add_axes([0.1, 0.90, 0.8, 0.05])
+
+        #title_ax = fig.add_axes([0.13, 0.8, 0.2, 0.1])
+        #title_ax.axis("off")
+        #title_ax.text(0, 0, 'Phase Alignment \nMultiday Search', fontsize=26)
+
+        table_ax = fig.add_axes([0.275, 0.89, 0.625, 0.08])
         table_ax.axis("off")
         param_table = table_ax.table(
             cellText=cand_params_text, cellLoc="left", loc="center", edges="open",
         )
         param_table.auto_set_font_size(False)
         param_table.set_fontsize(22)
-        param_table.scale(1, 1.8)
-        #param_table.auto_set_column_width(col=list(range(5)))
+        param_table.scale(1.0, 2.0)
 
-        if fullplot:
-            data_T, data_F = load_unwrapped_archives(
-                self.archives, self.optimal_parameters
-            )
-
-            vfmin = np.nanmean(data_F) - 2 * np.nanstd(data_F)
-            vfmax = np.nanmean(data_F) + 5 * np.nanstd(data_F)
-            vtmin = np.nanmean(data_T) - 2 * np.nanstd(data_T)
-            vtmax = np.nanmean(data_T) + 5 * np.nanstd(data_T)
-
-            data_T = np.tile(data_T, (1, 2))
-            data_F = np.tile(data_F, (1, 2))
-            axs[1, 2].imshow(
-                data_F,
-                aspect="auto",
-                interpolation="nearest",
-                vmin=vfmin,
-                vmax=vfmax,
-                extent=[0, 2, 400, 800],
-            )
-            axs[1, 2].set_ylabel("Frequency (MHz)")
-            axs[1, 2].set_xlabel("phase")
-            axs[1, 2].yaxis.tick_left()
-            axs[1, 2].yaxis.set_label_position("left")
-            axs[1, 2].xaxis.get_major_ticks()[0].label1.set_visible(False)
-
-            # Time vs phase plot, stacked observations
-
-            axs[0, 2].imshow(
-                data_T,
-                aspect="auto",
-                interpolation="nearest",
-                extent=[0, 2, 0, data_T.shape[0]],
-            )
-            axs[0, 2].set_ylabel("T (subints)")
-            axs[0, 2].set_xlabel("phase")
-            axs[0, 2].yaxis.tick_left()
-            axs[0, 2].yaxis.set_label_position("left")
-            axs[0, 2].xaxis.get_major_ticks()[0].label1.set_visible(False)
-
-        plot_name = f"{self.directory}/phase_search_{round(self.DM,2)}_{round(self.f0_incoherent,2)}.png"
+        plot_name = (f"{self.directory}/phase_search_"
+                     f"{round(self.DM, 2)}_{round(self.f0_incoherent, 2)}.png")
         print(f"Saving diagnostic plot to {plot_name}")
         plt.savefig(plot_name, bbox_inches="tight")
         plt.close()

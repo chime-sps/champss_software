@@ -188,6 +188,7 @@ def main(
             "nday": nday,
             "write_to_db": True,
             "foldpath": foldpath,
+            "semicoherent": True,
         }
         workflow_tags = [
             "multiday",
@@ -240,6 +241,7 @@ def main(
                 "--write-to-db",
                 "--foldpath",
                 foldpath,
+                "--semicoherent",
             ],
             standalone_mode=False,
         )

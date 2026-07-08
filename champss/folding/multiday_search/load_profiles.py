@@ -208,7 +208,7 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         dF0 = F0_incoherent - F0
         dF1 = F1_incoherent
 
-        data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, dF1)
+        data_unwrapped = unwrap_profiles(data_ar, dts, -dF0, -dF1)
         if i == 0:
             data_F = data_unwrapped.sum(0)
             data_T = data_unwrapped.sum(1)

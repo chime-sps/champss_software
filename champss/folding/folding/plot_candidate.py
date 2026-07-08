@@ -152,6 +152,7 @@ def plot_candidate_archive(
     f0search=True,
     foldpath="/data/chime/sps/archives/plots/folded_candidate_plots",
     plot_bw=False,
+    save_panels_npz=True,
 ):
     """
     Plot a folded candidate archive.
@@ -183,9 +184,16 @@ def plot_candidate_archive(
     plot_bw : bool
         If True, use black/white color scheme (black lines, Greys colormap).
         If False (default), use color scheme (tab:blue lines, viridis colormap).
+    save_panels_npz : bool
+        If True (default), save diagnostic panel arrays to a .npz file
+        alongside the plot, for use by the semi-coherent fold panel search.
     """
     if cand_info is None:
         cand_info = {}
+
+    # Initialize storage for npz panel data (populated during search blocks)
+    _npz = {}
+
     sigma = cand_info.get('sigma', None)
     ap = cand_info.get('ap', None)
 
@@ -244,6 +252,10 @@ def plot_candidate_archive(
         fs_bin.reshape(fs_bin.shape[0], fs_bin.shape[1] // binf, binf, -1), 2
     )
     fs_bin[np.isnan(fs_bin)] = 0
+
+    # Save time-phase before any F0/F1 phase correction (nominal fold)
+    if save_panels_npz:
+        _npz['fs_time_phase_nominal'] = np.nanmean(fs_bin, 1)
 
     fig = plt.figure(figsize=(12, 22))
 
@@ -371,6 +383,12 @@ def plot_candidate_archive(
         f0_best = f0s[i_f0_best]
         F0_prof_best = F0profs[i_f0_best]
 
+        # Capture F0 search panels for npz
+        if save_panels_npz:
+            _npz['f0s'] = f0s.copy()
+            _npz['F0_SNs'] = F0_SNs.copy()
+            _npz['F0profs'] = F0profs.copy()
+
         # Apply best F0 correction to fs_bin for subsequent plots
         dphis = f0_best * dts
         i_phis = (dphis * npbin).astype("int")
@@ -420,6 +438,12 @@ def plot_candidate_archive(
         i_dm_best = np.argmax(DM_SNs)
         dm_best = dm + DMs[i_dm_best]
 
+        # Capture DM search panels for npz (before tiling)
+        if save_panels_npz:
+            _npz['DM_SNs'] = DM_SNs.copy()
+            _npz['DMs'] = (dm + DMs).copy()   # absolute DM values
+            _npz['freq'] = freq[:fs_fp.shape[0]].copy()
+
         DMprofs = np.tile(DMprofs, (1, 2))
         DM_prof = DMprofs[i_dm_best]
 
@@ -441,6 +465,11 @@ def plot_candidate_archive(
         ax4.axis("off")
         ax4top.axis("off")
         ax4left.axis("off")
+
+    # Capture freq-phase and time-phase before tiling (for npz panels)
+    if save_panels_npz:
+        _npz['fs_freq_phase'] = np.nanmean(fs_bin, 0)   # (nfreq, nphase)
+        _npz['fs_time_phase'] = np.nanmean(fs_bin, 1)   # (ntime, nphase)
 
     profile = np.nanmean(np.nanmean(fs_bin, 0), 0)
     SNR_val, SNprof = get_SN(profile, return_profile=True)
@@ -685,4 +714,19 @@ def plot_candidate_archive(
                 pil_kwargs={'optimize': True})
     plt.close()
 
-    return SNprof, SNR_val, plot_fname
+    # Save diagnostic panels to npz for semi-coherent search
+    npz_fname = None
+    if save_panels_npz and _npz:
+        _npz['profile'] = profile
+        _npz['mjd'] = float(T[0])
+        _npz['f0'] = float(f0)
+        _npz['dm'] = float(dm)
+        _npz['SN'] = float(SNR_val)
+        _npz['dm_best'] = float(dm_best) if dm_best is not None else float(dm)
+        _npz['f0_best'] = float(f0_best) if f0_best is not None else 0.0
+        _npz['f1_best'] = float(f1_best) if f1_best is not None else 0.0
+        npz_fname = os.path.splitext(fn)[0] + '.searchpanels.npz'
+        np.savez(npz_fname, **_npz)
+        print(f"Saved panels to {npz_fname}")
+
+    return SNprof, SNR_val, plot_fname, npz_fname
