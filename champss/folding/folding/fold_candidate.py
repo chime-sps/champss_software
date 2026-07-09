@@ -341,7 +341,7 @@ def main(
             plot_aliases(alias_results, output_path=alias_plot_path)
 
     # Plot
-    SNprof, SN_arr, plot_fname = folder.plot(
+    SNprof, SN_arr, plot_fname, npz_file = folder.plot(
         sigma=sigma, foldpath_plots=foldpath + "/plots/folded_candidate_plots/"
     )
 
@@ -354,6 +354,7 @@ def main(
         "archive_fname": folder.archive_fname,
         "SN": float(SN_arr),
         "path_to_plot": plot_fname,
+        "npz_file": npz_file,
     }
 
     # Update database
