@@ -171,7 +171,11 @@ def main(
         source = db_api.get_followup_source(fs_id)
 
         if source.folding_history:
-            fold_dates = [entry["date"].date() for entry in source.folding_history]
+            fold_dates = [
+                entry["date"].date()
+                for entry in source.folding_history
+                if entry["SN"] != 0
+            ]
             if not overwrite_folding and date.date() in fold_dates:
                 log.info(f"Already folded on {date.date()}, skipping...")
                 return {}, [], []
