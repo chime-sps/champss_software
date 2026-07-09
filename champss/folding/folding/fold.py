@@ -356,7 +356,7 @@ class Fold:
             "ap": self.ap,
         }
 
-        SNprof, SN_arr, plot_fname = plot_candidate_archive(
+        SNprof, SN_arr, plot_fname, npz_file = plot_candidate_archive(
             self.archive_fname,
             self.coord_path,
             cand_info=cand_info,
@@ -365,7 +365,7 @@ class Fold:
 
         log.info(f"SN of folded profile: {SN_arr}")
 
-        return SNprof, SN_arr, plot_fname
+        return SNprof, SN_arr, plot_fname, npz_file
 
     def cleanup(self):
         """
