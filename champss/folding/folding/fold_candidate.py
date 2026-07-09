@@ -278,18 +278,27 @@ def main(
     # Check if archive already exists
     archive_fname = f"{coord_path}/cand_{f0:.02f}_{dm:.02f}_{date.year}-{date.month:02}-{date.day:02}.ar"
     if os.path.isfile(archive_fname) and not overwrite_folding:
-        log.info(f"Archive file {archive_fname} already exists, skipping folding...")
+        log.info(
+            f"Archive file {archive_fname} already exists, may skipping folding..."
+        )
+        stop_processing = True
+        plot_fname = archive_fname.split(".ar")[0] + ".png"
+        if not os.path.isfile(plot_fname):
+            log.info("No fold plot found, will continue folding.")
+            stop_processing = False
         if fs_id and write_to_db:
             fold_dates = [entry["date"].date() for entry in source.folding_history]
             if date.date() not in fold_dates:
+                # This may cause trouble when the previous fold unexpectedly crashed.
                 fold_details = {
                     "date": date,
                     "archive_fname": archive_fname,
                     "SN": 0,
-                    "path_to_plot": archive_fname.split(".ar")[0] + ".png",
+                    "path_to_plot": plot_fname,
                 }
                 update_folding_history(fs_id, {"folding_history": fold_details})
-        return {}, [], []
+        if stop_processing:
+            return {}, [], []
 
     if not os.path.exists(ephem_path):
         log.error(f"Ephemeris file {ephem_path} not found")
