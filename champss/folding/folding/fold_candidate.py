@@ -380,7 +380,7 @@ def main(
             folding_history[index] = fold_details
         else:
             folding_history.append(fold_details)
-            update_folding_history(fs_id, {"folding_history": fold_details})
+        update_folding_history(fs_id, {"folding_history": fold_details})
         if len(folding_history) >= source.followup_duration:
             log.info(
                 f"Finished follow-up duration of {source.followup_duration} days,"
