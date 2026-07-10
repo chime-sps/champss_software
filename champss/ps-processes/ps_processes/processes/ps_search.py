@@ -9,6 +9,7 @@ import datetime
 import copy
 
 import numpy as np
+from numba import njit
 import pandas as pd
 from attr import ib as attribute
 from attr import s as attrs
@@ -819,22 +820,26 @@ class PowerSpectraSearch:
         allowed_harmonics = [1, 2, 4, 8, 16, 32]
         for dm_index, dm in zip(dm_indices, dms):
             power_spectrum = power_spectra[dm_index, :]
-            for idx_harm, harm in enumerate(allowed_harmonics):
-                harm_start = time.time()
-                if harm > num_harm:
-                    continue
-                log.debug(f"Working on the harmonic={harm} sum")
-                harm_bins = full_harm_bins[:harm]
+            # for idx_harm, harm in enumerate(allowed_harmonics):
+            #     harm_start = time.time()
+            #     if harm > num_harm:
+            #         continue
+            #     log.debug(f"Working on the harmonic={harm} sum")
+            #     harm_bins = full_harm_bins[:harm]
 
-                if idx_harm == 0:
-                    harm_sum_powers = power_spectrum[harm_bins].sum(0)
-                else:
-                    last_harm = allowed_harmonics[idx_harm - 1]
-                    np.add(
-                        harm_sum_powers,
-                        power_spectrum[harm_bins[last_harm:harm, :]].sum(0),
-                        out=harm_sum_powers,
-                    )
+            #     if idx_harm == 0:
+            #         harm_sum_powers = power_spectrum[harm_bins].sum(0)
+            #     else:
+            #         last_harm = allowed_harmonics[idx_harm - 1]
+            #         np.add(
+            #             harm_sum_powers,
+            #             power_spectrum[harm_bins[last_harm:harm, :]].sum(0),
+            #             out=harm_sum_powers,
+            #         )
+            harmonic_sums = calc_harmonic_sum(power_spectrum, full_harm_bins)
+            for idx_harm, harm in enumerate(allowed_harmonics):
+                harm_bins = full_harm_bins[:harm]
+                harm_sum_powers = harmonic_sums[idx_harm]
 
                 power_cutoff = power_cutoff_per_harmonic[idx_harm]
                 used_nsum = nsum_per_harmonic[idx_harm]
@@ -979,10 +984,10 @@ class PowerSpectraSearch:
                         )
                     last_detection_freq = detection_freq
                     last_detection_sigma = sigma
-                harm_end = time.time()
-                log.debug(
-                    f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum"
-                )
+                # harm_end = time.time()
+                # log.debug(
+                #     f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum"
+                # )
         return detection_list
 
     def summarise(self, clusters, cluster_harm_idx):
@@ -1129,3 +1134,24 @@ class PowerSpectraSearch:
                     )
                     detections.append(detection)
         return detections
+
+
+@njit
+def calc_harmonic_sum(spec, harm_bins):
+    length = harm_bins.shape[1]
+
+    out = np.empty((6, length), dtype=spec.dtype)
+    s = np.zeros(length, dtype=spec.dtype)
+
+    out_idx = 0
+
+    for h in range(32):
+        for j in range(length):
+            s[j] += spec[harm_bins[h, j]]
+
+        if h == 0 or h == 1 or h == 3 or h == 7 or h == 15 or h == 31:
+            for j in range(length):
+                out[out_idx, j] = s[j]
+            out_idx += 1
+
+    return out
