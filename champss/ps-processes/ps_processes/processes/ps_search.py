@@ -33,7 +33,7 @@ from sps_common.interfaces.utilities import (
 from sps_common.constants import TSAMP
 from sps_databases import db_api
 from sps_common.interfaces import Cluster
-from sps_common.sm_utils import share_array, recreate_shared_array
+from sps_common.sm_utils import share_array, recreate_shared_array, unlink_shared
 
 log = logging.getLogger(__name__)
 
@@ -476,8 +476,8 @@ class PowerSpectraSearch:
             power_cutoff_per_harmonic = powersum_at_sigma(
                 self.sigma_min, nsum_per_harmonic
             )
-        nsum_per_harmonic, nsum_per_harmonic, shm_nsum_per_harmonic_dict = share_array(
-            nsum_per_harmonic
+        nsum_per_harmonic, shm_nsum_per_harmonic, shm_nsum_per_harmonic_dict = (
+            share_array(nsum_per_harmonic)
         )
         (
             power_cutoff_per_harmonic,
@@ -713,6 +713,11 @@ class PowerSpectraSearch:
             injection_dict_copy.pop("dms")
             injection_dict_copy.pop("injected_powers")
             injection_dicts_psdc.append(injection_dict_copy)
+
+        unlink_shared(shm_freq_labels)
+        unlink_shared(shm_full_harm_bins)
+        unlink_shared(shm_power_cutoff_per_harmonic)
+        unlink_shared(shm_nsum_per_harmonic)
         return (
             PowerSpectraDetectionClusters(
                 clusters=clusters,

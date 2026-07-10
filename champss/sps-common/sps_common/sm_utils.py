@@ -59,3 +59,8 @@ def recreate_shared_array(shm_dict):
     shm = shared_memory.SharedMemory(name=shm_dict["name"])
     array = np.ndarray(shm_dict["shape"], dtype=shm_dict["dtype"], buffer=shm.buf)
     return array, shm
+
+
+def unlink_shared(shm):
+    shm.close()
+    shm.unlink()
