@@ -4,7 +4,7 @@ import logging
 import time
 from functools import partial
 import yaml
-from multiprocessing import Pool, shared_memory, set_start_method
+from multiprocessing import Pool, set_start_method
 import datetime
 import copy
 
@@ -33,6 +33,7 @@ from sps_common.interfaces.utilities import (
 from sps_common.constants import TSAMP
 from sps_databases import db_api
 from sps_common.interfaces import Cluster
+from sps_common.sm_utils import share_array, recreate_shared_array
 
 log = logging.getLogger(__name__)
 
@@ -217,6 +218,12 @@ class PowerSpectraSearch:
                     harmonic_sum(self.num_harm, np.zeros(ps_length_search))[1],
                 )
             ).astype(np.int32)
+        self.full_harm_bins, shm_full_harm_bins, shm_full_harm_bins_dict = share_array(
+            self.full_harm_bins
+        )
+        freq_labels, shm_freq_labels, shm_freq_labels_dict = share_array(
+            pspec.freq_labels
+        )
         # Manual candidates may want to exlcude the ks filter
         if self.full_harm_bins_raw is None and len(manual_candidates):
             # Could potentially add some protection against superflous copies
@@ -469,6 +476,14 @@ class PowerSpectraSearch:
             power_cutoff_per_harmonic = powersum_at_sigma(
                 self.sigma_min, nsum_per_harmonic
             )
+        nsum_per_harmonic, nsum_per_harmonic, shm_nsum_per_harmonic_dict = share_array(
+            nsum_per_harmonic
+        )
+        (
+            power_cutoff_per_harmonic,
+            shm_power_cutoff_per_harmonic,
+            shm_power_cutoff_per_harmonic_dict,
+        ) = share_array(power_cutoff_per_harmonic)
 
         if "skip_search" not in manual_candidates:
             pool = Pool(self.num_threads)
@@ -499,14 +514,12 @@ class PowerSpectraSearch:
             detection_list = pool.starmap(
                 partial(
                     self.search_candidates,
-                    pspec.power_spectra_shared.name,
-                    pspec.power_spectra.shape,
-                    pspec.power_spectra.dtype,
+                    pspec.power_spectra_shared_dict,
                     self.num_harm,
-                    self.full_harm_bins,
-                    pspec.freq_labels,
-                    nsum_per_harmonic,
-                    power_cutoff_per_harmonic,
+                    shm_full_harm_bins_dict,
+                    shm_freq_labels_dict,
+                    shm_nsum_per_harmonic_dict,
+                    shm_power_cutoff_per_harmonic_dict,
                     injection_dicts,
                     self.max_search_frequency,
                     self.skip_first_n_bins,
@@ -718,14 +731,12 @@ class PowerSpectraSearch:
 
     @staticmethod
     def search_candidates(
-        shared_spectra_name,
-        shared_spectra_shape,
-        shared_spectra_type,
+        shm_spec_dict,
         num_harm,
-        full_harm_bins,
-        freq_labels,
-        nsum_per_harmonic,
-        power_cutoff_per_harmonic,
+        shm_harm_bins_dict,
+        shm_freq_labels_dict,
+        shm_nsum_dict,
+        shm_power_dict,
         injection_dicts,
         cutoff_frequency,
         skip_n_bins,
@@ -789,9 +800,13 @@ class PowerSpectraSearch:
             made in the search process.
         """
         # log.debug(f"Working on DM={dm} with {num_harm} harmonics")
-        shared_spectra = shared_memory.SharedMemory(name=shared_spectra_name)
-        power_spectra = np.ndarray(
-            shared_spectra_shape, dtype=shared_spectra_type, buffer=shared_spectra.buf
+        # Could consider moving this to some initializer function
+        power_spectra, shared_spectra = recreate_shared_array(shm_spec_dict)
+        full_harm_bins, shm_full_harm_bins = recreate_shared_array(shm_harm_bins_dict)
+        freq_labels, shm_freq_labels = recreate_shared_array(shm_freq_labels_dict)
+        nsum_per_harmonic, shm_nsum_per_harmonic = recreate_shared_array(shm_nsum_dict)
+        power_cutoff_per_harmonic, shm_power_cutoff_per_harmonic = (
+            recreate_shared_array(shm_power_dict)
         )
         detection_list = []
         power_spectra = power_spectra[:, : len(full_harm_bins[0])]

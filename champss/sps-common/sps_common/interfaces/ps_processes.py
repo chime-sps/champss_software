@@ -23,6 +23,7 @@ from sps_common.interfaces.single_pointing import (
     SearchAlgorithm,
     check_detection_statistic,
 )
+from sps_common.sm_utils import share_array
 
 log = logging.getLogger(__name__)
 
@@ -206,6 +207,7 @@ class PowerSpectra:
     rn_scales = attrib(type=np.ndarray, default=None)
     rn_dm_indices = attrib(type=np.ndarray, default=None)
     power_spectra_shared = attrib(default=None)
+    power_spectra_shared_dict = attrib(default=None)
     injections = attrib(
         type=List, default=[]
     )  # Injections are not stored in the written hdf5
@@ -216,6 +218,12 @@ class PowerSpectra:
             self.dms = np.asarray(self.dms)
         if type(self.freq_labels) is not np.ndarray:
             self.freq_labels = np.asarray(self.freq_labels)
+        if self.power_spectra_shared is not None:
+            self.power_spectra_shared_dict = {
+                "name": self.power_spectra_shared.name,
+                "shape": self.power_spectra.shape,
+                "dtype": self.power_spectra.dtype,
+            }
 
     @power_spectra.validator
     def _validate_power_spectra_shape(self, attribute, value):
@@ -583,22 +591,16 @@ class PowerSpectra:
             self.power_spectra_shared.close()
             self.power_spectra_shared.unlink()
             self.power_spectra_shared = None
+            self.power_spectra_shared_dict = None
 
     def move_to_shared_memory(self):
-        """If not in shared memory, move to shared memory."""
+        """If not in shared memory, move to shared memory. Also check if shared dict exists."""
         if self.power_spectra_shared is None:
-            buffer_size = int(self.power_spectra.nbytes)
-            power_spectra_shared = shared_memory.SharedMemory(
-                create=True, size=buffer_size
-            )
-            power_spectra = np.ndarray(
-                self.power_spectra.shape,
-                dtype=self.power_spectra.dtype,
-                buffer=power_spectra_shared.buf,
-            )
-            power_spectra[:] = self.power_spectra
-            self.power_spectra = power_spectra
-            self.power_spectra_shared = power_spectra_shared
+            (
+                self.power_spectra,
+                self.power_spectra_shared,
+                self.power_spectra_shared_dict,
+            ) = share_array(self.power_spectra)
             log.info("Moved power spectra to shared memory.")
 
     def remove_injections(self):
