@@ -307,6 +307,7 @@ class PowerSpectraCreation:
                 ),
                 zip(dm_indices, dedisp_series_list),
             )
+
             pool.close()
             pool.join()
             log.info("Power spectra creation successful.")
