@@ -285,6 +285,15 @@ class CandidateViewerRegistrar:
             fold_plot = row.get("fold_plot", "")
             mdf_plot = row.get("mdf_path_to_plot", "")
             combined_plot = row.get("combined_plot_path", "")
+            # Sanitize nan
+            if stack_plot == "nan":
+                stack_plot = ""
+            if fold_plot == "nan":
+                fold_plot = ""
+            if mdf_plot == "nan":
+                mdf_plot = ""
+            if combined_plot == "nan":
+                combined_plot = ""
             input_file = row.get("file_name", "")
             fs_id = row.get("fs_id", "unknown")
             fs_sigma = row.get("fs_sigma", "unknown")
