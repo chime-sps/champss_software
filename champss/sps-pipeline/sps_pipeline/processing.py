@@ -1843,108 +1843,115 @@ def start_processing_manager(
                     )
 
                 df_mp.to_csv(df_folded_name)
+                if len(df_folded_name):
+                    # Merge candidates
+                    log.info("Creating merged candidate plots.")
+                    merged_candidate_path = (
+                        basepath + "/combined_candidates/" + date_string + "/"
+                    )
+                    replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
 
-                # Merge candidates
-                log.info("Creating merged candidate plots.")
-                merged_candidate_path = (
-                    basepath + "/combined_candidates/" + date_string + "/"
-                )
-                replotted_mp_path = basepath + "/mp_candidates/" + date_string + "/"
+                    os.makedirs(merged_candidate_path, exist_ok=True)
+                    os.makedirs(replotted_mp_path, exist_ok=True)
 
-                os.makedirs(merged_candidate_path, exist_ok=True)
-                os.makedirs(replotted_mp_path, exist_ok=True)
-
-                for index, row in df_mp.iterrows():
-                    plot_path = row["plot_path"]
-                    if mode == "pipeline":
-                        fs_db_entry = db_api.get_followup_source(row["fs_id"])
-                        fold_history = fs_db_entry.folding_history
-                        if len(fs_db_entry.folding_history) == 0:
-                            continue
-                        last_fold = fs_db_entry.folding_history[-1]
-                        df_mp.at[index, "fold_plot"] = last_fold["path_to_plot"]
-                        df_mp.at[index, "fs_sigma"] = last_fold["SN"]
-                        df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
-                        fold_plot = last_fold["path_to_plot"]
-                    else:
-                        fold_plot = row["mdf_path_to_plot"]
-
-                    if type(row["plot_path"]) is not str:
-                        if not os.path.exists(row["file_name"]):
-                            continue
-                        mp_cand = MultiPointingCandidate.read(row["file_name"])
-                        plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
-                        df_mp.at[index, "plot_path"] = plot_path
-
-                    if type(fold_plot) is str:
-                        if not os.path.exists(fold_plot):
-                            continue
-                    else:
-                        continue
-
-                    if create_combined_plots:
-                        output_path = (
-                            merged_candidate_path
-                            + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
-                            + "_combined.png"
-                        )
-                        merge_images(
-                            [plot_path, fold_plot],
-                            output_path=output_path,
-                        )
-                        df_mp.at[index, "combined_plot_path"] = output_path
-                # Could get work results, alternatively can query fs db
-                try:
-                    df_mp.to_csv(df_folded_name)
-                except Exception as error:
-                    log.error("Could not write out csv containing combined candidates.")
-                    # Might fail due to permission
-                    pass
-                # Add to candidate viewer site
-                db_config = {
-                    "user": "automation",
-                    "password": "",  # no password for automation user
-                    "host": "sps-archiver1",
-                    "database": "champss",
-                    "port": 3306,
-                }
-                if mode == "pipeline":
-                    survey = "dailycands"
-                    folder = date_to_process.strftime("%Y-%m-%d")
-                    sigma_field = "fs_sigma"
-                    min_sigma_folded = 7
-                    df_mp_filtered = df_mp[df_mp[sigma_field] > min_sigma_folded]
-                else:
-                    survey = "stackcands"
-                    folder = stack_name
-                    sigma_field = "mdf_SN"
-                    min_sigma_folded = 0
-                    df_mp_filtered = df_mp[
-                        (df_mp[sigma_field] > min_sigma_folded) | df_mp["mdf_SN"].isna()
-                    ]
-                try:
-                    with (
-                        CandidateViewerRegistrar(
-                            survey=survey,  # the project name under top-right corner of the website
-                            folder=folder,  # the folder name on the website
-                            db_config=db_config,
-                            survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
-                        ) as sd
-                    ):
-                        sd.add_candidates(
-                            df_mp_filtered
-                        )  # add candidates from dataframe
-                        sd.commit()  # commit to database and update survey config
-
-                        message_slack(f"Candidate folding for {date_string} complete")
+                    for index, row in df_mp.iterrows():
+                        plot_path = row["plot_path"]
                         if mode == "pipeline":
-                            daily_run = db_api.update_daily_run(
-                                date_to_process,
-                                {"folding_result": {"fold_count": len(processes)}},
+                            fs_db_entry = db_api.get_followup_source(row["fs_id"])
+                            fold_history = fs_db_entry.folding_history
+                            if len(fs_db_entry.folding_history) == 0:
+                                continue
+                            last_fold = fs_db_entry.folding_history[-1]
+                            df_mp.at[index, "fold_plot"] = last_fold["path_to_plot"]
+                            df_mp.at[index, "fs_sigma"] = last_fold["SN"]
+                            df_mp.at[index, "fs_file"] = last_fold["archive_fname"]
+                            fold_plot = last_fold["path_to_plot"]
+                        else:
+                            fold_plot = row["mdf_path_to_plot"]
+
+                        if type(row["plot_path"]) is not str:
+                            if not os.path.exists(row["file_name"]):
+                                continue
+                            mp_cand = MultiPointingCandidate.read(row["file_name"])
+                            plot_path = mp_cand.plot_candidate(path=replotted_mp_path)
+                            df_mp.at[index, "plot_path"] = plot_path
+
+                        if type(fold_plot) is str:
+                            if not os.path.exists(fold_plot):
+                                continue
+                        else:
+                            continue
+
+                        if create_combined_plots:
+                            output_path = (
+                                merged_candidate_path
+                                + plot_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
+                                + "_combined.png"
                             )
-                except Exception as error:
-                    log.error(f"Could not update daily candidates due to {error}")
-                    log.error(traceback.format_exc())
+                            merge_images(
+                                [plot_path, fold_plot],
+                                output_path=output_path,
+                            )
+                            df_mp.at[index, "combined_plot_path"] = output_path
+                    # Could get work results, alternatively can query fs db
+                    try:
+                        df_mp.to_csv(df_folded_name)
+                    except Exception as error:
+                        log.error(
+                            "Could not write out csv containing combined candidates."
+                        )
+                        # Might fail due to permission
+                        pass
+                    # Add to candidate viewer site
+                    db_config = {
+                        "user": "automation",
+                        "password": "",  # no password for automation user
+                        "host": "sps-archiver1",
+                        "database": "champss",
+                        "port": 3306,
+                    }
+                    if mode == "pipeline":
+                        survey = "dailycands"
+                        folder = date_to_process.strftime("%Y-%m-%d")
+                        sigma_field = "fs_sigma"
+                        min_sigma_folded = 7
+                        df_mp_filtered = df_mp[df_mp[sigma_field] > min_sigma_folded]
+                    else:
+                        survey = "stackcands"
+                        folder = stack_name
+                        sigma_field = "mdf_SN"
+                        min_sigma_folded = 0
+                        df_mp_filtered = df_mp[
+                            (df_mp[sigma_field] > min_sigma_folded)
+                            | df_mp["mdf_SN"].isna()
+                        ]
+                    try:
+                        with (
+                            CandidateViewerRegistrar(
+                                survey=survey,  # the project name under top-right corner of the website
+                                folder=folder,  # the folder name on the website
+                                db_config=db_config,
+                                survey_dir="/data/candidate_viewer/champss_candidate_viewer/surveys",  # path to the directory containing survey (project) config files
+                            ) as sd
+                        ):
+                            sd.add_candidates(
+                                df_mp_filtered
+                            )  # add candidates from dataframe
+                            sd.commit()  # commit to database and update survey config
+
+                            message_slack(
+                                f"Candidate folding for {date_string} complete"
+                            )
+                            if mode == "pipeline":
+                                daily_run = db_api.update_daily_run(
+                                    date_to_process,
+                                    {"folding_result": {"fold_count": len(processes)}},
+                                )
+                    except Exception as error:
+                        log.error(f"Could not update daily candidates due to {error}")
+                        log.error(traceback.format_exc())
+                else:
+                    message_slack(f"No candidates to add to website for {date_string}.")
             # End of folding phase
             if mode == "pipeline":
                 report_file_name = create_report_pdf(
