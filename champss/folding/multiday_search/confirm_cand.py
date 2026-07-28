@@ -1,5 +1,6 @@
 import datetime
 import logging
+import os
 
 import click
 import numpy as np
@@ -15,7 +16,6 @@ from multiday_search.phase_aligned_search import ExploreGrid
 from multiday_search.semicoherent_foldpanels import SemicoherentFoldSearch
 from multiday_search.summary_plot import create_summary_pdf
 from sps_databases import db_api, db_utils
-
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -85,7 +85,7 @@ from sps_databases import db_api, db_utils
     "--semicoherent",
     is_flag=True,
     help="Run the semi-coherent fold panel search (including orbital grid search) "
-         "using the .searchpanels.npz files derived from the archive paths.",
+    "using the .searchpanels.npz files derived from the archive paths.",
 )
 def main(
     fs_id,
@@ -195,7 +195,9 @@ def main(
         f0_lims = (f0_min, f0_max)
         delta_f0max = f0_max - f0_min
 
-        f1_max = 2e-12  # Upper limit based on known pulsars, or expected barycentric shift
+        f1_max = (
+            2e-12  # Upper limit based on known pulsars, or expected barycentric shift
+        )
         f1_lims = (-f1_max, f1_max)
         delta_f1max = 2 * f1_max
 
@@ -211,7 +213,8 @@ def main(
         f0s, f1s, chi2_grid, optimal_parameters = explore_grid.output()
 
         np.savez(
-            data["directory"] + f"/cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
+            data["directory"]
+            + f"/cand_{F0_incoherent}_{DM_incoherent}_explore_grid.npz",
             f0s=f0s,
             f1s=f1s,
             chi2_grid=chi2_grid,
@@ -228,7 +231,9 @@ def main(
             "gridsearch_file": data["directory"] + "/explore_grid.npz",
             "path_to_plot": plot_name,
         }
-        coherentsearch_summary["date"] = coherentsearch_summary["date"].strftime("%Y%m%d")
+        coherentsearch_summary["date"] = coherentsearch_summary["date"].strftime(
+            "%Y%m%d"
+        )
         if write_to_db:
             log.info("Updating FollowUpSource with coherent search results")
             db_api.update_followup_source(
@@ -241,7 +246,7 @@ def main(
 
         optimal_par_file = par_file.replace(".par", "_optimal.par")
         if foldpath is not None:
-            optimal_par_file = data['directory'] + optimal_par_file.split('/')[-1]
+            optimal_par_file = data["directory"] + optimal_par_file.split("/")[-1]
 
         print(f"Writing new par file to {optimal_par_file}")
         with open(par_file) as input:
@@ -257,7 +262,7 @@ def main(
                         output.write(f"{line.strip()} 1 \n")
                     elif key == "DECJ":
                         output.write(f"{line.strip()} 1 \n")
-                    elif key == 'PEPOCH':
+                    elif key == "PEPOCH":
                         output.write(f"PEPOCH {data['PEPOCH']} 0 \n")
                     else:
                         output.write(line)
@@ -266,13 +271,12 @@ def main(
 
     # Semi-coherent fold panel search
     if semicoherent:
-        npz_files = [
-            os.path.splitext(ar)[0] + '.searchpanels.npz'
-            for ar in archives
-        ]
+        npz_files = [os.path.splitext(ar)[0] + ".searchpanels.npz" for ar in archives]
         npz_files = [f for f in npz_files if os.path.exists(f)]
         if npz_files:
-            log.info(f"Running semi-coherent fold panel search on {len(npz_files)} panel files")
+            log.info(
+                f"Running semi-coherent fold panel search on {len(npz_files)} panel files"
+            )
             sc_search = SemicoherentFoldSearch(npz_files)
             sc_plot = sc_search.plot(
                 output_dir=data["directory"],
