@@ -905,37 +905,41 @@ class PowerSpectraSearch:
                             injection_overlap = np.intersect1d(
                                 sorted_harm_bins, injected_bins
                             )
-                            injection_overlap_fraction = injection_overlap.size / len(
-                                sorted_harm_bins
+                            # Old metric, based on overlapping bins
+                            # injection_overlap_fraction = injection_overlap.size / len(
+                            #     sorted_harm_bins
+                            # )
+                            injection_overlap_fraction = (
+                                power_spectrum[injection_overlap].sum()
+                                / power_spectrum[sorted_harm_bins].sum()
                             )
                             overlapped_injections.append(list_index)
                             all_injection_overlaps.append(injection_overlap_fraction)
 
                     injected_index = -1
                     injection_overlap_fraction = 0.0
-                    if len(all_injection_overlaps):
-                        if np.max(all_injection_overlaps) > 0.0:
-                            sort_overlaps = np.argsort(all_injection_overlaps)[::-1]
-                            injection_overlap_fraction = 0.0
-                            for index in sort_overlaps:
-                                if (
-                                    all_injection_overlaps[index]
-                                    >= injection_overlap_threshold
-                                    and np.abs(
-                                        injection_dicts[overlapped_injections[index]][
-                                            "DM"
-                                        ]
-                                        - dm
-                                    )
-                                    < injection_dm_threshold
-                                ):
-                                    injected_index = overlapped_injections[index]
-                                    injection_overlap_fraction = all_injection_overlaps[
-                                        index
-                                    ]
-                                    break
-                            if injected_index == -1:
-                                injection_overlap_fraction = max(all_injection_overlaps)
+                    if len(all_injection_overlaps) and (
+                        np.max(all_injection_overlaps) > 0.0
+                    ):
+                        sort_overlaps = np.argsort(all_injection_overlaps)[::-1]
+                        injection_overlap_fraction = 0.0
+                        for index in sort_overlaps:
+                            if (
+                                all_injection_overlaps[index]
+                                >= injection_overlap_threshold
+                                and np.abs(
+                                    injection_dicts[overlapped_injections[index]]["DM"]
+                                    - dm
+                                )
+                                < injection_dm_threshold
+                            ):
+                                injected_index = overlapped_injections[index]
+                                injection_overlap_fraction = all_injection_overlaps[
+                                    index
+                                ]
+                                break
+                        if injected_index == -1:
+                            injection_overlap_fraction = max(all_injection_overlaps)
 
                     if replace_last:
                         detection_list[-1] = (
