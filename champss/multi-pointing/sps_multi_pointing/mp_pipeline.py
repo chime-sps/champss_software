@@ -202,6 +202,12 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     default=False,
     help="When getting canddiates from teh db, use the latest stack candidates.",
 )
+@click.option(
+    "--freq-count-threshold",
+    default=50,
+    type=int,
+    help="Frequencies that appear more often than this threshold will be removed.",
+)
 def cli(
     output,
     file_path,
@@ -223,6 +229,7 @@ def cli(
     run_name,
     cluster_harmonics,
     use_stacks,
+    freq_count_threshold,
 ):
     """Slow Pulsar Search multiple-pointing candidate processing."""
     multiprocessing.set_start_method("forkserver", force=True)
@@ -304,10 +311,22 @@ def cli(
     #             cand.datetimes = datetimes
     # Transform list of lists to list
     log.info("Creating list of lists.")
-    sp_cands = [sp_cand for sp_cand_list in sp_cands for sp_cand in sp_cand_list]
+    sp_cands = np.array(
+        [sp_cand for sp_cand_list in sp_cands for sp_cand in sp_cand_list]
+    )
     log.info(f"Number of single-pointing candidates: {len(sp_cands)}")
     # np.save("all_cands.npy", sp_cands)
     # np.savez("all_cands.npz", sp_cands)
+    if freq_count_threshold:
+        all_freqs = [cand["freq"] for cand in sp_cands]
+        np_unique_freqs = np.unique(
+            all_freqs, return_index=True, return_inverse=True, return_counts=True
+        )
+        good_indices = np_unique_freqs[3][np_unique_freqs[2]] < freq_count_threshold
+        sp_cands = sp_cands[good_indices]
+        log.info(
+            f"Reduced number of candidates by {sum(~good_indices)} to {len(sp_cands)} by filtering frequencies which appear more than {freq_count_threshold} times."
+        )
 
     # Run Grouper
     sp_grouper = grouper.SinglePointingCandidateGrouper(
