@@ -165,8 +165,8 @@ class PowerSpectraStack:
         # If no databae entry exists try to lock the file
         stack_file_open = None
         if not ps_stack_db:
-            stack_file_path = self.get_stack_file_path(pspec)
-            self.lock_stack(stack_file_path)
+            # stack_file_path = self.get_stack_file_path(pspec, unique=False)
+            self.lock_stack(self.get_stack_file_path(pspec, unique=False))
             # If the stack is already locked by another process,
             # that process will create a new database entry which is then read
             ps_stack_db = self.get_ps_stack_db(pspec)
@@ -203,13 +203,13 @@ class PowerSpectraStack:
                 log.info(
                     f"Creating new database entry for {pspec.ra:.2f} {pspec.dec:.2f}."
                 )
-                self.create_stack_database(pspec, stack_file_path)
+                self.create_stack_database(pspec)
             self.unlock_stack()
             return pspec
         else:
             # Try loading the existing monthly/cumulative stack
             if self.mode == "month":
-                stack_file_path = ps_stack_db.datapath_month
+                old_stack_file_path = ps_stack_db.datapath_month
             elif self.mode == "cumul":
                 # check if the loaded monthly stack is consistent with the database
                 if (pspec.num_days != ps_stack_db.num_days_month) or (
@@ -226,30 +226,35 @@ class PowerSpectraStack:
                         " information in the stack is inconsistent with the stack"
                         " database."
                     )
-                stack_file_path = ps_stack_db.datapath_cumul
-            if os.path.isfile(stack_file_path):
-                self.lock_stack(stack_file_path)
+                old_stack_file_path = ps_stack_db.datapath_cumul
+            if os.path.isfile(old_stack_file_path):
+                self.lock_stack(self.get_stack_file_path(pspec, unique=False))
                 if self.infile_overwrite and self.mode == "month":
+                    # Infile overwrite does not support unique file names
+                    # The name of the old stack will be retained
+                    # This is done because the month stack is never in memory anyway and this functions is not used currently
                     log.info(
                         "Stacking the daily power spectra into power spectra stack via"
                         " infile read and overwrite"
                     )
-                    self.stack_power_spectra_infile(pspec, stack_file_path)
+                    self.stack_power_spectra_infile(pspec, old_stack_file_path)
                     self.unlock_stack()
                     return pspec
                 else:
                     if self.readout_stack:
                         log.info(
                             f"Stacking {self.mode} power spectra stack from"
-                            f" {stack_file_path} into current stack via readout method."
+                            f" {old_stack_file_path} into current stack via readout method."
                         )
                         pspec_stack = self.stack_power_spectra_readout(
-                            pspec, stack_file_path
+                            pspec, old_stack_file_path
                         )
                     else:
-                        log.info(f"Reading power spectra stack from {stack_file_path}.")
+                        log.info(
+                            f"Reading power spectra stack from {old_stack_file_path}."
+                        )
                         pspec_stack = PowerSpectra.read(
-                            stack_file_path, nbit=self.spectra_nbit
+                            old_stack_file_path, nbit=self.spectra_nbit
                         )
                         log.info(
                             "Stacking the current power spectra stack to the"
@@ -259,12 +264,13 @@ class PowerSpectraStack:
                             pspec,
                             pspec_stack,
                         )
+                    stack_file_path = self.get_stack_file_path(pspec)
                     log.info(f"Writing new power spectra stack to {stack_file_path}.")
-                    self.replace_spectra(pspec_stack, stack_file_path)
+                    self.replace_spectra(
+                        pspec_stack, old_stack_file_path, stack_file_path
+                    )
                     if self.update_db:
-                        self.update_stack_database(
-                            pspec_stack, stack_file_path, ps_stack_db.pointing_id
-                        )
+                        self.update_stack_database(pspec_stack, ps_stack_db.pointing_id)
                     if self.mode == "cumul" and self.delete_monthly_stack:
                         # deletes the existing monthly power spectra stack
                         self.delete_stack(
@@ -285,12 +291,10 @@ class PowerSpectraStack:
                         " new power spectra stack"
                     )
                     stack_file_path = self.get_stack_file_path(pspec)
-                    self.lock_stack(stack_file_path)
+                    self.lock_stack(self.get_stack_file_path(pspec, unique=False))
                     pspec.write(stack_file_path, nbit=self.stack_nbit)
                     if self.update_db:
-                        self.update_stack_database(
-                            pspec, stack_file_path, ps_stack_db.pointing_id
-                        )
+                        self.update_stack_database(pspec, ps_stack_db.pointing_id)
                     if self.mode == "cumul" and self.delete_monthly_stack:
                         # deletes the existing monthly power spectra stack
                         self.delete_stack(
@@ -608,7 +612,7 @@ class PowerSpectraStack:
 
         return pspec_stack
 
-    def replace_spectra(self, pspec, stack_file_path):
+    def replace_spectra(self, pspec, old_stack_file_path, stack_file_path):
         """
         Script to replace the power spectra stack of the stack_file_path with the given
         power spectra stack. The process will write the new stack into a temporary
@@ -635,8 +639,8 @@ class PowerSpectraStack:
         log.info(
             f"Deleting the existing {self.mode} power spectra stack '{stack_file_path}'"
         )
-        if os.path.isfile(stack_file_path):
-            os.remove(stack_file_path)
+        if os.path.isfile(old_stack_file_path):
+            os.remove(old_stack_file_path)
         log.info(f"Rename the new stack to the rightful path of '{stack_file_path}'")
         os.rename(temp_path, stack_file_path)
 
@@ -915,7 +919,7 @@ class PowerSpectraStack:
             ps_stack_db = None
         return ps_stack_db
 
-    def get_stack_file_path(self, pspec):
+    def get_stack_file_path(self, pspec, unique=False):
         """
         Outputs the location to write the power spectra stack into based on the input
         power spectra, the basepath and the mode of stacking.
@@ -924,6 +928,9 @@ class PowerSpectraStack:
         ==========
         psepc: PowerSpectra
             The PowerSpectra object of the power spectra to be stacked.
+
+        unique: bool
+            Make file name unique, so that stack name changes from day to day. Not used for the lock file.
 
         Returns
         =======
@@ -935,9 +942,10 @@ class PowerSpectraStack:
         else:
             root_dir = self.basepath
         os.makedirs(f"{root_dir}/stack/", exist_ok=True)
-        stack_file_path = (
-            f"{root_dir}/stack/{pspec.ra:.2f}_{pspec.dec:.2f}_power_spectra_stack.hdf5"
-        )
+        if unique:
+            stack_file_path = f"{root_dir}/stack/{pspec.ra:.2f}_{pspec.dec:.2f}_{pspec.datetimes[-1].strftime('%Y%m%d')}_{len(pspec.datetimes)}_power_spectra_stack.hdf5"
+        else:
+            stack_file_path = f"{root_dir}/stack/{pspec.ra:.2f}_{pspec.dec:.2f}_power_spectra_stack.hdf5"
         if self.mode == "cumul":
             stack_file_path = (
                 stack_file_path.split("power_spectra_stack.hdf5")[0]
@@ -945,7 +953,7 @@ class PowerSpectraStack:
             )
         return stack_file_path
 
-    def create_stack_database(self, pspec, pspec_file_loc, pointing_id=None):
+    def create_stack_database(self, pspec, pointing_id=None):
         """
         Create a new database entry for a power spectra stack.
 
@@ -963,9 +971,10 @@ class PowerSpectraStack:
         """
         if not pointing_id:
             pointing_id = db_api.get_observation(pspec.obs_id[0]).pointing_id
+        stack_file_path = self.get_stack_file_path(pspec)
         payload = {
             "pointing_id": pointing_id,
-            "datapath_month": pspec_file_loc,
+            "datapath_month": stack_file_path,
             "datetimes_month": pspec.datetimes,
             "num_days_month": pspec.num_days,
             "datapath_cumul": "",
@@ -974,7 +983,7 @@ class PowerSpectraStack:
         }
         db_api.create_ps_stack(payload)
 
-    def update_stack_database(self, pspec, stack_file_path, pointing_id=None):
+    def update_stack_database(self, pspec, pointing_id=None):
         """
         Update the database on the newest stack.
 
@@ -992,6 +1001,7 @@ class PowerSpectraStack:
         """
         log.info(f"Updating the stack database for {pspec.ra} {pspec.dec}")
         # first get the pointing
+        stack_file_path = self.get_stack_file_path(pspec)
         if not pointing_id:
             pointing_id = db_api.get_observation(pspec.obs_id[0]).pointing_id
         payload = {
@@ -1079,7 +1089,7 @@ class PowerSpectraStack:
             )
             try:
                 os.remove(self.lock.lock_file)
-                self.lock_stack()
+                self.lock_stack(stack_file_path)
             except OSError:
                 log.info(
                     "Was not able to remove the lock. Will try to process without lock."
