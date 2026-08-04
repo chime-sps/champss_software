@@ -425,7 +425,6 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
                                 shell=False,
                             )  # nosec
                             processes[i] = processi
-                            adsas
                     else:
                         logger.info(f"{psr} transitting row {beamrow}, continuing acq")
                         # logic to include process id for beams with 2+ pulsars
