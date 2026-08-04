@@ -919,7 +919,7 @@ class PowerSpectraStack:
             ps_stack_db = None
         return ps_stack_db
 
-    def get_stack_file_path(self, pspec, unique=False):
+    def get_stack_file_path(self, pspec, unique=True):
         """
         Outputs the location to write the power spectra stack into based on the input
         power spectra, the basepath and the mode of stacking.
