@@ -333,7 +333,16 @@ def run_all_multi_day_folds(
         all_states = [thread.is_alive() for thread in cleanup_threads]
         finished = not any(all_states)
         time.sleep(10)
-    # db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+
+    # Set default values
+    # Will overwrite when run twice, but should not make a difference
+    result_fields_str = ["date", "gridsearch_file", "path_to_plot"]
+    result_fields_float = ["SN", "f0", "f1"]
+    for field in result_fields_str:
+        df_mp[field] = ""
+    for field in result_fields_float:
+        df_mp[field] = np.nan
+    df_mp["fold_success"] = False
     for index, row in df_mp.iterrows():
         db_entry = get_mdcand_from_fsdb(row["file_name"])
         if db_entry is None:
@@ -343,8 +352,6 @@ def run_all_multi_day_folds(
         if len(coh_history):
             last_mdf = coh_history[-1]
             # Setting entries on after the other to control types more easily
-            result_fields_str = ["date", "gridsearch_file", "path_to_plot"]
-            result_fields_float = ["SN", "f0", "f1"]
             if last_mdf is None:
                 last_mdf = {}
             for field in result_fields_str:
@@ -1828,17 +1835,17 @@ def start_processing_manager(
                         datpath,
                     )
                     # Rerun in case anything failed
-                    df_mp = run_all_multi_day_folds(
-                        df_mp,
-                        db_host,
-                        db_port,
-                        db_name,
-                        foldpath,
-                        docker_image_name,
-                        docker_service_name_prefix,
-                        datpath,
-                        skip_finished=True,
-                    )
+                    # df_mp = run_all_multi_day_folds(
+                    #     df_mp,
+                    #     db_host,
+                    #     db_port,
+                    #     db_name,
+                    #     foldpath,
+                    #     docker_image_name,
+                    #     docker_service_name_prefix,
+                    #     datpath,
+                    #     skip_finished=True,
+                    # )
 
                 df_mp.to_csv(df_folded_name)
                 if len(df_folded_name):
