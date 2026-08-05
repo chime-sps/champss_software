@@ -41,6 +41,7 @@ from sps_pipeline.utils import get_pointings_from_list, merge_images
 from sps_pipeline.candidate_viewer import CandidateViewerRegistrar
 from sps_pipeline.stack_scheduling import find_monthly_search_commands
 from scheduler.run_as_service import run_as_service
+from folding.utilities.database import get_mdcand_from_fsdb
 
 
 log = logging.getLogger()
@@ -314,11 +315,10 @@ def run_all_multi_day_folds(
     cleanup_threads = []
     njobs = 5
     for index, row in df_mp.iterrows():
-        if skip_finished:
-            if row.get("fold_success"):
-                continue
+        if skip_finished and row.get("fold_success"):
+            continue
 
-        command = f"multidayfold_pipeline --candpath {row['file_name']} --db-host {db_host} --db-port {db_port} --db-name {db_name} --nday 0 --datpath {datpath} --foldpath {foldpath} --use-workflow --start-date 2025/6/01 --docker-image-name {docker_image_name}"
+        command = f"multidayfold_pipeline --candpath {row['file_name']} --db-host {db_host} --db-port {db_port} --db-name {db_name} --nday 0 --datpath {datpath} --foldpath {foldpath} --use-workflow --start-date 2025/06/01 --docker-image-name {docker_image_name}"
         service_id, cleanup_thread = run_as_service(
             command, memory=10, manager=True, image=docker_image_name
         )
@@ -333,11 +333,9 @@ def run_all_multi_day_folds(
         all_states = [thread.is_alive() for thread in cleanup_threads]
         finished = not any(all_states)
         time.sleep(10)
-    db = db_utils.connect(host=db_host, port=db_port, name=db_name)
+    # db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     for index, row in df_mp.iterrows():
-        db_entry = db.followup_sources.find_one(
-            {"path_to_candidates": row["file_name"]}
-        )
+        db_entry = get_mdcand_from_fsdb(row["file_name"])
         if db_entry is None:
             log.error(f"Could not grab fs source for {row['file_name']}")
             continue
