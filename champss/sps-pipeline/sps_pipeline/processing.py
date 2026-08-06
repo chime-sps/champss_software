@@ -1683,7 +1683,7 @@ def start_processing_manager(
                     # Dump stack database
                     all_stacks = list(db.ps_stacks.find({}))
                     db_dump_file = (
-                        basepath + "mp_runs/" + stack_name + "/ps_database.json"
+                        basepath + "mp_runs/" + stack_name + "/stack_database.json"
                     )
                     with open(db_dump_file, "w") as f:
                         f.write(json_util.dumps(all_stacks))
