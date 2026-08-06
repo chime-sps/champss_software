@@ -10,9 +10,12 @@ import numpy as np
 import pymongo
 from bson.objectid import ObjectId
 from sps_databases import db_api, db_utils
+from sps_common.interfaces import MultiPointingCandidate
 
 
-def get_pulsar_coords_from_timing_db(psr, server_url="mongodb://sps-archiver1:27017/", db_name="timing_ops"):
+def get_pulsar_coords_from_timing_db(
+    psr, server_url="mongodb://sps-archiver1:27017/", db_name="timing_ops"
+):
     """
     Get RA and Dec for a pulsar from the timing_ops database.
 
@@ -36,11 +39,11 @@ def get_pulsar_coords_from_timing_db(psr, server_url="mongodb://sps-archiver1:27
     database = client[db_name]
     collection = database["sources"]
 
-    source = collection.find_one({'psr_id': psr})
+    source = collection.find_one({"psr_id": psr})
     if not source:
         raise ValueError(f"Pulsar {psr} not found in timing_ops database")
 
-    return source['ra'], source['dec']
+    return source["ra"], source["dec"]
 
 
 def update_folding_history(id, payload):
@@ -332,3 +335,34 @@ def add_mdcand_from_psrname(psrname, date):
     )
     fs_id = followup_source["_id"]
     return fs_id
+
+
+def get_mdcand_from_fsdb(cand_path):
+    """
+    Get an already added multi-day candidate from the followup sources database.
+
+    Parameters
+    ----------
+    cand_path : str, optional
+        Path to candidate file
+
+    Returns
+    -------
+    fs : dict
+        Followup source document
+    """
+    db = db_utils.connect()
+
+    mpc = MultiPointingCandidate.read(cand_path)
+    ra = mpc.ra
+    dec = mpc.dec
+    f0 = mpc.best_freq
+    dm = mpc.best_dm
+
+    ra_name = np.round(float(ra), 2)
+    dec_name = np.round(float(dec), 2)
+    f0_name = np.round(float(f0), 6)
+    dm_name = np.round(float(dm), 2)
+    name = f"md_{ra_name}_{dec_name}_{f0_name}_{dm_name}"
+    fs = db.followup_sources.find_one({"source_name": name})
+    return fs
