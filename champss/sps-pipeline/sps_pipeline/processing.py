@@ -13,6 +13,7 @@ import pymongo
 import atexit
 import pandas as pd
 from bson.objectid import ObjectId
+from bson import json_util
 from pathlib import Path
 
 import click
@@ -1678,6 +1679,14 @@ def start_processing_manager(
                     daily_run = db_api.update_daily_run(
                         date_to_process, {"multipointing_result": work_result}
                     )
+                else:
+                    # Dump stack database
+                    all_stacks = list(db.ps_stacks.find({}))
+                    db_dump_file = (
+                        basepath + "mp_runs/" + stack_name + "/ps_database.json"
+                    )
+                    with open(db_dump_file, "w") as f:
+                        f.write(json_util.dumps(all_stacks))
             # End of multi-pointing phase
 
             # Start of classification phase
