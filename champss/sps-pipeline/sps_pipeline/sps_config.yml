@@ -150,6 +150,7 @@ ps:
     max_search_frequency: 250
     injection_overlap_threshold: 0.2
     injection_dm_threshold: 10
+    mean_bin_sigma_threshold: 5
     cluster_config:
       dbscan_eps: 1
       dm_scale_factor: 0.02
@@ -363,6 +364,7 @@ ps_cumul_stack:
     skip_first_n_bins: 5
     max_search_frequency: 250
     only_use_stack_threshold: False
+    mean_bin_sigma_threshold: 5
     cluster_config:
       dbscan_eps: 1
       dm_scale_factor: 0.02
@@ -388,4 +390,24 @@ ps_cumul_stack:
       filtered_pulsars:
         B0329+54:
           arc_length: 40
-        # B1508+55: {} # If no arc length is given, default distance is used
+        B1508+55: {} # If no arc length is given, default distance is used
+        B0136+57: {}
+        B0138+59: {}
+        B0355+54: {}
+        B0823+26: {}
+        B0834+06: {}
+        B0950+08: {}
+        B1642-03: {}
+        B1919+21: {}
+        B1933+16: {}
+        B1946+35: {}
+        B2016+28: {}
+        B2020+28: {}
+        B2021+51: {}
+        B2111+46: {}
+        B2154+40: {}
+        B2217+47: {}
+        B2255+58: {}
+        B2310+42: {}
+        B0531+21: {}
+        B1929+10: {}
