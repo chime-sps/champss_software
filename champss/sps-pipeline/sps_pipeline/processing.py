@@ -13,6 +13,7 @@ import pymongo
 import atexit
 import pandas as pd
 from bson.objectid import ObjectId
+from bson import json_util
 from pathlib import Path
 
 import click
@@ -1303,6 +1304,13 @@ def start_processing_manager(
         if not stack_name:
             log.info("Please define --stack-name when using --run-stack-search")
             sys.exit()
+        old_mp_run_folder = basepath + "mp_runs/" + stack_name
+        if os.path.exists(old_mp_run_folder):
+            log.error(
+                f"A previous run already created a folder {old_mp_run_folder}."
+                "Do you really want to overwrite the previous run?"
+                "Consider a new stack_name argument or remove the old folder."
+            )
 
     def loop_condition():
         # For now just enale running h stack search once.
@@ -1671,6 +1679,14 @@ def start_processing_manager(
                     daily_run = db_api.update_daily_run(
                         date_to_process, {"multipointing_result": work_result}
                     )
+                else:
+                    # Dump stack database
+                    all_stacks = list(db.ps_stacks.find({}))
+                    db_dump_file = (
+                        basepath + "mp_runs/" + stack_name + "/stack_database.json"
+                    )
+                    with open(db_dump_file, "w") as f:
+                        f.write(json_util.dumps(all_stacks))
             # End of multi-pointing phase
 
             # Start of classification phase
