@@ -117,7 +117,7 @@ def get_pulsar_radec(psr):
 
 def update_psr_list(schedule, pst, logger):
     """
-    Update the pulsar list by querying the timing_ops database.
+    Update the pulsar list by querying the timing_ops database. 
 
     Compares current pulsar list with database, adds new pulsars with
     champss_foldmode=True, and removes pulsars that no longer have it enabled.
