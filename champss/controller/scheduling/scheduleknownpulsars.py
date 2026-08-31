@@ -6,7 +6,7 @@ import subprocess  # nosec
 import time
 import atexit
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import astropy.units as u
 import click
@@ -26,11 +26,9 @@ BEAM_RECORDING_GRACE_PERIOD = 600  # 10 minutes
 @dataclass
 class PulsarSchedule:
     """
-    Per-pulsar scheduling state.
-
-    Replaces the old parallel psrs/pointings/current_acq/processes lists,
-    which had to be kept in sync by index everywhere pulsars were added or
-    removed.
+    Per-pulsar scheduling state: identity, current pointing, whether an
+    acquisition is currently active for it, and the process/marker recording
+    its beam.
     """
 
     psr: str
@@ -46,14 +44,12 @@ class PulsarSchedule:
 @dataclass
 class BeamState:
     """
-    Per-beam scheduling state.
-
-    Replaces the old active_beams multiset list (tracked via
-    append/count/remove) plus the last_stopped_beams dict.
+    Per-beam scheduling state: how many currently-active pulsars share this
+    beam, and when we last stopped a process we owned on it (if ever).
     """
 
     active_count: int = 0
-    last_stopped: Optional[float] = None
+    last_stopped: float | None = None
 
 
 def setup_logger(logfile="schedknownpsrlog.txt"):
