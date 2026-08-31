@@ -140,6 +140,7 @@ def stop_all_beams(
         procs = [stop_beam(beam, basepath, source) for beam in beam_batch]
         time.sleep(0.1)
         for proc, beam in zip(procs, beam_batch):
+            output = f"No output for {beam}"
             try:
                 output = proc.communicate(timeout=10)
                 if "parameters successfully applied" in str(output[0]):
