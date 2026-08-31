@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.17.0](https://github.com/chime-sps/champss_software/compare/v0.16.0...v0.17.0) (2026-08-31)
+
+
+### Features
+
+* Enable processing of other data formats ([#161](https://github.com/chime-sps/champss_software/issues/161)) ([62694dc](https://github.com/chime-sps/champss_software/commit/62694dc14ab5b0f0f7dafb4d3ccbb5b17d3b23cf))
+* implemented filtering out injection ([#240](https://github.com/chime-sps/champss_software/issues/240)) ([949cff9](https://github.com/chime-sps/champss_software/commit/949cff9088581c8edac5c979febd2347c9f283d4))
+* Improve stack search reliability ([#238](https://github.com/chime-sps/champss_software/issues/238)) ([5116dd1](https://github.com/chime-sps/champss_software/commit/5116dd101e46d2fd666e8f4417602f6a4166bb5d))
+* Manual candidate creation ([#239](https://github.com/chime-sps/champss_software/issues/239)) ([20a28f8](https://github.com/chime-sps/champss_software/commit/20a28f81170db120db8412e1dcf06e07a28b2a34))
+* new rednoise normalization and save fwhm/tpa idx ([#237](https://github.com/chime-sps/champss_software/issues/237)) ([70b73e9](https://github.com/chime-sps/champss_software/commit/70b73e9dd14ec3df280fb8b5dba2fa1f01a9d54e))
+* Refine poetry use ([#233](https://github.com/chime-sps/champss_software/issues/233)) ([a41e8fe](https://github.com/chime-sps/champss_software/commit/a41e8fe66cec96994d34f1539b62ab6032e6123b))
+
+
+### Bug Fixes
+
+* fix ps_length not being properly used at high dec ([#243](https://github.com/chime-sps/champss_software/issues/243)) ([0cd6399](https://github.com/chime-sps/champss_software/commit/0cd639941c850167e98eda7aed575a2addcb65e1))
+* Fix writing filterbank files with run-pipeline ([#229](https://github.com/chime-sps/champss_software/issues/229)) ([d50ea5b](https://github.com/chime-sps/champss_software/commit/d50ea5b7a91c1986da01af0a8f6736d2d06fecd4))
+
 ## [0.16.0](https://github.com/chime-sps/champss_software/compare/v0.15.0...v0.16.0) (2026-02-27)
 
 
