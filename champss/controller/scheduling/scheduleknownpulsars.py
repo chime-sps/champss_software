@@ -5,6 +5,8 @@ import signal
 import subprocess  # nosec
 import time
 import atexit
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import astropy.units as u
 import click
@@ -12,6 +14,46 @@ import pymongo
 from astropy.time import Time
 from beamformer.strategist.strategist import PointingStrategist
 from sps_databases import db_api, db_utils
+
+# Folder mtime age (seconds) below which a beam is considered "actively
+# recording" by is_beam_recording(). Also used as the grace period during
+# which a beam we ourselves just stopped is still remembered as "ours", so a
+# second pulsar transiting the same beam shortly after isn't mistaken for an
+# externally-controlled recording.
+BEAM_RECORDING_GRACE_PERIOD = 600  # 10 minutes
+
+
+@dataclass
+class PulsarSchedule:
+    """
+    Per-pulsar scheduling state.
+
+    Replaces the old parallel psrs/pointings/current_acq/processes lists,
+    which had to be kept in sync by index everywhere pulsars were added or
+    removed.
+    """
+
+    psr: str
+    pointing: Any  # the ap value returned by PointingStrategist
+    active: bool = False
+    # One of: 0 (acquisition not started), subprocess.Popen (we own the
+    # process), "external" (beam is controlled by something else), or an int
+    # beamrow (handoff placeholder: another pulsar in this schedule holds the
+    # actual process/marker for this shared beam).
+    process: Any = 0
+
+
+@dataclass
+class BeamState:
+    """
+    Per-beam scheduling state.
+
+    Replaces the old active_beams multiset list (tracked via
+    append/count/remove) plus the last_stopped_beams dict.
+    """
+
+    active_count: int = 0
+    last_stopped: Optional[float] = None
 
 
 def setup_logger(logfile="schedknownpsrlog.txt"):
@@ -77,7 +119,7 @@ def get_pulsar_radec(psr):
     return ra, dec
 
 
-def update_psr_list(psrs, pointings, current_acq, processes, pst, logger):
+def update_psr_list(schedule, pst, logger):
     """
     Update the pulsar list by querying the timing_ops database.
 
@@ -85,22 +127,19 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, logger):
     champss_foldmode=True, and removes pulsars that no longer have it enabled.
 
     Args:
-        psrs: Current list of pulsar IDs
-        pointings: Current list of pointing objects
-        current_acq: Current acquisition status list
-        processes: Current process list
+        schedule: Current list of PulsarSchedule entries
         pst: PointingStrategist object
         logger: Logger instance
 
     Returns:
-        Tuple of (psrs, pointings, current_acq, processes) with updates applied
+        Updated list of PulsarSchedule entries
     """
     logger.debug("Checking database for pulsar list updates...")
 
     # Query database for current pulsar list
     new_pulsar_entries = get_champss_fm_sources()
     new_psr_ids = {entry["psr_id"] for entry in new_pulsar_entries}
-    current_psr_ids = set(psrs)
+    current_psr_ids = {entry.psr for entry in schedule}
 
     # Find new pulsars to add
     pulsars_to_add = new_psr_ids - current_psr_ids
@@ -117,12 +156,9 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, logger):
                 Dnow_update = datetime.datetime.now()
                 ap = pst.get_single_pointing(ra, dec, Dnow_update, use_grid=False)
                 beamrow = ap[0].max_beams[0]["beam"]
-                pointings.append(ap)
-                current_acq.append(0)
-                processes.append(0)
-                psrs.append(psr)
+                schedule.append(PulsarSchedule(psr=psr, pointing=ap))
                 logger.info(f"Added {psr} (beam {beamrow})")
-                logger.info(f"Updated pulsar count: {len(psrs)}")
+                logger.info(f"Updated pulsar count: {len(schedule)}")
 
     # Find pulsars to remove (champss_foldmode=False in DB)
     pulsars_to_remove = current_psr_ids - new_psr_ids
@@ -131,20 +167,13 @@ def update_psr_list(psrs, pointings, current_acq, processes, pst, logger):
             f"Removing {len(pulsars_to_remove)} pulsar(s): {sorted(pulsars_to_remove)}"
         )
 
-        # Remove pulsars by rebuilding all lists without removed pulsars
-        indices_to_keep = [
-            i for i, psr in enumerate(psrs) if psr not in pulsars_to_remove
-        ]
-        psrs = [psrs[i] for i in indices_to_keep]
-        pointings = [pointings[i] for i in indices_to_keep]
-        current_acq = [current_acq[i] for i in indices_to_keep]
-        processes = [processes[i] for i in indices_to_keep]
-        logger.info(f"Updated pulsar count: {len(psrs)}")
+        schedule = [entry for entry in schedule if entry.psr not in pulsars_to_remove]
+        logger.info(f"Updated pulsar count: {len(schedule)}")
 
     if not pulsars_to_add and not pulsars_to_remove:
         logger.debug("No changes to pulsar list")
 
-    return psrs, pointings, current_acq, processes
+    return schedule
 
 
 def is_beam_recording(beam, basepath, source="champss"):
@@ -180,7 +209,7 @@ def is_beam_recording(beam, basepath, source="champss"):
         + f"{str(beam).zfill(4)}"
     )
 
-    max_folder_age = 600  # 10 minutes - threshold for active recording
+    max_folder_age = BEAM_RECORDING_GRACE_PERIOD
 
     try:
         now = datetime.datetime.utcnow().timestamp()
@@ -223,12 +252,12 @@ def stop_processes():
     logger.error("Will try to stop all recording jobs after brief pause.")
     # Brief pause to no interfere with other possible stops
     time.sleep(5.0)
-    processes = globals()["processes"]
-    for proc in processes:
-        if isinstance(proc, subprocess.Popen):
+    schedule = globals()["schedule"]
+    for entry in schedule:
+        if isinstance(entry.process, subprocess.Popen):
             logger.info("Stopping acq for one process.")
             try:
-                proc.send_signal(signal.SIGINT)
+                entry.process.send_signal(signal.SIGINT)
             except Exception as e:
                 logger.error(f"Could not stop process due to {e}")
 
@@ -310,12 +339,11 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
     pst = PointingStrategist(create_db=False)
 
     Dnow = datetime.datetime.now()
-    pointings = []
-    current_acq = []
-    active_beams = []
-    psrs = []
-    global processes
-    processes = []
+    global schedule
+    schedule = []
+    # beamrow -> BeamState (active pulsar count + last time we stopped a
+    # process we owned on that beam), created on demand as beams are seen.
+    beam_state = {}
     transit_buffer = 3 * u.min
     db_check_interval = 600
 
@@ -334,19 +362,18 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
         logger.info(f"Found {len(pulsar_entries)} pulsars in database")
 
         logger.info("Acquiring pointings for all pulsars in database")
+        seen_psrs = set()
         for entry in pulsar_entries:
             psr = entry["psr_id"]
             ra = entry["ra"]
             dec = entry["dec"]
 
             # avoid duplicates
-            if psr not in psrs:
+            if psr not in seen_psrs:
                 ap = pst.get_single_pointing(ra, dec, Dnow, use_grid=False)
                 beamrow = ap[0].max_beams[0]["beam"]
-                pointings.append(ap)
-                current_acq.append(0)
-                processes.append(0)
-                psrs.append(psr)
+                schedule.append(PulsarSchedule(psr=psr, pointing=ap))
+                seen_psrs.add(psr)
                 logger.info(f"{psr} (beam {beamrow})")
             else:
                 logger.info(f"{psr} duplicated in database")
@@ -354,17 +381,16 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
         # Load from text file
         logger.info("Loading pulsars from text file")
         logger.info("Acquiring pointings for all pulsars in list")
+        seen_psrs = set()
         for psr in psrfile:
             psr = psr.strip()
             # avoid duplicates
-            if psr not in psrs:
+            if psr not in seen_psrs:
                 ra, dec = get_pulsar_radec(psr)
                 ap = pst.get_single_pointing(ra, dec, Dnow, use_grid=False)
                 beamrow = ap[0].max_beams[0]["beam"]
-                pointings.append(ap)
-                current_acq.append(0)
-                processes.append(0)
-                psrs.append(psr)
+                schedule.append(PulsarSchedule(psr=psr, pointing=ap))
+                seen_psrs.add(psr)
                 logger.info(f"{psr} (beam {beamrow})")
             else:
                 logger.info(f"{psr} duplicated in list")
@@ -380,15 +406,12 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
         if use_database_mode:
             time_since_last_check = (Tnow - last_db_check).to(u.s).value
             if time_since_last_check >= db_check_interval:
-                psrs, pointings, current_acq, processes = update_psr_list(
-                    psrs, pointings, current_acq, processes, pst, logger
-                )
+                schedule = update_psr_list(schedule, pst, logger)
                 last_db_check = Tnow
 
-        i = 0
-        for psr in psrs:
-            ap = pointings[i]
-            activeacq = current_acq[i]
+        for entry in schedule:
+            ap = entry.pointing
+            activeacq = entry.active
             Tend = Time(ap[0].max_beams[3]["utc_end"], format="unix")
             Tstart = Time(ap[0].max_beams[0]["utc_start"], format="unix")
             Tend = Tend + transit_buffer
@@ -396,22 +419,27 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
             transit_duration = (Tend - Tstart).to(u.s).value
             beamrow = ap[0].max_beams[0]["beam"]
             time_to_transit = Tend.unix - Tnow.unix
+            state = beam_state.setdefault(beamrow, BeamState())
 
             if (time_to_transit < transit_duration) and (time_to_transit > 0):
                 if not activeacq:
-                    if beamrow not in active_beams:
-                        # Check if beam is already recording (e.g., by spsctl or another controller)
-                        if is_beam_recording(beamrow, basepath, source):
+                    if state.active_count == 0:
+                        recently_stopped_by_us = (
+                            state.last_stopped is not None
+                            and (Tnow.unix - state.last_stopped)
+                            < BEAM_RECORDING_GRACE_PERIOD
+                        )
+                        # If we ourselves stopped this beam a moment ago, any
+                        # residual folder activity is a leftover of our own
+                        # process shutting down, not external control - skip
+                        # straight to starting a fresh acquisition. Otherwise,
+                        # check if beam is already recording (e.g., by spsctl
+                        # or another controller).
+                        if recently_stopped_by_us or not is_beam_recording(
+                            beamrow, basepath, source
+                        ):
                             logger.info(
-                                f"{psr} transitting row {beamrow}, beam already "
-                                f"recording, will not interfere"
-                            )
-                            # Mark as externally controlled - don't start spsctl
-                            processes[i] = "external"
-                        else:
-                            # Beam is not recording, safe to start it
-                            logger.info(
-                                f"Starting acq, {psr} transitting row {beamrow}"
+                                f"Starting acq, {entry.psr} transitting row {beamrow}"
                             )
                             processi = subprocess.Popen(
                                 [
@@ -424,46 +452,54 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
                                 ],
                                 shell=False,
                             )  # nosec
-                            processes[i] = processi
+                            entry.process = processi
+                        else:
+                            logger.info(
+                                f"{entry.psr} transitting row {beamrow}, beam already "
+                                f"recording, will not interfere"
+                            )
+                            # Mark as externally controlled - don't start spsctl
+                            entry.process = "external"
                     else:
-                        logger.info(f"{psr} transitting row {beamrow}, continuing acq")
+                        logger.info(
+                            f"{entry.psr} transitting row {beamrow}, continuing acq"
+                        )
                         # logic to include process id for beams with 2+ pulsars
-                        processes[i] = beamrow
-                    active_beams.append(beamrow)
-                    current_acq[i] = 1
+                        entry.process = beamrow
+                    state.active_count += 1
+                    entry.active = True
             elif time_to_transit < 0:
-                activecount = active_beams.count(beamrow)
-                if (activecount == 1) and (activeacq):
-                    processi = processes[i]
+                if (state.active_count == 1) and activeacq:
+                    processi = entry.process
                     # Only stop if we control this beam (not externally controlled)
                     if isinstance(processi, subprocess.Popen):
-                        logger.info(f"Stopping acq, {psr} row {beamrow}")
+                        logger.info(f"Stopping acq, {entry.psr} row {beamrow}")
                         processi.send_signal(signal.SIGINT)
+                        state.last_stopped = Tnow.unix
                     elif processi == "external":
                         logger.info(
-                            f"Not stopping {psr} row {beamrow}, "
+                            f"Not stopping {entry.psr} row {beamrow}, "
                             f"beam controlled externally"
                         )
-                    active_beams.remove(beamrow)
-                    current_acq[i] = 0
-                elif (activecount > 1) and (activeacq):
-                    logger.info(f"Continuing acq, removing {psr} row {beamrow}")
-                    active_beams.remove(beamrow)
-                    current_acq[i] = 0
+                    state.active_count -= 1
+                    entry.active = False
+                elif (state.active_count > 1) and activeacq:
+                    logger.info(f"Continuing acq, removing {entry.psr} row {beamrow}")
+                    state.active_count -= 1
+                    entry.active = False
                     # passing process id to next pulsar in same beamrow
-                    k = processes.index(beamrow)
-                    processi = processes[i]
-                    processes[k] = processi
-                    processes[i] = 0
+                    handoff_entry = next(
+                        e for e in schedule if e.process == beamrow
+                    )
+                    handoff_entry.process = entry.process
+                    entry.process = 0
 
                 # update pointing to current time, plan next transit in ~24 hours
                 Dnow = datetime.datetime.now()
                 # ra, dec = get_pulsar_radec(psr)
                 ra = ap[0].ra
                 dec = ap[0].dec
-                ap_updated = pst.get_single_pointing(ra, dec, Dnow, use_grid=False)
-                pointings[i] = ap_updated
-            i += 1
+                entry.pointing = pst.get_single_pointing(ra, dec, Dnow, use_grid=False)
         time.sleep(60.0)
 
 
