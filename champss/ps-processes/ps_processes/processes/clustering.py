@@ -652,7 +652,9 @@ class Clusterer:
             filter_rogue_harmpows = rogue_harmpow_filter_alt
 
         # Filter out rogue harmonic powers
-        detections_filtered = filter_rogue_harmpows(detections_in)
+        # detections_filtered = filter_rogue_harmpows(detections_in)
+        print(self.dbscan_eps)
+        detections_filtered = detections_in
         log.info(
             "Rogue harmonic power filter reduced detections from"
             f" {len(detections_in)} to {len(detections_filtered)}"

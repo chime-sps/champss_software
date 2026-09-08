@@ -7,6 +7,7 @@ import yaml
 from multiprocessing import Pool, set_start_method
 import datetime
 import copy
+from scipy.signal import convolve
 
 import numpy as np
 from numba import njit
@@ -149,6 +150,7 @@ class PowerSpectraSearch:
     full_harm_bins_raw = attribute(default=None)
     update_db = attribute(default=True, validator=instance_of(bool))
     max_search_frequency: float = attribute(default=np.inf)
+    convolve_max_bin: int = attribute(default=128)
 
     @num_harm.validator
     def _validate_num_harm(self, attribute, value):
@@ -449,6 +451,7 @@ class PowerSpectraSearch:
             ("injection", int),
             ("injection_overlap", float),
             ("manual_candidate", "30U"),  # For now string with length 30
+            ("convolve", int),
         ]
 
         # Calculate the used number of each days in each pixel for each harmonic sum
@@ -512,6 +515,9 @@ class PowerSpectraSearch:
                 full_indices[i : i + self.mp_chunk_size]
                 for i in range(0, len(pspec.dms), self.mp_chunk_size)
             ]
+
+            convolve_bins = np.append(1, 2**np.arange(1,np.floor(np.log2(self.convolve_max_bin*2)))+1).astype(int)
+            # For now use odd bins, so that we can take th middle bin as the frequency
             detection_list = pool.starmap(
                 partial(
                     self.search_candidates,
@@ -526,6 +532,8 @@ class PowerSpectraSearch:
                     self.skip_first_n_bins,
                     self.injection_overlap_threshold,
                     self.injection_dm_threshold,
+                    convolve_bins,
+                    self.sigma_min,
                 ),
                 zip(dm_indices, dm_split),
             )
@@ -539,6 +547,7 @@ class PowerSpectraSearch:
             detections = np.array(
                 [j for sub in detection_list for j in sub], dtype=detection_dtype
             )
+            np.save("detecs.npy", detections)
             log.info(f"Total number of detections={len(detections)}")
             # if len(detections) == 0:
             #     log.warning("No detections made. Further processing will not be completed.")
@@ -748,6 +757,8 @@ class PowerSpectraSearch:
         skip_n_bins,
         injection_overlap_threshold,
         injection_dm_threshold,
+        convolve_bins,
+        sigma_min,
         dm_indices,
         dms,
     ):
@@ -819,6 +830,10 @@ class PowerSpectraSearch:
         freq_labels = freq_labels[: len(full_harm_bins[0])]
         allowed_harmonics = [1, 2, 4, 8, 16, 32]
         for dm_index, dm in zip(dm_indices, dms):
+            if dm < 2:
+                continue
+            if dm_index != 605:
+                continue
             power_spectrum = power_spectra[dm_index, :]
             # for idx_harm, harm in enumerate(allowed_harmonics):
             #     harm_start = time.time()
@@ -840,138 +855,134 @@ class PowerSpectraSearch:
             for idx_harm, harm in enumerate(allowed_harmonics):
                 harm_bins = full_harm_bins[:harm]
                 harm_sum_powers = harmonic_sums[idx_harm]
-
-                power_cutoff = power_cutoff_per_harmonic[idx_harm]
-                used_nsum = nsum_per_harmonic[idx_harm]
-                detection_idx = np.where(harm_sum_powers > power_cutoff)[0]
-                if not len(detection_idx):
-                    continue
-                last_detection_freq = None
-                last_detection_sigma = None
-                if type(used_nsum) is np.ndarray:
-                    used_nsum_detec = used_nsum[detection_idx]
-                else:
-                    used_nsum_detec = used_nsum
-                sigmas = sigma_sum_powers(
-                    harm_sum_powers[detection_idx], used_nsum_detec
-                )
-                for idx_count, idx in enumerate(detection_idx):
-                    replace_last = False
-                    detection_freq = freq_labels[idx] / harm
-                    # skipping candidates with very short and very high frequencies
-
-                    if detection_freq <= skip_n_bins * freq_labels[1]:
-                        continue
-                    if detection_freq > cutoff_frequency:
-                        break
-
-                    if sigmas is None:
+                for convolve_bin in convolve_bins:
+                    used_nsum = nsum_per_harmonic[idx_harm]
+                    last_detection_freq = None
+                    last_detection_sigma = None
+                    if convolve_bin == 1:
+                        power_cutoff = power_cutoff_per_harmonic[idx_harm]
+                        detection_idx = np.where(harm_sum_powers > power_cutoff)[0]
+                        if not len(detection_idx):
+                            continue
                         if type(used_nsum) is np.ndarray:
-                            used_nsum_detec_loop = used_nsum[idx]
+                            used_nsum_detec = used_nsum[detection_idx]
                         else:
-                            used_nsum_detec_loop = used_nsum
-                        sigma = sigma_sum_powers(
-                            harm_sum_powers[idx], used_nsum_detec_loop
+                            used_nsum_detec = used_nsum
+                        sigmas = sigma_sum_powers(
+                            harm_sum_powers[detection_idx], used_nsum_detec
                         )
                     else:
-                        sigma = sigmas[idx_count]
-                        if np.isnan(sigma):
+                        convolved_power = convolve(harm_sum_powers, np.ones(convolve_bin), mode="same")
+                        if type(used_nsum) is np.ndarray:
+                            used_nsum_convolve = convolve(used_nsum, np.ones(convolve_bin), mode="same")
+                        else:
+                            used_nsum_convolve = used_nsum * convolve_bin
+                        # For now just calulate sigma for all
+                        # set threshold to half of all summed
+                        power_cutoff = 0 #powersum_at_sigma(sigma_min, used_nsum_convolve.max()*0.5)
+                        check_idx = np.where(convolved_power > power_cutoff)[0]
+
+                        # power_threshold = powersum_at_sigma(sigma_min, used_nsum_convolve)
+                        sigmas = sigma_sum_powers(convolved_power[check_idx], used_nsum_convolve[check_idx])
+                        detection_idx = np.where(sigmas > sigma_min)[0]
+                        sigmas = sigmas[detection_idx]
+                        # print(dm_index, idx_harm, convolve_bin, len(sigmas))
+
+                        
+                    for idx_count, idx in enumerate(detection_idx):
+                        replace_last = False
+                        detection_freq = freq_labels[idx] / harm
+                        # skipping candidates with very short and very high frequencies
+
+                        if detection_freq <= skip_n_bins * freq_labels[1] * convolve_bin:
+                            continue
+                        if detection_freq > cutoff_frequency:
+                            break
+
+                        if sigmas is None:
                             if type(used_nsum) is np.ndarray:
                                 used_nsum_detec_loop = used_nsum[idx]
                             else:
                                 used_nsum_detec_loop = used_nsum
-                            # Array input should work properly
-                            log.error("Sigma calculation for array produced nan")
                             sigma = sigma_sum_powers(
                                 harm_sum_powers[idx], used_nsum_detec_loop
                             )
-                    if (
-                        last_detection_freq
-                        and np.abs(detection_freq - last_detection_freq)
-                        < MIN_SEARCH_FREQ * 1.1
-                    ):
-                        if sigma < last_detection_sigma:
-                            continue
                         else:
-                            replace_last = True
+                            sigma = sigmas[idx_count]
+                            if np.isnan(sigma):
+                                if type(used_nsum) is np.ndarray:
+                                    used_nsum_detec_loop = used_nsum[idx]
+                                else:
+                                    used_nsum_detec_loop = used_nsum
+                                # Array input should work properly
+                                log.error("Sigma calculation for array produced nan")
+                                sigma = sigma_sum_powers(
+                                    harm_sum_powers[idx], used_nsum_detec_loop
+                                )
+                        if (
+                            last_detection_freq
+                            and np.abs(detection_freq - last_detection_freq)
+                            < MIN_SEARCH_FREQ * 1.1
+                        ):
+                            if sigma < last_detection_sigma:
+                                continue
+                            else:
+                                replace_last = True
 
-                    sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
-                    overlapped_injections = []
-                    all_injection_overlaps = []
-                    for list_index, injection_dict in enumerate(injection_dicts):
-                        injected_bins = injection_dict["bins"]
-                        injected_dms = injection_dict["dms"]
-                        if dm_index in injected_dms:
-                            injection_overlap = np.intersect1d(
-                                sorted_harm_bins, injected_bins
-                            )
-                            # Old metric, based on overlapping bins
-                            # injection_overlap_fraction = injection_overlap.size / len(
-                            #     sorted_harm_bins
-                            # )
-                            injection_overlap_fraction = (
-                                power_spectrum[injection_overlap].sum()
-                                / power_spectrum[sorted_harm_bins].sum()
-                            )
-                            overlapped_injections.append(list_index)
-                            all_injection_overlaps.append(injection_overlap_fraction)
+                        sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
+                        overlapped_injections = []
+                        all_injection_overlaps = []
+                        for list_index, injection_dict in enumerate(injection_dicts):
+                            injected_bins = injection_dict["bins"]
+                            injected_dms = injection_dict["dms"]
+                            if dm_index in injected_dms:
+                                injection_overlap = np.intersect1d(
+                                    sorted_harm_bins, injected_bins
+                                )
+                                # Old metric, based on overlapping bins
+                                # injection_overlap_fraction = injection_overlap.size / len(
+                                #     sorted_harm_bins
+                                # )
+                                injection_overlap_fraction = (
+                                    power_spectrum[injection_overlap].sum()
+                                    / power_spectrum[sorted_harm_bins].sum()
+                                )
+                                overlapped_injections.append(list_index)
+                                all_injection_overlaps.append(injection_overlap_fraction)
 
-                    injected_index = -1
-                    injection_overlap_fraction = 0.0
-                    if len(all_injection_overlaps) and (
-                        np.max(all_injection_overlaps) > 0.0
-                    ):
-                        sort_overlaps = np.argsort(all_injection_overlaps)[::-1]
+                        injected_index = -1
                         injection_overlap_fraction = 0.0
-                        for index in sort_overlaps:
-                            if (
-                                all_injection_overlaps[index]
-                                >= injection_overlap_threshold
-                                and np.abs(
-                                    injection_dicts[overlapped_injections[index]]["DM"]
-                                    - dm
-                                )
-                                < injection_dm_threshold
-                            ):
-                                injected_index = overlapped_injections[index]
-                                injection_overlap_fraction = all_injection_overlaps[
-                                    index
-                                ]
-                                break
-                        if injected_index == -1:
-                            injection_overlap_fraction = max(all_injection_overlaps)
+                        if len(all_injection_overlaps) and (
+                            np.max(all_injection_overlaps) > 0.0
+                        ):
+                            sort_overlaps = np.argsort(all_injection_overlaps)[::-1]
+                            injection_overlap_fraction = 0.0
+                            for index in sort_overlaps:
+                                if (
+                                    all_injection_overlaps[index]
+                                    >= injection_overlap_threshold
+                                    and np.abs(
+                                        injection_dicts[overlapped_injections[index]]["DM"]
+                                        - dm
+                                    )
+                                    < injection_dm_threshold
+                                ):
+                                    injected_index = overlapped_injections[index]
+                                    injection_overlap_fraction = all_injection_overlaps[
+                                        index
+                                    ]
+                                    break
+                            if injected_index == -1:
+                                injection_overlap_fraction = max(all_injection_overlaps)
 
-                    if replace_last:
-                        detection_list[-1] = (
-                            detection_freq,
-                            dm,
-                            harm,
-                            tuple(
-                                np.pad(
-                                    sorted_harm_bins, (0, 32 - len(sorted_harm_bins))
-                                )
-                            ),
-                            tuple(
-                                np.pad(
-                                    power_spectrum[sorted_harm_bins],
-                                    (0, 32 - len(sorted_harm_bins)),
-                                )
-                            ),
-                            sigma,
-                            injected_index,
-                            injection_overlap_fraction,
-                            "",
-                        )
-                    else:
-                        detection_list.append(
-                            (
+                        if replace_last:
+                            detection_list[-1] = (
                                 detection_freq,
                                 dm,
                                 harm,
                                 tuple(
                                     np.pad(
-                                        sorted_harm_bins,
-                                        (0, 32 - len(sorted_harm_bins)),
+                                        sorted_harm_bins, (0, 32 - len(sorted_harm_bins))
                                     )
                                 ),
                                 tuple(
@@ -984,14 +995,40 @@ class PowerSpectraSearch:
                                 injected_index,
                                 injection_overlap_fraction,
                                 "",
+                                convolve_bin,
                             )
-                        )
-                    last_detection_freq = detection_freq
-                    last_detection_sigma = sigma
+                        else:
+                            detection_list.append(
+                                (
+                                    detection_freq,
+                                    dm,
+                                    harm,
+                                    tuple(
+                                        np.pad(
+                                            sorted_harm_bins,
+                                            (0, 32 - len(sorted_harm_bins)),
+                                        )
+                                    ),
+                                    tuple(
+                                        np.pad(
+                                            power_spectrum[sorted_harm_bins],
+                                            (0, 32 - len(sorted_harm_bins)),
+                                        )
+                                    ),
+                                    sigma,
+                                    injected_index,
+                                    injection_overlap_fraction,
+                                    "",
+                                    convolve_bin,
+                                )
+                            )
+                        last_detection_freq = detection_freq
+                        last_detection_sigma = sigma
                 # harm_end = time.time()
                 # log.debug(
                 #     f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum"
                 # )
+        print(dm_indices, len(detection_list))
         return detection_list
 
     def summarise(self, clusters, cluster_harm_idx):

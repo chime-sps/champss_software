@@ -926,6 +926,18 @@ class PowerSpectraDetectionClusters:
                     "manual_candidate",
                     "injection_overlap",
                 },
+                {
+                    "freq",
+                    "dm",
+                    "nharm",
+                    "harm_idx",
+                    "harm_pow",
+                    "injection",
+                    "sigma",
+                    "manual_candidate",
+                    "injection_overlap",
+                    "convolve",
+                },
             ]
             if val_dtype not in acceptable_dtype_names:
                 raise TypeError(
