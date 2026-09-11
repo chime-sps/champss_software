@@ -883,9 +883,11 @@ class PowerSpectraSearch:
                         check_idx = np.where(convolved_power > power_cutoff)[0]
 
                         # power_threshold = powersum_at_sigma(sigma_min, used_nsum_convolve)
+                        # probably much easier way of doing this all
                         sigmas = sigma_sum_powers(convolved_power[check_idx], used_nsum_convolve[check_idx])
-                        detection_idx = np.where(sigmas > sigma_min)[0]
-                        sigmas = sigmas[detection_idx]
+                        good_idx = np.where(sigmas > sigma_min)[0]
+                        sigmas = sigmas[good_idx]
+                        detection_idx = check_idx[good_idx]
                         # print(dm_index, idx_harm, convolve_bin, len(sigmas))
 
                         
@@ -919,15 +921,27 @@ class PowerSpectraSearch:
                                 sigma = sigma_sum_powers(
                                     harm_sum_powers[idx], used_nsum_detec_loop
                                 )
-                        if (
-                            last_detection_freq
-                            and np.abs(detection_freq - last_detection_freq)
-                            < MIN_SEARCH_FREQ * 1.1
-                        ):
-                            if sigma < last_detection_sigma:
-                                continue
-                            else:
-                                replace_last = True
+                        #Case can probably be unified once I know what exactly I want, if I want to change the current case
+                        if convolve_bin == 1:
+                            if (
+                                last_detection_freq
+                                and np.abs(detection_freq - last_detection_freq)
+                                < MIN_SEARCH_FREQ * 1.1 
+                            ):
+                                if sigma < last_detection_sigma:
+                                    continue
+                                else:
+                                    replace_last = True
+                        else:
+                            if (
+                                last_detection_freq
+                                and np.abs(detection_freq - last_detection_freq)
+                                < MIN_SEARCH_FREQ * convolve_bin
+                            ):
+                                if sigma < last_detection_sigma:
+                                    continue
+                                else:
+                                    replace_last = True                            
 
                         sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
                         overlapped_injections = []
