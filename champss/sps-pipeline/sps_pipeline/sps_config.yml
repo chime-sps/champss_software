@@ -369,7 +369,7 @@ ps_cumul_stack:
       dbscan_eps: 1
       dm_scale_factor: 0.02
       freq_scale_factor: 0.9
-      dbscan_min_samples: 1
+      dbscan_min_samples: 5
       filter_nharm: False
       cluster_dm_cut: 2
       max_ndetect: 200000

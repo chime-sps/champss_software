@@ -1075,7 +1075,7 @@ class Clusterer:
                 eps=self.dbscan_eps,
                 min_samples=self.dbscan_min_samples,
                 metric="precomputed",
-            ).fit(metric_array)
+            ).fit(metric_array, sample_weight=detections["convolve"])
             log.info("Finished DBSCAN")
         elif self.clustering_method == "HDBSCAN":
             log.info("Starting HDBSCAN")
