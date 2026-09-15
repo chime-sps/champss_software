@@ -150,6 +150,7 @@ class PowerSpectraSearch:
     full_harm_bins_raw = attribute(default=None)
     update_db = attribute(default=True, validator=instance_of(bool))
     max_search_frequency: float = attribute(default=np.inf)
+    convolve_min_bin: int = attribute(default=3)
     convolve_max_bin: int = attribute(default=128)
 
     @num_harm.validator
@@ -516,7 +517,10 @@ class PowerSpectraSearch:
                 for i in range(0, len(pspec.dms), self.mp_chunk_size)
             ]
 
-            convolve_bins = np.append(1, 2**np.arange(1,np.floor(np.log2(self.convolve_max_bin*2)))+1).astype(int)
+            convolve_bins = np.append(
+                1, 2 ** np.arange(1, np.floor(np.log2(self.convolve_max_bin * 2))) + 1
+            ).astype(int)
+            convolve_bins = convolve_bins[convolve_bins >= self.convolve_min_bin]
             # For now use odd bins, so that we can take th middle bin as the frequency
             detection_list = pool.starmap(
                 partial(
@@ -872,31 +876,39 @@ class PowerSpectraSearch:
                             harm_sum_powers[detection_idx], used_nsum_detec
                         )
                     else:
-                        convolved_power = convolve(harm_sum_powers, np.ones(convolve_bin), mode="same")
+                        convolved_power = convolve(
+                            harm_sum_powers, np.ones(convolve_bin), mode="same"
+                        )
                         if type(used_nsum) is np.ndarray:
-                            used_nsum_convolve = convolve(used_nsum, np.ones(convolve_bin), mode="same")
+                            used_nsum_convolve = convolve(
+                                used_nsum, np.ones(convolve_bin), mode="same"
+                            )
                         else:
                             used_nsum_convolve = used_nsum * convolve_bin
                         # For now just calulate sigma for all
                         # set threshold to half of all summed
-                        power_cutoff = 0 #powersum_at_sigma(sigma_min, used_nsum_convolve.max()*0.5)
+                        power_cutoff = 0  # powersum_at_sigma(sigma_min, used_nsum_convolve.max()*0.5)
                         check_idx = np.where(convolved_power > power_cutoff)[0]
 
                         # power_threshold = powersum_at_sigma(sigma_min, used_nsum_convolve)
                         # probably much easier way of doing this all
-                        sigmas = sigma_sum_powers(convolved_power[check_idx], used_nsum_convolve[check_idx])
+                        sigmas = sigma_sum_powers(
+                            convolved_power[check_idx], used_nsum_convolve[check_idx]
+                        )
                         good_idx = np.where(sigmas > sigma_min)[0]
                         sigmas = sigmas[good_idx]
                         detection_idx = check_idx[good_idx]
                         # print(dm_index, idx_harm, convolve_bin, len(sigmas))
 
-                        
                     for idx_count, idx in enumerate(detection_idx):
                         replace_last = False
                         detection_freq = freq_labels[idx] / harm
                         # skipping candidates with very short and very high frequencies
 
-                        if detection_freq <= skip_n_bins * freq_labels[1] * convolve_bin:
+                        if (
+                            detection_freq
+                            <= skip_n_bins * freq_labels[1] * convolve_bin
+                        ):
                             continue
                         if detection_freq > cutoff_frequency:
                             break
@@ -921,12 +933,12 @@ class PowerSpectraSearch:
                                 sigma = sigma_sum_powers(
                                     harm_sum_powers[idx], used_nsum_detec_loop
                                 )
-                        #Case can probably be unified once I know what exactly I want, if I want to change the current case
+                        # Case can probably be unified once I know what exactly I want, if I want to change the current case
                         if convolve_bin == 1:
                             if (
                                 last_detection_freq
                                 and np.abs(detection_freq - last_detection_freq)
-                                < MIN_SEARCH_FREQ * 1.1 
+                                < MIN_SEARCH_FREQ * 1.1
                             ):
                                 if sigma < last_detection_sigma:
                                     continue
@@ -936,12 +948,12 @@ class PowerSpectraSearch:
                             if (
                                 last_detection_freq
                                 and np.abs(detection_freq - last_detection_freq)
-                                < MIN_SEARCH_FREQ * convolve_bin
+                                < MIN_SEARCH_FREQ * 1
                             ):
                                 if sigma < last_detection_sigma:
                                     continue
                                 else:
-                                    replace_last = True                            
+                                    replace_last = True
 
                         sorted_harm_bins = sorted(harm_bins[:harm, idx].astype(int))
                         overlapped_injections = []
@@ -962,7 +974,9 @@ class PowerSpectraSearch:
                                     / power_spectrum[sorted_harm_bins].sum()
                                 )
                                 overlapped_injections.append(list_index)
-                                all_injection_overlaps.append(injection_overlap_fraction)
+                                all_injection_overlaps.append(
+                                    injection_overlap_fraction
+                                )
 
                         injected_index = -1
                         injection_overlap_fraction = 0.0
@@ -976,7 +990,9 @@ class PowerSpectraSearch:
                                     all_injection_overlaps[index]
                                     >= injection_overlap_threshold
                                     and np.abs(
-                                        injection_dicts[overlapped_injections[index]]["DM"]
+                                        injection_dicts[overlapped_injections[index]][
+                                            "DM"
+                                        ]
                                         - dm
                                     )
                                     < injection_dm_threshold
@@ -996,7 +1012,8 @@ class PowerSpectraSearch:
                                 harm,
                                 tuple(
                                     np.pad(
-                                        sorted_harm_bins, (0, 32 - len(sorted_harm_bins))
+                                        sorted_harm_bins,
+                                        (0, 32 - len(sorted_harm_bins)),
                                     )
                                 ),
                                 tuple(
@@ -1042,7 +1059,7 @@ class PowerSpectraSearch:
                 # log.debug(
                 #     f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum"
                 # )
-        print(dm_indices, len(detection_list))
+            print(dm_indices, len(detection_list))
         return detection_list
 
     def summarise(self, clusters, cluster_harm_idx):

@@ -294,6 +294,13 @@ def rogue_harmpow_filter_alt(detections):
     return np.delete(detections, filter_out_idx)
 
 
+def rogue_harmpow_filter_dummy(detections):
+    """
+    Dummy filter that does nothing
+    """
+    return detections
+
+
 def intersect2d_ind_filter0(ar1, ar2):
     """
     Find row wise overlap between two arrays.
@@ -461,7 +468,8 @@ class Clusterer:
             "presto",
             "tweak",
             "alt",
-        ], "harmpow_scheme must be 'presto', 'tweak' or 'alt'"
+            "none",
+        ], "harmpow_scheme must be 'presto', 'tweak', 'none' or 'alt'"
 
     def calculate_metric_rhp_overlap(self, rhplist, idx0, idx1, *args):
         """Calculate harmonic distance between two detections
@@ -624,6 +632,7 @@ class Clusterer:
             np.ndarray: labels resulting from the clustering
             float: sigma lower limit used during clustering
         """
+        print(self)
         log.info("Starting clustering")
         if scheme not in ["combined", "dmfreq", "harm"]:
             raise AttributeError(
@@ -650,9 +659,11 @@ class Clusterer:
             filter_rogue_harmpows = rogue_harmpow_filter_presto_tweak
         elif self.rogue_harmpow_scheme == "alt":
             filter_rogue_harmpows = rogue_harmpow_filter_alt
+        elif self.rogue_harmpow_scheme == "none":
+            filter_rogue_harmpows = rogue_harmpow_filter_dummy
 
         # Filter out rogue harmonic powers
-        # detections_filtered = filter_rogue_harmpows(detections_in)
+        detections_filtered = filter_rogue_harmpows(detections_in)
         print(self.dbscan_eps)
         detections_filtered = detections_in
         log.info(
@@ -1084,6 +1095,8 @@ class Clusterer:
                 metric="precomputed",
             ).fit(metric_array)
             log.info("Finished HDBSCAN")
+        print(metric_array)
+        np.save("metric_array.npy", metric_array.toarray())
 
         nclusters = len(np.unique(db.labels_))
         if -1 in db.labels_:
