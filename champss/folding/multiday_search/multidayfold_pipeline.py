@@ -7,12 +7,12 @@ from folding.utilities.database import add_mdcand_from_candpath, add_mdcand_from
 from scheduler.workflow import (
     clear_workflow_buckets,
     docker_swarm_running_states,
-    schedule_workflow_job,
     wait_for_no_tasks_in_states,
-    get_work_from_results,
 )
+from scheduler.run_as_service import run_as_service
 from sps_databases import db_utils
 from sps_pipeline.pipeline import default_datpath
+from sps_databases.db_api import get_followup_source
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -163,62 +163,17 @@ def main(
 
         print("Finished multiday folding, beginning the coherent search")
 
-        docker_service_name_prefix = "multiday-confirm"
-        docker_name = f"{docker_service_name_prefix}-{fs_id}"
-        docker_memory_reservation = 64
-        docker_mounts = [
-            f"{datpath}:{datpath}",
-            f"{foldpath}:{foldpath}",
-        ]
-
-        workflow_buckets_name = (
-            f"{workflow_buckets_name_prefix}-{docker_service_name_prefix}"
+        service, cleanup = run_as_service(
+            f"confirm_cand --fs_id {fs_id} --db-host {db_host} --db-port {db_port} --db-name {db_name} --nday {nday} --write-to-db --foldpath /mnt/beegfs-client/processed/archives/ --semicoherent",
+            wait_on_finish=True,
+            image=docker_image_name,
+            memory=20,
         )
-        clear_workflow_buckets.main(
-            args=["--workflow-buckets-name", workflow_buckets_name],
-            standalone_mode=False,
-        )
-
-        workflow_function = "multiday_search.confirm_cand.main"
-        workflow_params = {
-            "fs_id": fs_id,
-            "db_host": db_host,
-            "db_port": db_port,
-            "db_name": db_name,
-            "nday": nday,
-            "write_to_db": True,
-            "foldpath": foldpath,
-            "semicoherent": True,
-        }
-        workflow_tags = [
-            "multiday",
-            "confirm",
-            fs_id,
-        ]
-        work_id = schedule_workflow_job(
-            docker_image_name,
-            docker_mounts,
-            docker_name,
-            docker_memory_reservation,
-            workflow_buckets_name,
-            workflow_function,
-            workflow_params,
-            workflow_tags,
-            cleanup=False,
-        )
-
-        wait_for_no_tasks_in_states(
-            docker_swarm_running_states, docker_service_name_prefix
-        )
-        confirm_work = get_work_from_results(
-            workflow_results_name=workflow_buckets_name,
-            work_id=work_id,
-            failover_to_buckets=True,
-        )  # ["results"]
+        new_fs_entry = get_followup_source(fs_id)
 
         # Can add Slack alerts here
         print("Finished multiday search")
-        return confirm_work["results"], confirm_work["products"], confirm_work["plots"]
+        return new_fs_entry["coherentsearch_history"], [], []
     else:
         fold_multiday.main(
             args=args,
