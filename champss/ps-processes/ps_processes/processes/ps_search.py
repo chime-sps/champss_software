@@ -151,7 +151,7 @@ class PowerSpectraSearch:
     update_db = attribute(default=True, validator=instance_of(bool))
     max_search_frequency: float = attribute(default=np.inf)
     convolve_min_bin: int = attribute(default=3)
-    convolve_max_bin: int = attribute(default=128)
+    convolve_max_bin: int = attribute(default=64)
 
     @num_harm.validator
     def _validate_num_harm(self, attribute, value):

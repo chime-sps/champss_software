@@ -366,7 +366,7 @@ ps_cumul_stack:
     only_use_stack_threshold: False
     mean_bin_sigma_threshold: 5
     cluster_config:
-      dbscan_eps: 1
+      dbscan_eps: 64
       dm_scale_factor: 0.02
       freq_scale_factor: 0.9
       dbscan_min_samples: 5
