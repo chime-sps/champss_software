@@ -471,6 +471,10 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
                     if isinstance(processi, subprocess.Popen):
                         logger.info(f"Stopping acq, {entry.psr} row {beamrow}")
                         processi.send_signal(signal.SIGINT)
+                        # Second stop process for safety
+                        stop_process = subprocess.Popen(
+                            ["stopacq", str(beamrow), "--source", source], shell=False
+                        )
                         state.last_stopped = Tnow.unix
                     elif processi == "external":
                         logger.info(
@@ -484,9 +488,7 @@ def main(psrfile, logfile, basepath, source, db_port, db_host, db_name):
                     state.active_count -= 1
                     entry.active = False
                     # passing process id to next pulsar in same beamrow
-                    handoff_entry = next(
-                        e for e in schedule if e.process == beamrow
-                    )
+                    handoff_entry = next(e for e in schedule if e.process == beamrow)
                     handoff_entry.process = entry.process
                     entry.process = 0
 
