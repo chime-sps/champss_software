@@ -11,6 +11,7 @@ from scipy.signal import convolve
 
 import numpy as np
 from numba import njit
+from numba.typed import List
 import pandas as pd
 from attr import ib as attribute
 from attr import s as attrs
@@ -538,6 +539,7 @@ class PowerSpectraSearch:
                     self.injection_dm_threshold,
                     convolve_bins,
                     self.sigma_min,
+                    pspec.get_bin_weights(),
                 ),
                 zip(dm_indices, dm_split),
             )
@@ -763,6 +765,7 @@ class PowerSpectraSearch:
         injection_dm_threshold,
         convolve_bins,
         sigma_min,
+        weights,
         dm_indices,
         dms,
     ):
@@ -836,8 +839,10 @@ class PowerSpectraSearch:
         for dm_index, dm in zip(dm_indices, dms):
             if dm < 2:
                 continue
-            if dm_index != 605:
-                continue
+            # if dm_index != 605:
+            #     continue
+            # if dm_index != 115:
+            #     continue
             power_spectrum = power_spectra[dm_index, :]
             # for idx_harm, harm in enumerate(allowed_harmonics):
             #     harm_start = time.time()
@@ -860,6 +865,8 @@ class PowerSpectraSearch:
                 harm_bins = full_harm_bins[:harm]
                 harm_sum_powers = harmonic_sums[idx_harm]
                 for convolve_bin in convolve_bins:
+                    if not convolve_bin % 2:
+                        print("Use uneven vonvolve bins for now")
                     used_nsum = nsum_per_harmonic[idx_harm]
                     last_detection_freq = None
                     last_detection_sigma = None
@@ -876,24 +883,32 @@ class PowerSpectraSearch:
                             harm_sum_powers[detection_idx], used_nsum_detec
                         )
                     else:
-                        convolved_power = convolve(
-                            harm_sum_powers, np.ones(convolve_bin), mode="same"
-                        )
-                        if type(used_nsum) is np.ndarray:
-                            used_nsum_convolve = convolve(
-                                used_nsum, np.ones(convolve_bin), mode="same"
-                            )
-                        else:
-                            used_nsum_convolve = used_nsum * convolve_bin
+                        # convolved_power = convolve(
+                        #     harm_sum_powers, np.ones(convolve_bin), mode="same"
+                        # )
+                        # if type(used_nsum) is np.ndarray:
+                        #     used_nsum_convolve = convolve(
+                        #         used_nsum, np.ones(convolve_bin), mode="same"
+                        #     )
+                        # else:
+                        #     used_nsum_convolve = used_nsum * convolve_bin
                         # For now just calulate sigma for all
                         # set threshold to half of all summed
-                        power_cutoff = 0  # powersum_at_sigma(sigma_min, used_nsum_convolve.max()*0.5)
+                        used_harm_bins =  np.lib.stride_tricks.sliding_window_view(harm_bins[:harm], window_shape=(harm,convolve_bin)).squeeze(axis=0).reshape(-1, harm*convolve_bin)
+                        unique_summed_bins = [np.unique(row) for row in used_harm_bins]
+                        front_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
+                        end_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
+                        unique_summed_bins = front_pad+ unique_summed_bins + end_pad
+                        unique_summed_bins = List(unique_summed_bins)
+                        convolved_power = calc_unique_sums(power_spectrum, unique_summed_bins)
+                        convolved_ndays = calc_unique_sums(weights, unique_summed_bins)
+                        power_cutoff = convolved_ndays #0  # powersum_at_sigma(sigma_min, used_nsum_convolve.max()*0.5)
                         check_idx = np.where(convolved_power > power_cutoff)[0]
 
                         # power_threshold = powersum_at_sigma(sigma_min, used_nsum_convolve)
                         # probably much easier way of doing this all
                         sigmas = sigma_sum_powers(
-                            convolved_power[check_idx], used_nsum_convolve[check_idx]
+                            convolved_power[check_idx], convolved_ndays[check_idx]
                         )
                         good_idx = np.where(sigmas > sigma_min)[0]
                         sigmas = sigmas[good_idx]
@@ -1226,4 +1241,15 @@ def calc_harmonic_sum(spec, harm_bins):
                 out[out_idx, j] = s[j]
             out_idx += 1
 
+    return out
+
+@njit
+def calc_unique_sums(spec, unique_sum):
+    length = len(unique_sum)
+
+    out = np.empty(length, dtype=spec.dtype)
+
+    out_idx = 0
+    for j in range(length):
+        out[j] = np.sum(spec[unique_sum[j]])
     return out
