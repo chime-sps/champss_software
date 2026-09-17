@@ -215,6 +215,7 @@ class PowerSpectraSearch:
         ps_length = len(pspec.freq_labels)
         ps_length_search = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
         all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
+        all_harmonic_vals = all_harmonic_vals[all_harmonic_vals <= self.num_harm]
         # compute harmonic bins based on power spectra properties
         if self.full_harm_bins is None:
             self.full_harm_bins = np.vstack(
@@ -460,7 +461,7 @@ class PowerSpectraSearch:
         # From that calculate the power_cutoff.
         # Calculating for each DM trial would be slower.
         # The harmonics are also currently hard-coded in the search routine currently
-        all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
+        # all_harmonic_vals = np.array([1, 2, 4, 8, 16, 32])
         if self.use_nsum_per_bin:
             power_cutoff_per_harmonic = np.zeros((6, ps_length_search), dtype=float)
             nsum_per_harmonic = np.zeros((6, ps_length_search), dtype=int)
@@ -523,11 +524,37 @@ class PowerSpectraSearch:
             ).astype(int)
             convolve_bins = convolve_bins[convolve_bins >= self.convolve_min_bin]
             # For now use odd bins, so that we can take th middle bin as the frequency
+
+            precompute_convolve_bins = True
+            bin_weights = pspec.get_bin_weights()
+            print(all_harmonic_vals)
+            if precompute_convolve_bins:
+                precomputed_convolutions = {}
+                for convolve_bin in convolve_bins:
+                    precomputed_convolutions[str(convolve_bin)] = {}
+                    log.info(f"Compute window {convolve_bin}")
+                    windowed_bins =  np.lib.stride_tricks.sliding_window_view(self.full_harm_bins, window_shape=(self.full_harm_bins.shape[0],
+                                                                                                                 convolve_bin)).squeeze(axis=0)
+                    for harm in all_harmonic_vals:
+                        log.info(f"{convolve_bin} {harm}")
+                        precomputed_convolutions[str(convolve_bin)][str(harm)] = {}
+                        windowed_bins_harm = windowed_bins[:,:harm,:].reshape(-1, harm*convolve_bin)
+                        unique_summed_bins = [np.unique(row) for row in windowed_bins_harm]
+                        # This needs uneven windows currently
+                        front_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
+                        end_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
+                        unique_summed_bins = front_pad+ unique_summed_bins + end_pad
+                        # unique_summed_bins = List(unique_summed_bins)
+                        convolved_ndays = calc_unique_sums(bin_weights, List(unique_summed_bins))
+                        precomputed_convolutions[str(convolve_bin)][str(harm)]["convolved_ndays"] = convolved_ndays
+                        precomputed_convolutions[str(convolve_bin)][str(harm)]["convolved_bins_list"] = unique_summed_bins
+
+            log.info("Precomputed convolutions")
             detection_list = pool.starmap(
                 partial(
                     self.search_candidates,
                     pspec.power_spectra_shared_dict,
-                    self.num_harm,
+                    all_harmonic_vals,
                     shm_full_harm_bins_dict,
                     shm_freq_labels_dict,
                     shm_nsum_per_harmonic_dict,
@@ -539,7 +566,7 @@ class PowerSpectraSearch:
                     self.injection_dm_threshold,
                     convolve_bins,
                     self.sigma_min,
-                    pspec.get_bin_weights(),
+                    precomputed_convolutions,
                 ),
                 zip(dm_indices, dm_split),
             )
@@ -753,7 +780,7 @@ class PowerSpectraSearch:
     @staticmethod
     def search_candidates(
         shm_spec_dict,
-        num_harm,
+        all_harmonic_vals,
         shm_harm_bins_dict,
         shm_freq_labels_dict,
         shm_nsum_dict,
@@ -765,7 +792,7 @@ class PowerSpectraSearch:
         injection_dm_threshold,
         convolve_bins,
         sigma_min,
-        weights,
+        precomputed_convolutions,
         dm_indices,
         dms,
     ):
@@ -825,6 +852,7 @@ class PowerSpectraSearch:
         """
         # log.debug(f"Working on DM={dm} with {num_harm} harmonics")
         # Could consider moving this to some initializer function
+        # print("start")
         power_spectra, shared_spectra = recreate_shared_array(shm_spec_dict)
         full_harm_bins, shm_full_harm_bins = recreate_shared_array(shm_harm_bins_dict)
         freq_labels, shm_freq_labels = recreate_shared_array(shm_freq_labels_dict)
@@ -835,35 +863,21 @@ class PowerSpectraSearch:
         detection_list = []
         power_spectra = power_spectra[:, : len(full_harm_bins[0])]
         freq_labels = freq_labels[: len(full_harm_bins[0])]
-        allowed_harmonics = [1, 2, 4, 8, 16, 32]
         for dm_index, dm in zip(dm_indices, dms):
+            start_time = time.time()
             if dm < 2:
                 continue
+            # print("Start really.")
             # if dm_index != 605:
             #     continue
             # if dm_index != 115:
             #     continue
             power_spectrum = power_spectra[dm_index, :]
-            # for idx_harm, harm in enumerate(allowed_harmonics):
-            #     harm_start = time.time()
-            #     if harm > num_harm:
-            #         continue
-            #     log.debug(f"Working on the harmonic={harm} sum")
-            #     harm_bins = full_harm_bins[:harm]
-
-            #     if idx_harm == 0:
-            #         harm_sum_powers = power_spectrum[harm_bins].sum(0)
-            #     else:
-            #         last_harm = allowed_harmonics[idx_harm - 1]
-            #         np.add(
-            #             harm_sum_powers,
-            #             power_spectrum[harm_bins[last_harm:harm, :]].sum(0),
-            #             out=harm_sum_powers,
-            #         )
-            harmonic_sums = calc_harmonic_sum(power_spectrum, full_harm_bins)
-            for idx_harm, harm in enumerate(allowed_harmonics):
+            # harmonic_sums = calc_harmonic_sum(power_spectrum, full_harm_bins)
+            # print(start_time-time.time())
+            for idx_harm, harm in enumerate(all_harmonic_vals):
                 harm_bins = full_harm_bins[:harm]
-                harm_sum_powers = harmonic_sums[idx_harm]
+                # harm_sum_powers = harmonic_sums[idx_harm]
                 for convolve_bin in convolve_bins:
                     if not convolve_bin % 2:
                         print("Use uneven vonvolve bins for now")
@@ -894,25 +908,34 @@ class PowerSpectraSearch:
                         #     used_nsum_convolve = used_nsum * convolve_bin
                         # For now just calulate sigma for all
                         # set threshold to half of all summed
-                        used_harm_bins =  np.lib.stride_tricks.sliding_window_view(harm_bins[:harm], window_shape=(harm,convolve_bin)).squeeze(axis=0).reshape(-1, harm*convolve_bin)
-                        unique_summed_bins = [np.unique(row) for row in used_harm_bins]
-                        front_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
-                        end_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
-                        unique_summed_bins = front_pad+ unique_summed_bins + end_pad
-                        unique_summed_bins = List(unique_summed_bins)
-                        convolved_power = calc_unique_sums(power_spectrum, unique_summed_bins)
-                        convolved_ndays = calc_unique_sums(weights, unique_summed_bins)
-                        power_cutoff = convolved_ndays #0  # powersum_at_sigma(sigma_min, used_nsum_convolve.max()*0.5)
+                        # used_harm_bins =  np.lib.stride_tricks.sliding_window_view(harm_bins[:harm], window_shape=(harm,convolve_bin)).squeeze(axis=0).reshape(-1, harm*convolve_bin)
+                        # unique_summed_bins = [np.unique(row) for row in used_harm_bins]
+                        # front_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
+                        # end_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
+                        # unique_summed_bins = front_pad+ unique_summed_bins + end_pad
+                        # unique_summed_bins = List(unique_summed_bins)
+                        # convolved_power = calc_unique_sums(power_spectrum, unique_summed_bins)
+                        # convolved_ndays = calc_unique_sums(weights, unique_summed_bins)
+                        # print(start_time-time.time())
+                        used_convolutions = precomputed_convolutions[str(convolve_bin)][str(harm)]
+                        # print(start_time-time.time())
+                        convolved_power = calc_unique_sums(power_spectrum, List(used_convolutions["convolved_bins_list"]))
+                        # print(start_time-time.time())
+                        convolved_ndays = used_convolutions["convolved_ndays"]
+                        power_cutoff = convolved_ndays
                         check_idx = np.where(convolved_power > power_cutoff)[0]
+                        # print(start_time-time.time())
 
                         # power_threshold = powersum_at_sigma(sigma_min, used_nsum_convolve)
                         # probably much easier way of doing this all
                         sigmas = sigma_sum_powers(
                             convolved_power[check_idx], convolved_ndays[check_idx]
                         )
+                        # print(start_time-time.time())
                         good_idx = np.where(sigmas > sigma_min)[0]
                         sigmas = sigmas[good_idx]
                         detection_idx = check_idx[good_idx]
+                        # print(start_time-time.time(), len(detection_idx), len(check_idx))
                         # print(dm_index, idx_harm, convolve_bin, len(sigmas))
 
                     for idx_count, idx in enumerate(detection_idx):
@@ -1074,7 +1097,8 @@ class PowerSpectraSearch:
                 # log.debug(
                 #     f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum"
                 # )
-            print(dm_indices, len(detection_list))
+            end_time = time.time()
+            print(dm_indices, len(detection_list), end_time-start_time)
         return detection_list
 
     def summarise(self, clusters, cluster_harm_idx):
