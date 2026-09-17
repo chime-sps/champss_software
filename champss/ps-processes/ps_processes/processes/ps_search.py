@@ -532,24 +532,32 @@ class PowerSpectraSearch:
                 precomputed_convolutions = {}
                 for convolve_bin in convolve_bins:
                     precomputed_convolutions[str(convolve_bin)] = {}
-                    log.info(f"Compute window {convolve_bin}")
-                    windowed_bins =  np.lib.stride_tricks.sliding_window_view(self.full_harm_bins, window_shape=(self.full_harm_bins.shape[0],
-                                                                                                                 convolve_bin)).squeeze(axis=0)
-                    for harm in all_harmonic_vals:
-                        log.info(f"{convolve_bin} {harm}")
-                        precomputed_convolutions[str(convolve_bin)][str(harm)] = {}
-                        windowed_bins_harm = windowed_bins[:,:harm,:].reshape(-1, harm*convolve_bin)
-                        unique_summed_bins = [np.unique(row) for row in windowed_bins_harm]
-                        # This needs uneven windows currently
-                        front_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
-                        end_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
-                        unique_summed_bins = front_pad+ unique_summed_bins + end_pad
-                        # unique_summed_bins = List(unique_summed_bins)
-                        convolved_ndays = calc_unique_sums(bin_weights, List(unique_summed_bins))
-                        precomputed_convolutions[str(convolve_bin)][str(harm)]["convolved_ndays"] = convolved_ndays
-                        precomputed_convolutions[str(convolve_bin)][str(harm)]["convolved_bins_list"] = unique_summed_bins
+                    prepared_unique_bins, prepared_unique_offsets = prepare_unique_harmonic_bins(self.full_harm_bins, convolve_bin)
+                    precomputed_convolutions[str(convolve_bin)]["unique_bins"] = prepared_unique_bins
+                    precomputed_convolutions[str(convolve_bin)]["unique_offsets"] = prepared_unique_offsets
+                    convolved_ndays = calc_harmonic_sums(bin_weights, List(prepared_unique_bins), List(prepared_unique_offsets), List(all_harmonic_vals))
+                    precomputed_convolutions[str(convolve_bin)]["convolved_ndays"] = convolved_ndays
+
+                #     precomputed_convolutions[str(convolve_bin)] = {}
+                #     log.info(f"Compute window {convolve_bin}")
+                #     windowed_bins =  np.lib.stride_tricks.sliding_window_view(self.full_harm_bins, window_shape=(self.full_harm_bins.shape[0],
+                #                                                                                                  convolve_bin)).squeeze(axis=0)
+                #     for harm in all_harmonic_vals:
+                #         log.info(f"{convolve_bin} {harm}")
+                #         precomputed_convolutions[str(convolve_bin)][str(harm)] = {}
+                #         windowed_bins_harm = windowed_bins[:,:harm,:].reshape(-1, harm*convolve_bin)
+                #         unique_summed_bins = [np.unique(row) for row in windowed_bins_harm]
+                #         # This needs uneven windows currently
+                #         front_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
+                #         end_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
+                #         unique_summed_bins = front_pad+ unique_summed_bins + end_pad
+                #         # unique_summed_bins = List(unique_summed_bins)
+                #         convolved_ndays = calc_unique_sums(bin_weights, List(unique_summed_bins))
+                #         precomputed_convolutions[str(convolve_bin)][str(harm)]["convolved_ndays"] = convolved_ndays
+                #         precomputed_convolutions[str(convolve_bin)][str(harm)]["convolved_bins_list"] = unique_summed_bins
 
             log.info("Precomputed convolutions")
+            print(self.num_threads)
             detection_list = pool.starmap(
                 partial(
                     self.search_candidates,
@@ -875,12 +883,15 @@ class PowerSpectraSearch:
             power_spectrum = power_spectra[dm_index, :]
             # harmonic_sums = calc_harmonic_sum(power_spectrum, full_harm_bins)
             # print(start_time-time.time())
-            for idx_harm, harm in enumerate(all_harmonic_vals):
-                harm_bins = full_harm_bins[:harm]
+            for convolve_bin in convolve_bins:
+                precomputed = precomputed_convolutions[str(convolve_bin)]
+                # print(start_time-time.time())
+                harmonic_sums = calc_harmonic_sums(power_spectrum, List(precomputed["unique_bins"]), List(precomputed["unique_offsets"]), List(all_harmonic_vals))
+                # print(start_time-time.time())
+                for idx_harm, harm in enumerate(all_harmonic_vals):
+                    harm_bins = full_harm_bins[:harm]
                 # harm_sum_powers = harmonic_sums[idx_harm]
-                for convolve_bin in convolve_bins:
-                    if not convolve_bin % 2:
-                        print("Use uneven vonvolve bins for now")
+                # for convolve_bin in convolve_bins:
                     used_nsum = nsum_per_harmonic[idx_harm]
                     last_detection_freq = None
                     last_detection_sigma = None
@@ -897,31 +908,13 @@ class PowerSpectraSearch:
                             harm_sum_powers[detection_idx], used_nsum_detec
                         )
                     else:
-                        # convolved_power = convolve(
-                        #     harm_sum_powers, np.ones(convolve_bin), mode="same"
-                        # )
-                        # if type(used_nsum) is np.ndarray:
-                        #     used_nsum_convolve = convolve(
-                        #         used_nsum, np.ones(convolve_bin), mode="same"
-                        #     )
-                        # else:
-                        #     used_nsum_convolve = used_nsum * convolve_bin
-                        # For now just calulate sigma for all
-                        # set threshold to half of all summed
-                        # used_harm_bins =  np.lib.stride_tricks.sliding_window_view(harm_bins[:harm], window_shape=(harm,convolve_bin)).squeeze(axis=0).reshape(-1, harm*convolve_bin)
-                        # unique_summed_bins = [np.unique(row) for row in used_harm_bins]
-                        # front_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
-                        # end_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
-                        # unique_summed_bins = front_pad+ unique_summed_bins + end_pad
-                        # unique_summed_bins = List(unique_summed_bins)
-                        # convolved_power = calc_unique_sums(power_spectrum, unique_summed_bins)
-                        # convolved_ndays = calc_unique_sums(weights, unique_summed_bins)
+                        # used_convolutions = precomputed_convolutions[str(convolve_bin)][str(harm)]
                         # print(start_time-time.time())
-                        used_convolutions = precomputed_convolutions[str(convolve_bin)][str(harm)]
+                        convolved_power = harmonic_sums[idx_harm]
+
                         # print(start_time-time.time())
-                        convolved_power = calc_unique_sums(power_spectrum, List(used_convolutions["convolved_bins_list"]))
-                        # print(start_time-time.time())
-                        convolved_ndays = used_convolutions["convolved_ndays"]
+                        # print(convolved_power.shape, precomputed["convolved_ndays"].shape)
+                        convolved_ndays = precomputed["convolved_ndays"][idx_harm]
                         power_cutoff = convolved_ndays
                         check_idx = np.where(convolved_power > power_cutoff)[0]
                         # print(start_time-time.time())
@@ -946,6 +939,9 @@ class PowerSpectraSearch:
                         if (
                             detection_freq
                             <= skip_n_bins * freq_labels[1] * convolve_bin
+                        ) or (
+                            detection_freq
+                            >= freq_labels[-1] - convolve_bin * freq_labels[1]
                         ):
                             continue
                         if detection_freq > cutoff_frequency:
@@ -1276,4 +1272,118 @@ def calc_unique_sums(spec, unique_sum):
     out_idx = 0
     for j in range(length):
         out[j] = np.sum(spec[unique_sum[j]])
+    return out
+
+@njit
+def prepare_unique_harmonic_bins(full_harm_bins, convolve_bin):
+
+    n_harm = full_harm_bins.shape[0]
+    n_bins_total = full_harm_bins.shape[1]
+
+    pad_left = convolve_bin // 2
+    pad_right = convolve_bin - 1 - pad_left
+
+    # Create padded array
+    padded = np.empty(
+        (n_harm, n_bins_total + pad_left + pad_right),
+        dtype=full_harm_bins.dtype
+    )
+
+    # Original data
+    padded[:, pad_left:pad_left + n_bins_total] = full_harm_bins
+
+    # Left edge padding
+    for i in range(pad_left):
+        padded[:, i] = full_harm_bins[:, 0]
+
+    # Right edge padding
+    for i in range(pad_right):
+        padded[:, pad_left + n_bins_total + i] = full_harm_bins[:, -1]
+
+    windowed_bins = np.lib.stride_tricks.sliding_window_view(
+        padded,
+        window_shape=(n_harm, convolve_bin)
+    )[0,:]
+
+    length = windowed_bins.shape[0]
+    nharm = windowed_bins.shape[1]
+
+    flat_bins = []
+    offsets = []
+
+    for h in range(nharm):
+        h_flat = []
+        h_offsets = np.empty(length + 1, dtype=np.int64)
+        h_offsets[0] = 0
+
+        for j in range(length):
+            unique_vals = np.unique(
+                windowed_bins[j, :h + 1, :].ravel()
+            )
+
+            for b in unique_vals:
+                h_flat.append(b)
+
+            h_offsets[j + 1] = len(h_flat)
+
+        flat_bins.append(np.asarray(h_flat, dtype=np.int32))
+        offsets.append(h_offsets)
+
+    return flat_bins, offsets
+
+
+
+@njit
+def calc_harmonic_sums(spec, flat_bins, offsets, output_harmonics):
+    """
+    Calculate harmonic sums from precomputed cumulative unique bins.
+
+    Parameters
+    ----------
+    spec : 1D array
+        Values to sum, indexed by bin number.
+
+    flat_bins : list of 1D arrays
+        flat_bins[h] contains the concatenated unique bin indices
+        for every position for harmonic h.
+
+    offsets : list of 1D arrays
+        offsets[h][j]:offsets[h][j+1] gives the bin indices
+        belonging to position j for harmonic h.
+
+    output_harmonics : 1D integer array
+        Harmonics to calculate, e.g. [0, 1, 3, 7].
+
+    Returns
+    -------
+    out : 2D array
+        Shape (len(output_harmonics), length)
+    """
+
+    length = len(offsets[0]) - 1
+
+    out = np.empty(
+        (len(output_harmonics), length),
+        dtype=spec.dtype
+    )
+
+    for out_idx in range(len(output_harmonics)):
+
+        h = output_harmonics[out_idx] - 1
+
+        bins = flat_bins[h]
+        offs = offsets[h]
+
+        for j in range(length):
+
+            start = offs[j]
+            end = offs[j + 1]
+
+            total = 0
+
+            for i in range(start, end):
+                total += spec[bins[i]]
+
+            out[out_idx, j] = total
+
     return out

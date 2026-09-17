@@ -502,7 +502,7 @@ class Features:
         default={
             "dm_in_raw": 20,
             "dm_in_dm_freq": 150,
-            "freq_in_dm_freq": 40,
+            "freq_in_dm_freq": 400,
             "dm_in_dm_1d": 500,
         }
     )
@@ -674,7 +674,7 @@ class Features:
 
         if self.write_detections_to_candidates:
             written_detections = rfn.structured_to_unstructured(
-                cluster.detections[["dm", "freq", "sigma", "nharm", "injection"]]
+                cluster.detections[["dm", "freq", "sigma", "nharm", "injection", "convolve"]]
             )
         else:
             written_detections = None
