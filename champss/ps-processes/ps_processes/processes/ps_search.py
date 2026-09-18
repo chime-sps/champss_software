@@ -1141,9 +1141,10 @@ class PowerSpectraSearch:
                 # log.debug(
                 #     f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum"
                 # )
-            end_time = time.time()
+            # end_time = time.time()
             # print(dm_indices, len(detection_list), end_time-start_time)
         # print(dm_indices, len(detection_list), time.time() - start_time_0)
+
         return detection_list
 
     def summarise(self, clusters, cluster_harm_idx):
