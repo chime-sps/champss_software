@@ -7,7 +7,6 @@ import yaml
 from multiprocessing import Pool, set_start_method
 import datetime
 import copy
-from scipy.signal import convolve
 
 import numpy as np
 from numba import njit
@@ -36,9 +35,26 @@ from sps_common.interfaces.utilities import (
 from sps_common.constants import TSAMP
 from sps_databases import db_api
 from sps_common.interfaces import Cluster
-from sps_common.sm_utils import share_array, recreate_shared_array, unlink_shared
+from sps_common.sm_utils import (
+    share_array,
+    recreate_shared_array,
+    unlink_shared,
+    share_nested_arrays,
+    recreate_nested_arrays,
+)
 
 log = logging.getLogger(__name__)
+
+_precomputed_convolutions = None
+_precomputed_convolutions_shm = None
+
+
+def init_worker(precomputed_convolutions_shared):
+    global _precomputed_convolutions
+    global _precomputed_convolutions_shm
+    _precomputed_convolutions, _precomputed_convolutions_shm = recreate_nested_arrays(
+        precomputed_convolutions_shared
+    )
 
 
 @attrs(slots=True)
@@ -138,7 +154,7 @@ class PowerSpectraSearch:
     mp_chunk_size: bool = attribute(default=10)
     skip_first_n_bins: int = attribute(default=2)
     injection_overlap_threshold: bool = attribute(default=0.5)
-    min_dm: bool = attribute(default=0.)
+    min_dm: bool = attribute(default=0.0)
     injection_dm_threshold: int = attribute(default=10.0)
     known_source_threshold: float = attribute(
         default=np.inf,
@@ -494,7 +510,6 @@ class PowerSpectraSearch:
         ) = share_array(power_cutoff_per_harmonic)
 
         if "skip_search" not in manual_candidates:
-            pool = Pool(self.num_threads)
             # multiprocessing pool to run the search as a parallel process.
             log.info(
                 f"Start searching {len(pspec.dms)} dm trials using"
@@ -533,11 +548,24 @@ class PowerSpectraSearch:
                 precomputed_convolutions = {}
                 for convolve_bin in convolve_bins:
                     precomputed_convolutions[str(convolve_bin)] = {}
-                    prepared_unique_bins, prepared_unique_offsets = prepare_unique_harmonic_bins(self.full_harm_bins, convolve_bin)
-                    precomputed_convolutions[str(convolve_bin)]["unique_bins"] = prepared_unique_bins
-                    precomputed_convolutions[str(convolve_bin)]["unique_offsets"] = prepared_unique_offsets
-                    convolved_ndays = calc_harmonic_sums(bin_weights, List(prepared_unique_bins), List(prepared_unique_offsets), List(all_harmonic_vals))
-                    precomputed_convolutions[str(convolve_bin)]["convolved_ndays"] = convolved_ndays
+                    prepared_unique_bins, prepared_unique_offsets = (
+                        prepare_unique_harmonic_bins(self.full_harm_bins, convolve_bin)
+                    )
+                    precomputed_convolutions[str(convolve_bin)]["unique_bins"] = (
+                        prepared_unique_bins
+                    )
+                    precomputed_convolutions[str(convolve_bin)]["unique_offsets"] = (
+                        prepared_unique_offsets
+                    )
+                    convolved_ndays = calc_harmonic_sums(
+                        bin_weights,
+                        List(prepared_unique_bins),
+                        List(prepared_unique_offsets),
+                        List(all_harmonic_vals),
+                    )
+                    precomputed_convolutions[str(convolve_bin)]["convolved_ndays"] = (
+                        convolved_ndays
+                    )
 
                 #     precomputed_convolutions[str(convolve_bin)] = {}
                 #     log.info(f"Compute window {convolve_bin}")
@@ -558,7 +586,14 @@ class PowerSpectraSearch:
                 #         precomputed_convolutions[str(convolve_bin)][str(harm)]["convolved_bins_list"] = unique_summed_bins
 
             log.info("Precomputed convolutions")
-            print(self.num_threads)
+            shared_precomputed_convolutions, shm_objects = share_nested_arrays(
+                precomputed_convolutions
+            )
+            pool = Pool(
+                self.num_threads,
+                initializer=init_worker,
+                initargs=(shared_precomputed_convolutions,),
+            )
             detection_list = pool.starmap(
                 partial(
                     self.search_candidates,
@@ -575,13 +610,15 @@ class PowerSpectraSearch:
                     self.injection_dm_threshold,
                     convolve_bins,
                     self.sigma_min,
-                    precomputed_convolutions,
+                    # precomputed_convolutions,
                     self.min_dm,
                 ),
                 zip(dm_indices, dm_split),
             )
             pool.close()
             pool.join()
+            for shm in shm_objects:
+                unlink_shared(shm)
 
             search_end = time.time()
             log.debug(f"Took {search_end - search_start} seconds to run search")
@@ -802,7 +839,7 @@ class PowerSpectraSearch:
         injection_dm_threshold,
         convolve_bins,
         sigma_min,
-        precomputed_convolutions,
+        # precomputed_convolutions,
         min_dm,
         dm_indices,
         dms,
@@ -861,9 +898,11 @@ class PowerSpectraSearch:
             A list of tuples containing the properties of the individual detections
             made in the search process.
         """
+        global _precomputed_convolutions
+        precomputed_convolutions = _precomputed_convolutions
         # log.debug(f"Working on DM={dm} with {num_harm} harmonics")
         # Could consider moving this to some initializer function
-        # print("start")
+        print("start")
         start_time_0 = time.time()
         power_spectra, shared_spectra = recreate_shared_array(shm_spec_dict)
         full_harm_bins, shm_full_harm_bins = recreate_shared_array(shm_harm_bins_dict)
@@ -890,12 +929,17 @@ class PowerSpectraSearch:
             for convolve_bin in convolve_bins:
                 precomputed = precomputed_convolutions[str(convolve_bin)]
                 # print(start_time-time.time())
-                harmonic_sums = calc_harmonic_sums(power_spectrum, List(precomputed["unique_bins"]), List(precomputed["unique_offsets"]), List(all_harmonic_vals))
+                harmonic_sums = calc_harmonic_sums(
+                    power_spectrum,
+                    List(precomputed["unique_bins"]),
+                    List(precomputed["unique_offsets"]),
+                    List(all_harmonic_vals),
+                )
                 # print(start_time-time.time())
                 for idx_harm, harm in enumerate(all_harmonic_vals):
                     harm_bins = full_harm_bins[:harm]
-                # harm_sum_powers = harmonic_sums[idx_harm]
-                # for convolve_bin in convolve_bins:
+                    # harm_sum_powers = harmonic_sums[idx_harm]
+                    # for convolve_bin in convolve_bins:
                     used_nsum = nsum_per_harmonic[idx_harm]
                     last_detection_freq = None
                     last_detection_sigma = None
@@ -1268,6 +1312,7 @@ def calc_harmonic_sum(spec, harm_bins):
 
     return out
 
+
 @njit
 def calc_unique_sums(spec, unique_sum):
     length = len(unique_sum)
@@ -1279,9 +1324,9 @@ def calc_unique_sums(spec, unique_sum):
         out[j] = np.sum(spec[unique_sum[j]])
     return out
 
+
 @njit
 def prepare_unique_harmonic_bins(full_harm_bins, convolve_bin):
-
     n_harm = full_harm_bins.shape[0]
     n_bins_total = full_harm_bins.shape[1]
 
@@ -1290,12 +1335,11 @@ def prepare_unique_harmonic_bins(full_harm_bins, convolve_bin):
 
     # Create padded array
     padded = np.empty(
-        (n_harm, n_bins_total + pad_left + pad_right),
-        dtype=full_harm_bins.dtype
+        (n_harm, n_bins_total + pad_left + pad_right), dtype=full_harm_bins.dtype
     )
 
     # Original data
-    padded[:, pad_left:pad_left + n_bins_total] = full_harm_bins
+    padded[:, pad_left : pad_left + n_bins_total] = full_harm_bins
 
     # Left edge padding
     for i in range(pad_left):
@@ -1306,9 +1350,8 @@ def prepare_unique_harmonic_bins(full_harm_bins, convolve_bin):
         padded[:, pad_left + n_bins_total + i] = full_harm_bins[:, -1]
 
     windowed_bins = np.lib.stride_tricks.sliding_window_view(
-        padded,
-        window_shape=(n_harm, convolve_bin)
-    )[0,:]
+        padded, window_shape=(n_harm, convolve_bin)
+    )[0, :]
 
     length = windowed_bins.shape[0]
     nharm = windowed_bins.shape[1]
@@ -1322,9 +1365,7 @@ def prepare_unique_harmonic_bins(full_harm_bins, convolve_bin):
         h_offsets[0] = 0
 
         for j in range(length):
-            unique_vals = np.unique(
-                windowed_bins[j, :h + 1, :].ravel()
-            )
+            unique_vals = np.unique(windowed_bins[j, : h + 1, :].ravel())
 
             for b in unique_vals:
                 h_flat.append(b)
@@ -1335,7 +1376,6 @@ def prepare_unique_harmonic_bins(full_harm_bins, convolve_bin):
         offsets.append(h_offsets)
 
     return flat_bins, offsets
-
 
 
 @njit
@@ -1367,20 +1407,15 @@ def calc_harmonic_sums(spec, flat_bins, offsets, output_harmonics):
 
     length = len(offsets[0]) - 1
 
-    out = np.empty(
-        (len(output_harmonics), length),
-        dtype=spec.dtype
-    )
+    out = np.empty((len(output_harmonics), length), dtype=spec.dtype)
 
     for out_idx in range(len(output_harmonics)):
-
         h = output_harmonics[out_idx] - 1
 
         bins = flat_bins[h]
         offs = offsets[h]
 
         for j in range(length):
-
             start = offs[j]
             end = offs[j + 1]
 

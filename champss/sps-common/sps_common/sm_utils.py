@@ -64,3 +64,79 @@ def recreate_shared_array(shm_dict):
 def unlink_shared(shm):
     shm.close()
     shm.unlink()
+
+
+def share_nested_arrays(obj):
+    """
+    Recursively move all NumPy arrays in a nested dict/list/tuple
+    structure into shared memory. Created by ChatGPT.
+
+    Returns
+    -------
+    shared_obj
+        Same structure, but NumPy arrays replaced by shm dictionaries.
+    shm_objects
+        List of SharedMemory objects that must be kept alive by the
+        creating process.
+    """
+
+    shm_objects = []
+
+    def recurse(x):
+        if isinstance(x, np.ndarray):
+            _, shm, shm_dict = share_array(x)
+            shm_objects.append(shm)
+            return shm_dict
+
+        elif isinstance(x, dict):
+            return {key: recurse(value) for key, value in x.items()}
+
+        elif isinstance(x, list):
+            return [recurse(value) for value in x]
+
+        elif isinstance(x, tuple):
+            return tuple(recurse(value) for value in x)
+
+        else:
+            return x
+
+    shared_obj = recurse(obj)
+
+    return shared_obj, shm_objects
+
+
+def recreate_nested_arrays(obj):
+    """
+    Recursively recreate NumPy arrays from shared-memory dictionaries. Created by ChatGPT.
+
+    Returns
+    -------
+    array_obj
+        Same structure with NumPy arrays reconstructed from shared memory.
+    shm_objects
+        SharedMemory handles that must remain alive while arrays are used.
+    """
+
+    shm_objects = []
+
+    def recurse(x):
+        if isinstance(x, dict) and "name" in x and "shape" in x and "dtype" in x:
+            array, shm = recreate_shared_array(x)
+            shm_objects.append(shm)
+            return array
+
+        elif isinstance(x, dict):
+            return {key: recurse(value) for key, value in x.items()}
+
+        elif isinstance(x, list):
+            return [recurse(value) for value in x]
+
+        elif isinstance(x, tuple):
+            return tuple(recurse(value) for value in x)
+
+        else:
+            return x
+
+    reconstructed = recurse(obj)
+
+    return reconstructed, shm_objects

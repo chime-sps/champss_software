@@ -676,7 +676,9 @@ class Features:
 
         if self.write_detections_to_candidates:
             written_detections = rfn.structured_to_unstructured(
-                cluster.detections[["dm", "freq", "sigma", "nharm", "injection", "convolve"]]
+                cluster.detections[
+                    ["dm", "freq", "sigma", "nharm", "injection", "convolve"]
+                ]
             )
         else:
             written_detections = None
@@ -899,37 +901,54 @@ class Features:
                         "nharm": np.nan_to_num(dm_freq_nharm).astype(np.int8),
                     }
                     if cluster.convolve > 1:
-                        convolve_arr = np.zeros(
-                        (
-                            2 * self.array_ranges["dm_in_dm_freq"] + 1,
-                            2 * self.array_ranges["freq_in_dm_freq"] + 1,
-                        ))
                         best_nharm = cluster.nharm
                         best_convolve = cluster.convolve
+                        convolve_arr = np.zeros(
+                            (
+                                2 * self.array_ranges["dm_in_dm_freq"] + 1,
+                                2 * 5 * best_convolve + 1,
+                            )
+                        )
                         nearest_bins_convolve = np.abs(
-                                            current_freq * best_nharm - pspec_meta_data.freq_labels
-                                        ).argmin()
+                            current_freq * best_nharm - pspec_meta_data.freq_labels
+                        ).argmin()
                         f0_idx_min_convolve, f0_idx_max_convolve = get_min_max_index(
-                                                nearest_bins_convolve,
-                                                self.array_ranges["freq_in_dm_freq"],
-                                                full_harm_bins.shape[1],
-                                            )
+                            nearest_bins_convolve,
+                            5 * best_convolve,
+                            full_harm_bins.shape[1],
+                        )
                         freq_labels_convolve = (
-                        pspec_meta_data.freq_labels[
-                            np.arange(f0_idx_min_convolve, f0_idx_max_convolve)
-                        ]
-                        / best_nharm)
-                        prep_convolve = pss.prepare_unique_harmonic_bins(full_harm_bins[:int(best_nharm), f0_idx_min_convolve:f0_idx_max_convolve], int(best_convolve))
-                        convolved_ndays = pss.calc_harmonic_sums(pspec_meta_data.freq_bin_weights, List(prep_convolve[0]), List(prep_convolve[1]), List([int(best_nharm)]))
+                            pspec_meta_data.freq_labels[
+                                np.arange(f0_idx_min_convolve, f0_idx_max_convolve)
+                            ]
+                            / best_nharm
+                        )
+                        prep_convolve = pss.prepare_unique_harmonic_bins(
+                            full_harm_bins[
+                                : int(best_nharm),
+                                f0_idx_min_convolve:f0_idx_max_convolve,
+                            ],
+                            int(best_convolve),
+                        )
+                        convolved_ndays = pss.calc_harmonic_sums(
+                            pspec_meta_data.freq_bin_weights,
+                            List(prep_convolve[0]),
+                            List(prep_convolve[1]),
+                            List([int(best_nharm)]),
+                        )
                         for array_dm_index, dm_index in enumerate(
                             range(dm_idx_min_sigma, dm_idx_max_sigma)
                         ):
-                            powers = pss.calc_harmonic_sums(power_spectra[dm_index], List(prep_convolve[0]), List(prep_convolve[1]), List([int(best_nharm)]))
+                            powers = pss.calc_harmonic_sums(
+                                power_spectra[dm_index],
+                                List(prep_convolve[0]),
+                                List(prep_convolve[1]),
+                                List([int(best_nharm)]),
+                            )
                             sigmas = sigma_sum_powers(powers, convolved_ndays)
                             convolve_arr[array_dm_index, :] = sigmas
                             dm_freq_sigma_dict["convolve_arr"] = convolve_arr
                             dm_freq_sigma_dict["convolve_freqs"] = freq_labels_convolve
-
 
                     # Now write out the 1d dm series
                     dm_idx_min_1d, dm_idx_max_1d = get_min_max_index(
