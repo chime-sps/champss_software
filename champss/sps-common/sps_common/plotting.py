@@ -63,7 +63,10 @@ def plot_text(fig, panel, grid_points, candidate):
 def plot_dm_freq_3(fig, panel, grid_points, candidate):
     dm_vals = candidate.dm_freq_sigma["dms"]
     freq_vals = candidate.dm_freq_sigma["freqs"]
-    sgs = grid_points.subgridspec(1, 4)
+    if "convolve_arr" in candidate.dm_freq_sigma:
+        sgs = grid_points.subgridspec(1, 5)
+    else:
+        sgs = grid_points.subgridspec(1, 4)
 
     current_subplot_index = 0
     ax_2d = fig.add_subplot(sgs[current_subplot_index])
@@ -112,6 +115,19 @@ def plot_dm_freq_3(fig, panel, grid_points, candidate):
     ax_freq.plot(freq_vals, candidate.freq_best_curve, c="black")
     ax_freq.grid()
     ax_dm.ticklabel_format(useOffset=False)
+
+    if "convolve_arr" in candidate.dm_freq_sigma:
+        freq_vals_convolve = candidate.dm_freq_sigma["convolve_freqs"]
+        current_subplot_index += 1
+        ax_convolve = fig.add_subplot(sgs[current_subplot_index])
+        ax_convolve.imshow(
+        candidate.dm_freq_sigma["convolve_arr"].astype(float),
+        aspect="auto",
+        origin="lower",
+        extent=[freq_vals_convolve.min(), freq_vals_convolve.max(), dm_vals.min(), dm_vals.max()],
+    )
+        ax_freq.plot(freq_vals_convolve, candidate.freq_best_curve_convolve, "-", c="red")
+        ax_dm.plot(dm_vals, candidate.dm_best_curve_convolve, "-", c="red")
 
     if panel.get("plot_fit", False):
         if "dm_sigma_FitGaussWidth_gauss_sigma" in candidate.features.dtype.names:
@@ -176,6 +192,11 @@ def plot_dm_freq_3(fig, panel, grid_points, candidate):
     ax_2d.xaxis.set_tick_params(rotation=30, labelsize=8)
     ax_dm.xaxis.set_tick_params(rotation=30, labelsize=8)
     ax_freq.xaxis.set_tick_params(rotation=30, labelsize=8)
+    if "convolve_arr" in candidate.dm_freq_sigma:
+        ax_convolve.set_xlabel("Frequency (Hz)", fontsize=8)
+        ax_convolve.set_ylabel("DM", fontsize=8)
+        ax_convolve.xaxis.set_tick_params(rotation=30, labelsize=8)
+        ax_convolve.ticklabel_format(useOffset=False)
 
     ax_2d.ticklabel_format(useOffset=False)
     ax_freq.ticklabel_format(useOffset=False)

@@ -255,7 +255,7 @@ cands:
     array_ranges:
       dm_in_raw: 20
       dm_in_dm_freq: 150
-      freq_in_dm_freq: 40
+      freq_in_dm_freq: 800
       dm_in_dm_1d: 500
 
 cleanup:
@@ -359,20 +359,21 @@ ps_cumul_stack:
     delete_monthly_stack: True
   ps_search_config:
     num_harm: 8
-    sigma_min: 10.
+    sigma_min: 15.
     use_nsum_per_bin: True
     skip_first_n_bins: 5
     max_search_frequency: 500
     only_use_stack_threshold: False
     mean_bin_sigma_threshold: 5
     convolve_max_bin: 32
+    min_dm: 5.
     cluster_config:
       dbscan_eps: 1
       dm_scale_factor: 0.02
       freq_scale_factor: 0.09
       dbscan_min_samples: 5
       filter_nharm: False
-      cluster_dm_cut: 2
+      cluster_dm_cut: 5
       max_ndetect: 200000
       overlap_scale: 2
       metric_combination: replace

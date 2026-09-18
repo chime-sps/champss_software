@@ -771,6 +771,7 @@ class Cluster:
     harm_idx: np.ndarray = attrib()
     injection_index: float = attrib()
     manual_candidate: str = attrib()
+    convolve: int = attrib(default=1)
 
     @classmethod
     def from_raw_detections(cls, detections):
@@ -791,6 +792,7 @@ class Cluster:
             injection_index=injection_index,
             detections=detections,
             manual_candidate=max_sig_det["manual_candidate"],
+            convolve=max_sig_det["convolve"],
         )
         return cls(**init_dict)
 

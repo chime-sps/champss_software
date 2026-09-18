@@ -291,6 +291,24 @@ class SinglePointingCandidate:
         # but this may actually be something that was not found by the search
         best_dm_index = np.nanargmin(np.abs(self.dm_freq_sigma["dms"] - self.dm))
         return self.dm_freq_sigma["sigmas"][best_dm_index, :]
+    
+    @property
+    def dm_best_curve_convolve(self):
+        """Return the dm curve for the freq value with the freq value of the cluster."""
+        # Another possibility would be using the row containing the maximum sigma,
+        # but this may actually be something that was not found by the search
+        if "convolve_arr" in self.dm_freq_sigma:
+            best_freq_index = np.nanargmin(np.abs(self.dm_freq_sigma["convolve_freqs"] - self.freq))
+            return self.dm_freq_sigma["convolve_arr"][:, best_freq_index]
+
+    @property
+    def freq_best_curve_convolve(self):
+        """Return the freq curve for the freq value with the freq value of the cluster."""
+        # Another possibility would be using the row containing the maximum sigma,
+        # but this may actually be something that was not found by the search
+        if "convolve_arr" in self.dm_freq_sigma:
+            best_dm_index = np.nanargmin(np.abs(self.dm_freq_sigma["dms"] - self.dm))
+            return self.dm_freq_sigma["convolve_arr"][best_dm_index,:]
 
     @property
     def num_days(self):

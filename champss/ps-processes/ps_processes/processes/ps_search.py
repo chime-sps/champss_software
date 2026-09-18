@@ -138,6 +138,7 @@ class PowerSpectraSearch:
     mp_chunk_size: bool = attribute(default=10)
     skip_first_n_bins: int = attribute(default=2)
     injection_overlap_threshold: bool = attribute(default=0.5)
+    min_dm: bool = attribute(default=0.)
     injection_dm_threshold: int = attribute(default=10.0)
     known_source_threshold: float = attribute(
         default=np.inf,
@@ -575,6 +576,7 @@ class PowerSpectraSearch:
                     convolve_bins,
                     self.sigma_min,
                     precomputed_convolutions,
+                    self.min_dm,
                 ),
                 zip(dm_indices, dm_split),
             )
@@ -801,6 +803,7 @@ class PowerSpectraSearch:
         convolve_bins,
         sigma_min,
         precomputed_convolutions,
+        min_dm,
         dm_indices,
         dms,
     ):
@@ -861,6 +864,7 @@ class PowerSpectraSearch:
         # log.debug(f"Working on DM={dm} with {num_harm} harmonics")
         # Could consider moving this to some initializer function
         # print("start")
+        start_time_0 = time.time()
         power_spectra, shared_spectra = recreate_shared_array(shm_spec_dict)
         full_harm_bins, shm_full_harm_bins = recreate_shared_array(shm_harm_bins_dict)
         freq_labels, shm_freq_labels = recreate_shared_array(shm_freq_labels_dict)
@@ -873,7 +877,7 @@ class PowerSpectraSearch:
         freq_labels = freq_labels[: len(full_harm_bins[0])]
         for dm_index, dm in zip(dm_indices, dms):
             start_time = time.time()
-            if dm < 2:
+            if dm < min_dm:
                 continue
             # print("Start really.")
             # if dm_index != 605:
@@ -1094,7 +1098,8 @@ class PowerSpectraSearch:
                 #     f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum"
                 # )
             end_time = time.time()
-            print(dm_indices, len(detection_list), end_time-start_time)
+            # print(dm_indices, len(detection_list), end_time-start_time)
+        print(dm_indices, len(detection_list), time.time() - start_time_0)
         return detection_list
 
     def summarise(self, clusters, cluster_harm_idx):
