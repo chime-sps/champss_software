@@ -627,7 +627,7 @@ class PowerSpectraSearch:
             detections = np.array(
                 [j for sub in detection_list for j in sub], dtype=detection_dtype
             )
-            np.save("detecs.npy", detections)
+            # np.save("detecs.npy", detections)
             log.info(f"Total number of detections={len(detections)}")
             # if len(detections) == 0:
             #     log.warning("No detections made. Further processing will not be completed.")
@@ -902,7 +902,7 @@ class PowerSpectraSearch:
         precomputed_convolutions = _precomputed_convolutions
         # log.debug(f"Working on DM={dm} with {num_harm} harmonics")
         # Could consider moving this to some initializer function
-        print("start")
+        # print("start")
         start_time_0 = time.time()
         power_spectra, shared_spectra = recreate_shared_array(shm_spec_dict)
         full_harm_bins, shm_full_harm_bins = recreate_shared_array(shm_harm_bins_dict)
@@ -1143,7 +1143,7 @@ class PowerSpectraSearch:
                 # )
             end_time = time.time()
             # print(dm_indices, len(detection_list), end_time-start_time)
-        print(dm_indices, len(detection_list), time.time() - start_time_0)
+        # print(dm_indices, len(detection_list), time.time() - start_time_0)
         return detection_list
 
     def summarise(self, clusters, cluster_harm_idx):

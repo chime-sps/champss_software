@@ -1096,7 +1096,7 @@ class Clusterer:
             ).fit(metric_array)
             log.info("Finished HDBSCAN")
         # print(metric_array)
-        np.save("metric_array.npy", metric_array.toarray())
+        # np.save("metric_array.npy", metric_array.toarray())
 
         nclusters = len(np.unique(db.labels_))
         if -1 in db.labels_:

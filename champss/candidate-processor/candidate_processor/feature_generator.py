@@ -903,10 +903,15 @@ class Features:
                     if cluster.convolve > 1:
                         best_nharm = cluster.nharm
                         best_convolve = cluster.convolve
+                        freq_win = int(
+                            self.array_ranges["freq_in_dm_freq"]
+                            * best_nharm
+                            / max_harm_cluster
+                        )
                         convolve_arr = np.zeros(
                             (
                                 2 * self.array_ranges["dm_in_dm_freq"] + 1,
-                                2 * 5 * best_convolve + 1,
+                                2 * freq_win + 1,
                             )
                         )
                         nearest_bins_convolve = np.abs(
@@ -914,7 +919,7 @@ class Features:
                         ).argmin()
                         f0_idx_min_convolve, f0_idx_max_convolve = get_min_max_index(
                             nearest_bins_convolve,
-                            5 * best_convolve,
+                            freq_win,
                             full_harm_bins.shape[1],
                         )
                         freq_labels_convolve = (

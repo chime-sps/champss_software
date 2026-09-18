@@ -255,7 +255,7 @@ cands:
     array_ranges:
       dm_in_raw: 20
       dm_in_dm_freq: 150
-      freq_in_dm_freq: 800
+      freq_in_dm_freq: 400
       dm_in_dm_1d: 500
 
 cleanup:
