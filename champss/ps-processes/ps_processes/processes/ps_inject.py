@@ -254,7 +254,8 @@ class Injection:
         dm_offset = np.abs(self.true_dm - self.true_dm_trial)
         cordes_approx = 400 / 600**3 # bandwidth / centre_freq**3
         dm_const_in_ms = 8.3e6 #in ms; see Handbook eq. 6.4
-        dt_dedisp = 8.3e6 * dm_offset * cordes_approx
+        dt_dedisp = 8.3e6 * dm_offset * cordes_approx #in ms
+        dt_dedisp /= 1e3 #in s
         
         #---------------------
         # create smearing kernel
