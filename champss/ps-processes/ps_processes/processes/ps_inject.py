@@ -226,6 +226,12 @@ class Injection:
         return deltaDM
 
     def smear_fft(self, scaled_fft):
+        
+
+
+        #---------------------
+        # intrachannel smearing
+        #---------------------
         mode = "database"
         db = db_utils.connect(host="sps-archiver1", name="test")
         ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)
@@ -239,8 +245,23 @@ class Injection:
             "16384": 8e-10,
         }
         # value of 1/400^2 - 1/(400 - dnu)^2 at each channelization, overestimation
-        dt_dm = self.true_dm * DM_CONSTANT * quadratic_terms[nchan]
-        t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
+        dt_intrachannel = self.true_dm * DM_CONSTANT * quadratic_terms[nchan]
+        
+        #---------------------
+        # incorrect dedispersion
+        #---------------------
+        
+        dm_offset = np.abs(self.true_dm - self.true_dm_trial)
+        cordes_approx = 400 / 600**3 # bandwidth / centre_freq**3
+        dm_const_in_ms = 8.3e6 #in ms; see Handbook eq. 6.4
+        dt_dedisp = 8.3e6 * dm_offset * cordes_approx
+        
+        #---------------------
+        # create smearing kernel
+        #---------------------
+
+
+        t_eff = np.sqrt(TSAMP**2 + dt_intrachannel**2 + dt_dedisp**2)
         fwhm = t_eff * self.f  # get the FWHM in units of the pulse period
         conversion_factor = 2 * np.sqrt(2 * np.log(2))
         sigma = fwhm / conversion_factor  # convert from sigma to fwhm
