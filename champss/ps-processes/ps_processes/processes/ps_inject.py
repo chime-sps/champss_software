@@ -32,11 +32,6 @@ def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
     return np.exp(-0.5 * ((x - mu) / sig) ** 2) / (sig * np.sqrt(2 * np.pi))
 
-
-def lorentzian(phi, gamma, x0=0.5):
-    return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
-
-
 def dm_distribution(x, mu, sig, l):
     gauss = l * np.exp(l * (2 * mu + l * sig**2 - 2 * x) / 2) / 2
     tail = 1 - erf(
@@ -122,12 +117,6 @@ def x_to_chi2(x, df):
 
         # normalize to CHAMPSS power spectrum by dividing by 2
         return chi2 / 2
-
-
-def get_median(xlow, xhigh, ylow, yhigh, x):
-    m = (yhigh - ylow) / (xhigh - xlow)
-
-    return m * (x - xlow) + ylow
 
 
 class Injection:
