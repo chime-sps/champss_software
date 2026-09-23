@@ -19,19 +19,6 @@ import astropy.units as u
 
 log = logging.getLogger(__name__)
 
-
-phis = np.linspace(0, 1, 1024)
-"""
-These values come from counting by eye a sample of 200 out of the 1208 pulsars in the
-TPA dataset.
-
-Each represents the mean fraction of pulsars that have x number of subpulses.
-"""
-mean_zeros = 0.522394
-mean_ones = 0.40298
-mean_twos = 0.064676
-mean_threes = 0.00995
-
 TPA_profiles = np.load(os.path.dirname(__file__) + "/smoothed_baselined_TPA_pulses.npz")
 kernels = np.load(os.path.dirname(__file__) + "/kernels.npz")
 
