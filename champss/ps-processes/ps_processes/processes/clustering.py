@@ -592,6 +592,9 @@ class Clusterer:
                     )
                 ]
             )
+        # This case may happen when using the convolve search
+        if (powers_0[:, 0].max() == 0.0) or (powers_1[:, 0].max() == 0.0):
+            return 1.0
         powers_overlap = np.stack(
             (
                 powers_0[:, 1] / powers_0[:, 0],
