@@ -593,7 +593,7 @@ class Clusterer:
                 ]
             )
         # In the convolve search powers_0[:,0] might contain zeroes
-        with np.errstate(divide="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore"):
             powers_overlap = np.stack(
                 (
                     powers_0[:, 1] / powers_0[:, 0],
