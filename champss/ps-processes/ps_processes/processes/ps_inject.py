@@ -24,7 +24,7 @@ kernels = np.load(os.path.dirname(__file__) + "/kernels.npz")
 
 # parameters of the system:
 GAIN = 1.16e-3  # K mJy^-1
-TSYS = 30  # K
+TSYS = 50  # K
 BETA = 1.1
 
 
