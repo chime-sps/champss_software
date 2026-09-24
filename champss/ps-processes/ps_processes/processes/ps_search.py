@@ -543,7 +543,7 @@ class PowerSpectraSearch:
 
             precompute_convolve_bins = True
             bin_weights = pspec.get_bin_weights()
-            print(all_harmonic_vals)
+            print(all_harmonic_vals, convolve_bins)
             if precompute_convolve_bins:
                 precomputed_convolutions = {}
                 for convolve_bin in convolve_bins:
@@ -1100,7 +1100,11 @@ class PowerSpectraSearch:
                                 ),
                                 tuple(
                                     np.pad(
-                                        power_spectrum[sorted_harm_bins],
+                                        np.clip(
+                                            power_spectrum[sorted_harm_bins],
+                                            a_min=0.0,
+                                            a_max=None,
+                                        ),
                                         (0, 32 - len(sorted_harm_bins)),
                                     )
                                 ),
