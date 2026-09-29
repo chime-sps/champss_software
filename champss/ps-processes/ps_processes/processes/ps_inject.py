@@ -25,7 +25,7 @@ kernels = np.load(os.path.dirname(__file__) + "/kernels.npz")
 # parameters of the system:
 GAIN = 1.16e-3  # K mJy^-1
 TSYS = 50  # K
-BETA = 1.1
+BETA = 1.15 #andrade et al 2025
 
 
 def gaussian(mu, sig):
@@ -133,6 +133,7 @@ class Injection:
         flux=None,
         sigma=None,
         TPA_idx=None,
+        database_connection=False,
     ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
@@ -160,6 +161,7 @@ class Injection:
             self.use_sigma = False
         else:
             self.use_sigma = True
+        self.database_connection = database_connection
 
     def get_tsky(self):
         haslam = HaslamSkyModel(freq_unit="MHz", spectral_index=-2.6)
@@ -204,14 +206,43 @@ class Injection:
     def smear_fft(self, scaled_fft):
         
 
-
         #---------------------
         # intrachannel smearing
         #---------------------
-        mode = "database"
-        db = db_utils.connect(host="sps-archiver1", name="test")
-        ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)
-        nchan = str(ap.nchans)
+
+        if self.database_connection:
+
+            mode = "database"
+            db = db_utils.connect(host="sps-archiver1", name="test")
+            ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)
+            nchan = str(ap.nchans)
+        
+        else:
+            with open(os.path.dirname(__file__)+'/stack_maxdm.json', 'r') as f:
+                maxdm_dict = json.load(f)
+        
+            pointing_keys = list(maxdm_dict.keys())
+            this_pointing = f'{self.pspec_obj.ra:.2f} {self.pspec_obj.dec:.2f}'
+            if this_pointing in pointing_keys:
+                maxdm = maxdm_dict[f'{self.pspec_obj.ra:.2f} {self.pspec_obj.dec:.2f}']
+            else:
+                pointing_keys_arr = np.zeros((len(pointing_keys), 2))
+                for i in range(len(pointing_keys)):
+                    pointing_split = pointing_keys[i].split(' ')
+                    pointing_keys_arr[i, 0] = float(pointing_split[0])
+                    pointing_keys_arr[i, 1] = float(pointing_split[1])
+
+                pointing_keys_arr[:, 0] -= self.pspec_obj.ra
+                pointing_keys_arr[:, 1] -= self.pspec_obj.dec
+                pointing_keys_arr = pointing_keys_arr**2
+
+                pointing_key_idx = np.argmin(np.sum(pointing_keys_arr, axis = 1))
+                pointing_key = pointing_keys[pointing_key_idx]
+                maxdm = maxdm_dict[pointing_key]
+
+                print(f'Matched {self.pspec_obj.ra}, {self.pspec_obj.dec} --> {pointing_keys[pointing_key_idx]}')
+
+            nchan = str(get_nchans(maxdm))
 
         quadratic_terms = {
             "1024": 1e-8,
