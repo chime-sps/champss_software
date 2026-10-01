@@ -21,6 +21,7 @@ from beamformer.utilities.common import find_closest_pointing
 from pygdsm import HaslamSkyModel
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+import healpy as hp
 
 log = logging.getLogger(__name__)
 
@@ -261,7 +262,11 @@ class Injection:
         #---------------------
 
         start_date = self.pspec_obj.datetimes[0] 
-        nchan = get_nchan(start_date, self.ra, self.dec)
+        nchan = get_nchan(
+                ra=self.pspec_obj.ra,
+                dec=self.pspec_obj.dec,
+                date=self.pspec_obj.datetimes[0],
+                )
         dnu = (FREQ_TOP - FREQ_BOTTOM) / nchan
         nu_0 = 500 #MHz, approx
         dt_chan = KAPPA * self.true_dm * dnu / nu_0**3 # in ms
@@ -273,16 +278,18 @@ class Injection:
         # incorrect dedispersion
         #---------------------
         
-        dm_offset = np.abs(self.true_dm - self.true_dm_trial)
+        dm_offset = np.abs(self.true_dm - self.trial_dms[self.true_dm_trial])
+        log.info(f'DM offset is {dm_offset} pcc.')
         dt_dedisp = DM_CONSTANT * dm_offset * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2) #in s
         
         log.info(f"Smearing from incorrect dedispersion is about {dt_dedisp} s.")
+
         #---------------------
         # create smearing kernel
         #---------------------
 
         #see paper for explanation of the 1.25 factor!
-        t_eff = np.sqrt(1.25*TSAMP**2 + dt_intrachannel**2 + dt_dedisp**2)
+        t_eff = np.sqrt(1.25*TSAMP**2 + dt_chan**2 + dt_dedisp**2)
         log.info(f"The effective time resolution is t_eff = {t_eff} s.")
 
         fwhm = t_eff * self.f  # get the FWHM in units of the pulse period
