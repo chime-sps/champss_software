@@ -32,6 +32,8 @@ GAIN = 1.16e-3  # K mJy^-1
 TSYS = 50  # K
 BETA = 1.15 #andrade et al 2025
 
+# dispersion constant in ms
+KAPPA = 8.3e6 #ms
 # pointing map switchover:
 V2_START = datetime(2026, 2, 27, tzinfo=timezone.utc)
 
@@ -250,9 +252,6 @@ class Injection:
         return deltaDM
 
 
-    def get_nchan(self):
-
-       start_date = self.pspec_obj.datetimes[0] 
 
     def smear_fft(self, scaled_fft):
         
@@ -261,66 +260,31 @@ class Injection:
         # intrachannel smearing
         #---------------------
 
-        if self.database_connection:
+        start_date = self.pspec_obj.datetimes[0] 
+        nchan = get_nchan(start_date, self.ra, self.dec)
+        dnu = (FREQ_TOP - FREQ_BOTTOM) / nchan
+        nu_0 = 500 #MHz, approx
+        dt_chan = KAPPA * self.true_dm * dnu / nu_0**3 # in ms
+        dt_chan /= 1e3 #in s
 
-            mode = "database"
-            db = db_utils.connect(host="sps-archiver1", name="test")
-            ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)
-            nchan = str(ap.nchans)
-        
-        else:
-            with open(os.path.dirname(__file__)+'/stack_maxdm.json', 'r') as f:
-                maxdm_dict = json.load(f)
-        
-            pointing_keys = list(maxdm_dict.keys())
-            this_pointing = f'{self.pspec_obj.ra:.2f} {self.pspec_obj.dec:.2f}'
-            if this_pointing in pointing_keys:
-                maxdm = maxdm_dict[f'{self.pspec_obj.ra:.2f} {self.pspec_obj.dec:.2f}']
-            else:
-                pointing_keys_arr = np.zeros((len(pointing_keys), 2))
-                for i in range(len(pointing_keys)):
-                    pointing_split = pointing_keys[i].split(' ')
-                    pointing_keys_arr[i, 0] = float(pointing_split[0])
-                    pointing_keys_arr[i, 1] = float(pointing_split[1])
+        log.info(f"Intrachannel smearing is about {dt_chan} s.")
 
-                pointing_keys_arr[:, 0] -= self.pspec_obj.ra
-                pointing_keys_arr[:, 1] -= self.pspec_obj.dec
-                pointing_keys_arr = pointing_keys_arr**2
-
-                pointing_key_idx = np.argmin(np.sum(pointing_keys_arr, axis = 1))
-                pointing_key = pointing_keys[pointing_key_idx]
-                maxdm = maxdm_dict[pointing_key]
-
-                print(f'Matched {self.pspec_obj.ra}, {self.pspec_obj.dec} --> {pointing_keys[pointing_key_idx]}')
-
-            nchan = str(get_nchans(maxdm))
-
-        quadratic_terms = {
-            "1024": 1e-8,
-            "2048": 6e-9,
-            "4096": 3e-9,
-            "8192": 1.5e-9,
-            "16384": 8e-10,
-        }
-        # value of 1/400^2 - 1/(400 - dnu)^2 at each channelization, overestimation
-        dt_intrachannel = self.true_dm * DM_CONSTANT * quadratic_terms[nchan]
-        
         #---------------------
         # incorrect dedispersion
         #---------------------
         
         dm_offset = np.abs(self.true_dm - self.true_dm_trial)
-        cordes_approx = 400 / 600**3 # bandwidth / centre_freq**3
-        dm_const_in_ms = 8.3e6 #in ms; see Handbook eq. 6.4
-        dt_dedisp = 8.3e6 * dm_offset * cordes_approx #in ms
-        dt_dedisp /= 1e3 #in s
+        dt_dedisp = DM_CONSTANT * dm_offset * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2) #in s
         
+        log.info(f"Smearing from incorrect dedispersion is about {dt_dedisp} s.")
         #---------------------
         # create smearing kernel
         #---------------------
 
+        #see paper for explanation of the 1.25 factor!
+        t_eff = np.sqrt(1.25*TSAMP**2 + dt_intrachannel**2 + dt_dedisp**2)
+        log.info(f"The effective time resolution is t_eff = {t_eff} s.")
 
-        t_eff = np.sqrt(TSAMP**2 + dt_intrachannel**2 + dt_dedisp**2)
         fwhm = t_eff * self.f  # get the FWHM in units of the pulse period
         conversion_factor = 2 * np.sqrt(2 * np.log(2))
         sigma = fwhm / conversion_factor  # convert from sigma to fwhm
