@@ -50,6 +50,13 @@ def dm_distribution(x, mu, sig, l):
 
     return gauss * tail / np.sum(gauss * tail)
 
+@lru_cache(maxsize=None)
+def _haslam_map_600MHz():
+
+    """ Cache skymap generation for repeated use."""
+
+    haslam = HaslamSkyModel(freq_unit="MHz", spectral_index=-2.6)
+    return haslam.generate(600), haslam.nside
 
 def _radec_to_xyz(ra_deg, dec_deg):
     
@@ -213,17 +220,13 @@ class Injection:
             self.use_sigma = True
 
     def get_tsky(self):
-        haslam = HaslamSkyModel(freq_unit="MHz", spectral_index=-2.6)
-        # Generate the sky map at 600 MHz
-        # (extrapolated from 408MHz where it is measured)
-        sky_map = haslam.generate(600)
-        # Convert your RA/Dec to a healpix pixel
+
+        """ Uses a cached Haslam map to estimate tsky."""
+        sky_map, nside = _haslam_map_600MHz()
         ra = self.pspec_obj.ra  # degrees
         dec = self.pspec_obj.dec  # degrees
         coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
         gal_coord = coord.galactic
-        # Get the temperature, at the healpix pixel index
-        nside = haslam.nside  # 512 for Haslam
         pix_idx = hp.ang2pix(nside, gal_coord.l.deg, gal_coord.b.deg, lonlat=True)
         temperature = sky_map[pix_idx]
         log.info(f"Sky temperature at RA={ra}, Dec={dec}: {temperature:.2f} K")
