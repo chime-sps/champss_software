@@ -1,20 +1,25 @@
 import logging
 import math
 import os
+import json
+from importlib.resources import files
+from datetime import datetime, timezone
+from functools import lru_cache
 
 import numpy as np
 import scipy.stats as stats
 from scipy.fft import rfft
 from scipy.signal import correlate
 from scipy.special import chdtri
+from scipy.special import erf
+
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.interfaces.utilities import sigma_sum_powers
 from sps_databases import db_utils
 from beamformer.utilities.common import find_closest_pointing
-from scipy.special import erf
+
 from pygdsm import HaslamSkyModel
 from astropy.coordinates import SkyCoord
-import healpy as hp
 import astropy.units as u
 
 log = logging.getLogger(__name__)
@@ -27,6 +32,8 @@ GAIN = 1.16e-3  # K mJy^-1
 TSYS = 50  # K
 BETA = 1.15 #andrade et al 2025
 
+# pointing map switchover:
+V2_START = datetime(2026, 2, 27, tzinfo=timezone.utc)
 
 def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
@@ -40,6 +47,47 @@ def dm_distribution(x, mu, sig, l):
 
     return gauss * tail / np.sum(gauss * tail)
 
+
+def _radec_to_xyz(ra_deg, dec_deg):
+    
+    """ This function converts ra/dec in degrees to a cartesian vector """
+
+    ra, dec = np.radians(ra_deg), np.radians(dec_deg)
+    cos_dec = np.cos(dec)
+    return np.stack([cos_dec * np.cos(ra), cos_dec * np.sin(ra), np.sin(dec)], axis=-1)
+
+@lru_cache(maxsize=None)
+def _load_pointing_file(file_name):
+    
+    """ This function loads the pointing map ONCE and caches it."""
+    
+    resource = files("beamformer") / "data" / file_name
+    with resource.open("r") as f:
+        pointings = json.load(f)
+    ra = np.array([p["ra"] for p in pointings])
+    dec = np.array([p["dec"] for p in pointings])
+    return pointings, _radec_to_xyz(ra, dec)
+
+
+def load_pointing_map(date):
+    
+    """ We switched pointing maps on Feb 27th, 2026... """
+
+    if date >= V2_START:
+        file_name = "pointings_map_v2-0.json"
+    else:
+        file_name = "pointings_map_v1-3.json"
+    
+    return _load_pointing_file(file_name)
+
+def get_nchan(ra, dec, date):
+
+    """ Match a pointing with its nearest neighbor in vector space. """
+
+    pointings, xyz = load_pointing_map(date)
+    idx = np.argmax(xyz @ _radec_to_xyz(ra, dec))
+    
+    return pointings[idx]["nchans"]
 
 def generate_injection(pspec, f_nyquist=508):
     """
@@ -133,7 +181,6 @@ class Injection:
         flux=None,
         sigma=None,
         TPA_idx=None,
-        database_connection=False,
     ):
         self.pspec = pspec_obj.power_spectra
         self.ndays = pspec_obj.num_days
@@ -161,7 +208,6 @@ class Injection:
             self.use_sigma = False
         else:
             self.use_sigma = True
-        self.database_connection = database_connection
 
     def get_tsky(self):
         haslam = HaslamSkyModel(freq_unit="MHz", spectral_index=-2.6)
@@ -202,6 +248,11 @@ class Injection:
         """
         deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
+
+
+    def get_nchan(self):
+
+       start_date = self.pspec_obj.datetimes[0] 
 
     def smear_fft(self, scaled_fft):
         
