@@ -201,10 +201,12 @@ class Injection:
         self.true_dm = DM
         self.trial_dms = self.pspec_obj.dms
         self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
+        
         if not TPA_idx:
             self.phase_prof = np.array(profile)
         else:
             self.phase_prof = TPA_profiles[str(TPA_idx)]
+        
         self.TPA_idx = TPA_idx
         self.sigma = sigma
         self.flux = flux
