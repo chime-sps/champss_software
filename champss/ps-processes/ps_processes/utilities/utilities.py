@@ -160,7 +160,14 @@ def _interpolate_medians(medians, num):
     return seg_start, seg_stop, delta, step
 
 
-def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True, out=None):
+def rednoise_normalise(
+    power_spectrum,
+    b0=50,
+    bmax=100000,
+    get_medians=True,
+    ignore_zeros=False,
+    out=None,
+):
     """
     Script to normalise power spectrum while removing rednoise. Based on presto's method
     of rednoise removal, in which a logarithmically increasing window is used at low
@@ -180,6 +187,10 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True, out
 
     get_medians: bool
         Whether to get the medians out of the rednoise normalisation process. Default = True
+
+    ignore_zeros: bool
+        Whether to ignore bins with a value of 0 when computing the medians.
+        Default = False
 
     out: np.ndarray or None
         Array of the same length as power_spectrum to write the result to. May be
@@ -202,14 +213,21 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True, out
             f"out has length {len(out)}, but power spectrum has length {ps_len}"
         )
 
+    def window_median(window):
+        if ignore_zeros:
+            window = window[window != 0]
+        return bn.nanmedian(window)
+
     # Compute all local medians before writing anything, so that out may share
     # memory with power_spectrum
     medians = [None] * len(scale)
     for k, count, bins in layout["runs"]:
         block = power_spectrum[starts[k] : starts[k] + count * bins]
+        if ignore_zeros:
+            block = np.where(block == 0, np.nan, block)
         medians[k : k + count] = list(bn.nanmedian(block.reshape(count, bins), axis=1))
     for k in layout["single"]:
-        medians[k] = bn.nanmedian(power_spectrum[starts[k] : starts[k] + scale[k]])
+        medians[k] = window_median(power_spectrum[starts[k] : starts[k] + scale[k]])
 
     used_medians = list(medians)
     for k, new_median in enumerate(medians):
@@ -225,7 +243,7 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True, out
                 # all remaining bins are nan
                 new_median = old_median
                 break
-            new_median = bn.nanmedian(
+            new_median = window_median(
                 power_spectrum[start + (i * bins) : start + ((i + 1) * bins)]
             )
             if not np.isnan(new_median):
