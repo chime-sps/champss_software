@@ -18,7 +18,9 @@ rfi_global:
   stddev: True       # run standard deviation channel cleaner on full dataset after filling
   fourier_zap: False # remove strong periodic signals in the Fourier domain of each channel
   fourier_zap_config:
+    zap_zero_dm: True       # replace bins flagged in the zero-DM time series in all channels
     zero_dm_threshold: 30.  # normalised power of a zero-DM bin to be replaced in all channels
+    zap_channels: True      # replace bins flagged in a single channel in that channel
     channel_threshold: 40.  # normalised power of a bin to be replaced in its channel
     norm_window: 1024       # Fourier bins per block to estimate the local mean power
     min_freq: 0.1           # lowest frequency in Hz that may be replaced

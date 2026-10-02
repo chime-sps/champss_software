@@ -732,6 +732,7 @@ def _fourier_zap_channels(
     spectra_shape,
     spec_dtype,
     zero_dm_bad,
+    zap_channels,
     channel_threshold,
     norm_window,
     min_bin,
@@ -743,8 +744,9 @@ def _fourier_zap_channels(
     Remove strong periodic signals from a block of channels of the shared spectra.
 
     Fourier bins above channel_threshold in a channel's normalised power spectrum,
-    and all bins flagged in the zero-DM power spectrum, are replaced by complex
-    Gaussian noise with the local mean power before transforming back.
+    if zap_channels is set, and all bins flagged in the zero-DM power spectrum are
+    replaced by complex Gaussian noise with the local mean power before
+    transforming back.
 
     Returns
     -------
@@ -767,10 +769,13 @@ def _fourier_zap_channels(
     # Channels without noise, e.g. completely masked ones, are left untouched
     valid = np.isfinite(mean_power).all(axis=1) & (mean_power > 0).all(axis=1)
 
-    bad = power > channel_threshold * mean_power
-    bad[:, :min_bin] = False
-    bad = _dilate_bins(bad, pad_bins)
-    bad |= zero_dm_bad[np.newaxis, :]
+    if zap_channels:
+        bad = power > channel_threshold * mean_power
+        bad[:, :min_bin] = False
+        bad = _dilate_bins(bad, pad_bins)
+        bad |= zero_dm_bad[np.newaxis, :]
+    else:
+        bad = np.repeat(zero_dm_bad[np.newaxis, :], power.shape[0], axis=0)
     # never touch the DC bin, which holds the channel mean
     bad[:, 0] = False
     bad[~valid] = False
@@ -804,9 +809,9 @@ class FourierZapCleaner(Cleaner):
     dedispersion. This cleaner instead
 
     1. computes the power spectrum of the band-summed (zero-DM) time series and flags
-       Fourier bins with normalised power above zero_dm_threshold,
+       Fourier bins with normalised power above zero_dm_threshold, if zap_zero_dm,
     2. computes the power spectrum of each channel and flags Fourier bins with
-       normalised power above channel_threshold,
+       normalised power above channel_threshold, if zap_channels,
     3. replaces the zero-DM flagged bins in all channels and the channel flagged bins
        in their channel by complex Gaussian noise with the local mean power, and
     4. transforms the channels back to the time domain in place.
@@ -823,7 +828,9 @@ class FourierZapCleaner(Cleaner):
     def __init__(
         self,
         spectra_shape,
+        zap_zero_dm: bool = True,
         zero_dm_threshold: float = 30.0,
+        zap_channels: bool = True,
         channel_threshold: float = 40.0,
         norm_window: int = 1024,
         min_freq: float = 0.1,
@@ -838,9 +845,15 @@ class FourierZapCleaner(Cleaner):
         ----------
         spectra_shape : tuple
             Shape of the spectra (nchan, ntime)
+        zap_zero_dm : bool
+            Whether to replace the Fourier bins flagged in the zero-DM time series in
+            all channels. Default: True
         zero_dm_threshold : float
             Normalised power above which a Fourier bin of the zero-DM time series is
             replaced in all channels. Default: 30.0
+        zap_channels : bool
+            Whether to replace the Fourier bins flagged in a single channel in that
+            channel. Default: True
         channel_threshold : float
             Normalised power above which a Fourier bin of a single channel is
             replaced in that channel. Default: 40.0
@@ -862,7 +875,9 @@ class FourierZapCleaner(Cleaner):
         self.ntime = spectra_shape[1]
         self.nsamp = spectra_shape[0] * spectra_shape[1]
         self.cleaned = False
+        self.zap_zero_dm = zap_zero_dm
         self.zero_dm_threshold = zero_dm_threshold
+        self.zap_channels = zap_channels
         self.channel_threshold = channel_threshold
         self.norm_window = norm_window
         self.min_freq = min_freq
@@ -883,7 +898,9 @@ class FourierZapCleaner(Cleaner):
         return dict(
             nchan=self.nchan,
             ntime=self.ntime,
+            zap_zero_dm=self.zap_zero_dm,
             zero_dm_threshold=self.zero_dm_threshold,
+            zap_channels=self.zap_channels,
             channel_threshold=self.channel_threshold,
             nzero_dm_zapped=len(self.zero_dm_zapped_freqs),
             nzapped=self.nzapped,
@@ -950,11 +967,24 @@ class FourierZapCleaner(Cleaner):
         from functools import partial
         from multiprocessing import Pool, shared_memory
 
-        log.info("Running Fourier zap cleaner")
-        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
-        spectra = np.ndarray(spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf)
-        zero_dm_bad = self.zero_dm_flags(spectra)
-        shared_spectra.close()
+        log.info(
+            "Running Fourier zap cleaner (zero-DM:"
+            f" {self.zap_zero_dm}, channels: {self.zap_channels})"
+        )
+        if self.zap_zero_dm:
+            shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+            spectra = np.ndarray(
+                spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
+            )
+            zero_dm_bad = self.zero_dm_flags(spectra)
+            shared_spectra.close()
+        else:
+            zero_dm_bad = np.zeros(self.ntime // 2 + 1, dtype=bool)
+        if not self.zap_channels and not zero_dm_bad.any():
+            # nothing to replace, avoid transforming all channels
+            log.info("No Fourier bins to replace")
+            self.cleaned = True
+            return
 
         chan_slices = [
             slice(start, min(start + self.chan_block, self.nchan))
@@ -966,6 +996,7 @@ class FourierZapCleaner(Cleaner):
             spectra_shape,
             spec_dtype,
             zero_dm_bad,
+            self.zap_channels,
             self.channel_threshold,
             self.norm_window,
             self.min_bin(),

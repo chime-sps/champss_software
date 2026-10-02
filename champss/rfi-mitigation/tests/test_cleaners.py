@@ -82,40 +82,50 @@ def _norm_power(series, k):
     return power[k] / (np.median(power[1:]) / np.log(2))
 
 
-def test_fourier_zap_cleaner():
+FZ_NCHAN, FZ_NTIME = 32, 2**15
+FZ_K_BROAD, FZ_K_NARROW, FZ_NARROW_CHAN, FZ_K_WEAK, FZ_K_LOW = 3001, 7000, 5, 11000, 2
+FZ_MASKED_CHAN = 20
+
+
+def _fourier_test_data():
+    rng = np.random.default_rng(1)
+    data = rng.normal(size=(FZ_NCHAN, FZ_NTIME)).astype(np.float32) + 10
+    t = np.arange(FZ_NTIME)
+    # broadband periodic signal, below the channel threshold but strong at zero DM
+    data += 0.05 * np.sin(2 * np.pi * FZ_K_BROAD * t / FZ_NTIME).astype(np.float32)
+    # narrowband periodic signal in a single channel
+    data[FZ_NARROW_CHAN] += 0.2 * np.sin(2 * np.pi * FZ_K_NARROW * t / FZ_NTIME)
+    # weak broadband signal below both thresholds, which has to be kept
+    data += 0.008 * np.sin(2 * np.pi * FZ_K_WEAK * t / FZ_NTIME).astype(np.float32)
+    # strong signal below min_freq, which has to be kept
+    data += 0.5 * np.sin(2 * np.pi * FZ_K_LOW * t / FZ_NTIME).astype(np.float32)
+    # a completely masked channel
+    data[FZ_MASKED_CHAN] = 0
+    return data
+
+
+def _run_fourier_zap(data, num_threads=1, **kwargs):
     from rfi_mitigation.cleaners.cleaners import FourierZapCleaner
 
-    nchan, ntime = 32, 2**15
-    rng = np.random.default_rng(1)
-    data = rng.normal(size=(nchan, ntime)).astype(np.float32) + 10
-    t = np.arange(ntime)
-    # broadband periodic signal, below the channel threshold but strong at zero DM
-    k_broad = 3001
-    data += 0.05 * np.sin(2 * np.pi * k_broad * t / ntime).astype(np.float32)
-    # narrowband periodic signal in a single channel
-    k_narrow, narrow_chan = 7000, 5
-    data[narrow_chan] += 0.2 * np.sin(2 * np.pi * k_narrow * t / ntime)
-    # weak broadband signal below both thresholds, which has to be kept
-    k_weak = 11000
-    data += 0.008 * np.sin(2 * np.pi * k_weak * t / ntime).astype(np.float32)
-    # strong signal below min_freq, which has to be kept
-    k_low = 2
-    data += 0.5 * np.sin(2 * np.pi * k_low * t / ntime).astype(np.float32)
-    # a completely masked channel
-    data[20] = 0
+    shm, spectra = _shared_spectra(data)
+    try:
+        cleaner = FourierZapCleaner(data.shape, chan_block=8, **kwargs)
+        cleaner.clean(shm.name, data.shape, data.dtype, num_threads=num_threads)
+        return cleaner, spectra.copy()
+    finally:
+        shm.close()
+        shm.unlink()
 
-    results = []
-    for num_threads in [1, 2]:
-        shm, spectra = _shared_spectra(data)
-        try:
-            cleaner = FourierZapCleaner(data.shape, chan_block=8)
-            cleaner.clean(shm.name, data.shape, data.dtype, num_threads=num_threads)
-            results.append(spectra.copy())
-        finally:
-            shm.close()
-            shm.unlink()
-    cleaned = results[0]
-    assert np.array_equal(results[0], results[1])
+
+def test_fourier_zap_cleaner():
+    data = _fourier_test_data()
+    nchan = FZ_NCHAN
+    k_broad, k_narrow, narrow_chan = FZ_K_BROAD, FZ_K_NARROW, FZ_NARROW_CHAN
+    k_weak, k_low = FZ_K_WEAK, FZ_K_LOW
+
+    cleaner, cleaned = _run_fourier_zap(data, num_threads=1)
+    _, cleaned_parallel = _run_fourier_zap(data, num_threads=2)
+    assert np.array_equal(cleaned, cleaned_parallel)
     assert cleaner.cleaned and cleaner.nzapped > 0
     assert cleaner.zero_dm_zapped_freqs.size > 0
 
@@ -140,3 +150,27 @@ def test_fourier_zap_cleaner():
     assert np.allclose(cleaned.mean(1), data.mean(1), rtol=1e-5, atol=1e-5)
     assert np.allclose(cleaned[other].std(1), data[other].std(1), rtol=0.01)
     assert np.array_equal(cleaned[20], data[20])
+
+
+def test_fourier_zap_switches():
+    data = _fourier_test_data()
+
+    # only the zero-DM series: the broadband signal is removed, the narrowband kept
+    cleaner, cleaned = _run_fourier_zap(data, zap_channels=False)
+    assert _norm_power(cleaned.sum(0), FZ_K_BROAD) < 15
+    assert _norm_power(cleaned[FZ_NARROW_CHAN], FZ_K_NARROW) > 100
+
+    # only individual channels: the narrowband signal is removed, the broadband kept
+    cleaner, cleaned = _run_fourier_zap(data, zap_zero_dm=False)
+    assert cleaner.zero_dm_zapped_freqs.size == 0
+    assert _norm_power(cleaned[FZ_NARROW_CHAN], FZ_K_NARROW) < 15
+    assert _norm_power(cleaned.sum(0), FZ_K_BROAD) > 100
+
+    # a lower channel threshold also removes the broadband signal per channel
+    _, cleaned = _run_fourier_zap(data, zap_zero_dm=False, channel_threshold=12)
+    assert _norm_power(cleaned.sum(0), FZ_K_BROAD) < 15
+
+    # both disabled leaves the data unchanged
+    cleaner, cleaned = _run_fourier_zap(data, zap_zero_dm=False, zap_channels=False)
+    assert cleaner.cleaned and cleaner.nzapped == 0
+    assert np.array_equal(cleaned, data)
