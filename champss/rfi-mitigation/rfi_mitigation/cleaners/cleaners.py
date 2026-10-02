@@ -9,9 +9,8 @@ from rfi_mitigation.utilities.cleaner_utils import (
     get_pdf_transforms,
     median_absolute_deviation,
 )
-from rfi_mitigation.utilities.noise_utils import baseline_estimation_medfilt
 from scipy.stats.mstats import kurtosis
-from sps_common.constants import L0_NCHAN, L1_NCHAN, TSAMP
+from sps_common.constants import L1_NCHAN, TSAMP
 
 log = logging.getLogger(__name__)
 
@@ -543,7 +542,14 @@ class StdDevChannelCleaner(Cleaner):
             cleaned=self.cleaned,
         )
 
-    def clean(self, spectra_shared_name, mask_shared_name, spectra_shape, spec_dtype, time_bin=1024):
+    def clean(
+        self,
+        spectra_shared_name,
+        mask_shared_name,
+        spectra_shape,
+        spec_dtype,
+        time_bin=1024,
+    ):
         """
         Flag channels based on anomalous standard deviation across full pointing.
 
@@ -589,7 +595,7 @@ class StdDevChannelCleaner(Cleaner):
         frac_heavily_flagged = num_heavily_flagged / self.nchan
 
         log.debug(
-            f"{num_heavily_flagged} channels ({frac_heavily_flagged*100:.1f}%) "
+            f"{num_heavily_flagged} channels ({frac_heavily_flagged * 100:.1f}%) "
             f"already have >90% of samples flagged"
         )
 
@@ -640,7 +646,9 @@ class StdDevChannelCleaner(Cleaner):
         # Compute MAD of (normalized_std - 1) to detect deviations from typical behavior
         std_deviations = normalized_clean_stds - 1.0
         std_mad = median_absolute_deviation(std_deviations)[1]  # Get just the MAD value
-        log.debug(f"Normalized channel std median: 1.0 (by design), MAD of deviations: {std_mad:.3f}")
+        log.debug(
+            f"Normalized channel std median: 1.0 (by design), MAD of deviations: {std_mad:.3f}"
+        )
 
         # Flag channels where deviation from 1.0 exceeds threshold
         # This matches: (bpass-1) > thresh*mad from the snippet
@@ -649,8 +657,7 @@ class StdDevChannelCleaner(Cleaner):
 
         # Flag entire channels that fall outside bounds
         bad_channels = np.logical_or(
-            normalized_channel_stds > upper_bound,
-            normalized_channel_stds < lower_bound
+            normalized_channel_stds > upper_bound, normalized_channel_stds < lower_bound
         )
 
         # Also flag channels with zero std (non-physical)
@@ -658,7 +665,7 @@ class StdDevChannelCleaner(Cleaner):
 
         num_flagged = np.sum(bad_channels)
         log.info(
-            f"Flagged {num_flagged} channels ({num_flagged/self.nchan*100:.1f}%) "
+            f"Flagged {num_flagged} channels ({num_flagged / self.nchan * 100:.1f}%) "
             f"based on normalized std deviation (bounds: [{lower_bound:.3f}, {upper_bound:.3f}])"
         )
 
@@ -673,6 +680,312 @@ class StdDevChannelCleaner(Cleaner):
         # Close shared memory handles
         shared_spectra.close()
         shared_mask.close()
+
+
+def _local_mean_power(power, window):
+    """
+    Estimate the mean of an exponentially distributed power spectrum per bin.
+
+    The median of consecutive blocks of `window` bins along the last axis is converted
+    to the mean (median / ln 2) and assigned to every bin of the block, which makes
+    the estimate robust against the strong outliers that should be removed.
+
+    Parameters
+    ----------
+    power : np.ndarray
+        Power spectrum, Fourier bins along the last axis
+    window : int
+        Number of bins per block
+
+    Returns
+    -------
+    mean_power : np.ndarray
+        Estimated mean power of each bin, same shape as power
+    """
+    nbins = power.shape[-1]
+    window = max(1, min(window, nbins))
+    nwin = nbins // window
+    medians = np.median(
+        power[..., : nwin * window].reshape(*power.shape[:-1], nwin, window), axis=-1
+    )
+    mean_power = np.empty(power.shape, dtype=np.float32)
+    mean_power[..., : nwin * window] = np.repeat(medians, window, axis=-1)
+    # the remaining bins use the last full block
+    mean_power[..., nwin * window :] = medians[..., -1:]
+    mean_power /= np.log(2)
+    return mean_power
+
+
+def _dilate_bins(bad, pad_bins):
+    """Extend flagged Fourier bins by pad_bins on either side along the last axis."""
+    if pad_bins <= 0:
+        return bad
+    out = bad.copy()
+    for shift in range(1, pad_bins + 1):
+        out[..., shift:] |= bad[..., :-shift]
+        out[..., :-shift] |= bad[..., shift:]
+    return out
+
+
+def _fourier_zap_channels(
+    spectra_shared_name,
+    spectra_shape,
+    spec_dtype,
+    zero_dm_bad,
+    channel_threshold,
+    norm_window,
+    min_bin,
+    pad_bins,
+    seed,
+    chan_slice,
+):
+    """
+    Remove strong periodic signals from a block of channels of the shared spectra.
+
+    Fourier bins above channel_threshold in a channel's normalised power spectrum,
+    and all bins flagged in the zero-DM power spectrum, are replaced by complex
+    Gaussian noise with the local mean power before transforming back.
+
+    Returns
+    -------
+    nzapped : int
+        Number of replaced Fourier bins in this block
+    nchan_zapped : int
+        Number of channels in this block with at least one replaced bin
+    """
+    from multiprocessing import shared_memory
+
+    from scipy import fft
+
+    shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+    spectra = np.ndarray(spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf)
+    ntime = spectra_shape[1]
+
+    block_fft = fft.rfft(spectra[chan_slice], axis=1)
+    power = block_fft.real**2 + block_fft.imag**2
+    mean_power = _local_mean_power(power, norm_window)
+    # Channels without noise, e.g. completely masked ones, are left untouched
+    valid = np.isfinite(mean_power).all(axis=1) & (mean_power > 0).all(axis=1)
+
+    bad = power > channel_threshold * mean_power
+    bad[:, :min_bin] = False
+    bad = _dilate_bins(bad, pad_bins)
+    bad |= zero_dm_bad[np.newaxis, :]
+    # never touch the DC bin, which holds the channel mean
+    bad[:, 0] = False
+    bad[~valid] = False
+    del power
+
+    nzapped = int(np.count_nonzero(bad))
+    nchan_zapped = int(np.count_nonzero(bad.any(axis=1)))
+    if nzapped:
+        rng = np.random.default_rng(seed)
+        scale = np.sqrt(mean_power[bad] / 2)
+        block_fft[bad] = (
+            rng.standard_normal(nzapped, dtype=np.float32)
+            + 1j * rng.standard_normal(nzapped, dtype=np.float32)
+        ) * scale
+        if ntime % 2 == 0:
+            # the Nyquist bin of a real signal is real
+            block_fft[:, -1] = block_fft[:, -1].real
+        spectra[chan_slice] = fft.irfft(block_fft, n=ntime, axis=1)
+
+    shared_spectra.close()
+    return nzapped, nchan_zapped
+
+
+class FourierZapCleaner(Cleaner):
+    """
+    This class removes strong periodic signals from the beamformed spectra in the
+    Fourier domain of each channel, before dedispersion.
+
+    Undispersed periodic RFI leaks into all DM trials along lines of constant
+    frequency * DM, which cannot be removed by masking power spectrum bins after
+    dedispersion. This cleaner instead
+
+    1. computes the power spectrum of the band-summed (zero-DM) time series and flags
+       Fourier bins with normalised power above zero_dm_threshold,
+    2. computes the power spectrum of each channel and flags Fourier bins with
+       normalised power above channel_threshold,
+    3. replaces the zero-DM flagged bins in all channels and the channel flagged bins
+       in their channel by complex Gaussian noise with the local mean power, and
+    4. transforms the channels back to the time domain in place.
+
+    The power spectra are normalised by the median of blocks of norm_window bins, so
+    that the normalised power of noise follows an exponential distribution with mean
+    1 and the probability of exceeding a threshold T is exp(-T). Bins below min_freq
+    are never replaced to keep the red noise and the channel levels intact.
+
+    The cleaner modifies the spectra in place and does not change the RFI mask.
+    Note that strong, low DM pulsars can exceed the thresholds and be removed as well.
+    """
+
+    def __init__(
+        self,
+        spectra_shape,
+        zero_dm_threshold: float = 30.0,
+        channel_threshold: float = 40.0,
+        norm_window: int = 1024,
+        min_freq: float = 0.1,
+        pad_bins: int = 1,
+        chan_block: int = 16,
+        seed: int = 0,
+    ):
+        """
+        Initialize the FourierZapCleaner.
+
+        Parameters
+        ----------
+        spectra_shape : tuple
+            Shape of the spectra (nchan, ntime)
+        zero_dm_threshold : float
+            Normalised power above which a Fourier bin of the zero-DM time series is
+            replaced in all channels. Default: 30.0
+        channel_threshold : float
+            Normalised power above which a Fourier bin of a single channel is
+            replaced in that channel. Default: 40.0
+        norm_window : int
+            Number of Fourier bins per block used to estimate the local mean power.
+            Default: 1024
+        min_freq : float
+            Lowest fluctuation frequency in Hz that may be replaced. Default: 0.1
+        pad_bins : int
+            Number of neighbouring bins on either side that are replaced as well, to
+            catch the power of signals between two bins. Default: 1
+        chan_block : int
+            Number of channels processed at once per process. Default: 16
+        seed : int
+            Seed of the random noise replacing the flagged bins. Default: 0
+        """
+        # The cleaner does not mask any data, so no full size mask is allocated
+        self.nchan = spectra_shape[0]
+        self.ntime = spectra_shape[1]
+        self.nsamp = spectra_shape[0] * spectra_shape[1]
+        self.cleaned = False
+        self.zero_dm_threshold = zero_dm_threshold
+        self.channel_threshold = channel_threshold
+        self.norm_window = norm_window
+        self.min_freq = min_freq
+        self.pad_bins = pad_bins
+        self.chan_block = chan_block
+        self.seed = seed
+        self.zero_dm_zapped_freqs = np.array([])
+        self.nzapped = 0
+        self.nchan_zapped = 0
+
+    def get_mask(self):
+        return np.zeros((self.nchan, self.ntime), dtype=bool)
+
+    def get_masked_fraction(self):
+        return 0.0
+
+    def summary(self):
+        return dict(
+            nchan=self.nchan,
+            ntime=self.ntime,
+            zero_dm_threshold=self.zero_dm_threshold,
+            channel_threshold=self.channel_threshold,
+            nzero_dm_zapped=len(self.zero_dm_zapped_freqs),
+            nzapped=self.nzapped,
+            nchan_zapped=self.nchan_zapped,
+            cleaned=self.cleaned,
+        )
+
+    def zero_dm_flags(self, spectra):
+        """
+        Flag Fourier bins of the band-summed time series above zero_dm_threshold.
+
+        Parameters
+        ----------
+        spectra : np.ndarray
+            The spectra with shape (nchan, ntime)
+
+        Returns
+        -------
+        zero_dm_bad : np.ndarray
+            Boolean array over the rfft bins, True for bins to be replaced
+        """
+        from scipy import fft
+
+        zero_dm = spectra.sum(axis=0, dtype=np.float64)
+        zero_dm_fft = fft.rfft(zero_dm - zero_dm.mean())
+        power = zero_dm_fft.real**2 + zero_dm_fft.imag**2
+        norm_power = power / _local_mean_power(power, self.norm_window)
+        min_bin = self.min_bin()
+        bad = norm_power > self.zero_dm_threshold
+        bad[:min_bin] = False
+        freqs = np.fft.rfftfreq(self.ntime, d=TSAMP)
+        self.zero_dm_zapped_freqs = freqs[bad]
+        if bad.any():
+            strongest = np.argsort(norm_power[bad])[::-1][:10]
+            log.info(
+                f"Zero-DM Fourier bins above threshold: {bad.sum()}. Strongest at"
+                f" {np.round(self.zero_dm_zapped_freqs[strongest], 4).tolist()} Hz"
+                " with normalised power"
+                f" {np.round(norm_power[bad][strongest], 1).tolist()}"
+            )
+        bad = _dilate_bins(bad, self.pad_bins)
+        bad[0] = False
+        return bad
+
+    def min_bin(self):
+        """Index of the first Fourier bin that may be replaced."""
+        return max(1, int(np.ceil(self.min_freq * self.ntime * TSAMP)))
+
+    def clean(self, spectra_shared_name, spectra_shape, spec_dtype, num_threads=1):
+        """
+        Remove strong periodic signals from the shared spectra in place.
+
+        Parameters
+        ----------
+        spectra_shared_name : str
+            Name of shared memory for spectra
+        spectra_shape : tuple
+            Shape of the spectra (nchan, ntime)
+        spec_dtype : dtype
+            Data type of spectra
+        num_threads : int
+            Number of processes used to clean the channels. Default: 1
+        """
+        from functools import partial
+        from multiprocessing import Pool, shared_memory
+
+        log.info("Running Fourier zap cleaner")
+        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        spectra = np.ndarray(spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf)
+        zero_dm_bad = self.zero_dm_flags(spectra)
+        shared_spectra.close()
+
+        chan_slices = [
+            slice(start, min(start + self.chan_block, self.nchan))
+            for start in range(0, self.nchan, self.chan_block)
+        ]
+        worker = partial(
+            _fourier_zap_channels,
+            spectra_shared_name,
+            spectra_shape,
+            spec_dtype,
+            zero_dm_bad,
+            self.channel_threshold,
+            self.norm_window,
+            self.min_bin(),
+            self.pad_bins,
+        )
+        jobs = [(self.seed + i, chan_slice) for i, chan_slice in enumerate(chan_slices)]
+        if num_threads > 1:
+            with Pool(num_threads) as pool:
+                results = pool.starmap(worker, jobs)
+        else:
+            results = [worker(*job) for job in jobs]
+
+        self.nzapped = sum(result[0] for result in results)
+        self.nchan_zapped = sum(result[1] for result in results)
+        nbins = self.nchan * (self.ntime // 2 + 1)
+        log.info(
+            f"Replaced {self.nzapped} Fourier bins ({self.nzapped / nbins:.2e} of all"
+            f" bins) in {self.nchan_zapped} of {self.nchan} channels"
+        )
+        self.cleaned = True
 
 
 class PowerSpectrumCleaner(Cleaner):

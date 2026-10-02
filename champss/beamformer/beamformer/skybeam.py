@@ -336,7 +336,12 @@ class SkyBeamFormer:
             self.rfi_pipeline = RFIPipeline(self.masking_dict, make_plots=False)
             # Create global pipeline for post-fill cleaning on full dataset
             # Only create if global_masking_dict has any True values
-            if self.global_masking_dict and any(self.global_masking_dict.values()):
+            # Entries ending in _config hold parameters of a cleaner
+            if any(
+                value
+                for key, value in self.global_masking_dict.items()
+                if not key.endswith("_config")
+            ):
                 self.rfi_global_pipeline = RFIGlobalPipeline(
                     self.global_masking_dict, make_plots=False
                 )
@@ -706,6 +711,16 @@ class SkyBeamFormer:
                 nsub_slices,
             )
             log.info("Zero replacement complete")
+
+            # Fourier domain removal of strong periodic signals on the final spectra
+            if self.rfi_global_pipeline.apply_fourier_zap:
+                log.info("Removing strong periodic signals in the Fourier domain")
+                self.rfi_global_pipeline.fourier_zap(
+                    spectra_shared.name,
+                    spectra_shape,
+                    spec_dtype,
+                    num_threads=num_threads,
+                )
 
         completely_masked_channels = rfi_mask.min(axis=1).sum()
         log.info(

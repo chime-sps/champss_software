@@ -336,6 +336,8 @@ class RFIGlobalPipeline:
             A dictionary of RFI mitigation techniques to apply to the data.
             Currently supports:
             - "stddev": StdDevChannelCleaner
+            - "fourier_zap": FourierZapCleaner, run by RFIGlobalPipeline.fourier_zap
+              with the parameters given in "fourier_zap_config"
 
         make_plots: bool
             Whether to produce diagnostic plots from cleaners that support
@@ -346,6 +348,10 @@ class RFIGlobalPipeline:
         self.apply_stddev_filter = (
             masks_to_apply["stddev"] if "stddev" in keys else False
         )
+        self.apply_fourier_zap = (
+            masks_to_apply["fourier_zap"] if "fourier_zap" in keys else False
+        )
+        self.fourier_zap_config = masks_to_apply.get("fourier_zap_config") or {}
 
         self.plot_diagnostics = make_plots
 
@@ -374,9 +380,7 @@ class RFIGlobalPipeline:
             dtype of spectra
         """
         shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
-        spectra = np.ndarray(
-            spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
-        )
+        spectra = np.ndarray(spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf)
         shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
         rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
 
@@ -389,7 +393,9 @@ class RFIGlobalPipeline:
                 stddev_start = time.time()
                 log.debug("Global StdDev Channel clean START")
                 cleaner = cleaners.StdDevChannelCleaner(spectra_shape)
-                cleaner.clean(spectra_shared_name, mask_shared_name, spectra_shape, spec_dtype)
+                cleaner.clean(
+                    spectra_shared_name, mask_shared_name, spectra_shape, spec_dtype
+                )
 
                 # Re-access mask after cleaner modifies it
                 shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
@@ -423,3 +429,49 @@ class RFIGlobalPipeline:
 
         shared_spectra.close()
         shared_mask.close()
+
+    def fourier_zap(
+        self,
+        spectra_shared_name,
+        spectra_shape,
+        spec_dtype,
+        num_threads=1,
+    ):
+        """
+        Remove strong periodic signals from the full beamformed dataset in the Fourier
+        domain of each channel, if enabled. Run this on the final, filled spectra.
+
+        Parameters
+        ----------
+        spectra_shared_name: str
+            Name of shared spectra
+
+        spectra_shape: tuple(int)
+            Shape of spectra
+
+        spec_dtype:
+            dtype of spectra
+
+        num_threads: int
+            Number of processes used to clean the channels. Default = 1
+
+        Returns
+        -------
+        cleaner: FourierZapCleaner or None
+            The cleaner that was run, None if it is not enabled
+        """
+        if not self.apply_fourier_zap:
+            return None
+        with rfi_processing_time.labels("fourier_zap_global", "0").time():
+            fourier_start = time.time()
+            cleaner = cleaners.FourierZapCleaner(
+                spectra_shape, **self.fourier_zap_config
+            )
+            cleaner.clean(
+                spectra_shared_name, spectra_shape, spec_dtype, num_threads=num_threads
+            )
+            log.debug(
+                f"Took {time.time() - fourier_start} seconds to run global"
+                " FourierZapCleaner"
+            )
+        return cleaner
