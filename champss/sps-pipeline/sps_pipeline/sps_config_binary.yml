@@ -366,6 +366,14 @@ ps_cumul_stack:
     only_use_stack_threshold: False
     mean_bin_sigma_threshold: 5
     convolve_max_bin: 32
+    run_rednoise: True
+    run_rednoise_reweight: True
+    run_rednoise_reweight_threshold: 0.95
+    rednoise_config:
+      b0: 10
+      bmax: 200
+      b1: 1000
+      bmax2: 10000
     min_dm: 5.
     cluster_config:
       dbscan_eps: 1
