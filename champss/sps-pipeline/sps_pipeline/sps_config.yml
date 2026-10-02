@@ -140,6 +140,7 @@ ps:
               upper_limit_dynamic: 3
             - metric: num_clusters
     stack_nbit: 16
+    stack_compression: bitshuffle
     infile_overwrite: False
     readout_stack: True
   ps_search_config:
@@ -355,6 +356,7 @@ ps_cumul_stack:
             upper_percentile_cut: null
           minimum_bin_weight: 1
     stack_nbit: 16
+    stack_compression: bitshuffle
     spectra_nbit: 32
     delete_monthly_stack: True
   ps_search_config:

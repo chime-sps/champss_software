@@ -9,6 +9,9 @@ from scipy.stats import mode
 
 import astropy.units as u
 import h5py
+
+# Registers the bitshuffle filter needed to read compressed power spectra
+import hdf5plugin
 import numpy as np
 import pytz
 from astropy.coordinates import SkyCoord
@@ -26,6 +29,12 @@ from sps_common.interfaces.single_pointing import (
 from sps_common.sm_utils import share_array
 
 log = logging.getLogger(__name__)
+
+# Supported compressions for the power spectra written by PowerSpectra.write
+POWER_SPECTRA_COMPRESSION = {
+    None: {},
+    "bitshuffle": hdf5plugin.Bitshuffle(cname="lz4"),
+}
 
 
 @attrs
@@ -57,7 +66,7 @@ class DedispersedTimeSeries:
 
     def __attrs_post_init__(self):
         """Convert dm list to array and check for dm inconsistency."""
-        if type(self.dms) != np.ndarray:
+        if type(self.dms) is not np.ndarray:
             self.dms = np.asarray(self.dms)
         if self.dedisp_ts.shape[0] != self.dms.size:
             raise ValueError(
@@ -266,7 +275,7 @@ class PowerSpectra:
 
     @bad_freq_indices.validator
     def _validate_bad_freq_indices(self, attribute, value):
-        if type(value) != list:
+        if type(value) is not list:
             raise AttributeError(
                 f"The data type of {attribute.name} is not a nested list. It is a"
                 f" {type(value)}"
@@ -455,7 +464,7 @@ class PowerSpectra:
                 power_spectra_shared=power_spectra_shared,
             )
 
-    def write(self, filename, nbit=32):
+    def write(self, filename, nbit=32, compression=None):
         """
         Write the PowerSpectra class to a hdf5 file.
 
@@ -466,7 +475,17 @@ class PowerSpectra:
 
         nbit: int
             The number of bits to save the power spectra in. Default = 32
+
+        compression: str or None
+            Lossless compression of the power spectra. "bitshuffle" uses bitshuffle
+            with lz4, which reduces the size of float16 stacks by about 28%. Reading
+            the file requires hdf5plugin to be imported. Default = None
         """
+        if compression not in POWER_SPECTRA_COMPRESSION:
+            raise ValueError(
+                f"Unknown compression {compression}, available:"
+                f" {list(POWER_SPECTRA_COMPRESSION)}"
+            )
 
         # CAUTION: When changing this method, make sure to adapt .check_file_keys aswell
         # Otherwise the pipeline may destroy perfectly fine stacks
@@ -481,6 +500,7 @@ class PowerSpectra:
                 data=self.power_spectra,
                 dtype=f"f{int(nbit / 8)}",
                 chunks=(1, self.freq_labels.size),
+                **POWER_SPECTRA_COMPRESSION[compression],
             )
             h5f.create_dataset("frequency labels", data=self.freq_labels)
             h5f.create_dataset("dms", data=self.dms)
@@ -543,7 +563,7 @@ class PowerSpectra:
         try:
             h5f = h5py.File(filename, "r")
             file_ok = all(field in h5f.keys() for field in checked_fields)
-        except:
+        except Exception:
             file_ok = False
         return file_ok
 
@@ -674,10 +694,10 @@ class PowerSpectraDetections:
 
     @obs_id.validator
     def _validate_obs_id(self, attribute, value):
-        if type(value) != list:
+        if type(value) is not list:
             raise AttributeError(f"The data type of {attribute.name} is not list.")
         for val in value:
-            if type(val) != str:
+            if type(val) is not str:
                 raise AttributeError(f"The elements of {attribute.name} are not str.")
 
     @classmethod

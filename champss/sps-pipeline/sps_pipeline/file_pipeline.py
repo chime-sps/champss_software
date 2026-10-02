@@ -233,11 +233,12 @@ def run_file_pipeline(
     log.info(f"Wrote candidates to {cand_path}.")
 
     stack_nbit = config.ps.ps_stack_config.stack_nbit
+    stack_compression = config.ps.ps_stack_config.get("stack_compression", None)
 
     stack_exists = os.path.isfile(stack_file)
     if not stack_exists:
         log.info(f"Stack does not exist. Writing new stack to {stack_file}.")
-        power_spectra.write(stack_file, nbit=stack_nbit)
+        power_spectra.write(stack_file, nbit=stack_nbit, compression=stack_compression)
     else:
         stack_config = OmegaConf.to_container(config.ps.ps_stack_config)
         stack_config["qc"] = False

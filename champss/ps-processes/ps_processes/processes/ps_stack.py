@@ -9,6 +9,9 @@ from pathlib import PurePath
 
 import filelock
 import h5py
+
+# Registers the bitshuffle filter needed to read compressed power spectra stacks
+import hdf5plugin  # noqa: F401
 import numpy as np
 import pytz
 from attr import ib as attribute
@@ -76,6 +79,10 @@ class PowerSpectraStack:
 
     max_lock_age: float
         Maximum age of the stack lock file before it gets ignored. Default = 1800
+    stack_compression: str or None
+        Lossless compression of the power spectra stack written to disk, either None
+        or 'bitshuffle'. Existing stacks are read regardless of their compression.
+        Default = None
     """
 
     mode = attribute(default="month")
@@ -91,6 +98,7 @@ class PowerSpectraStack:
     max_lock_age = attribute(default=1800.0, validator=instance_of(float))
     lock = attribute(init=False, validator=instance_of(filelock._unix.UnixFileLock))
     write_when_file_not_found = attribute(default=True, validator=instance_of(bool))
+    stack_compression = attribute(default=None)
 
     @mode.validator
     def _validate_mode(self, attribute, value):
@@ -98,6 +106,13 @@ class PowerSpectraStack:
             "month",
             "cumul",
         ], f"The {attribute.name} must be either 'month' or 'cumul'"
+
+    @stack_compression.validator
+    def _validate_stack_compression(self, attribute, value):
+        assert value in [
+            None,
+            "bitshuffle",
+        ], f"The {attribute.name} must be either None or 'bitshuffle'"
 
     @spectra_nbit.validator
     @stack_nbit.validator
@@ -198,7 +213,11 @@ class PowerSpectraStack:
                         f"Stack file {stack_file_path} aready exists on disk but appears to be broken. Will delete old file."
                     )
                     os.remove(stack_file_path)
-            pspec.write(stack_file_path, nbit=self.stack_nbit)
+            pspec.write(
+                stack_file_path,
+                nbit=self.stack_nbit,
+                compression=self.stack_compression,
+            )
             if self.update_db:
                 log.info(
                     f"Creating new database entry for {pspec.ra:.2f} {pspec.dec:.2f}."
@@ -292,7 +311,11 @@ class PowerSpectraStack:
                     )
                     stack_file_path = self.get_stack_file_path(pspec)
                     self.lock_stack(self.get_stack_file_path(pspec, unique=False))
-                    pspec.write(stack_file_path, nbit=self.stack_nbit)
+                    pspec.write(
+                        stack_file_path,
+                        nbit=self.stack_nbit,
+                        compression=self.stack_compression,
+                    )
                     if self.update_db:
                         self.update_stack_database(pspec, ps_stack_db.pointing_id)
                     if self.mode == "cumul" and self.delete_monthly_stack:
@@ -385,7 +408,7 @@ class PowerSpectraStack:
             del h5f.attrs["observation ids"]
             h5f.attrs["observation ids"] = list(new_obs_ids)
 
-            if type(pspec.rn_medians) != np.ndarray:
+            if type(pspec.rn_medians) is not np.ndarray:
                 log.error("This power spectrum does not have rednoise info saved.")
 
             elif "rn medians" not in h5f.keys():
@@ -492,7 +515,7 @@ class PowerSpectraStack:
             log.info(f"Updating the new {self.mode} power spectra information")
             pspec.num_days += h5f.attrs["number of days"]
 
-            if type(pspec.rn_medians) != np.ndarray:
+            if type(pspec.rn_medians) is not np.ndarray:
                 log.error("This power spectrum does not have rednoise info saved.")
 
             elif "rn medians" not in h5f.keys():
@@ -601,7 +624,7 @@ class PowerSpectraStack:
             pspec_stack.rn_scales.extend(pspec.rn_scales)
             pspec_stack.rn_dm_indices.extend(pspec.rn_scales)
 
-        except:
+        except Exception:
             if pspec.rn_medians is None:
                 log.error("The daily power spectrum does not have rednoise info saved.")
             if pspec_stack.rn_medians is None:
@@ -635,7 +658,7 @@ class PowerSpectraStack:
         if os.path.isfile(temp_path):
             log.info(f"Found old temp file {temp_path}. Will remove this file.")
             os.remove(temp_path)
-        pspec.write(temp_path, nbit=self.stack_nbit)
+        pspec.write(temp_path, nbit=self.stack_nbit, compression=self.stack_compression)
         log.info(
             f"Deleting the existing {self.mode} power spectra stack '{stack_file_path}'"
         )

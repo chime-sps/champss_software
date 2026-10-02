@@ -911,6 +911,7 @@ click = "^8.1.4"
 msgpack-python = "^0.5.6"
 numpy = "^1.24.3"
 pytz = "^2023.3"
+pyzmq = "^27.1.0"
 setuptools = "^65.6.3"
 sps-common = {path = "../sps-common", develop = true}
 sps-databases = {path = "../sps-databases", develop = true}
@@ -1615,6 +1616,29 @@ files = [
 
 [package.dependencies]
 numpy = ">=1.17.3"
+
+[[package]]
+name = "hdf5plugin"
+version = "5.1.0"
+description = "HDF5 Plugins for Windows, MacOS, and Linux"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "hdf5plugin-5.1.0-py3-none-macosx_10_13_universal2.whl", hash = "sha256:6f88bdc3ebf1d7393557d6c70811552f76f8fdd275988a7d2c904633f1a21a1d"},
+    {file = "hdf5plugin-5.1.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0151f844e5f7de0e26cc2de275a339f6936c825fee915cbd54318e22a913c00a"},
+    {file = "hdf5plugin-5.1.0-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:b613e16d376d3b37fd2d76893e356c402100bd68a02abbe960a98e8257ca8758"},
+    {file = "hdf5plugin-5.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6da81b0b168f271b0cf995a12c28cf01b381587fed21f25fd91b2c90d5108425"},
+    {file = "hdf5plugin-5.1.0-py3-none-win_amd64.whl", hash = "sha256:6be3409554bde676db0f1ab46a27e87ea73d7974f359f354a738c812618261d1"},
+    {file = "hdf5plugin-5.1.0.tar.gz", hash = "sha256:cf78f1426b5868128b9ec6c498b70d6734e1dc8007a8ed1e7282954ab421b3fa"},
+]
+
+[package.dependencies]
+h5py = ">=3.0.0"
+
+[package.extras]
+doc = ["ipython", "nbsphinx", "sphinx", "sphinx_rtd_theme"]
+test = ["blosc2 (>=2.5.1) ; python_version >= \"3.9\"", "blosc2-grok (>=0.2.2) ; python_version >= \"3.9\""]
 
 [[package]]
 name = "healpy"
@@ -4567,7 +4591,7 @@ version = "27.1.0"
 description = "Python bindings for 0MQ"
 optional = false
 python-versions = ">=3.8"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "pyzmq-27.1.0-cp310-cp310-macosx_10_15_universal2.whl", hash = "sha256:508e23ec9bc44c0005c4946ea013d9317ae00ac67778bd47519fdf5a0e930ff4"},
     {file = "pyzmq-27.1.0-cp310-cp310-manylinux2014_i686.manylinux_2_17_i686.whl", hash = "sha256:507b6f430bdcf0ee48c0d30e734ea89ce5567fd7b8a0f0044a369c176aa44556"},
@@ -5409,9 +5433,11 @@ develop = true
 [package.dependencies]
 astropy = "~6.1"
 attrs = "^22.2.0"
+cfbm = {git = "https://github.com/chime-sps/chime-frb-beam-model"}
 click = "^8.1.4"
 easydict = "^1.11"
 h5py = "~3.9"
+hdf5plugin = "^5.0.0"
 matplotlib = "^3.7.1"
 numpy = "^1.24.3"
 pytz = "^2023.3"
