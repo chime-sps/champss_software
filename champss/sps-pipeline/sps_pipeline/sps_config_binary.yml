@@ -372,8 +372,6 @@ ps_cumul_stack:
     rednoise_config:
       b0: 10
       bmax: 200
-      b1: 1000
-      bmax2: 10000
     min_dm: 5.
     cluster_config:
       dbscan_eps: 1

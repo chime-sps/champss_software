@@ -59,7 +59,7 @@ class DedispersedTimeSeries:
 
     def __attrs_post_init__(self):
         """Convert dm list to array and check for dm inconsistency."""
-        if type(self.dms) != np.ndarray:
+        if type(self.dms) is not np.ndarray:
             self.dms = np.asarray(self.dms)
         if self.dedisp_ts.shape[0] != self.dms.size:
             raise ValueError(
@@ -268,7 +268,7 @@ class PowerSpectra:
 
     @bad_freq_indices.validator
     def _validate_bad_freq_indices(self, attribute, value):
-        if type(value) != list:
+        if type(value) is not list:
             raise AttributeError(
                 f"The data type of {attribute.name} is not a nested list. It is a"
                 f" {type(value)}"
@@ -545,7 +545,7 @@ class PowerSpectra:
         try:
             h5f = h5py.File(filename, "r")
             file_ok = all(field in h5f.keys() for field in checked_fields)
-        except:
+        except Exception:
             file_ok = False
         return file_ok
 
@@ -654,8 +654,12 @@ def remove_rednoise_from_pspec_row(
 ):
     """Run rednoise normalisation on a single row of the power spectrum"""
     power_spectra, shared_spectra = recreate_shared_array(power_spectra_shared_dict)
-    power_spectra[dm_index, :] = rednoise_normalise(
-        power_spectra[dm_index], **rn_dict, get_medians=False, ignore_zeros=True
+    rednoise_normalise(
+        power_spectra[dm_index],
+        **rn_dict,
+        get_medians=False,
+        ignore_zeros=True,
+        out=power_spectra[dm_index],
     )
     shared_spectra.close()
 
@@ -714,10 +718,10 @@ class PowerSpectraDetections:
 
     @obs_id.validator
     def _validate_obs_id(self, attribute, value):
-        if type(value) != list:
+        if type(value) is not list:
             raise AttributeError(f"The data type of {attribute.name} is not list.")
         for val in value:
-            if type(val) != str:
+            if type(val) is not str:
                 raise AttributeError(f"The elements of {attribute.name} are not str.")
 
     @classmethod
