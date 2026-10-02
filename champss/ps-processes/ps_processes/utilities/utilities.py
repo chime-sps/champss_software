@@ -5,7 +5,15 @@ from scipy.special import gamma, gammainc
 from scipy.stats import chi2, kstwo
 
 
-def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians = True):
+def rednoise_normalise(
+    power_spectrum,
+    b0=50,
+    bmax=100000,
+    b1=None,
+    bmax2=None,
+    get_medians=True,
+    ignore_zeros=False,
+):
     """
     Script to normalise power spectrum while removing rednoise. Based on presto's method
     of rednoise removal, in which a logarithmically increasing window is used at low
@@ -36,7 +44,12 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians = True):
     for n in range(0, ps_len):
         # create the log range for normalisation
         new_window = np.exp(1 + n / 3) * b0 / np.exp(1)
-        if new_window > bmax:
+        if b1 is not None and bmax2 is not None:
+            current_bmax = bmax2 if np.sum(scale) > b1 else bmax
+        else:
+            current_bmax = bmax
+        if new_window > current_bmax:
+            window = current_bmax
             pass
         else:
             window = int(new_window)
@@ -52,16 +65,31 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians = True):
     old_median = 1
     normalised_power_spectrum = np.zeros(shape=np.shape(power_spectrum))
     medians = []
-    
+
     for bins in scale:
         mid_bin = int(start + bins / 2)
-        new_median = np.nanmedian(power_spectrum[start : start + bins])
+        if ignore_zeros:
+            new_median = np.nanmedian(
+                power_spectrum[start : start + bins][
+                    power_spectrum[start : start + bins] != 0
+                ]
+            )
+        else:
+            new_median = np.nanmedian(power_spectrum[start : start + bins])
         medians.append(new_median)
         i = 0
         while np.isnan(new_median):
             i += 1
-            new_median = np.nanmedian(
-                power_spectrum[start + (i * bins) : start + ((i + 1) * bins)]
+            if ignore_zeros:
+                new_median = np.nanmedian(
+                    power_spectrum[start + (i * bins) : start + ((i + 1) * bins)][
+                        power_spectrum[start + (i * bins) : start + ((i + 1) * bins)]
+                        != 0
+                    ]
+                )
+            else:
+                new_median = np.nanmedian(
+                    power_spectrum[start + (i * bins) : start + ((i + 1) * bins)]
                 )
             if not np.isnan(new_median):
                 if start == 0:
@@ -100,6 +128,7 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians = True):
         return normalised_power_spectrum, medians, scale
     else:
         return normalised_power_spectrum
+
 
 def rednoise_normalise_runmed(power_spectrum, w0=10, wmax=1000, bmax=3000):
     """

@@ -149,6 +149,12 @@ class PowerSpectraSearch:
     full_harm_bins_raw = attribute(default=None)
     update_db = attribute(default=True, validator=instance_of(bool))
     max_search_frequency: float = attribute(default=np.inf)
+    run_rednoise: bool = attribute(default=False)
+    run_rednoise_reweight: bool = attribute(default=False)
+    run_rednoise_reweight_threshold: float = attribute(default=0.95)
+    rednoise_config = attribute(
+        validator=instance_of(dict), default=dict(b0=10, bmax=200)
+    )
 
     @num_harm.validator
     def _validate_num_harm(self, attribute, value):
@@ -207,6 +213,17 @@ class PowerSpectraSearch:
         """
         # Spawn multiprocessing method does not work nicely with shared arrays
         set_start_method("forkserver", force=True)
+
+        if self.run_rednoise:
+            if self.run_rednoise_reweight:
+                log.info(
+                    f"Reweighting power spectra, while filtering out all bins below threshold {self.run_rednoise_reweight_threshold}"
+                )
+                pspec.make_same_weight(min_weight=self.run_rednoise_reweight_threshold)
+            log.info("Running rednoise normalisation on the power spectra")
+            pspec.remove_rednoise(
+                rn_dict=self.rednoise_config, nthreads=self.num_threads
+            )
 
         ps_length = len(pspec.freq_labels)
         ps_length_search = ((len(pspec.freq_labels)) // self.num_harm) * self.num_harm
