@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+import bottleneck as bn
 import numpy as np
 from scipy.special import gamma, gammainc
 from scipy.stats import chi2, kstwo
@@ -69,36 +70,6 @@ def fast_nanmedian(x, sample_size=4096, min_size=8192):
     return _median_of(x[~nan_mask], k_lo, k_hi)
 
 
-def batched_nanmedian(block):
-    """
-    Compute the median of each row of a 2D array while ignoring nans.
-
-    Gives the same result as np.nanmedian(block, axis=1), but is much faster for
-    many short rows.
-
-    Parameters
-    =======
-    block: np.ndarray
-        2D array of which the row medians are computed. Is not modified.
-
-    Returns
-    =======
-    medians: np.ndarray
-        The median of each row, nan for rows that only contain nans
-    """
-    # nans are sorted to the end of each row
-    sorted_block = np.sort(block, axis=1)
-    n = block.shape[1] - np.count_nonzero(np.isnan(sorted_block), axis=1)
-    k_lo = np.maximum((n - 1) // 2, 0)[:, np.newaxis]
-    k_hi = (n // 2)[:, np.newaxis]
-    v_lo = np.take_along_axis(sorted_block, k_lo, axis=1)[:, 0]
-    v_hi = np.take_along_axis(sorted_block, k_hi, axis=1)[:, 0]
-    # same arithmetic as np.mean of the two central values
-    medians = np.where(n % 2 == 1, v_hi, (v_lo + v_hi) / block.dtype.type(2))
-    medians[n == 0] = np.nan
-    return medians
-
-
 @lru_cache(maxsize=16)
 def rednoise_window_sizes(ps_len, b0=50, bmax=100000):
     """
@@ -154,7 +125,7 @@ def rednoise_window_sizes(ps_len, b0=50, bmax=100000):
 
 
 # Equally sized windows below this size have their medians computed together
-MAX_BATCH_WINDOW = 384
+MAX_BATCH_WINDOW = 8192
 # Interpolate the medians in a single pass when there are at least this many segments
 MIN_VECTORISED_SEGMENTS = 256
 
@@ -297,7 +268,7 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True, out
     medians = [None] * len(scale)
     for k, count, bins in layout["runs"]:
         block = power_spectrum[starts[k] : starts[k] + count * bins]
-        medians[k : k + count] = list(batched_nanmedian(block.reshape(count, bins)))
+        medians[k : k + count] = list(bn.nanmedian(block.reshape(count, bins), axis=1))
     for k in layout["single"]:
         medians[k] = fast_nanmedian(power_spectrum[starts[k] : starts[k] + scale[k]])
 
