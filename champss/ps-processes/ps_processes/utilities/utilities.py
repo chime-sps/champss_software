@@ -11,65 +11,6 @@ from scipy.stats import chi2, kstwo
 LOG2 = np.log(2)
 
 
-def _median_of(values, k_lo, k_hi):
-    """Median from the order statistics k_lo and k_hi of values, which is modified."""
-    if k_lo == k_hi:
-        values.partition(k_lo)
-        return values[k_lo]
-    values.partition([k_lo, k_hi])
-    return np.mean(values[k_lo : k_hi + 1])
-
-
-def fast_nanmedian(x, sample_size=4096, min_size=8192):
-    """
-    Compute the median of a 1D array while ignoring nans.
-
-    Gives the same result as np.nanmedian, but avoids partitioning the full array for
-    large inputs. The median is bracketed using a strided sample of the data, so that
-    only the values within the bracket need to be partitioned. If the median falls
-    outside the bracket the full array is partitioned instead.
-
-    Parameters
-    =======
-    x: np.ndarray
-        1D array of which the median is computed. Is not modified.
-
-    sample_size: int
-        Approximate size of the sample used to bracket the median. Default = 4096
-
-    min_size: int
-        Number of non-nan values below which the full array is partitioned.
-        Default = 8192
-
-    Returns
-    =======
-    median: np.floating
-        The median of x, nan if x only contains nans
-    """
-    nan_mask = np.isnan(x)
-    n_nan = np.count_nonzero(nan_mask)
-    n = x.size - n_nan
-    if n == 0:
-        return x.dtype.type(np.nan)
-    k_lo, k_hi = (n - 1) // 2, n // 2
-    if n < min_size:
-        return _median_of(x[~nan_mask] if n_nan else x.copy(), k_lo, k_hi)
-    sample = x[:: max(1, x.size // sample_size)].copy()
-    m = sample.size - np.count_nonzero(np.isnan(sample))
-    # bracket the median by +-4 sigma of its rank in the sample
-    half_width = int(2 * np.sqrt(m)) + 1
-    j_lo, j_hi = max(0, m // 2 - half_width), min(m - 1, m // 2 + half_width)
-    # nans are sorted to the end
-    sample.partition([j_lo, j_hi])
-    lower, upper = sample[j_lo], sample[j_hi]
-    below = x < lower
-    n_below = np.count_nonzero(below)
-    inside = (x <= upper) ^ below
-    if n_below <= k_lo and n_below + np.count_nonzero(inside) > k_hi:
-        return _median_of(x[inside], k_lo - n_below, k_hi - n_below)
-    return _median_of(x[~nan_mask], k_lo, k_hi)
-
-
 @lru_cache(maxsize=16)
 def rednoise_window_sizes(ps_len, b0=50, bmax=100000):
     """
@@ -124,8 +65,6 @@ def rednoise_window_sizes(ps_len, b0=50, bmax=100000):
     return tuple(scale)
 
 
-# Equally sized windows below this size have their medians computed together
-MAX_BATCH_WINDOW = 8192
 # Interpolate the medians in a single pass when there are at least this many segments
 MIN_VECTORISED_SEGMENTS = 256
 
@@ -166,7 +105,7 @@ def _rednoise_layout(ps_len, b0, bmax):
         k_end = k + 1
         while k_end < n_win and scale[k_end] == scale[k]:
             k_end += 1
-        if k_end - k > 1 and scale[k] < MAX_BATCH_WINDOW:
+        if k_end - k > 1:
             runs.append((k, k_end - k, scale[k]))
         else:
             single.extend(range(k, k_end))
@@ -270,7 +209,7 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True, out
         block = power_spectrum[starts[k] : starts[k] + count * bins]
         medians[k : k + count] = list(bn.nanmedian(block.reshape(count, bins), axis=1))
     for k in layout["single"]:
-        medians[k] = fast_nanmedian(power_spectrum[starts[k] : starts[k] + scale[k]])
+        medians[k] = bn.nanmedian(power_spectrum[starts[k] : starts[k] + scale[k]])
 
     used_medians = list(medians)
     for k, new_median in enumerate(medians):
@@ -286,7 +225,7 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians=True, out
                 # all remaining bins are nan
                 new_median = old_median
                 break
-            new_median = fast_nanmedian(
+            new_median = bn.nanmedian(
                 power_spectrum[start + (i * bins) : start + ((i + 1) * bins)]
             )
             if not np.isnan(new_median):
