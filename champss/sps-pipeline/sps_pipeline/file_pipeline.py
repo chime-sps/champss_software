@@ -9,7 +9,6 @@ import os
 from astropy.coordinates import EarthLocation
 import astropy.units as u
 
-
 log_stream = logging.StreamHandler()
 logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)
@@ -23,6 +22,117 @@ from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.processes.ps_search import PowerSpectraSearch
 from candidate_processor.feature_generator import Features
 from ps_processes.processes.ps_stack import PowerSpectraStack
+
+
+def read_rfifind_mask(mask_file, observation):
+    """
+    Reads a PRESTO rfifind .mask file into a boolean zap array.
+    Yoinked directly from PRESTO.
+    """
+    with open(mask_file, "rb") as x:
+        time_sig, freq_sig, MJD, dtint, lofreq, df = np.fromfile(
+            x, dtype=np.float64, count=6
+        )
+        nchan, nint, ptsperint = np.fromfile(x, dtype=np.int32, count=3)
+        nzap = np.fromfile(x, dtype=np.int32, count=1)[0]
+        if nzap:
+            mask_zap_chans = np.fromfile(x, dtype=np.int32, count=nzap)
+        else:
+            mask_zap_chans = np.asarray([], dtype=np.int32)
+        if len(mask_zap_chans) == nchan:
+            log.warning("All channels recommended for masking!")
+        nzap = np.fromfile(x, dtype=np.int32, count=1)[0]
+        if nzap:
+            mask_zap_ints = np.fromfile(x, dtype=np.int32, count=nzap)
+        else:
+            mask_zap_ints = np.asarray([], dtype=np.int32)
+        if len(mask_zap_ints) == nint:
+            log.warning("All intervals recommended for masking!")
+        nzap_per_int = np.fromfile(x, dtype=np.int32, count=nint)
+        mask_zap_chans_per_int = []
+        for nzap in nzap_per_int:
+            if nzap:
+                if nzap == nchan:
+                    tozap = np.arange(0, nchan, dtype=np.int32)
+                else:
+                    tozap = np.fromfile(x, dtype=np.int32, count=nzap)
+            else:
+                tozap = np.asarray([], dtype=np.int32)
+            mask_zap_chans_per_int.append(tozap)
+
+    nchan, nint, ptsperint = int(nchan), int(nint), int(ptsperint)
+
+    zap = np.zeros((nint, nchan), dtype=bool)
+    for i, chans in enumerate(mask_zap_chans_per_int):
+        zap[i, chans] = True
+    zap[:, mask_zap_chans] = True
+    zap[mask_zap_ints, :] = True
+
+    hdr = observation.your_header
+    if nchan != hdr.nchans:
+        raise ValueError(
+            f"rfifind mask has {nchan} channels but the data has {hdr.nchans}."
+        )
+    if not np.isclose(dtint, ptsperint * hdr.tsamp, rtol=1e-3):
+        raise ValueError("Make sure you run the mask on the same resolution of data...")
+    if abs(MJD - hdr.tstart) * 86400 > 1.0:
+        log.warning("Is this the right mask for the file...?")
+
+    # make sure to flip mask if data are numbers high-low
+    if hdr.foff < 0:
+        zap = zap[:, ::-1]
+    return zap, ptsperint
+
+
+def select_channels(hdr, fmin=None, fmax=None):
+    """
+    Select channels where fmin < f < fmax.
+    """
+    chan_bw = abs(hdr.foff)
+    centers = hdr.fch1 + hdr.foff * np.arange(hdr.nchans)
+    lo = -np.inf if fmin is None else fmin
+    hi = np.inf if fmax is None else fmax
+    tol = 1e-6 * chan_bw
+    keep = np.flatnonzero(
+        (centers - chan_bw / 2 >= lo - tol) & (centers + chan_bw / 2 <= hi + tol)
+    )
+    if keep.size == 0:
+        raise click.BadParameter(f"No channels lie within {fmin}-{fmax}. ")
+    c0, c1 = int(keep[0]), int(keep[-1]) + 1
+    f_lo = float(centers[c0:c1].min() - chan_bw / 2)
+    f_hi = float(centers[c0:c1].max() + chan_bw / 2)
+    return c0, c1, f_lo, f_hi
+
+
+def load_block(observation, start, nsamp, rfi_mask=None, chans=slice(None)):
+    """
+    Load in observation and apply rfifind mask if provided.
+    """
+    if observation.format == "fits":
+        block = observation.formatclass.get_data(observation, start, nsamp)[:, 0, chans]
+    else:
+        block = observation.get_data(start, nsamp)[:, chans].astype(np.float32)
+
+    bad = ~np.isfinite(block)
+    n_bad = int(bad.sum())
+
+    n_masked = 0
+    if rfi_mask is not None:
+        zap, ptsperint = rfi_mask
+        ints = np.minimum((start + np.arange(nsamp)) // ptsperint, zap.shape[0] - 1)
+        masked = zap[ints]
+        n_masked = int((masked & ~bad).sum())
+        bad |= masked
+
+    if bad.any():
+        good = ~bad
+        fill = np.where(good, block, 0).sum(axis=0, dtype=np.float64) / np.maximum(
+            good.sum(axis=0), 1
+        )
+        np.copyto(
+            block, np.broadcast_to(fill.astype(np.float32), block.shape), where=bad
+        )
+    return block, n_bad, n_masked
 
 
 def apply_logging_config(config, log_file="./logs/default.log"):
@@ -99,6 +209,24 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     type=int,
     help="Average this many adjacent time samples on read.",
 )
+@click.option(
+    "--rfifind-mask",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="PRESTO rfifind .mask file.",
+)
+@click.option(
+    "--fmin",
+    default=None,
+    type=float,
+    help="Lowest frequency to use (MHz).",
+)
+@click.option(
+    "--fmax",
+    default=None,
+    type=float,
+    help="Highest frequency to use (MHz).",
+)
 def run_file_pipeline(
     obs_file,
     stack_file,
@@ -107,6 +235,9 @@ def run_file_pipeline(
     num_threads,
     maxdm,
     time_downsample,
+    rfifind_mask,
+    fmin,
+    fmax,
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
@@ -122,31 +253,60 @@ def run_file_pipeline(
         z=float(observation.header["ANT_Z"]) * u.m,
     )
 
+    # Channel selection; FREQ_BOTTOM/FREQ_TOP are band edges, always bottom < top
+    c0, c1, FREQ_BOTTOM, FREQ_TOP = select_channels(obs_header, fmin, fmax)
+    chans = slice(c0, c1)
+    nchan = c1 - c0
+    log.info(
+        f"Using channels {c0}-{c1 - 1} ({nchan} chans), "
+        f"{FREQ_BOTTOM:.1f}-{FREQ_TOP:.1f} MHz."
+    )
+
+    # rfifind mask: read and validated for the full band, then cut to `chans`
+    rfi_mask = None
+    if rfifind_mask is not None:
+        zap, ptsperint = read_rfifind_mask(rfifind_mask, observation)
+        rfi_mask = (zap[:, chans], ptsperint)
+        log.info(
+            f"Loaded rfifind mask {rfifind_mask}: {rfi_mask[0].mean():.1%} of "
+            "(interval, channel) cells masked in the selected band."
+        )
+
+    # Read in chunks, averaging each run of `tdec` consecutive samples
     tdec = time_downsample
-    nchan = obs_header.nchans
-    nout = obs_header.nspectra // tdec
-
-    if tdec > 1:
-        log.info(f"Downsampling in time by a factor of {tdec}.")
-
-    """Chunking to avoid memory allocation overflow."""
-    target_bytes = 1 * 1024**3  # ~1 GB per chunk
+    log.info(f"Downsampling in time by a factor of {tdec}.")
+    nout = obs_header.nspectra // tdec  # drops any trailing remainder
+    target_bytes = 1 * 1024**3  # ~1 GB of float32 per chunk
     gulp = max(1, target_bytes // (nchan * 4 * tdec)) * tdec
     obs_spectrum = np.empty((nchan, nout), dtype=np.float32)
-    for start in range(0, nout * tdec, gulp):
+
+    n_bad = n_masked = 0
+    for i, start in enumerate(range(0, nout * tdec, gulp)):
         n = min(gulp, nout * tdec - start)
-        block = observation.get_data(start, n).astype(np.float32)
+        block, nb, nm = load_block(observation, start, n, rfi_mask, chans)
+        n_bad += nb
+        n_masked += nm
+        # average each run of `tdec` consecutive samples (not `your`'s strided mean)
         obs_spectrum[:, start // tdec : (start + n) // tdec] = (
             block.reshape(n // tdec, tdec, nchan).mean(axis=1).T
-        )  # slightly different downsampling than in `your`... is this right?
+        )
+        if i % 10 == 0:
+            log.info(f"Read {start + n:,} / {nout * tdec:,} samples")
 
-    # maxdm = config.dedisp.maxdm
-    FREQ_BOTTOM = obs_header.fch1
-    FREQ_TOP = obs_header.fch1 + obs_header.bw
-    if FREQ_BOTTOM > FREQ_TOP:
-        FREQ_BOTTOM, FREQ_TOP = FREQ_TOP, FREQ_BOTTOM
-        obs_spectrum = obs_spectrum[::-1, :]
+    ntot = nout * tdec * nchan
+    if n_bad:
+        log.warning(
+            f"Replaced {n_bad} non-finite samples ({n_bad / ntot:.2e} of data)."
+        )
+    if n_masked:
+        log.info(
+            f"rfifind mask replaced {n_masked} samples ({n_masked / ntot:.1%} of data)."
+        )
+
+    if obs_header.foff < 0:
+        obs_spectrum = obs_spectrum[::-1, :]  # make sure channels go low -> high
     log.info(f"Loaded data with shape {obs_spectrum.shape}.")
+
     TSAMP = obs_header.tsamp * tdec
     fdmt_config = config.dedisp.fdmt
     num_dms_fac = fdmt_config.num_dms_fac
