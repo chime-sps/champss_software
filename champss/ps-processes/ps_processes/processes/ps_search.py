@@ -687,6 +687,11 @@ class PowerSpectraSearch:
             man_cand_detections_array = np.array(
                 man_cand_detections, dtype=detection_dtype
             )
+            if len(man_cand_detections_array) == 0:
+                log.warning(
+                    f"No detections found for manual candidate {manual_cand[0]} at freq={manual_cand[1]} and DM={manual_cand[2]}. Frequency may be too high."
+                )
+                continue
             man_cand_cluster = Cluster.from_raw_detections(man_cand_detections_array)
             clusters[current_label] = man_cand_cluster
             summary[current_label] = dict(
