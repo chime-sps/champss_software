@@ -279,10 +279,8 @@ def run_file_pipeline(
         power_spectra_stacked = ps_stack_pipeline.stack_power_spectra_readout(
             power_spectra, stack_file
         )
-        ps_stack_pipeline.replace_spectra(
-            power_spectra_stacked, os.path.abspath(stack_file)
-        )
-
+        stack_path = os.path.abspath(stack_file)
+        ps_stack_pipeline.replace_spectra(power_spectra_stacked, stack_path, stack_path)
         (
             power_spectra_detection_clusters_stacked,
             power_spectra_detections_stacked,
@@ -294,12 +292,10 @@ def run_file_pipeline(
             power_spectra_detection_clusters_stacked, power_spectra_stacked
         )
 
-        spcc_stacked.plot_candidates(
+        plotted_cands = spcc_stacked.plot_candidates(
             folder="./stack_plots/", sigma_threshold=0, dm_threshold=-1
         )
-
-        plotted_cands = spcc.plot_candidates(sigma_threshold=0, dm_threshold=-1)
-        log.info(f"Plotted {len(plotted_cands)} candidates.")
+        log.info(f"Plotted {len(plotted_cands)} stack candidates.")
         cand_folder = "./stack_candidates/"
         os.makedirs(cand_folder, exist_ok=True)
         cand_path = (
@@ -307,5 +303,5 @@ def run_file_pipeline(
             + os.path.splitext(os.path.basename(stack_file))[0]
             + "_candidates.npz"
         )
-        spcc.write(cand_path)
-        log.info(f"Wrote candidates to {cand_path}.")
+        spcc_stacked.write(cand_path)
+        log.info(f"Wrote stack candidates to {cand_path}.")
