@@ -281,12 +281,12 @@ def run_file_pipeline(
         )
         stack_path = os.path.abspath(stack_file)
         ps_stack_pipeline.replace_spectra(power_spectra_stacked, stack_path, stack_path)
+
+        pss_pipeline.full_harm_bins = None  # clear cached array
         (
             power_spectra_detection_clusters_stacked,
             power_spectra_detections_stacked,
-        ) = pss_pipeline.search(
-            power_spectra_stacked,
-        )
+        ) = pss_pipeline.search(power_spectra_stacked)
 
         spcc_stacked = fg.make_single_pointing_candidate_collection(
             power_spectra_detection_clusters_stacked, power_spectra_stacked
@@ -305,3 +305,5 @@ def run_file_pipeline(
         )
         spcc_stacked.write(cand_path)
         log.info(f"Wrote stack candidates to {cand_path}.")
+
+    power_spectra.unlink_shared_memory()
