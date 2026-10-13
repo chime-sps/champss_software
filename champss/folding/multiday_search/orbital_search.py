@@ -89,7 +89,7 @@ def _orbital_sn_grid(SN_F0_MJD, f0_offsets, mjds_days, F_bins, phases, A_vals):
 # High-level search driver
 # ---------------------------------------------------------------------------
 
-def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
+def run_orbital_search(SN_F0_MJD, f0_offsets, mjds, max_nf0=256):
     """
     Build the orbital parameter grid and search it.
 
@@ -98,6 +98,10 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     SN_F0_MJD : ndarray (nF0, ndays)
     f0_offsets : ndarray (nF0,)   – dF0 axis in Hz
     mjds       : ndarray (ndays,) – observation MJDs
+    max_nf0    : int – the dF0 axis is max-pooled to at most this many trials
+                 before building the grid. Fine single-day F0 grids (e.g. high
+                 time resolution data with a wide F0 window) would otherwise make
+                 the A and phase grids, which are tied to the dF0 step, too large.
 
     Returns
     -------
@@ -120,6 +124,13 @@ def run_orbital_search(SN_F0_MJD, f0_offsets, mjds):
     T_total = float(mjds[-1] - mjds[0])  # days
     if T_total <= 0 or len(mjds) < 2:
         return None
+
+    if len(f0_offsets) > max_nf0:
+        factor = int(np.ceil(len(f0_offsets) / max_nf0))
+        n_keep = len(f0_offsets) // factor * factor
+        SN_F0_MJD = SN_F0_MJD[:n_keep].reshape(n_keep // factor, factor, -1).max(1)
+        f0_offsets = f0_offsets[:n_keep].reshape(n_keep // factor, factor).mean(1)
+        print(f"Max-pooled dF0 axis by a factor of {factor} to {len(f0_offsets)} trials")
 
     dF0_step = float(f0_offsets[1] - f0_offsets[0])
     F0_range = float(f0_offsets[-1] - f0_offsets[0])

@@ -1,5 +1,6 @@
 import your
 import numpy as np
+import tqdm
 from omegaconf import OmegaConf
 from astropy.time import Time
 import multiprocessing
@@ -82,7 +83,7 @@ def apply_logging_config(config, log_file="./logs/default.log"):
 )
 @click.option(
     "--num-threads",
-    default=4,
+    default=8,
     type=int,
     help=("Number of multiprocessing threads to use."),
 )
@@ -92,8 +93,33 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     type=float,
     help="Maximum DM. Config value will be ignored.",
 )
+@click.option(
+    "--downsamp",
+    default=1,
+    type=int,
+    help=(
+        "Factor by which to downsample the data in time before dedispersion."
+        " 24 turns 40.96 us CHIME data into the CHAMPSS sampling time."
+    ),
+)
+@click.option(
+    "--mindm",
+    default=0.0,
+    type=float,
+    help=(
+        "Minimum DM. The channels are shifted to this DM before the FDMT, which then"
+        " searches from --mindm to --maxdm."
+    ),
+)
 def run_file_pipeline(
-    obs_file, stack_file, config_file, config_options, num_threads, maxdm
+    obs_file,
+    stack_file,
+    config_file,
+    config_options,
+    num_threads,
+    maxdm,
+    downsamp,
+    mindm,
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
@@ -102,30 +128,69 @@ def run_file_pipeline(
     observation = your.Your(obs_file)
     obs_header = observation.your_header
     log.info(obs_header)
-
-    telescope_location = EarthLocation(
-        x=float(observation.header["ANT_X"]) * u.m,
-        y=float(observation.header["ANT_Y"]) * u.m,
-        z=float(observation.header["ANT_Z"]) * u.m,
-    )
-    obs_length = obs_header.nspectra
-    obs_spectrum = observation.get_data(0, obs_length).T
+    # breakpoint()
+    # telescope_location = EarthLocation(
+    #     x=float(obs_header["ANT_X"]) * u.m,
+    #     y=float(obs_header["ANT_Y"]) * u.m,
+    #     z=float(obs_header["ANT_Z"]) * u.m,
+    # )
+    telescope_location = EarthLocation.of_site("CHIME")
+    obs_length = int(obs_header.nspectra) // downsamp
+    # Read in blocks and sum adjacent samples to avoid holding the full
+    # resolution data in memory
+    obs_spectrum = np.empty((obs_header.nchans, obs_length), dtype=np.float32)
+    block = downsamp * 2**16
+    for start in tqdm.tqdm(
+        range(0, obs_length * downsamp, block), desc="Reading data"
+    ):
+        nread = min(block, obs_length * downsamp - start)
+        data = observation.get_data(start, nread).astype(np.float32)
+        obs_spectrum[:, start // downsamp : (start + nread) // downsamp] = (
+            data.reshape(-1, downsamp, obs_header.nchans).sum(axis=1).T
+        )
 
     # maxdm = config.dedisp.maxdm
     FREQ_BOTTOM = obs_header.fch1
     FREQ_TOP = obs_header.fch1 + obs_header.bw
     if FREQ_BOTTOM > FREQ_TOP:
         FREQ_BOTTOM, FREQ_TOP = FREQ_TOP, FREQ_BOTTOM
+    else:
+        # dedisperse() expects the highest frequency channel first
         obs_spectrum = obs_spectrum[::-1, :]
     log.info(f"Loaded data with shape {obs_spectrum.shape}.")
-    TSAMP = obs_header.tsamp
+    TSAMP = obs_header.tsamp * downsamp
+    utc_start = Time(obs_header.tstart, format="mjd").unix
+
+    # Remove the dispersion up to mindm by shifting the channels, so that the
+    # FDMT only needs to search from mindm to maxdm.
+    if mindm != 0:
+        chan_freqs = (
+            max(obs_header.fch1, obs_header.fch1 + (obs_header.nchans - 1) * obs_header.foff)
+            - np.arange(obs_header.nchans) * abs(obs_header.foff)
+        )
+        shifts = np.round(
+            DM_CONSTANT * mindm * (chan_freqs**-2 - chan_freqs[0] ** -2) / TSAMP
+        ).astype(int)
+        shift_min = shifts.min()
+        new_length = obs_spectrum.shape[1] - (shifts.max() - shift_min)
+        for i, shift in enumerate(tqdm.tqdm(shifts, desc="Shifting channels")):
+            start = shift - shift_min
+            obs_spectrum[i, :new_length] = obs_spectrum[i, start : start + new_length]
+        obs_spectrum = obs_spectrum[:, :new_length]
+        # Sample 0 of the top channel now corresponds to input sample -shift_min
+        utc_start -= shift_min * TSAMP
+        log.info(
+            f"Shifted channels to a DM of {mindm:.2f}, data now has shape"
+            f" {obs_spectrum.shape}."
+        )
     fdmt_config = config.dedisp.fdmt
     num_dms_fac = fdmt_config.num_dms_fac
+    # num_dms_fac = 20
 
     num_dms = (
         int(
             DM_CONSTANT
-            * maxdm
+            * (maxdm - mindm)
             * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2)
             / TSAMP
             // num_dms_fac
@@ -137,15 +202,17 @@ def run_file_pipeline(
     # num_dms = min(num_dms, obs_spectrum.shape[0])
     nsamps = fdmt_config.chunk_size + num_dms
     dm_step = fdmt_config.dm_step
+    print(num_dms, nsamps, dm_step)
+    # the C++ FDMT requires f_min < f_max, otherwise it writes out of bounds
     fdmt = FDMT(
-        obs_header.fch1,
-        obs_header.fch1 + obs_header.bw,
+        FREQ_BOTTOM,
+        FREQ_TOP,
         obs_spectrum.shape[0],
         nsamps,
-        obs_header.tsamp,
+        TSAMP,
         dt_max=num_dms,
         dt_min=0,
-        dt_step=dm_step,
+        dt_step=1,
     )
     fdmt.set_num_threads(num_threads)
 
@@ -157,7 +224,7 @@ def run_file_pipeline(
         ntime=obs_spectrum.shape[1],
         maxdm=maxdm,
         beam_row=0,
-        utc_start=Time(obs_header.tstart, format="mjd").unix,
+        utc_start=utc_start,
         nbits=obs_spectrum.dtype.itemsize * 8,
     )
     dts = dedisperse(
@@ -171,8 +238,9 @@ def run_file_pipeline(
         freq_top=FREQ_TOP,
         tsamp=TSAMP,
     )
+    dts.dms = dts.dms + mindm
 
-    log.info(f"Created {len(dts.dms)} DM trials up to a DM of {max(dts.dms)}")
+    log.info(f"Created {len(dts.dms)} DM trials from DM {min(dts.dms)} to {max(dts.dms)}")
 
     padded_length = int(
         np.power(2, np.ceil(np.log(dts.dedisp_ts.shape[1]) / np.log(2)))
@@ -182,7 +250,7 @@ def run_file_pipeline(
         num_threads=num_threads,
         use_db=False,
         update_db=False,
-        tsamp=obs_header.tsamp,
+        tsamp=TSAMP,
         find_common_birdies=False,
         padded_length=padded_length,
         clean_rfi=False,
@@ -194,19 +262,24 @@ def run_file_pipeline(
 
     power_spectra = psc_pipeline.transform(dts)
 
-    pss_pipeline = PowerSpectraSearch(
-        cluster_config=dict(config.ps.ps_search_config.cluster_config),
-        padded_length=padded_length,
-        num_threads=num_threads,
-        update_db=False,
-    )
+    def make_search():
+        # PowerSpectraSearch keeps full_harm_bins in shared memory that is freed at
+        # the end of search(), so each search needs a new instance
+        return PowerSpectraSearch(
+            cluster_config=dict(config.ps.ps_search_config.cluster_config),
+            num_threads=num_threads,
+            update_db=False,
+            mean_bin_sigma_threshold=config.ps.ps_search_config.mean_bin_sigma_threshold,
+            sigma_min=config.ps.ps_search_config.sigma_min,
+        )
+
+    pss_pipeline = make_search()
 
     (
         power_spectra_detection_clusters,
         power_spectra_detections,
     ) = pss_pipeline.search(
-        power_spectra,
-        cutoff_frequency=100,
+    power_spectra,
     )
     fg = Features.from_config(
         OmegaConf.to_container(config.cands.features),
@@ -218,17 +291,20 @@ def run_file_pipeline(
         power_spectra_detection_clusters, power_spectra
     )
 
+    # Tag outputs with the processing settings so that runs with different
+    # downsampling or DM ranges do not overwrite each other
+    run_tag = f"ds{downsamp}_dm{mindm:g}-{maxdm:g}"
+    obs_name = f"{os.path.splitext(os.path.basename(obs_file))[0]}_{run_tag}"
+
     plotted_cands = spcc.plot_candidates(
-        folder="./single_observation_plots/", sigma_threshold=0, dm_threshold=-1
+        folder=f"./single_observation_plots/{obs_name}/",
+        sigma_threshold=0,
+        dm_threshold=-1,
     )
     log.info(f"Plotted {len(plotted_cands)} candidates.")
     cand_folder = "./single_observation_candidates/"
     os.makedirs(cand_folder, exist_ok=True)
-    cand_path = (
-        cand_folder
-        + os.path.splitext(os.path.basename(obs_file))[0]
-        + "_candidates.npz"
-    )
+    cand_path = cand_folder + obs_name + "_candidates.npz"
     spcc.write(cand_path)
     log.info(f"Wrote candidates to {cand_path}.")
 
@@ -252,33 +328,28 @@ def run_file_pipeline(
             power_spectra, stack_file
         )
         ps_stack_pipeline.replace_spectra(
-            power_spectra_stacked, os.path.abspath(stack_file)
+            power_spectra_stacked, os.path.abspath(stack_file), os.path.abspath(stack_file)
         )
+        log.info("Stacked spectra")
 
         (
             power_spectra_detection_clusters_stacked,
             power_spectra_detections_stacked,
-        ) = pss_pipeline.search(
+        ) = make_search().search(
             power_spectra_stacked,
-            cutoff_frequency=100,
         )
 
         spcc_stacked = fg.make_single_pointing_candidate_collection(
             power_spectra_detection_clusters_stacked, power_spectra_stacked
         )
 
-        spcc_stacked.plot_candidates(
-            folder="./stack_plots/", sigma_threshold=0, dm_threshold=-1
+        stack_name = f"{os.path.splitext(os.path.basename(stack_file))[0]}_{run_tag}"
+        plotted_cands = spcc_stacked.plot_candidates(
+            folder=f"./stack_plots/{stack_name}/", sigma_threshold=0, dm_threshold=-1
         )
-
-        plotted_cands = spcc.plot_candidates(sigma_threshold=0, dm_threshold=-1)
-        log.info(f"Plotted {len(plotted_cands)} candidates.")
+        log.info(f"Plotted {len(plotted_cands)} stack candidates.")
         cand_folder = "./stack_candidates/"
         os.makedirs(cand_folder, exist_ok=True)
-        cand_path = (
-            cand_folder
-            + os.path.splitext(os.path.basename(stack_file))[0]
-            + "_candidates.npz"
-        )
-        spcc.write(cand_path)
+        cand_path = cand_folder + stack_name + "_candidates.npz"
+        spcc_stacked.write(cand_path)
         log.info(f"Wrote candidates to {cand_path}.")

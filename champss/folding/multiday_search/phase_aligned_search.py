@@ -341,8 +341,10 @@ class ExploreGrid:
         max_dm       = pointing.maxdm
         beam_str     = f"{pointing.beam_row}"
         start_date   = Time(self.PEPOCH + min(self.dts) / 86400.0, format="mjd").isot[:10]
-        dm_ne2025_str = f"{pointing.ne2025dm:.1f}"
-        dm_ymw16_str  = f"{pointing.ymw16dm:.1f}"
+        dm_ne2025_str = (f"{pointing.ne2025dm:.1f}"
+                         if pointing.ne2025dm is not None else "n/a")
+        dm_ymw16_str  = (f"{pointing.ymw16dm:.1f}"
+                         if pointing.ymw16dm is not None else "n/a")
         sigma_str     = (f"σ: {self.candidate_sigma:.2f}"
                          if self.candidate_sigma is not None else "")
 

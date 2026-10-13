@@ -127,7 +127,7 @@ class PowerSpectraSearch:
     """
 
     cluster_config = attribute(validator=instance_of(dict))
-    arc_filter_config = attribute(validator=instance_of(dict))
+    arc_filter_config = attribute(validator=instance_of(dict), default={})
     num_harm = attribute(validator=instance_of(int), default=32)
     sigma_min = attribute(validator=instance_of(float), default=5.0)
     num_threads = attribute(validator=instance_of(int), default=8)

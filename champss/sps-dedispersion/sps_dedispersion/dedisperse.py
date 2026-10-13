@@ -2,6 +2,7 @@ import numpy as np
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.conversion import unix_to_mjd
 from sps_common.interfaces import DedispersedTimeSeries
+import tqdm
 
 
 def dedisperse(
@@ -40,8 +41,9 @@ def dedisperse(
     dedisp = np.zeros(
         ((maxDT - 1) // dm_step + 1, Nchunk * chunk_size), dtype=spectra.dtype
     )
+    print(dedisp.shape, spectra.shape, Nchunk, chunk_size, maxDT)
 
-    for i in range(Nchunk):
+    for i in tqdm.tqdm(range(Nchunk)):
         # these are all views
         spectra_chunk = spectra[:, i * chunk_size : (i + 1) * chunk_size + maxDT]
         if i == Nchunk - 1:

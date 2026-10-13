@@ -35,6 +35,7 @@ class Fold:
         filterbank_to_ram=True,
         exact_coords=False,
         coord_path=None,
+        nchan=None,
     ):
         """
         Initialize Fold object.
@@ -67,6 +68,9 @@ class Fold:
             Use exact coordinates, otherwise spaps to pointing grid (default: False)
         coord_path : str, optional
             Custom coordinate path for outputs (auto-generated if not provided)
+        nchan : int, optional
+            Number of channels to beamform with. By default it is chosen from the DM
+            alone, which smears fast pulsars at high DM within the channels.
         """
         self.ra = ra
         self.dec = dec
@@ -90,6 +94,7 @@ class Fold:
         self.coord_path = coord_path
         self.num_threads = None
         self.nchan = None
+        self.nchan_override = nchan
         self.turns = None
         self.intflag = None
 
@@ -179,6 +184,8 @@ class Fold:
         # Calculate channel requirements based on DM
         nchan_tier = int(np.ceil(np.log2(self.dm // 212.5 + 1)))
         self.nchan = 1024 * (2**nchan_tier)
+        if self.nchan_override:
+            self.nchan = self.nchan_override
         self.num_threads = 4 * self.nchan // 1024
 
         if not os.path.isfile(self.fil):

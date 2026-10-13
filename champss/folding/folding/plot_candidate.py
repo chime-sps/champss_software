@@ -353,8 +353,10 @@ def plot_candidate_archive(
         dts = dts - np.median(dts)
         npbin = fs_bin.shape[-1]
 
-        # Get F0 steps using compute_accel_steps (ignore F1 steps)
-        f0s, _ = compute_accel_steps(dts, f0, npbin)
+        # Get F0 steps using compute_accel_steps (ignore F1 steps); a dict passed as
+        # f0search sets its parameters, e.g. a velocity-based range for binaries
+        f0search_kwargs = f0search if isinstance(f0search, dict) else {}
+        f0s, _ = compute_accel_steps(dts, f0, npbin, **f0search_kwargs)
 
         print(f"F0 search over {len(f0s)} trials from {f0s[0]:.2e} to {f0s[-1]:.2e} Hz")
 
