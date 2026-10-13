@@ -92,8 +92,21 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     type=float,
     help="Maximum DM. Config value will be ignored.",
 )
+@click.option(
+    "-t",
+    "--time-downsample",
+    default=1,
+    type=int,
+    help="Average this many adjacent time samples on read.",
+)
 def run_file_pipeline(
-    obs_file, stack_file, config_file, config_options, num_threads, maxdm
+    obs_file,
+    stack_file,
+    config_file,
+    config_options,
+    num_threads,
+    maxdm,
+    time_downsample,
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
@@ -108,8 +121,24 @@ def run_file_pipeline(
         y=float(observation.header["ANT_Y"]) * u.m,
         z=float(observation.header["ANT_Z"]) * u.m,
     )
-    obs_length = obs_header.nspectra
-    obs_spectrum = observation.get_data(0, obs_length).T
+
+    tdec = time_downsample
+    nchan = obs_header.nchans
+    nout = obs_header.nspectra // tdec
+
+    if tdec > 1:
+        log.info(f"Downsampling in time by a factor of {tdec}.")
+
+    """Chunking to avoid memory allocation overflow."""
+    target_bytes = 1 * 1024**3  # ~1 GB per chunk
+    gulp = max(1, target_bytes // (nchan * 4 * tdec)) * tdec
+    obs_spectrum = np.empty((nchan, nout), dtype=np.float32)
+    for start in range(0, nout * tdec, gulp):
+        n = min(gulp, nout * tdec - start)
+        block = observation.get_data(start, n).astype(np.float32)
+        obs_spectrum[:, start // tdec : (start + n) // tdec] = (
+            block.reshape(n // tdec, tdec, nchan).mean(axis=1).T
+        )  # slightly different downsampling than in `your`... is this right?
 
     # maxdm = config.dedisp.maxdm
     FREQ_BOTTOM = obs_header.fch1
@@ -118,7 +147,7 @@ def run_file_pipeline(
         FREQ_BOTTOM, FREQ_TOP = FREQ_TOP, FREQ_BOTTOM
         obs_spectrum = obs_spectrum[::-1, :]
     log.info(f"Loaded data with shape {obs_spectrum.shape}.")
-    TSAMP = obs_header.tsamp
+    TSAMP = obs_header.tsamp * tdec
     fdmt_config = config.dedisp.fdmt
     num_dms_fac = fdmt_config.num_dms_fac
 
@@ -142,10 +171,10 @@ def run_file_pipeline(
         obs_header.fch1 + obs_header.bw,
         obs_spectrum.shape[0],
         nsamps,
-        obs_header.tsamp,
+        TSAMP,
         dt_max=num_dms,
         dt_min=0,
-        dt_step=dm_step,
+        dt_step=1,
     )
     fdmt.set_num_threads(num_threads)
 
@@ -182,7 +211,7 @@ def run_file_pipeline(
         num_threads=num_threads,
         use_db=False,
         update_db=False,
-        tsamp=obs_header.tsamp,
+        tsamp=TSAMP,
         find_common_birdies=False,
         padded_length=padded_length,
         clean_rfi=False,
@@ -195,8 +224,7 @@ def run_file_pipeline(
     power_spectra = psc_pipeline.transform(dts)
 
     pss_pipeline = PowerSpectraSearch(
-        cluster_config=dict(config.ps.ps_search_config.cluster_config),
-        padded_length=padded_length,
+        **OmegaConf.to_container(config.ps.ps_search_config),
         num_threads=num_threads,
         update_db=False,
     )
@@ -208,6 +236,7 @@ def run_file_pipeline(
         power_spectra,
         cutoff_frequency=100,
     )
+
     fg = Features.from_config(
         OmegaConf.to_container(config.cands.features),
         OmegaConf.to_container(config.cands.arrays),
