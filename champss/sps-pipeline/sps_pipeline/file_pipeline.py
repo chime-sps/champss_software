@@ -234,7 +234,6 @@ def run_file_pipeline(
         power_spectra_detections,
     ) = pss_pipeline.search(
         power_spectra,
-        cutoff_frequency=100,
     )
 
     fg = Features.from_config(
@@ -289,7 +288,6 @@ def run_file_pipeline(
             power_spectra_detections_stacked,
         ) = pss_pipeline.search(
             power_spectra_stacked,
-            cutoff_frequency=100,
         )
 
         spcc_stacked = fg.make_single_pointing_candidate_collection(
