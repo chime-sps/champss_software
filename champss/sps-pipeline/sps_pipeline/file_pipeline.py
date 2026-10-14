@@ -24,7 +24,32 @@ from candidate_processor.feature_generator import Features
 from ps_processes.processes.ps_stack import PowerSpectraStack
 
 
-def read_rfifind_mask(mask_file, observation, chans=slice(None)):
+def psrfits_start_mjd(observation):
+    """
+    Hard coded utility to find the start date of a filterbank file.
+    This is necessary because both `your` (rapidly becoming my personal enemy)
+    and PRESOT assume NSUBOFFS is NOT cumulative, but Murriyang uses a cumulative
+    count.
+    """
+    fits = observation.fits
+    primary = fits[0].header
+    subint = fits["SUBINT"]
+    tsub = subint.header["TBIN"] * subint.header["NSBLK"]
+    start_subint = int(subint.header.get("NSUBOFFS", 0))
+    names = subint.columns.names
+    if "OFFS_SUB" in names:
+        offs_sub = float(subint.data["OFFS_SUB"][0])
+        if offs_sub != 0.0:
+            start_subint = int((offs_sub - 0.5 * tsub) / tsub + 1e-7)
+        elif "INDEXVAL" in names:
+            start_subint = int(float(subint.data["INDEXVAL"][0]) + 1e-7 - 1.0)
+        else:
+            start_subint = 0
+    stt = primary["STT_IMJD"] + (primary["STT_SMJD"] + primary["STT_OFFS"]) / 86400.0
+    return stt + start_subint * tsub / 86400.0
+
+
+def read_rfifind_mask(mask_file, observation, chans=slice(None), tstart=None):
     """
     Reads in a PRESTO rfifind .mask file.
     NOTE: only reads in the section that overlaps with the .sf file.
@@ -70,11 +95,13 @@ def read_rfifind_mask(mask_file, observation, chans=slice(None)):
     zap[mask_zap_ints, :] = True
 
     hdr = observation.your_header
+    if tstart is None:
+        tstart = hdr.tstart
 
     # find overlap in time
     if not np.isclose(dtint, ptsperint * hdr.tsamp, rtol=1e-3):
         raise ValueError("Mask - .sf file time resolution mismatch.")
-    offset = int(round((hdr.tstart - MJD) * 86400.0 / hdr.tsamp))
+    offset = int(round((tstart - MJD) * 86400.0 / hdr.tsamp))
     mask_nsamp = nint * ptsperint
     if offset < 0:
         raise ValueError(
@@ -279,7 +306,10 @@ def run_file_pipeline(
     observation = your.Your(obs_file)
     obs_header = observation.your_header
     log.info(obs_header)
-
+    tstart = obs_header.tstart
+    if observation.format == "fits":
+        tstart = psrfits_start_mjd(observation)
+        dt = (obs_header.tstart - tstart) * 86400.0
     telescope_location = EarthLocation(
         x=float(observation.header["ANT_X"]) * u.m,
         y=float(observation.header["ANT_Y"]) * u.m,
@@ -298,7 +328,7 @@ def run_file_pipeline(
     # rfifind mask
     rfi_mask = None
     if rfifind_mask is not None:
-        rfi_mask = read_rfifind_mask(rfifind_mask, observation, chans)
+        rfi_mask = read_rfifind_mask(rfifind_mask, observation, chans, tstart)
         log.info("Yeehaw! Loaded rfifind mask!")
     # read-in and downsampling
     tdec = time_downsample
@@ -374,7 +404,7 @@ def run_file_pipeline(
         ntime=obs_spectrum.shape[1],
         maxdm=maxdm,
         beam_row=0,
-        utc_start=Time(obs_header.tstart, format="mjd").unix,
+        utc_start=Time(tstart, format="mjd").unix,
         nbits=obs_spectrum.dtype.itemsize * 8,
     )
     dts = dedisperse(
