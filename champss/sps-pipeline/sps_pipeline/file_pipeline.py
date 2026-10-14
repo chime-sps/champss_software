@@ -24,10 +24,11 @@ from candidate_processor.feature_generator import Features
 from ps_processes.processes.ps_stack import PowerSpectraStack
 
 
-def read_rfifind_mask(mask_file, observation):
+def read_rfifind_mask(mask_file, observation, chans=slice(None)):
     """
-    Reads a PRESTO rfifind .mask file into a boolean zap array.
-    Yoinked directly from PRESTO.
+    Reads in a PRESTO rfifind .mask file.
+    NOTE: only reads in the section that overlaps with the .sf file.
+    This is largely yoinked from PRESTO's python parser.
     """
     with open(mask_file, "rb") as x:
         time_sig, freq_sig, MJD, dtint, lofreq, df = np.fromfile(
@@ -63,25 +64,55 @@ def read_rfifind_mask(mask_file, observation):
     nchan, nint, ptsperint = int(nchan), int(nint), int(ptsperint)
 
     zap = np.zeros((nint, nchan), dtype=bool)
-    for i, chans in enumerate(mask_zap_chans_per_int):
-        zap[i, chans] = True
+    for i, mchans in enumerate(mask_zap_chans_per_int):
+        zap[i, mchans] = True
     zap[:, mask_zap_chans] = True
     zap[mask_zap_ints, :] = True
 
     hdr = observation.your_header
-    if nchan != hdr.nchans:
-        raise ValueError(
-            f"rfifind mask has {nchan} channels but the data has {hdr.nchans}."
-        )
-    if not np.isclose(dtint, ptsperint * hdr.tsamp, rtol=1e-3):
-        raise ValueError("Make sure you run the mask on the same resolution of data...")
-    if abs(MJD - hdr.tstart) * 86400 > 1.0:
-        log.warning("Is this the right mask for the file...?")
 
-    # make sure to flip mask if data are numbers high-low
-    if hdr.foff < 0:
-        zap = zap[:, ::-1]
-    return zap, ptsperint
+    # find overlap in time
+    if not np.isclose(dtint, ptsperint * hdr.tsamp, rtol=1e-3):
+        raise ValueError("Mask - .sf file time resolution mismatch.")
+    offset = int(round((hdr.tstart - MJD) * 86400.0 / hdr.tsamp))
+    mask_nsamp = nint * ptsperint
+    if offset < 0:
+        raise ValueError(
+            f"File starts {-offset * hdr.tsamp:.2f} s before the rfifind mask "
+        )
+    if offset >= mask_nsamp:
+        raise ValueError(
+            f"File starts {(offset - mask_nsamp) * hdr.tsamp:.2f} s after the end of "
+            f"the rfifind mask."
+        )
+    i0 = offset // ptsperint
+    i1 = min(-(-(offset + hdr.nspectra) // ptsperint), nint)
+    sample_offset = offset - i0 * ptsperint
+    uncovered = offset + hdr.nspectra - mask_nsamp
+
+    # now find frequency overlap
+    if not np.isclose(abs(df), abs(hdr.foff), rtol=1e-6):
+        raise ValueError(
+            f"rfifind channel width {df} MHz != data channel width {abs(hdr.foff)} MHz."
+        )
+    data_freqs = hdr.fch1 + hdr.foff * np.arange(hdr.nchans)[chans]
+    pos = (data_freqs - lofreq) / abs(df)
+    mask_idx = np.rint(pos).astype(int)
+    if not np.allclose(pos, mask_idx, atol=0.01):
+        raise ValueError(
+            "rfifind channel centres do not line up with the data channel centres "
+        )
+    if mask_idx.min() < 0 or mask_idx.max() >= nchan:
+        raise ValueError(
+            f"Selected band {data_freqs.min():.3f}-{data_freqs.max():.3f} MHz "
+            f"(channel centres) extends beyond the rfifind mask band "
+        )
+
+    log.info(
+        f"Using rfifind intervals {i0}-{i1 - 1} of {nint} and mask channels "
+        f"{mask_idx.min()}-{mask_idx.max()} of {nchan}."
+    )
+    return zap[i0:i1][:, mask_idx], ptsperint, sample_offset
 
 
 def select_channels(hdr, fmin=None, fmax=None):
@@ -118,8 +149,10 @@ def load_block(observation, start, nsamp, rfi_mask=None, chans=slice(None)):
 
     n_masked = 0
     if rfi_mask is not None:
-        zap, ptsperint = rfi_mask
-        ints = np.minimum((start + np.arange(nsamp)) // ptsperint, zap.shape[0] - 1)
+        zap, ptsperint, sample_offset = rfi_mask
+        ints = np.minimum(
+            (sample_offset + start + np.arange(nsamp)) // ptsperint, zap.shape[0] - 1
+        )
         masked = zap[ints]
         n_masked = int((masked & ~bad).sum())
         bad |= masked
@@ -253,7 +286,7 @@ def run_file_pipeline(
         z=float(observation.header["ANT_Z"]) * u.m,
     )
 
-    # Channel selection; FREQ_BOTTOM/FREQ_TOP are band edges, always bottom < top
+    # pick channels between fmin and fmax
     c0, c1, FREQ_BOTTOM, FREQ_TOP = select_channels(obs_header, fmin, fmax)
     chans = slice(c0, c1)
     nchan = c1 - c0
@@ -262,21 +295,16 @@ def run_file_pipeline(
         f"{FREQ_BOTTOM:.1f}-{FREQ_TOP:.1f} MHz."
     )
 
-    # rfifind mask: read and validated for the full band, then cut to `chans`
+    # rfifind mask
     rfi_mask = None
     if rfifind_mask is not None:
-        zap, ptsperint = read_rfifind_mask(rfifind_mask, observation)
-        rfi_mask = (zap[:, chans], ptsperint)
-        log.info(
-            f"Loaded rfifind mask {rfifind_mask}: {rfi_mask[0].mean():.1%} of "
-            "(interval, channel) cells masked in the selected band."
-        )
-
-    # Read in chunks, averaging each run of `tdec` consecutive samples
+        rfi_mask = read_rfifind_mask(rfifind_mask, observation, chans)
+        log.info("Yeehaw! Loaded rfifind mask!")
+    # read-in and downsampling
     tdec = time_downsample
     log.info(f"Downsampling in time by a factor of {tdec}.")
-    nout = obs_header.nspectra // tdec  # drops any trailing remainder
-    target_bytes = 1 * 1024**3  # ~1 GB of float32 per chunk
+    nout = obs_header.nspectra // tdec
+    target_bytes = 1 * 1024**3
     gulp = max(1, target_bytes // (nchan * 4 * tdec)) * tdec
     obs_spectrum = np.empty((nchan, nout), dtype=np.float32)
 
@@ -286,7 +314,7 @@ def run_file_pipeline(
         block, nb, nm = load_block(observation, start, n, rfi_mask, chans)
         n_bad += nb
         n_masked += nm
-        # average each run of `tdec` consecutive samples (not `your`'s strided mean)
+        # this is DIFFERENT than `your`'s method! i think this is right...?
         obs_spectrum[:, start // tdec : (start + n) // tdec] = (
             block.reshape(n // tdec, tdec, nchan).mean(axis=1).T
         )
