@@ -1,54 +1,46 @@
 import logging
 import math
 import os
+import json
+from importlib.resources import files
+from datetime import datetime, timezone
+from functools import lru_cache
 
 import numpy as np
 import scipy.stats as stats
 from scipy.fft import rfft
 from scipy.signal import correlate
 from scipy.special import chdtri
+from scipy.special import erf
+
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.interfaces.utilities import sigma_sum_powers
 from sps_databases import db_utils
 from beamformer.utilities.common import find_closest_pointing
-from scipy.special import erf
+
 from pygdsm import HaslamSkyModel
 from astropy.coordinates import SkyCoord
-import healpy as hp
 import astropy.units as u
+import healpy as hp
 
 log = logging.getLogger(__name__)
-
-
-phis = np.linspace(0, 1, 1024)
-"""
-These values come from counting by eye a sample of 200 out of the 1208 pulsars in the
-TPA dataset.
-
-Each represents the mean fraction of pulsars that have x number of subpulses.
-"""
-mean_zeros = 0.522394
-mean_ones = 0.40298
-mean_twos = 0.064676
-mean_threes = 0.00995
 
 TPA_profiles = np.load(os.path.dirname(__file__) + "/smoothed_baselined_TPA_pulses.npz")
 kernels = np.load(os.path.dirname(__file__) + "/kernels.npz")
 
 # parameters of the system:
 GAIN = 1.16e-3  # K mJy^-1
-TSYS = 30  # K
-BETA = 1.1
+TSYS = 50  # K
+BETA = 1.15 #andrade et al 2025
 
+# dispersion constant in ms
+KAPPA = 8.3e6 #ms
+# pointing map switchover:
+V2_START = datetime(2026, 2, 27, tzinfo=timezone.utc)
 
 def gaussian(mu, sig):
     x = np.linspace(0, 1, 1024)
     return np.exp(-0.5 * ((x - mu) / sig) ** 2) / (sig * np.sqrt(2 * np.pi))
-
-
-def lorentzian(phi, gamma, x0=0.5):
-    return (gamma / ((phi - x0) ** 2 + gamma**2)) / np.pi
-
 
 def dm_distribution(x, mu, sig, l):
     gauss = l * np.exp(l * (2 * mu + l * sig**2 - 2 * x) / 2) / 2
@@ -58,6 +50,54 @@ def dm_distribution(x, mu, sig, l):
 
     return gauss * tail / np.sum(gauss * tail)
 
+@lru_cache(maxsize=None)
+def _haslam_map_600MHz():
+
+    """ Cache skymap generation for repeated use."""
+
+    haslam = HaslamSkyModel(freq_unit="MHz", spectral_index=-2.6)
+    return haslam.generate(600), haslam.nside
+
+def _radec_to_xyz(ra_deg, dec_deg):
+    
+    """ This function converts ra/dec in degrees to a cartesian vector """
+
+    ra, dec = np.radians(ra_deg), np.radians(dec_deg)
+    cos_dec = np.cos(dec)
+    return np.stack([cos_dec * np.cos(ra), cos_dec * np.sin(ra), np.sin(dec)], axis=-1)
+
+@lru_cache(maxsize=None)
+def _load_pointing_file(file_name):
+    
+    """ This function loads the pointing map ONCE and caches it."""
+    
+    resource = files("beamformer") / "data" / file_name
+    with resource.open("r") as f:
+        pointings = json.load(f)
+    ra = np.array([p["ra"] for p in pointings])
+    dec = np.array([p["dec"] for p in pointings])
+    return pointings, _radec_to_xyz(ra, dec)
+
+
+def load_pointing_map(date):
+    
+    """ We switched pointing maps on Feb 27th, 2026... """
+
+    if date >= V2_START:
+        file_name = "pointings_map_v2-0.json"
+    else:
+        file_name = "pointings_map_v1-3.json"
+    
+    return _load_pointing_file(file_name)
+
+def get_nchan(ra, dec, date):
+
+    """ Match a pointing with its nearest neighbor in vector space. """
+
+    pointings, xyz = load_pointing_map(date)
+    idx = np.argmax(xyz @ _radec_to_xyz(ra, dec))
+    
+    return pointings[idx]["nchans"]
 
 def generate_injection(pspec, f_nyquist=508):
     """
@@ -137,12 +177,6 @@ def x_to_chi2(x, df):
         return chi2 / 2
 
 
-def get_median(xlow, xhigh, ylow, yhigh, x):
-    m = (yhigh - ylow) / (xhigh - xlow)
-
-    return m * (x - xlow) + ylow
-
-
 class Injection:
     """This class allows pulse injection."""
 
@@ -167,10 +201,12 @@ class Injection:
         self.true_dm = DM
         self.trial_dms = self.pspec_obj.dms
         self.true_dm_trial = np.argmin(np.abs(self.trial_dms - self.true_dm))
+        
         if not TPA_idx:
             self.phase_prof = np.array(profile)
         else:
             self.phase_prof = TPA_profiles[str(TPA_idx)]
+        
         self.TPA_idx = TPA_idx
         self.sigma = sigma
         self.flux = flux
@@ -186,17 +222,13 @@ class Injection:
             self.use_sigma = True
 
     def get_tsky(self):
-        haslam = HaslamSkyModel(freq_unit="MHz", spectral_index=-2.6)
-        # Generate the sky map at 600 MHz
-        # (extrapolated from 408MHz where it is measured)
-        sky_map = haslam.generate(600)
-        # Convert your RA/Dec to a healpix pixel
+
+        """ Uses a cached Haslam map to estimate tsky."""
+        sky_map, nside = _haslam_map_600MHz()
         ra = self.pspec_obj.ra  # degrees
         dec = self.pspec_obj.dec  # degrees
         coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
         gal_coord = coord.galactic
-        # Get the temperature, at the healpix pixel index
-        nside = haslam.nside  # 512 for Haslam
         pix_idx = hp.ang2pix(nside, gal_coord.l.deg, gal_coord.b.deg, lonlat=True)
         temperature = sky_map[pix_idx]
         log.info(f"Sky temperature at RA={ra}, Dec={dec}: {temperature:.2f} K")
@@ -225,22 +257,46 @@ class Injection:
         deltaDM = 1 / (1.0 / FREQ_BOTTOM**2 - 1.0 / FREQ_TOP**2) / self.f / DM_CONSTANT
         return deltaDM
 
-    def smear_fft(self, scaled_fft):
-        mode = "database"
-        db = db_utils.connect(host="sps-archiver1", name="test")
-        ap = find_closest_pointing(self.pspec_obj.ra, self.pspec_obj.dec, mode=mode)
-        nchan = str(ap.nchans)
 
-        quadratic_terms = {
-            "1024": 1e-8,
-            "2048": 6e-9,
-            "4096": 3e-9,
-            "8192": 1.5e-9,
-            "16384": 8e-10,
-        }
-        # value of 1/400^2 - 1/(400 - dnu)^2 at each channelization, overestimation
-        dt_dm = self.true_dm * DM_CONSTANT * quadratic_terms[nchan]
-        t_eff = np.sqrt(TSAMP**2 + dt_dm**2)
+
+    def smear_fft(self, scaled_fft):
+        
+
+        #---------------------
+        # intrachannel smearing
+        #---------------------
+
+        start_date = self.pspec_obj.datetimes[0] 
+        nchan = get_nchan(
+                ra=self.pspec_obj.ra,
+                dec=self.pspec_obj.dec,
+                date=self.pspec_obj.datetimes[0],
+                )
+        dnu = (FREQ_TOP - FREQ_BOTTOM) / nchan
+        nu_0 = 500 #MHz, approx
+        dt_chan = KAPPA * self.true_dm * dnu / nu_0**3 # in ms
+        dt_chan /= 1e3 #in s
+
+        log.info(f"Intrachannel smearing is about {dt_chan} s.")
+
+        #---------------------
+        # incorrect dedispersion
+        #---------------------
+        
+        dm_offset = np.abs(self.true_dm - self.trial_dms[self.true_dm_trial])
+        log.info(f'DM offset is {dm_offset} pcc.')
+        dt_dedisp = DM_CONSTANT * dm_offset * (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2) #in s
+        
+        log.info(f"Smearing from incorrect dedispersion is about {dt_dedisp} s.")
+
+        #---------------------
+        # create smearing kernel
+        #---------------------
+
+        #see paper for explanation of the 1.25 factor!
+        t_eff = np.sqrt(1.25*TSAMP**2 + dt_chan**2 + dt_dedisp**2)
+        log.info(f"The effective time resolution is t_eff = {t_eff} s.")
+
         fwhm = t_eff * self.f  # get the FWHM in units of the pulse period
         conversion_factor = 2 * np.sqrt(2 * np.log(2))
         sigma = fwhm / conversion_factor  # convert from sigma to fwhm
