@@ -287,6 +287,26 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     type=float,
     help="Highest frequency to use (MHz).",
 )
+@click.option(
+    "--zero-dm-birdies",
+    is_flag=True,
+    default=False,
+    help="\n".join(
+        [
+            "\b",
+            "Zap zero-DM birdies! Pew pew!!!!",
+            "       /",
+            "      /_   *ZAP*",
+            "       /",
+            "      /",
+            " ",
+            "    <(x )___",
+            "     ( ._> /",
+            "      `---'",
+            "       _||",
+        ]
+    ),
+)
 def run_file_pipeline(
     obs_file,
     stack_file,
@@ -298,6 +318,7 @@ def run_file_pipeline(
     rfifind_mask,
     fmin,
     fmax,
+    zero_dm_birdies,
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
@@ -425,6 +446,7 @@ def run_file_pipeline(
         np.power(2, np.ceil(np.log(dts.dedisp_ts.shape[1]) / np.log(2)))
     )
     spectra_nbit = config.ps_creation.nbit
+
     psc_pipeline = PowerSpectraCreation(
         num_threads=num_threads,
         use_db=False,
@@ -432,13 +454,15 @@ def run_file_pipeline(
         tsamp=TSAMP,
         find_common_birdies=False,
         padded_length=padded_length,
-        clean_rfi=False,
+        clean_rfi=zero_dm_birdies,
         run_static_filter=False,
-        run_dynamic_filter=False,
+        run_dynamic_filter=zero_dm_birdies,
+        dynamic_filter_config=OmegaConf.to_container(
+            config.ps_creation.dynamic_filter_config
+        ),
         nbit=spectra_nbit,
         telescope_location=telescope_location,
     )
-
     power_spectra = psc_pipeline.transform(dts)
 
     pss_pipeline = PowerSpectraSearch(
