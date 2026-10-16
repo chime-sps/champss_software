@@ -85,6 +85,7 @@ class Fold:
         self.filterbank_to_ram = filterbank_to_ram
         self.exact_coords = exact_coords
         self.min_profile_bins = min_profile_bins
+
         # Will be set during execution
         self.ap = None
         self.fil = None
