@@ -262,7 +262,7 @@ class Fold:
         ]
 
         if self.min_profile_bins:
-            if (1 / self.f0 / TSAMP) < self.min_profile_bins:
+            if (1 / self.f0 / TSAMP / 1.21) < self.min_profile_bins:
                 fold_command_list.extend(["-b", f"{self.min_profile_bins}"])
 
         log.info("Folding with dspsr...")
