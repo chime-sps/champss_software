@@ -8,6 +8,7 @@ from beamformer.strategist.strategist import PointingStrategist
 from folding.utilities.utils import candidate_name
 from folding.utilities.alias import get_alias_factors, fold_at_alias
 from sps_pipeline import beamform
+from sps_common.constants import TSAMP
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class Fold:
         filterbank_to_ram=True,
         exact_coords=False,
         coord_path=None,
+        min_profile_bins=16,
     ):
         """
         Initialize Fold object.
@@ -82,7 +84,7 @@ class Fold:
         self.name = name if name else candidate_name(ra, dec)
         self.filterbank_to_ram = filterbank_to_ram
         self.exact_coords = exact_coords
-
+        self.min_profile_bins = min_profile_bins
         # Will be set during execution
         self.ap = None
         self.fil = None
@@ -242,23 +244,29 @@ class Fold:
             self.intflag = "-L"
             self.turns = 10
 
+        fold_command_list = [
+            "dspsr",
+            "-t",
+            f"{self.num_threads}",
+            f"{self.intflag}",
+            f"{self.turns}",
+            "-A",
+            "-k",
+            "chime",
+            "-E",
+            f"{self.ephem_path}",
+            "-O",
+            f"{self.archive_fname}",
+            f"{self.fil}",
+        ]
+
+        if self.min_profile_bins:
+            if (1 / self.f0 / TSAMP) < self.min_profile_bins:
+                fold_command_list.extend(["-b", f"{self.min_profile_bins}"])
+
         log.info("Folding with dspsr...")
         result = subprocess.run(
-            [
-                "dspsr",
-                "-t",
-                f"{self.num_threads}",
-                f"{self.intflag}",
-                f"{self.turns}",
-                "-A",
-                "-k",
-                "chime",
-                "-E",
-                f"{self.ephem_path}",
-                "-O",
-                f"{self.archive_fname}",
-                f"{self.fil}",
-            ],
+            fold_command_list,
             capture_output=True,
             text=True,
         )
