@@ -5,8 +5,6 @@ import astropy.units as u
 import numpy as np
 import astropy.constants as const
 from astropy.coordinates import (
-    BarycentricTrueEcliptic,
-    EarthLocation,
     SkyCoord,
     get_body_barycentric,
 )
@@ -73,7 +71,7 @@ def load_profiles(archives, max_npbin=256):
     psr_name = None
     reference_par = None
     reference_pepoch = None
-    print(*archives,sep='\n')
+    print(*archives, sep="\n")
     for filename in sorted(archives):
         f = filename.replace(".ar", ".FT")
         if os.path.isfile(f) and f.endswith(".FT"):
@@ -83,11 +81,15 @@ def load_profiles(archives, max_npbin=256):
                 reference_pepoch = PEPOCH
                 # Extract ephemeris from first archive as reference
                 reference_par = os.path.join(os.path.dirname(f), "reference_pepoch.par")
-                result = subprocess.run(["vap", "-E", f], capture_output=True, text=True)
+                result = subprocess.run(
+                    ["vap", "-E", f], capture_output=True, text=True
+                )
                 with open(reference_par, "w") as f_out:
                     f_out.write(result.stdout)
             elif PEPOCH != reference_pepoch:
-                print(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
+                print(
+                    f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris"
+                )
                 subprocess.run(["pam", "-E", reference_par, "-m", f], check=True)
 
             data_ar, params = readpsrarch(f)
@@ -113,8 +115,17 @@ def load_profiles(archives, max_npbin=256):
         T0 = Time(np.median(times.mjd), format="mjd")
         print(f"Changing reference epoch to central observation {T0}, {T0.isot}")
 
+    npbins = [len(prof) for prof in profs]
+    if len(set(npbins)):
+        npbin = max(npbins)
+        for i in range(len(npbins)):
+            if len(profs[i]) != npbins:
+                profs[i] = np.interp(
+                    np.linspace(0, 1, npbin), np.linspace(0, 1, len(profs[i])), profs[i]
+                )
+    else:
+        npbin = npbins[0]
 
-    npbin = len(profs[0])
     profs = np.array(profs)
     if npbin > max_npbin:
         print(f"Binning to {max_npbin} phase bins.")
@@ -188,7 +199,9 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
             with open(reference_par, "w") as f_out:
                 f_out.write(result.stdout)
         elif PEPOCH != reference_pepoch:
-            print(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
+            print(
+                f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris"
+            )
             subprocess.run(["pam", "-E", reference_par, "-m", f], check=True)
 
         data_ar, params = readpsrarch(f)
@@ -238,7 +251,7 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         npbin = max_npbin
     nfbin = data_F.shape[0]
     if nfbin > max_nfbin:
-        print(f"Binning to {max_nfbin} frequency bins.") 
+        print(f"Binning to {max_nfbin} frequency bins.")
         data_F = data_F.reshape(max_nfbin, data_F.shape[0] // max_nfbin, -1).sum(1)
         nfbin = max_nfbin
 
