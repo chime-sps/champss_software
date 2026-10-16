@@ -89,7 +89,6 @@ class Fold:
         self.archive_fname = None
         self.coord_path = coord_path
         self.num_threads = None
-        self.nchan = None
         self.turns = None
         self.intflag = None
 
@@ -176,11 +175,6 @@ class Fold:
             fname = f"/{self.ra:.02f}_{self.dec:.02f}_{self.f0:.02f}_{self.dm:.02f}_{year}-{month:02}-{day:02}.fil"
             self.fil = self.coord_path + fname
 
-        # Calculate channel requirements based on DM
-        nchan_tier = int(np.ceil(np.log2(self.dm // 212.5 + 1)))
-        self.nchan = 1024 * (2**nchan_tier)
-        self.num_threads = 4 * self.nchan // 1024
-
         if not os.path.isfile(self.fil):
             log.info(f"Beamforming {len(self.ap)} sub-pointing(s)...")
             fdmt = True
@@ -193,13 +187,7 @@ class Fold:
 
             # Loop through all active pointings and append them into one filterbank
             for i, active_pointing in enumerate(self.ap):
-                # Adjust nchan if needed
-                if self.nchan < active_pointing.nchan:
-                    log.info(
-                        f"only need nchan = {self.nchan} for dm = {self.dm}, beamforming with"
-                        f" {self.nchan} channels"
-                    )
-                    active_pointing.nchan = self.nchan
+                self.num_threads = 4 * active_pointing.nchan // 1024
 
                 log.info(
                     f"Beamforming sub-pointing {i + 1}/{len(self.ap)} with {self.num_threads} threads"
