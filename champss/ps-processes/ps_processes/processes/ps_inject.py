@@ -386,10 +386,9 @@ class Injection:
             / (TSYS + self.Tsky)
             / BETA
         )
-        signal *= np.sqrt(((1 / self.f) - self.W) / self.W)
         prof = self.phase_prof
         prof *= signal / np.mean(prof)
-        prof_fft = rfft(prof)[1:] / (Nbin / 2) ** (1 / 2)
+        prof_fft = rfft(prof)[1:] 
         phases = np.angle(prof_fft)
         prof_fft *= np.sqrt(self.ndays)
 
