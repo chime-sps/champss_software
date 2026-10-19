@@ -375,7 +375,6 @@ class Injection:
         delta_f = 200e6  # need more precise way of grabbing this but right now this is not stored.
         tau = 2 * self.pspec.shape[1] * TSAMP
         Nbin = len(self.phase_prof)
-        # calculate input signal
 
         RMS = np.sqrt(1 / Nbin)
         signal = (
