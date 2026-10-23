@@ -505,8 +505,8 @@ class PowerSpectraCreation:
 
             if remove_rednoise:
                 log.debug("Normalising power spectrum with rednoise removal")
-                power_spectrum[1:], medians, scale = rednoise_normalise(
-                    power_spectrum[1:], **rednoise_config
+                _, medians, scale = rednoise_normalise(
+                    power_spectrum[1:], out=power_spectrum[1:], **rednoise_config
                 )
                 all_medians.append(medians)
                 all_scales.append(scale)
@@ -829,8 +829,10 @@ class PowerSpectraCreation:
             zero_dm_ts = self.zeropad_ts(zero_dm_ts, self.padded_length, self.normalise)
             zero_dm_spectrum = self.run_rfft(zero_dm_ts)
             zero_dm_power_spectrum = np.abs(zero_dm_spectrum) ** 2
-            zero_dm_power_spectrum[1:], medians, scales = rednoise_normalise(
-                zero_dm_power_spectrum[1:], **self.rednoise_config
+            _, medians, scales = rednoise_normalise(
+                zero_dm_power_spectrum[1:],
+                out=zero_dm_power_spectrum[1:],
+                **self.rednoise_config,
             )
             if self.barycentring_mode == "Fourier" and self.barycentric_cleaning:
                 # Should this used before the rednoise normalisation?
