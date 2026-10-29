@@ -5,8 +5,6 @@ import astropy.units as u
 import numpy as np
 import astropy.constants as const
 from astropy.coordinates import (
-    BarycentricTrueEcliptic,
-    EarthLocation,
     SkyCoord,
     get_body_barycentric,
 )
@@ -42,6 +40,29 @@ def unwrap_profiles(profiles, dts, f0, f1):
     return profs_shifted
 
 
+def interp_phase_bins(prof, npbin):
+    """
+    Interpolate a profile onto npbin phase bins.
+
+    The interpolation is periodic and done at the bin centres, so the profile is not shifted.
+    """
+    x_old = (np.arange(len(prof)) + 0.5) / len(prof)
+    x_new = (np.arange(npbin) + 0.5) / npbin
+    return np.interp(x_new, x_old, prof, period=1)
+
+
+def match_phase_bins(a, b):
+    """Interpolate the 2D array with fewer phase bins (last axis) onto the phase bins of the other."""
+    if a.shape[-1] == b.shape[-1]:
+        return a, b
+    print("Shape mismatch, will upsample in profile space")
+    if a.shape[-1] < b.shape[-1]:
+        a = np.array([interp_phase_bins(row, b.shape[-1]) for row in a])
+    else:
+        b = np.array([interp_phase_bins(row, a.shape[-1]) for row in b])
+    return a, b
+
+
 def load_profiles(archives, max_npbin=256):
     """
     Load profiles from archive files.
@@ -73,7 +94,7 @@ def load_profiles(archives, max_npbin=256):
     psr_name = None
     reference_par = None
     reference_pepoch = None
-    print(*archives,sep='\n')
+    print(*archives, sep="\n")
     for filename in sorted(archives):
         f = filename.replace(".ar", ".FT")
         if os.path.isfile(f) and f.endswith(".FT"):
@@ -83,11 +104,15 @@ def load_profiles(archives, max_npbin=256):
                 reference_pepoch = PEPOCH
                 # Extract ephemeris from first archive as reference
                 reference_par = os.path.join(os.path.dirname(f), "reference_pepoch.par")
-                result = subprocess.run(["vap", "-E", f], capture_output=True, text=True)
+                result = subprocess.run(
+                    ["vap", "-E", f], capture_output=True, text=True
+                )
                 with open(reference_par, "w") as f_out:
                     f_out.write(result.stdout)
             elif PEPOCH != reference_pepoch:
-                print(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
+                print(
+                    f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris"
+                )
                 subprocess.run(["pam", "-E", reference_par, "-m", f], check=True)
 
             data_ar, params = readpsrarch(f)
@@ -113,8 +138,14 @@ def load_profiles(archives, max_npbin=256):
         T0 = Time(np.median(times.mjd), format="mjd")
         print(f"Changing reference epoch to central observation {T0}, {T0.isot}")
 
+    npbin = max(len(prof) for prof in profs)
+    for i in range(len(profs)):
+        if len(profs[i]) != npbin:
+            print(
+                f"Interpolating profile {i} from {len(profs[i])} to {npbin} phase bins"
+            )
+            profs[i] = interp_phase_bins(profs[i], npbin)
 
-    npbin = len(profs[0])
     profs = np.array(profs)
     if npbin > max_npbin:
         print(f"Binning to {max_npbin} phase bins.")
@@ -188,7 +219,9 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
             with open(reference_par, "w") as f_out:
                 f_out.write(result.stdout)
         elif PEPOCH != reference_pepoch:
-            print(f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris")
+            print(
+                f"PEPOCH mismatch in {f}: {PEPOCH} != {reference_pepoch}, applying reference ephemeris"
+            )
             subprocess.run(["pam", "-E", reference_par, "-m", f], check=True)
 
         data_ar, params = readpsrarch(f)
@@ -213,7 +246,15 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
             data_F = data_unwrapped.sum(0)
             data_T = data_unwrapped.sum(1)
         else:
-            data_F += data_unwrapped.sum(0)
+            new_F = data_unwrapped.sum(0)
+            if new_F.shape[0] != data_F.shape[0]:
+                print("Shape mismatch, will downsample in frequency space")
+                if new_F.shape[0] < data_F.shape[0]:
+                    data_F = data_F.reshape(new_F.shape[0], -1, data_F.shape[1]).sum(1)
+                else:
+                    new_F = new_F.reshape(data_F.shape[0], -1, new_F.shape[1]).sum(1)
+            data_F, new_F = match_phase_bins(data_F, new_F)
+            data_F += new_F
             new_T = data_unwrapped.sum(1)
             if new_T.shape[0] != data_T.shape[0]:
                 target = data_T.shape[0]
@@ -224,6 +265,7 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
                     print(f"Padding 1 zero to match data_T shape for {f}")
                     pad = np.zeros((target - new_T.shape[0], new_T.shape[1]))
                     new_T = np.concatenate([new_T, pad], axis=0)
+            data_T, new_T = match_phase_bins(data_T, new_T)
             data_T += new_T
 
     npbin = data_F.shape[-1]
@@ -238,7 +280,7 @@ def load_unwrapped_archives(archives, optimal_parameters, max_npbin=256, max_nfb
         npbin = max_npbin
     nfbin = data_F.shape[0]
     if nfbin > max_nfbin:
-        print(f"Binning to {max_nfbin} frequency bins.") 
+        print(f"Binning to {max_nfbin} frequency bins.")
         data_F = data_F.reshape(max_nfbin, data_F.shape[0] // max_nfbin, -1).sum(1)
         nfbin = max_nfbin
 
