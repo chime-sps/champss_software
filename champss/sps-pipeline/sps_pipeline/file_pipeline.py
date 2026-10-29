@@ -27,8 +27,8 @@ from ps_processes.processes.ps_stack import PowerSpectraStack
 def psrfits_start_mjd(observation):
     """
     Hard coded utility to find the start date of a filterbank file.
-    This is necessary because both `your` (rapidly becoming my personal enemy)
-    and PRESOT assume NSUBOFFS is NOT cumulative, but Murriyang uses a cumulative
+    This is necessary because both `your`
+    and PRESTO assume NSUBOFFS is NOT cumulative, but Murriyang uses a cumulative
     count.
     """
     fits = observation.fits
@@ -198,12 +198,6 @@ def load_block(observation, start, nsamp, rfi_mask=None, chans=slice(None)):
 def apply_logging_config(config, log_file="./logs/default.log"):
     """
     Applies logging settings from the given configuration.
-
-    Logging settings are under the 'logging' key, and include:
-    - format: string for the `logging.formatter`
-    - level: logging level for the root logger
-    - modules: a dictionary of submodule names and logging level to be
-               applied to that submodule's logger
     """
     log_stream.setFormatter(
         logging.Formatter(fmt=config.logging.format, datefmt="%b %d %H:%M:%S")
