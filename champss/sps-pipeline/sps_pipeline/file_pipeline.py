@@ -301,6 +301,12 @@ def apply_logging_config(config, log_file="./logs/default.log"):
         ]
     ),
 )
+@click.option(
+    "--telescope",
+    default=None,
+    type=str,
+    help="Name of used telescope, could probably also be extracted, but your does not interpret telescope ids.",
+)
 def run_file_pipeline(
     obs_file,
     stack_file,
@@ -313,6 +319,7 @@ def run_file_pipeline(
     fmin,
     fmax,
     zero_dm_birdies,
+    telescope,
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
@@ -325,11 +332,14 @@ def run_file_pipeline(
     if observation.format == "fits":
         tstart = psrfits_start_mjd(observation)
         dt = (obs_header.tstart - tstart) * 86400.0
-    telescope_location = EarthLocation(
-        x=float(observation.header["ANT_X"]) * u.m,
-        y=float(observation.header["ANT_Y"]) * u.m,
-        z=float(observation.header["ANT_Z"]) * u.m,
-    )
+    if telescope:
+        telescope_location = EarthLocation.of_site(telescope)
+    else:
+        telescope_location = EarthLocation(
+            x=float(observation.header["ANT_X"]) * u.m,
+            y=float(observation.header["ANT_Y"]) * u.m,
+            z=float(observation.header["ANT_Z"]) * u.m,
+        )
 
     # pick channels between fmin and fmax
     c0, c1, FREQ_BOTTOM, FREQ_TOP = select_channels(obs_header, fmin, fmax)
