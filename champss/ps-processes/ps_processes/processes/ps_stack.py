@@ -354,6 +354,12 @@ class PowerSpectraStack:
                 stack_freq_labels,
                 "The two power spectra stack do not have the same frequency labels.",
             )
+            np.testing.assert_allclose(
+                pspec.dms,
+                h5f["dms"][:],
+                atol=1e-6,
+                err_msg="The two power spectra stack do not have the same DM trials.",
+            )
             datetimes_stack = np.ones(h5f["datetimes"].shape)
             h5f["datetimes"].read_direct(datetimes_stack)
             for dt, dts in itertools.product(pspec.datetimes, datetimes_stack):
@@ -480,6 +486,12 @@ class PowerSpectraStack:
                 stack_freq_labels,
                 "The two power spectra stack do not have the same frequency labels.",
             )
+            np.testing.assert_allclose(
+                pspec.dms,
+                h5f["dms"][:],
+                atol=1e-6,
+                err_msg="The two power spectra stack do not have the same DM trials.",
+            )
             datetimes_stack = np.ones(h5f["datetimes"].shape)
             h5f["datetimes"].read_direct(datetimes_stack)
             for dt, dts in itertools.product(pspec.datetimes, datetimes_stack):
@@ -582,6 +594,12 @@ class PowerSpectraStack:
             pspec.freq_labels,
             pspec_stack.freq_labels,
             "The two power spectra stack do not have the same frequency labels.",
+        )
+        np.testing.assert_allclose(
+            pspec.dms,
+            pspec_stack.dms,
+            atol=1e-6,
+            err_msg="The two power spectra stack do not have the same DM trials.",
         )
         for dt, dts in itertools.product(pspec.datetimes, pspec_stack.datetimes):
             assert np.abs(dt.timestamp() - dts.timestamp()) > 60, (

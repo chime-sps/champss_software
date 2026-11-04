@@ -35,6 +35,8 @@ dedisp:
   nsub: 64
   fdmt:
     dm_step: 2
+    max_snr_loss: null  # If set, replaces dm_step with a non-uniform S/N-loss DM grid
+    library: dmt  # dmt: the raw_init fork. dmtlib: upstream, streaming, ignores cpp
     num_dms_fac: 1
     chunk_size: 40960
     cpp: True

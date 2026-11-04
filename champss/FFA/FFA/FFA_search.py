@@ -19,7 +19,8 @@ from scipy.optimize import curve_fit
 from scipy.optimize import OptimizeWarning
 import sps_common.barycenter as barycenter
 from scipy import interpolate
-from sps_common.constants import TSAMP
+from sps_common.constants import REFERENCE_DM_SPACING, TSAMP
+from sps_common.dm_grid import clustering_dm_spacing
 # from sps_common.interfaces import SinglePointingCandidate_FFA, SearchAlgorithm_FFA
 
 from .single_pointing_FFA import detections_dtype
@@ -668,7 +669,9 @@ def FFA_search(
             print("Detections:")
             print(detections)
             clusterer = Clusterer_FFA()
-            cluster_dm_spacing = dms[1] - dms[0]
+            cluster_dm_spacing = clustering_dm_spacing(
+                dms, reference=dm_downsample * REFERENCE_DM_SPACING
+            )
             cluster_df_spacing = pgram_0.freqs[0] - pgram_0.freqs[1]
             print(
                 f"cluster_dm_spacing: {cluster_dm_spacing}, cluster_df_spacing: {cluster_df_spacing}"

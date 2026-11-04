@@ -19,6 +19,7 @@ from ps_processes.processes import ps_inject
 from ps_processes.processes.clustering import Clusterer
 from rfi_mitigation.cleaners.periodic import StaticPeriodicFilter
 from sps_common.constants import MIN_SEARCH_FREQ
+from sps_common.dm_grid import clustering_dm_spacing
 from sps_common.interfaces import (
     PowerSpectraDetectionClusters,
     SearchAlgorithm,
@@ -549,7 +550,7 @@ class PowerSpectraSearch:
                 sigma_detection_threshold=self.sigma_min,
                 num_threads=self.num_threads,
             )
-            cluster_dm_spacing = pspec.dms[1] - pspec.dms[0]
+            cluster_dm_spacing = clustering_dm_spacing(pspec.dms)
             cluster_df_spacing = pspec.freq_labels[1]
             (
                 clusters,

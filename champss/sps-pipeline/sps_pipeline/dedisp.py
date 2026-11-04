@@ -9,7 +9,8 @@ import numpy as np
 # from sps_dedispersion.fdmt.cpu_fdmt import FDMT
 from prometheus_client import Summary
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
-from sps_dedispersion.dedisperse import dedisperse
+from sps_common.dm_grid import snr_loss_dt_grid
+from sps_dedispersion.dedisperse import dedisperse, dedisperse_streaming
 from sps_pipeline import utils
 
 log = logging.getLogger(__package__)
@@ -58,6 +59,38 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
     ) * num_dms_fac
     nsamps = fdmt_config.chunk_size + num_dms
 
+    dt_trials = None
+    max_snr_loss = fdmt_config.get("max_snr_loss")
+    if max_snr_loss is not None:
+        dt_trials = snr_loss_dt_grid(skybeam.nchan, num_dms - 1, max_snr_loss)
+        log.info(f"Using S/N-loss DM grid with max_snr_loss={max_snr_loss}")
+
+    if fdmt_config.get("library", "dmt") == "dmtlib":
+        log.info("Using dmtlib FDMT")
+        from dmtlib import FDMT
+
+        if dt_trials is None:
+            dt_trials = np.arange(0, num_dms, fdmt_config.dm_step)
+        fdmt = FDMT(
+            FREQ_BOTTOM,
+            FREQ_TOP,
+            skybeam.nchan,
+            fdmt_config.chunk_size,
+            TSAMP,
+            dt_grid=dt_trials,
+            # A box-smeared FDMT has coloured noise, which a periodicity search can't use
+            use_box_smearing=False,
+            nthreads=int(np.min([num_threads, 8])),
+        )
+        dts = dedisperse_streaming(
+            fdmt, skybeam, fdmt_config.chunk_size, num_dms, dt_trials
+        )
+        log.info(
+            f"FDMT Dedispersion ({pointing.ra:.2f} {pointing.dec:.2f}) completed with"
+            f" {len(dts.dedisp_ts)} DM steps"
+        )
+        return dts
+
     if fdmt_config.cpp == True:
         log.info("Using C++ FDMT")
         from dmt.libdmt import FDMT
@@ -94,6 +127,7 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
         num_dms,
         fdmt_config.dm_step,
         fdmt_config.cpp,
+        dt_trials=dt_trials,
     )
 
     log.info(

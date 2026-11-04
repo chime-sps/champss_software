@@ -21,6 +21,11 @@ TSAMP = 0.00098304
 L0_NCHAN = 1024
 # Number of native frequency channels at L1
 L1_NCHAN = 16384
+# DM spacing (pc/cm^3) of 2 samples of delay across the band, the historical FDMT grid.
+# Sets the DM scale for clustering when the trial spacing is not uniform.
+REFERENCE_DM_SPACING = (
+    2 * TSAMP / DM_CONSTANT / (1 / FREQ_BOTTOM**2 - 1 / FREQ_TOP**2)
+)
 # Default number of time samples per msgpack file (not Huffmann encoded)
 DEFAULT_MSGPACK_NTIME = 1024
 # Minimum frequency for candidate search
