@@ -365,6 +365,10 @@ ps_cumul_stack:
     max_search_frequency: 250
     only_use_stack_threshold: False
     mean_bin_sigma_threshold: 5
+    run_rednoise_reweight_threshold: 0.95
+    rednoise_config:
+      b0: 10
+      bmax: 100
     cluster_config:
       dbscan_eps: 1
       dm_scale_factor: 0.02
