@@ -28,6 +28,7 @@ from ps_processes.utilities.qc import (
 from ps_processes.utilities.utilities import check_in_range, grab_metric_history
 from scipy.stats import median_abs_deviation
 from sps_common.interfaces import PowerSpectra
+from sps_common.stack_quant import QuantizedStack, quant_bias, round_power
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
@@ -91,6 +92,8 @@ class PowerSpectraStack:
     max_lock_age = attribute(default=1800.0, validator=instance_of(float))
     lock = attribute(init=False, validator=instance_of(filelock._unix.UnixFileLock))
     write_when_file_not_found = attribute(default=True, validator=instance_of(bool))
+    quant_step = attribute(default=None)
+    max_quant_days = attribute(default=32, validator=instance_of(int))
 
     @mode.validator
     def _validate_mode(self, attribute, value):
@@ -127,6 +130,13 @@ class PowerSpectraStack:
             PowerSpectra object, which will be the daily power spectra for 'month'
             mode and the cumulative power spectra for 'cumul'
         """
+
+        if self.quant_step is not None and (
+            self.mode != "month" or self.infile_overwrite or not self.readout_stack
+        ):
+            raise ValueError(
+                "quant_step only works for the monthly stack with the readout method."
+            )
 
         # qc test to know if we want to load the power spectra stack at all.
         if self.qc:
@@ -198,7 +208,9 @@ class PowerSpectraStack:
                         f"Stack file {stack_file_path} aready exists on disk but appears to be broken. Will delete old file."
                     )
                     os.remove(stack_file_path)
-            pspec.write(stack_file_path, nbit=self.stack_nbit)
+            pspec.write(
+                stack_file_path, nbit=self.stack_nbit, quant_step=self.quant_step
+            )
             if self.update_db:
                 log.info(
                     f"Creating new database entry for {pspec.ra:.2f} {pspec.dec:.2f}."
@@ -279,6 +291,9 @@ class PowerSpectraStack:
                     # returns the daily stack to search in mode month and not in readout stack mode, otherwise return
                     # the full stack.
                     self.unlock_stack()
+                    if self.quant_step is not None:
+                        # The search may use this if the daily search found nothing
+                        pspec_stack.power_spectra /= quant_bias(self.quant_step)
                     if self.mode == "month" and not self.readout_stack:
                         return pspec
                     else:
@@ -292,7 +307,11 @@ class PowerSpectraStack:
                     )
                     stack_file_path = self.get_stack_file_path(pspec)
                     self.lock_stack(self.get_stack_file_path(pspec, unique=False))
-                    pspec.write(stack_file_path, nbit=self.stack_nbit)
+                    pspec.write(
+                        stack_file_path,
+                        nbit=self.stack_nbit,
+                        quant_step=self.quant_step,
+                    )
                     if self.update_db:
                         self.update_stack_database(pspec, ps_stack_db.pointing_id)
                     if self.mode == "cumul" and self.delete_monthly_stack:
@@ -498,9 +517,23 @@ class PowerSpectraStack:
                 assert np.abs(dt.timestamp() - dts) > 60, (
                     "The two power spectra stack came from the same day."
                 )
+            assert h5f.attrs.get("quant_step") == self.quant_step, (
+                "The stack on disk and the config do not have the same quant_step."
+            )
             log.info(f"Stacking the {self.mode} power spectra into the current stack")
-            for i in range(len(pspec.dms)):
-                pspec.power_spectra[i] += h5f["power spectra"][(i,)]
+            if self.quant_step is not None:
+                assert (
+                    h5f.attrs["number of days"] + pspec.num_days <= self.max_quant_days
+                ), f"The stack already holds the maximum of {self.max_quant_days} days."
+                stack = QuantizedStack(h5f)
+                for i in range(len(pspec.dms)):
+                    pspec.power_spectra[i] = (
+                        round_power(pspec.power_spectra[i], self.quant_step)
+                        + stack.rows(i, i + 1, raw=True)[0]
+                    )
+            else:
+                for i in range(len(pspec.dms)):
+                    pspec.power_spectra[i] += h5f["power spectra"][(i,)]
             log.info(f"Updating the new {self.mode} power spectra information")
             pspec.num_days += h5f.attrs["number of days"]
 
@@ -653,7 +686,7 @@ class PowerSpectraStack:
         if os.path.isfile(temp_path):
             log.info(f"Found old temp file {temp_path}. Will remove this file.")
             os.remove(temp_path)
-        pspec.write(temp_path, nbit=self.stack_nbit)
+        pspec.write(temp_path, nbit=self.stack_nbit, quant_step=self.quant_step)
         log.info(
             f"Deleting the existing {self.mode} power spectra stack '{stack_file_path}'"
         )

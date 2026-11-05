@@ -142,6 +142,8 @@ ps:
               upper_limit_dynamic: 3
             - metric: num_clusters
     stack_nbit: 16
+    quant_step: null  # If set, store the monthly stack as compressed 16-bit multiples of this step
+    max_quant_days: 32  # Days a quantized monthly stack may hold before it is refused
     infile_overwrite: False
     readout_stack: True
   ps_search_config:
