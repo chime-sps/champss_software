@@ -11,6 +11,7 @@ from rfi_mitigation import data as rfi_mitigation_data
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 from sps_common.barycenter import bary_from_topo_freq, topo_from_bary_freq
+from sps_common.constants import TSAMP
 from sps_databases import db_api
 
 try:
@@ -21,6 +22,16 @@ except ImportError as e:
 
 
 log = logging.getLogger(__name__)
+
+
+def fold_about_nyquist(freqs, tsamp=TSAMP):
+    """
+    Apparent frequencies of signals at true (topocentric) frequencies freqs once
+    sampled at tsamp: reduced modulo the sampling rate and reflected about Nyquist.
+    """
+    fs = 1.0 / tsamp
+    apparent = np.mod(freqs, fs)
+    return np.where(apparent > fs / 2, fs - apparent, apparent)
 
 
 class StaticPeriodicFilter:
@@ -52,11 +63,18 @@ class StaticPeriodicFilter:
         birdie_dict = {"known_bad_frequencies": ks_birdies}
         return cls(birdies=birdie_dict)
 
-    def apply_static_mask(self, ps_freqs: np.ndarray, beta: float = 0) -> List[int]:
+    def apply_static_mask(
+        self, ps_freqs: np.ndarray, beta: float = 0, tsamp: float = TSAMP
+    ) -> List[int]:
         """
         For a list of power spectrum frequencies, flag those indices that should be
         ignored due to known periodic signals. Freuqencies are assumed to be
         topocentric, thus a barycentric correction is made if `beta` is non-zero.
+
+        Birdies with `alias: true` have their harmonics folded about the Nyquist
+        frequency of the data (sampled at `tsamp`) before barycentring, so
+        harmonics above Nyquist are flagged where they actually appear. For these,
+        int_nharm may reach far beyond Nyquist (e.g. 80 for 25 Hz is 2 kHz).
 
         Parameters
         ----------
@@ -67,6 +85,10 @@ class StaticPeriodicFilter:
         :param beta: The barycentric correction applied, in units of the speed
         of light
         :type beta: float
+
+        :param tsamp: Sampling time (s) of the time series the power spectrum
+        was computed from; sets the Nyquist frequency for aliased birdies
+        :type tsamp: float
 
         :return bad_indices: A list of integers representing the frequency bins
         to be flagged when searching power spectra.
@@ -120,6 +142,12 @@ class StaticPeriodicFilter:
 
             bad_freqs = [n * bf for n in range(1, nharm_integer + 1)]
             bad_freqs.extend([(1.0 / n) * bf for n in range(2, nharm_fractional + 2)])
+            if bird.get("alias", False):
+                # Aliasing happens at the topocentric sampling rate, so fold the
+                # topocentric harmonics, then barycentre (a pure scaling).
+                topo = np.array(bad_freqs) * (bird["frequency"] / bf)
+                bad_freqs = list(fold_about_nyquist(topo, tsamp) * (bf / bird["frequency"]))
+                log.info(f"Folded {nharm_integer} harmonics about Nyquist")
 
             # find the nearest index corresponding to the harmonics
             for b in bad_freqs:
