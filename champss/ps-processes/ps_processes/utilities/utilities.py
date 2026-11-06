@@ -5,6 +5,30 @@ from scipy.special import gamma, gammainc
 from scipy.stats import chi2, kstwo
 
 
+def rednoise_scale(ps_len, b0=50, bmax=100000):
+    """
+    Widths of the windows used by rednoise_normalise for a spectrum of ps_len bins.
+
+    The windows grow logarithmically from b0 up to bmax, and their widths sum to ps_len.
+    """
+    scale = []
+    for n in range(0, ps_len):
+        # create the log range for normalisation
+        new_window = np.exp(1 + n / 3) * b0 / np.exp(1)
+        if new_window > bmax:
+            pass
+        else:
+            window = int(new_window)
+        scale.append(window)
+        if np.sum(scale) > ps_len:
+            scale[-1] = ps_len - np.sum(scale[:-1])
+            break
+    # check if sum of scale is equal to ps_len
+    if np.sum(scale) < ps_len:
+        scale[-1] += ps_len - np.sum(scale)
+    return scale
+
+
 def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians = True):
     """
     Script to normalise power spectrum while removing rednoise. Based on presto's method
@@ -32,21 +56,7 @@ def rednoise_normalise(power_spectrum, b0=50, bmax=100000, get_medians = True):
         An ndarray of the normalised power spectrum with rednoise removed
     """
     ps_len = len(power_spectrum)
-    scale = []
-    for n in range(0, ps_len):
-        # create the log range for normalisation
-        new_window = np.exp(1 + n / 3) * b0 / np.exp(1)
-        if new_window > bmax:
-            pass
-        else:
-            window = int(new_window)
-        scale.append(window)
-        if np.sum(scale) > ps_len:
-            scale[-1] = ps_len - np.sum(scale[:-1])
-            break
-    # check if sum of scale is equal to ps_len
-    if np.sum(scale) < ps_len:
-        scale[-1] += ps_len - np.sum(scale)
+    scale = rednoise_scale(ps_len, b0, bmax)
     start = 0
     old_mid_bin = 0
     old_median = 1

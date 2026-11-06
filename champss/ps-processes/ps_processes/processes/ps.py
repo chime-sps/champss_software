@@ -16,7 +16,8 @@ from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
 from prometheus_client import Summary
-from ps_processes.utilities.utilities import rednoise_normalise
+from ps_processes.utilities.rednoise_fast import rednoise_normalise_into
+from ps_processes.utilities.utilities import rednoise_normalise, rednoise_scale
 from rfi_mitigation.cleaners.periodic import DynamicPeriodicFilter, StaticPeriodicFilter
 from scipy.interpolate import interp1d
 from scipy.fft import rfftfreq
@@ -115,11 +116,43 @@ class _RowTransformer:
         nbin = padded_length // 2
         self.power = np.empty(nbin, dtype=real)
         self.work = np.empty(nbin, dtype=f"float{nbit}")
+        self.rednoise_key = None
         self.barycentre = barycentring_mode == "Fourier"
         if self.barycentre:
             index = fourier_barycentre_index(nbin, beta)
             self.outside = np.flatnonzero(index < 0)
             self.index = np.maximum(index, 0)
+
+    def rednoise_into(self, power_spectrum, out, rednoise_config):
+        """
+        Red-noise normalise power_spectrum[1:] straight into out[1:], in one pass.
+
+        Gives exactly what rednoise_normalise does once its result is stored as float32.
+        Returns (medians, scale) as rednoise_normalise does, or None when this path does
+        not apply (not float32, other rednoise options, or a window with no unmasked
+        bins); out may then be partly written and must be filled by the caller.
+        """
+        if (
+            power_spectrum.dtype != np.float32
+            or out.dtype != np.float32
+            or set(rednoise_config) - {"b0", "bmax"}
+        ):
+            return None
+        b0 = rednoise_config.get("b0", 50)
+        bmax = rednoise_config.get("bmax", 100000)
+        key = (power_spectrum.shape[0] - 1, b0, bmax)
+        if self.rednoise_key != key:
+            self.rednoise_scale = rednoise_scale(*key)
+            scale = np.asarray(self.rednoise_scale, dtype=np.int64)
+            self.rednoise_scale_array = scale
+            self.rednoise_buf = np.empty(2 * int(scale.max()), dtype=np.float32)
+            self.rednoise_key = key
+        medians = rednoise_normalise_into(
+            power_spectrum[1:], out[1:], self.rednoise_scale_array, self.rednoise_buf
+        )
+        if medians is None:
+            return None
+        return medians, list(self.rednoise_scale)
 
     def power_spectrum(self, dts, normalise):
         """
@@ -605,11 +638,20 @@ class PowerSpectraCreation:
             if clean_rfi:
                 power_spectrum[bad_freq_indices] = np.nan
 
+            row = power_spectra[dm_index]
+            # Whether the normalised spectrum has already been written into row
+            in_row = False
             if remove_rednoise:
                 log.debug("Normalising power spectrum with rednoise removal")
-                power_spectrum[1:], medians, scale = rednoise_normalise(
-                    power_spectrum[1:], **rednoise_config
-                )
+                fast = transformer.rednoise_into(power_spectrum, row, rednoise_config)
+                if fast is not None:
+                    medians, scale = fast
+                    row[0] = power_spectrum[0]
+                    in_row = True
+                else:
+                    power_spectrum[1:], medians, scale = rednoise_normalise(
+                        power_spectrum[1:], **rednoise_config
+                    )
                 all_medians.append(medians)
                 all_scales.append(scale)
 
@@ -618,15 +660,17 @@ class PowerSpectraCreation:
                 power_spectrum[1:] = power_spectrum[1:] / (
                     np.nanmedian(power_spectrum[1:]) / np.log(2)
                 )
+            result = row if in_row else power_spectrum
             if clean_rfi:
                 if zero_replace:
-                    power_spectrum[bad_freq_indices] = 0
+                    result[bad_freq_indices] = 0
                 else:
-                    power_spectrum[bad_freq_indices] = (
+                    result[bad_freq_indices] = (
                         np.random.chisquare(2, len(bad_freq_indices)) / 2
                     )
 
-            power_spectra[dm_index, :] = power_spectrum
+            if not in_row:
+                row[:] = power_spectrum
         shared_spectra.close()
 
         return [dm_indices, all_medians, all_scales]
