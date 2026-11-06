@@ -22,6 +22,7 @@ from ps_processes import (
     StackNotInDbError,
 )
 from ps_processes.utilities.qc import (
+    chi2_ks_distances,
     compare_ps_to_chisqr_kstest,
     validate_ps_chisqr_outlier_bins,
 )
@@ -32,6 +33,14 @@ from sps_common.stack_quant import QuantizedStack, quant_bias, round_power
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
+
+# Parameters of compare_ps_to_chisqr_kstest that chi2_ks_distances also takes
+KS_DISTANCE_PARAMETERS = {
+    "lower_percentile_cut",
+    "upper_percentile_cut",
+    "remove_zeros",
+    "dof_factor",
+}
 
 
 @attrs(slots=True)
@@ -526,11 +535,20 @@ class PowerSpectraStack:
                     h5f.attrs["number of days"] + pspec.num_days <= self.max_quant_days
                 ), f"The stack already holds the maximum of {self.max_quant_days} days."
                 stack = QuantizedStack(h5f)
-                for i in range(len(pspec.dms)):
-                    pspec.power_spectra[i] = (
-                        round_power(pspec.power_spectra[i], self.quant_step)
-                        + stack.rows(i, i + 1, raw=True)[0]
-                    )
+                spectra = pspec.power_spectra
+                if (
+                    isinstance(spectra, np.ndarray)
+                    and spectra.dtype == np.float32
+                    and spectra.flags.c_contiguous
+                ):
+                    # One compiled pass per block of rows, same values as below
+                    stack.add_rounded(spectra, self.quant_step)
+                else:
+                    for i in range(len(pspec.dms)):
+                        spectra[i] = (
+                            round_power(spectra[i], self.quant_step)
+                            + stack.rows(i, i + 1, raw=True)[0]
+                        )
             else:
                 for i in range(len(pspec.dms)):
                     pspec.power_spectra[i] += h5f["power spectra"][(i,)]
@@ -760,24 +778,34 @@ class PowerSpectraStack:
                 # this method allows fitting the number of days
                 # this allows testing if the number of degrees of freedom is chi2
                 expected_days = pspec.num_days
-                day_vals = []
-                ksdists = []
-                for days in np.linspace(
-                    (1 - current_metric["range"]) * expected_days,
-                    (1 + current_metric["range"]) * expected_days,
-                    current_metric["count"],
-                ):
-                    (
-                        current_ksstat,
-                        current_pval,
-                    ) = compare_ps_to_chisqr_kstest(
-                        tested_ps,
-                        ndays=days,
-                        red_noise_nbins=0,
-                        **metric_parameters,
+                day_vals = list(
+                    np.linspace(
+                        (1 - current_metric["range"]) * expected_days,
+                        (1 + current_metric["range"]) * expected_days,
+                        current_metric["count"],
                     )
-                    day_vals.append(days)
-                    ksdists.append(float(current_ksstat))
+                )
+                if set(metric_parameters) <= KS_DISTANCE_PARAMETERS:
+                    # The same statistics, with the samples sorted once and the slow
+                    # non-integer-dof CDF evaluated at only a few of them
+                    ksdists = [
+                        float(d)
+                        for d in chi2_ks_distances(
+                            tested_ps, day_vals, red_noise_nbins=0, **metric_parameters
+                        )
+                    ]
+                else:
+                    ksdists = [
+                        float(
+                            compare_ps_to_chisqr_kstest(
+                                tested_ps,
+                                ndays=days,
+                                red_noise_nbins=0,
+                                **metric_parameters,
+                            )[0]
+                        )
+                        for days in day_vals
+                    ]
                 min_val = min(ksdists)
                 min_days = day_vals[np.argmin(ksdists)]
                 fraction = min_days / expected_days

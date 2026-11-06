@@ -29,6 +29,7 @@ from sps_common.interfaces import (
 from sps_common.interfaces.utilities import (
     harmonic_sum,
     powersum_at_sigma,
+    powersum_at_sigma_counts,
     sigma_sum_powers,
     get_arc_for_beam,
     angular_separation,
@@ -470,7 +471,8 @@ class PowerSpectraSearch:
                 nsum_harm_bins = self.full_harm_bins[:harm]
                 nsum_current_harmonic = num_days_per_bin[nsum_harm_bins].sum(0)
                 nsum_per_harmonic[idx_harm, :] = nsum_current_harmonic
-                power_cutoff_per_harmonic[idx_harm, :] = powersum_at_sigma(
+                # Same values, with the inverse chi2 evaluated once per count
+                power_cutoff_per_harmonic[idx_harm, :] = powersum_at_sigma_counts(
                     self.sigma_min, nsum_current_harmonic
                 )
                 power_cutoff_per_harmonic[idx_harm, nsum_current_harmonic == 0] = np.inf

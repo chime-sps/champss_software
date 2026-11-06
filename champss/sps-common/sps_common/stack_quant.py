@@ -17,6 +17,7 @@ Reading these files needs the zstd HDF5 filter, which importing this module regi
 
 import hdf5plugin
 import numpy as np
+from numba import njit
 
 CODE_MAX = np.iinfo(np.uint16).max
 # Level 1 gives the same size as 3 on these stacks (noise does not reward effort), faster
@@ -45,6 +46,59 @@ def _unzigzag(z):
     return (z >> 1) ^ -(z & 1)
 
 
+# The compiled loops below do in one pass what the numpy expressions above do in
+# several, with the same arithmetic: power is rounded in float32 (numpy 1.x keeps a
+# float32 array divided by a Python float in float32), and an int32 code times a float32
+# scale is computed in float64 and stored as float32, as np.multiply does.
+
+
+@njit(cache=True)
+def _encode_row(spectrum, inv_step, offset, limit, z, over):
+    """
+    zigzag(rint(spectrum * inv_step) - offset) into z, as write_quantized stores it.
+
+    Bins whose code does not fit in 16 bits get 0 and are listed in over. Returns how
+    many there are, or -1 if a value is at least limit in size or is not finite.
+    """
+    n_over = 0
+    for j in range(spectrum.shape[0]):
+        r = np.rint(spectrum[j] * inv_step)
+        if not abs(r) < limit:
+            return -1
+        x = np.int64(r) - offset
+        code = (x << 1) ^ (x >> 63)
+        if code > CODE_MAX:
+            over[n_over] = j
+            n_over += 1
+            code = 0
+        z[j] = code
+    return n_over
+
+
+@njit(cache=True)
+def _decode_block(raw, offset, scale, ov_row, ov_bin, ov_code, out, add, step):
+    """
+    Decode stored rows into out, or with add, set out to its own power rounded to step
+    plus the decoded rows. ov_* are the overflow entries of these rows, rows relative.
+    """
+    # Values at overflow bins first, while out still holds the power to be rounded
+    ov_val = np.empty(ov_row.shape[0], dtype=np.float32)
+    for m in range(ov_row.shape[0]):
+        v = np.float32(np.float64(np.int32(ov_code[m])) * np.float64(scale))
+        if add:
+            v = np.rint(out[ov_row[m], ov_bin[m]] / step) * step + v
+        ov_val[m] = v
+    for r in range(raw.shape[0]):
+        for j in range(raw.shape[1]):
+            z = np.int64(raw[r, j])
+            v = np.float32(np.float64(((z >> 1) ^ -(z & 1)) + offset) * np.float64(scale))
+            if add:
+                v = np.rint(out[r, j] / step) * step + v
+            out[r, j] = v
+    for m in range(ov_row.shape[0]):
+        out[ov_row[m], ov_bin[m]] = ov_val[m]
+
+
 def write_quantized(h5f, spectra, step, num_days):
     """
     Write a 2D array of (dm, freq) power, already a sum of rounded days or a single day.
@@ -71,18 +125,22 @@ def write_quantized(h5f, spectra, step, num_days):
     )
     rows, bins, codes = [], [], []
     inv_step = np.float32(1 / step)
+    nbin = spectra.shape[1] if len(spectra) else 0
+    z = np.empty(nbin, dtype=np.uint16)
+    over_buf = np.empty(nbin, dtype=np.int64)
     for i, spectrum in enumerate(spectra):
-        k = np.rint(np.asarray(spectrum, dtype=np.float32) * inv_step).astype(np.int32)
-        if np.abs(k).max(initial=0) >= CODE_LIMIT - abs(offset):
+        spectrum = np.ascontiguousarray(spectrum, dtype=np.float32)
+        n_over = _encode_row(
+            spectrum, inv_step, offset, CODE_LIMIT - abs(offset), z, over_buf
+        )
+        if n_over < 0:
             raise ValueError(f"Power in row {i} is too large to store at step {step}.")
-        z = _zigzag(k - np.int32(offset))
-        over = np.flatnonzero(z > CODE_MAX)
-        if len(over):
-            rows.append(np.full(len(over), i))
+        if n_over:
+            over = over_buf[:n_over].copy()
+            rows.append(np.full(n_over, i))
             bins.append(over)
-            codes.append(k[over])
-            z[over] = 0
-        dataset[i] = z.astype(np.uint16)
+            codes.append(np.rint(spectrum[over] * inv_step).astype(np.int32))
+        dataset[i] = z
     h5f.create_dataset(
         "overflow row", data=np.concatenate(rows) if rows else [], dtype="i4"
     )
@@ -134,21 +192,48 @@ class QuantizedStack:
         """
         if stop is None:
             stop = self.nrow
-        dataset = self.h5f["power spectra"]
-        spectra = np.empty((stop - start, dataset.shape[1]), dtype=np.float32)
+        nbin = self.h5f["power spectra"].shape[1]
+        spectra = np.empty((stop - start, nbin), dtype=np.float32)
         scale = np.float32(self.step if raw else self.step / quant_bias(self.step))
-        # Decode a few rows at a time, so temporaries stay small next to the output
+        self._decode(spectra, start, stop, scale, add=False, step=np.float32(0))
+        return spectra
+
+    def add_rounded(self, spectra, step):
+        """
+        Add a new day to the stored stack, in place: every row of spectra becomes
+        round_power(row, step) plus the stored sum of rounded days (rows(raw=True)).
+
+        Parameters
+        =========
+        spectra: np.ndarray
+            float32 (dm, freq) power of the day, C-contiguous; it may be shared memory.
+        step: float
+            The rounding step, which must be that of the stack.
+        """
+        self._decode(
+            spectra, 0, self.nrow, np.float32(self.step), add=True, step=np.float32(step)
+        )
+
+    def _decode(self, spectra, start, stop, scale, add, step):
+        """Decode rows start:stop into spectra, a few rows at a time."""
+        dataset = self.h5f["power spectra"]
+        raw = np.empty((READ_BLOCK_ROWS, dataset.shape[1]), dtype=np.uint16)
         for b0 in range(start, stop, READ_BLOCK_ROWS):
             b1 = min(b0 + READ_BLOCK_ROWS, stop)
-            codes = _unzigzag(dataset[b0:b1].astype(np.int32))
-            codes += np.int32(self.offset)
+            block = raw[: b1 - b0]
+            dataset.read_direct(block, np.s_[b0:b1])
             lo, hi = np.searchsorted(self.overflow_row, [b0, b1])
-            codes[self.overflow_row[lo:hi] - b0, self.overflow_bin[lo:hi]] = (
-                self.overflow_code[lo:hi]
+            _decode_block(
+                block,
+                self.offset,
+                scale,
+                self.overflow_row[lo:hi] - b0,
+                self.overflow_bin[lo:hi],
+                self.overflow_code[lo:hi],
+                spectra[b0 - start : b1 - start],
+                add,
+                step,
             )
-            out = spectra[b0 - start : b1 - start]
-            np.multiply(codes, scale, out=out, casting="unsafe")
-        return spectra
 
 
 def read_quantized(h5f, start=0, stop=None, raw=False):

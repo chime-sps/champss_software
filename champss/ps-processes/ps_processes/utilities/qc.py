@@ -100,6 +100,102 @@ def validate_ps_chisqr_outlier_bins(
     return expected_outliers, found_outliers, diff_outliers, frac_outliers
 
 
+def chi2_kstest_sample(
+    ps, red_noise_nbins, remove_zeros, lower_percentile_cut, upper_percentile_cut
+):
+    """
+    The samples compare_ps_to_chisqr_kstest tests, already doubled, and the
+    integration limits of the truncated chi2 CDF they are compared with.
+
+    Returns (samples, lower_limit, upper_limit, l_percentile, u_percentile,
+    lower_percentile_cut, upper_percentile_cut), the cuts with "None" made None.
+    """
+    # We know there is red noise present, which is not chi-square distributed. Even
+    # if red-noise removal was attempted, these low-frequency bins are still corrupted
+    # and their amplitudes are biased low, thus we exclude them first before computing
+    # additional statistical tests.
+    if isinstance(ps, np.ma.MaskedArray):
+        # strip the masked values as we don't want them causing issues (NaNs, etc.)
+        # Question: Are masked arrays currently used? Masked values are set to zero, I think.
+        _ps_truncated = np.ma.compressed(ps[red_noise_nbins:])
+    else:
+        _ps_truncated = ps[red_noise_nbins:]
+
+    # Spectra contain zeros due to RFI masking. In order to compare to a
+    # chi-square distribution these need to be removed first
+    if remove_zeros:
+        _ps_truncated = _ps_truncated[_ps_truncated != 0]
+
+    # We expect that there may be *some* high-power contamination in random bins,
+    # especially if we are comparing multi-day stacks where real pulsar signals
+    # will be present. We also want to get rid of the really low values since they
+    # should not affect our search/stacks, the lowest ~1% of values should suffice.
+
+    l_percentile = None
+    u_percentile = None
+    if lower_percentile_cut == "None":
+        lower_percentile_cut = None
+    if upper_percentile_cut == "None":
+        upper_percentile_cut = None
+    if lower_percentile_cut:
+        l_percentile_threshold = 100 * lower_percentile_cut
+        l_percentile = np.percentile(_ps_truncated, l_percentile_threshold)
+    if upper_percentile_cut:
+        u_percentile_threshold = 100 * upper_percentile_cut
+        u_percentile = np.percentile(_ps_truncated, u_percentile_threshold)
+
+    if lower_percentile_cut and upper_percentile_cut:
+        good_idxs = np.where(
+            np.logical_and(
+                _ps_truncated >= l_percentile,
+                _ps_truncated <= u_percentile,
+            )
+        )
+        ngood = len(good_idxs[0])
+    elif lower_percentile_cut and not upper_percentile_cut:
+        good_idxs = np.where(_ps_truncated >= l_percentile)
+        ngood = len(good_idxs[0])
+    elif not lower_percentile_cut and upper_percentile_cut:
+        good_idxs = np.where(_ps_truncated <= u_percentile)
+        ngood = len(good_idxs[0])
+    else:
+        good_idxs = ...  # basically, all indexes are fine
+        ngood = len(_ps_truncated[good_idxs])
+
+    log.debug(
+        f"{ngood} out of {len(_ps_truncated)} within upper/lower percentile cut"
+        f" (val={l_percentile}, {u_percentile})"
+    )
+    ps_truncated = _ps_truncated[good_idxs]
+    if l_percentile:
+        truncated_chi2_cutoff_lower = 2 * l_percentile
+    else:
+        truncated_chi2_cutoff_lower = 0
+    if u_percentile:
+        truncated_chi2_cutoff_upper = 2 * u_percentile
+    else:
+        truncated_chi2_cutoff_upper = np.inf
+
+    # When comparing the power spectrum to the chi2 distribution, it is important to
+    # note that the normalisation used matters! Leahy normalisation (used in high-energy
+    # regimes) ensures the power spectrum has a mean value of 2, which is what one
+    # expects for a chi-squared distribution with 2 degrees of freedom. Thus, since
+    # our data are normalised in the "radio" convention to have a mean of 1, we need
+    # to multiply the powers by 2 before comparing to the chi-squared distribution.
+    # e.g. slide 11 of https://heasarc.gsfc.nasa.gov/docs/xrayschool-2003/XraySchool_timing.pdf
+    ps_truncated = 2 * ps_truncated
+
+    return (
+        ps_truncated,
+        truncated_chi2_cutoff_lower,
+        truncated_chi2_cutoff_upper,
+        l_percentile,
+        u_percentile,
+        lower_percentile_cut,
+        upper_percentile_cut,
+    )
+
+
 def compare_ps_to_chisqr_kstest(
     ps: np.ndarray,
     ndays: int = 1,
@@ -181,81 +277,18 @@ def compare_ps_to_chisqr_kstest(
     # that is closer to the distribution in the observation, eg 0.986
     dof = 2 * ndays * dof_factor
 
-    # We know there is red noise present, which is not chi-square distributed. Even
-    # if red-noise removal was attempted, these low-frequency bins are still corrupted
-    # and their amplitudes are biased low, thus we exclude them first before computing
-    # additional statistical tests.
-    if isinstance(ps, np.ma.MaskedArray):
-        # strip the masked values as we don't want them causing issues (NaNs, etc.)
-        # Question: Are masked arrays currently used? Masked values are set to zero, I think.
-        _ps_truncated = np.ma.compressed(ps[red_noise_nbins:])
-    else:
-        _ps_truncated = ps[red_noise_nbins:]
-
-    # Spectra contain zeros due to RFI masking. In order to compare to a
-    # chi-square distribution these need to be removed first
-    if remove_zeros:
-        _ps_truncated = _ps_truncated[_ps_truncated != 0]
-
-    # We expect that there may be *some* high-power contamination in random bins,
-    # especially if we are comparing multi-day stacks where real pulsar signals
-    # will be present. We also want to get rid of the really low values since they
-    # should not affect our search/stacks, the lowest ~1% of values should suffice.
-
-    l_percentile = None
-    u_percentile = None
-    if lower_percentile_cut == "None":
-        lower_percentile_cut = None
-    if upper_percentile_cut == "None":
-        upper_percentile_cut = None
-    if lower_percentile_cut:
-        l_percentile_threshold = 100 * lower_percentile_cut
-        l_percentile = np.percentile(_ps_truncated, l_percentile_threshold)
-    if upper_percentile_cut:
-        u_percentile_threshold = 100 * upper_percentile_cut
-        u_percentile = np.percentile(_ps_truncated, u_percentile_threshold)
-
-    if lower_percentile_cut and upper_percentile_cut:
-        good_idxs = np.where(
-            np.logical_and(
-                _ps_truncated >= l_percentile,
-                _ps_truncated <= u_percentile,
-            )
-        )
-        ngood = len(good_idxs[0])
-    elif lower_percentile_cut and not upper_percentile_cut:
-        good_idxs = np.where(_ps_truncated >= l_percentile)
-        ngood = len(good_idxs[0])
-    elif not lower_percentile_cut and upper_percentile_cut:
-        good_idxs = np.where(_ps_truncated <= u_percentile)
-        ngood = len(good_idxs[0])
-    else:
-        good_idxs = ...  # basically, all indexes are fine
-        ngood = len(_ps_truncated[good_idxs])
-
-    log.debug(
-        f"{ngood} out of {len(_ps_truncated)} within upper/lower percentile cut"
-        f" (val={l_percentile}, {u_percentile})"
+    (
+        ps_truncated,
+        truncated_chi2_cutoff_lower,
+        truncated_chi2_cutoff_upper,
+        l_percentile,
+        u_percentile,
+        lower_percentile_cut,
+        upper_percentile_cut,
+    ) = chi2_kstest_sample(
+        ps, red_noise_nbins, remove_zeros, lower_percentile_cut, upper_percentile_cut
     )
-    ps_truncated = _ps_truncated[good_idxs]
     nsamps = len(ps_truncated)
-    if l_percentile:
-        truncated_chi2_cutoff_lower = 2 * l_percentile
-    else:
-        truncated_chi2_cutoff_lower = 0
-    if u_percentile:
-        truncated_chi2_cutoff_upper = 2 * u_percentile
-    else:
-        truncated_chi2_cutoff_upper = np.inf
-
-    # When comparing the power spectrum to the chi2 distribution, it is important to
-    # note that the normalisation used matters! Leahy normalisation (used in high-energy
-    # regimes) ensures the power spectrum has a mean value of 2, which is what one
-    # expects for a chi-squared distribution with 2 degrees of freedom. Thus, since
-    # our data are normalised in the "radio" convention to have a mean of 1, we need
-    # to multiply the powers by 2 before comparing to the chi-squared distribution.
-    # e.g. slide 11 of https://heasarc.gsfc.nasa.gov/docs/xrayschool-2003/XraySchool_timing.pdf
-    ps_truncated = 2 * ps_truncated
 
     # Calculate the 1-sample KS statistic and p-value. In this case, since we have a lower
     # sample bound, we need to compute the CDF ourselves with the lower integration bound
@@ -406,3 +439,82 @@ def compare_ps_to_chisqr_kstest(
         return r_stat, r_pval, [ks_dist, ks_thresh]
     else:
         return r_stat, r_pval
+
+
+# Sorted samples are split into blocks of this many for ks_statistic_sorted
+KS_BLOCK = 32
+
+
+def ks_statistic_sorted(x, cdf, args=(), block=KS_BLOCK):
+    """
+    The two-sided statistic of scipy.stats.kstest(x, cdf, args) for sorted x, exactly.
+
+    kstest takes the largest of (i + 1) / n - cdf(x[i]) and cdf(x[i]) - i / n over all i.
+    As cdf rises with x, its values at the two ends of a block of sorted samples bound
+    both differences inside the block; the CDF is evaluated at every block end, and then
+    in full only in blocks whose bound reaches the largest difference already found.
+    Every difference is computed as kstest computes it, so the result is the same number.
+    """
+    n = len(x)
+    if n <= 4 * block:
+        cdfvals = cdf(x, *args)
+        return max_ks_difference(cdfvals, np.arange(n), n)
+    starts = np.arange(0, n, block)
+    ends = np.minimum(starts + block, n) - 1
+    c_start = cdf(x[starts], *args)
+    c_end = cdf(x[ends], *args)
+    if np.isnan(c_start).any() or np.isnan(c_end).any():
+        return max_ks_difference(cdf(x, *args), np.arange(n), n)
+    dplus = max(
+        ((starts + 1.0) / n - c_start).max(), ((ends + 1.0) / n - c_end).max()
+    )
+    dminus = max((c_start - starts / n).max(), (c_end - ends / n).max())
+    # The margin covers rounding in the bounds and any non-monotonic rounding in cdf
+    margin = 1e-9
+    open_blocks = ((ends + 1.0) / n - c_start >= dplus - margin) | (
+        c_end - starts / n >= dminus - margin
+    )
+    for s, e in zip(starts[open_blocks], ends[open_blocks]):
+        index = np.arange(s, e + 1)
+        cdfvals = cdf(x[s : e + 1], *args)
+        if np.isnan(cdfvals).any():
+            return max_ks_difference(cdf(x, *args), np.arange(n), n)
+        dplus = max(dplus, ((index + 1.0) / n - cdfvals).max())
+        dminus = max(dminus, (cdfvals - index / n).max())
+    return dplus if dplus > dminus else dminus
+
+
+def max_ks_difference(cdfvals, index, n):
+    """kstest's two-sided statistic from the CDF at sorted samples index of n."""
+    dplus = ((index + 1.0) / n - cdfvals).max()
+    dminus = (cdfvals - index / n).max()
+    return dplus if dplus > dminus else dminus
+
+
+def chi2_ks_distances(
+    ps: np.ndarray,
+    ndays_values,
+    lower_percentile_cut: float = None,
+    upper_percentile_cut: float = None,
+    red_noise_nbins: int = 1000,
+    remove_zeros: bool = True,
+    dof_factor: float = 1,
+):
+    """
+    compare_ps_to_chisqr_kstest's KS statistic for each of several ndays, exactly.
+
+    The samples are prepared and sorted once, and ks_statistic_sorted needs the CDF at
+    only a small fraction of them, which matters because the chi2 CDF of a non-integer
+    number of degrees of freedom is slow. Takes the same parameters as
+    compare_ps_to_chisqr_kstest apart from the plotting ones.
+    """
+    samples, llim, ulim, *_ = chi2_kstest_sample(
+        ps, red_noise_nbins, remove_zeros, lower_percentile_cut, upper_percentile_cut
+    )
+    samples = np.sort(samples)
+    return [
+        ks_statistic_sorted(
+            samples, analytical_chi2_cdf, (2 * ndays * dof_factor, llim, ulim)
+        )
+        for ndays in ndays_values
+    ]

@@ -5,7 +5,6 @@ import logging
 import warnings
 from collections import OrderedDict
 
-import colorcet as cc
 import numpy as np
 from attr import ib as attribute
 from attr import s as attrs
@@ -1210,6 +1209,9 @@ def plot_clusters(
         unique_labels = set(labels)
     else:
         unique_labels = set(labels_want)
+    # Imported here: colorcet takes over a second to import, and only plots need it
+    import colorcet as cc
+
     colors = [cc.cm.glasbey(each) for each in np.linspace(0, 1, len(unique_labels))]
 
     for k, col in zip(unique_labels, colors):

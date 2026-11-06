@@ -93,6 +93,39 @@ def fourier_barycentre_index(length, beta):
     return index.astype(np.int64)
 
 
+def bins_in_ranges(freq_labels, lefts, rights):
+    """
+    Indices of the bins with lefts[i] <= freq_labels <= rights[i], range after range.
+
+    Gives the same list, duplicates and order included, as extending it with
+    np.where((freq_labels >= left) & (freq_labels <= right))[0].tolist() for each
+    range, but finds each range's ends by binary search instead of comparing every bin.
+    freq_labels must increase strictly, which rfftfreq labels do; otherwise the
+    comparisons are used.
+    """
+    if len(lefts) == 0:
+        return []
+    if not np.all(np.diff(freq_labels) > 0):
+        out = []
+        for left, right in zip(lefts, rights):
+            out.extend(
+                np.where((freq_labels >= left) & (freq_labels <= right))[0].tolist()
+            )
+        return out
+    # zip() stopped at the shorter of the two
+    n = min(len(lefts), len(rights))
+    lefts, rights = np.asarray(lefts)[:n], np.asarray(rights)[:n]
+    starts = np.searchsorted(freq_labels, lefts, side="left")
+    stops = np.searchsorted(freq_labels, rights, side="right")
+    # A NaN edge matches no bin in the comparisons, but sorts after every bin here
+    empty = ~(lefts <= rights)
+    out = []
+    for start, stop, skip in zip(starts.tolist(), stops.tolist(), empty.tolist()):
+        if not skip:
+            out.extend(range(start, stop))
+    return out
+
+
 class _RowTransformer:
     """
     Per-process FFT plan and buffers for forming one power spectrum at a time.
@@ -1059,11 +1092,9 @@ class PowerSpectraCreation:
                 bary_left_freqs = bary_from_topo_freq(left_freqs, beta)
                 bary_right_freqs = bary_from_topo_freq(right_freqs, beta)
 
-            common_birdies = []
-            for blf, brf in zip(bary_left_freqs, bary_right_freqs):
-                common_birdies.extend(
-                    np.where((freq_labels >= blf) & (freq_labels <= brf))[0].tolist()
-                )
+            common_birdies = bins_in_ranges(
+                freq_labels, bary_left_freqs, bary_right_freqs
+            )
             log.info(
                 "The final common birdies list masks"
                 f" {len(common_birdies) / len(freq_labels):.6f} of the data"
@@ -1083,11 +1114,9 @@ class PowerSpectraCreation:
             else:
                 strong_bary_left_freqs = strong_birdies_left_freqs
                 strong_bary_right_freqs = strong_birdies_right_freqs
-            strong_periodic_rfi = []
-            for blf, brf in zip(strong_bary_left_freqs, strong_bary_right_freqs):
-                strong_periodic_rfi.extend(
-                    np.where((freq_labels >= blf) & (freq_labels <= brf))[0].tolist()
-                )
+            strong_periodic_rfi = bins_in_ranges(
+                freq_labels, strong_bary_left_freqs, strong_bary_right_freqs
+            )
             bad_freq_indices = sorted(set(bad_freq_indices).union(strong_periodic_rfi))
             bad_freq_indices = sorted(set(bad_freq_indices).union(common_birdies))
         else:

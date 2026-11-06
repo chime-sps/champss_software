@@ -82,6 +82,25 @@ def powersum_at_sigma(sigma, nsum):
     return 0.5 * chdtri(2.0 * nsum, 1.0 - ndtr(sigma))
 
 
+def powersum_at_sigma_counts(sigma, nsum):
+    """
+    powersum_at_sigma(sigma, nsum) for an array of whole, non-negative counts.
+
+    Gives the same values, but evaluates the slow inverse chi2 once per possible count
+    (0 to the largest) and looks each element up, instead of once per element. Other
+    inputs (a non-scalar sigma, fractional or negative or NaN counts) are passed to
+    powersum_at_sigma as they are.
+    """
+    nsum = np.asarray(nsum)
+    if np.ndim(sigma) != 0 or nsum.size == 0 or not np.isfinite(nsum).all():
+        return powersum_at_sigma(sigma, nsum)
+    counts = nsum.astype(np.int64)
+    if counts.min() < 0 or counts.max() > 1_000_000 or not np.array_equal(counts, nsum):
+        return powersum_at_sigma(sigma, nsum)
+    table = powersum_at_sigma(sigma, np.arange(counts.max() + 1, dtype=nsum.dtype))
+    return table[counts]
+
+
 def sigma_sum_powers(power, nsum, max_iter=20):
     """
     Returns an approx equivalent Gaussian sigma.
