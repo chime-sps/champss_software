@@ -82,9 +82,17 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
             use_box_smearing=False,
             nthreads=int(np.min([num_threads, 8])),
         )
-        # In shared memory, so power spectrum creation can read it without a copy
+        # In shared memory, so power spectrum creation can read it without a copy. The
+        # skybeam is freed block by block as it is read, as nothing reads it afterwards
+        # (the pipeline unlinks it next), so input and output are never both whole
         dts = dedisperse_streaming(
-            fdmt, skybeam, fdmt_config.chunk_size, num_dms, dt_trials, shared=True
+            fdmt,
+            skybeam,
+            fdmt_config.chunk_size,
+            num_dms,
+            dt_trials,
+            shared=True,
+            release_input=True,
         )
         log.info(
             f"FDMT Dedispersion ({pointing.ra:.2f} {pointing.dec:.2f}) completed with"

@@ -2,7 +2,7 @@ import numpy as np
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.conversion import unix_to_mjd
 from sps_common.interfaces import DedispersedTimeSeries
-from sps_common.sm_utils import empty_shared_array
+from sps_common.sm_utils import RowPrefixReleaser, empty_shared_array
 
 
 def dedisperse(
@@ -80,6 +80,7 @@ def dedisperse_streaming(
     freq_top=FREQ_TOP,
     tsamp=TSAMP,
     shared=False,
+    release_input=False,
 ):
     """
     Dedisperse the skybeam with a dmtlib FDMT in its streaming ("valid") mode.
@@ -103,6 +104,11 @@ def dedisperse_streaming(
     shared: bool
         Allocate the output in shared memory, so power spectrum workers can read it
         without a copy. It is unlinked when the returned object is garbage collected.
+    release_input: bool
+        Free the memory of each block of the skybeam's spectra once the FDMT has read it,
+        so input and output are not both held in full (see RowPrefixReleaser). Only for
+        spectra in shared memory that nothing reads afterwards: freed samples read as
+        zeros. Ignored for other arrays.
     """
     if fdmt.startup_samples > maxDT:
         raise ValueError(
@@ -110,6 +116,7 @@ def dedisperse_streaming(
         )
 
     spectra = skybeam.spectra[::-1]  # this returns a view
+    releaser = RowPrefixReleaser(skybeam.spectra) if release_input else None
 
     ntbin = spectra.shape[1]
     shape = (len(dt_trials), ntbin - maxDT)
@@ -127,6 +134,9 @@ def dedisperse_streaming(
             # Output samples only depend on earlier input, so padding the end is safe
             block = np.pad(block, ((0, 0), (0, chunk_size - block.shape[1])))
         fdmt.execute(block, out=block_out)
+        if releaser is not None:
+            # The FDMT keeps what it needs of earlier blocks in its own history
+            releaser.release_until(stop)
         first = max(start, maxDT)
         if first < stop:
             dedisp[:, first - maxDT : stop - maxDT] = block_out[

@@ -94,3 +94,34 @@ def test_shared_output_matches_and_is_unlinked_when_freed(noise):
     del dts
     gc.collect()
     assert not os.path.exists(f"/dev/shm/{name}")
+
+
+def test_releasing_the_input_gives_the_same_output_and_frees_it():
+    import os
+
+    from sps_common.sm_utils import empty_shared_array
+
+    # Long enough that each row spans many pages, so blocks free real memory
+    nchan, ntime, chunk = NCHAN, 40000, 4096
+    rng = np.random.default_rng(1)
+    data = rng.normal(5, 1, (nchan, ntime)).astype(np.float32)
+    dt_trials = np.arange(0, MAX_DT, 2)
+    fdmt = dmtlib.FDMT(FBOT, FTOP, nchan, chunk, TSAMP, dt_grid=dt_trials, use_box_smearing=False)
+    expected = dedisperse_streaming(fdmt, make_skybeam(data.copy()), chunk, MAX_DT, dt_trials)
+
+    spectra, shm = empty_shared_array(data.shape, data.dtype)
+    try:
+        spectra[:] = data
+        path = f"/dev/shm/{shm.name.lstrip('/')}"
+        before = os.stat(path).st_blocks
+        fdmt = dmtlib.FDMT(FBOT, FTOP, nchan, chunk, TSAMP, dt_grid=dt_trials, use_box_smearing=False)
+        got = dedisperse_streaming(
+            fdmt, make_skybeam(spectra), chunk, MAX_DT, dt_trials, release_input=True
+        )
+        np.testing.assert_array_equal(got.dedisp_ts, expected.dedisp_ts)
+        # Almost all of the input's memory has been returned
+        assert os.stat(path).st_blocks < 0.05 * before
+    finally:
+        del spectra
+        shm.close()
+        shm.unlink()

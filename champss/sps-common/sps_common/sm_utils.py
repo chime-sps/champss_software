@@ -119,3 +119,54 @@ def release_shared_memory(shm, close):
     """Close a block from attach_shared_memory if it said to."""
     if close:
         shm.close()
+
+
+class RowPrefixReleaser:
+    """
+    Return to the system the memory of a 2D shared-memory array, column range by column
+    range, as a streaming consumer finishes with it.
+
+    release_until(col) frees the whole pages holding columns [previous col, col) of every
+    row, with madvise(MADV_REMOVE), which punches holes in the shared memory (tmpfs) file
+    so the memory is really freed; the freed values then read as zeros, so call it only
+    for columns nothing will read again. Pages shared with a column not yet released (or
+    with the neighbouring row) are kept. If the array is not backed by shared memory the
+    call fails, and the releaser simply stops releasing; the data is never touched.
+    """
+
+    def __init__(self, array):
+        import ctypes
+        import mmap
+
+        self.array = array
+        self.enabled = (
+            array.ndim == 2 and array.flags.c_contiguous and hasattr(mmap, "MADV_REMOVE")
+        )
+        self.done = 0
+        if self.enabled:
+            self._advice = mmap.MADV_REMOVE
+            self._page = mmap.PAGESIZE
+            libc = ctypes.CDLL(None, use_errno=True)
+            self._madvise = libc.madvise
+            self._madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+            self._madvise.restype = ctypes.c_int
+
+    def release_until(self, col):
+        """Release columns [previous col, col) of every row."""
+        col = min(col, self.array.shape[1])
+        if not self.enabled or col <= self.done:
+            return
+        page = self._page
+        item = self.array.itemsize
+        base = self.array.ctypes.data
+        row_bytes = self.array.strides[0]
+        for r in range(self.array.shape[0]):
+            row = base + r * row_bytes
+            # The page holding the previous boundary is now fully consumed too, but not
+            # one that also holds the end of the row before
+            start = max((row + self.done * item) // page * page, -(-row // page) * page)
+            stop = (row + col * item) // page * page
+            if stop > start and self._madvise(start, stop - start, self._advice) != 0:
+                self.enabled = False
+                return
+        self.done = col
