@@ -17,6 +17,7 @@ from attr import converters
 from attr.validators import instance_of
 from ps_processes.processes import ps_inject
 from ps_processes.processes.clustering import Clusterer
+from ps_processes.processes.harmonic_search import prepare_fast_search, search_rows
 from rfi_mitigation.cleaners.periodic import StaticPeriodicFilter
 from sps_common.constants import MIN_SEARCH_FREQ
 from sps_common.dm_grid import clustering_dm_spacing
@@ -487,6 +488,35 @@ class PowerSpectraSearch:
             shm_power_cutoff_per_harmonic_dict,
         ) = share_array(power_cutoff_per_harmonic)
 
+        # Harmonic bins computed on the fly instead of read from the table, if the
+        # table can be reproduced exactly (see harmonic_search)
+        fast = prepare_fast_search(
+            self.full_harm_bins,
+            self.num_harm,
+            nsum_per_harmonic,
+            power_cutoff_per_harmonic,
+            self.sigma_min,
+            pspec.power_spectra.dtype,
+        )
+        fast_shm = None
+        shm_fast = []
+        if fast is None:
+            log.warning(
+                "Cannot reproduce the harmonic bin table, using the table-based kernel."
+            )
+        else:
+            _, shm_excl, shm_excl_dict = share_array(fast["excl"])
+            shm_fast.append(shm_excl)
+            fast_shm = dict(
+                excl=shm_excl_dict,
+                nsum=None,
+                lut=fast["lut"],
+                level_cutoff=fast["level_cutoff"],
+            )
+            if fast["nsum"] is not None:
+                _, shm_nsum16, fast_shm["nsum"] = share_array(fast["nsum"])
+                shm_fast.append(shm_nsum16)
+
         if "skip_search" not in manual_candidates:
             pool = Pool(self.num_threads)
             # multiprocessing pool to run the search as a parallel process.
@@ -527,6 +557,7 @@ class PowerSpectraSearch:
                     self.skip_first_n_bins,
                     self.injection_overlap_threshold,
                     self.injection_dm_threshold,
+                    fast_shm,
                 ),
                 zip(dm_indices, dm_split),
             )
@@ -725,6 +756,8 @@ class PowerSpectraSearch:
         unlink_shared(shm_full_harm_bins)
         unlink_shared(shm_power_cutoff_per_harmonic)
         unlink_shared(shm_nsum_per_harmonic)
+        for shm in shm_fast:
+            unlink_shared(shm)
         return (
             PowerSpectraDetectionClusters(
                 clusters=clusters,
@@ -754,6 +787,7 @@ class PowerSpectraSearch:
         skip_n_bins,
         injection_overlap_threshold,
         injection_dm_threshold,
+        fast_shm,
         dm_indices,
         dms,
     ):
@@ -802,6 +836,10 @@ class PowerSpectraSearch:
             Dictionaries containing the injection specifics, Fields "bins" and "dms" are
             important here.
 
+        fast_shm: dict or None
+            Shared inputs for harmonic_search.search_rows, or None to use the
+            table-based calc_harmonic_sum.
+
         dm_tuple: (int, float)
             The DM of the power spectrum to search and the index of the dm trial.
 
@@ -824,7 +862,25 @@ class PowerSpectraSearch:
         power_spectra = power_spectra[:, : len(full_harm_bins[0])]
         freq_labels = freq_labels[: len(full_harm_bins[0])]
         allowed_harmonics = [1, 2, 4, 8, 16, 32]
-        for dm_index, dm in zip(dm_indices, dms):
+        fast_shms = []
+        if fast_shm is not None:
+            excl, shm = recreate_shared_array(fast_shm["excl"])
+            fast_shms.append(shm)
+            nsum16 = None
+            if fast_shm["nsum"] is not None:
+                nsum16, shm = recreate_shared_array(fast_shm["nsum"])
+                fast_shms.append(shm)
+            fast = dict(
+                excl=excl,
+                nsum=nsum16,
+                lut=fast_shm["lut"],
+                level_cutoff=fast_shm["level_cutoff"],
+            )
+            det_row, det_level, det_bin, det_power = search_rows(
+                power_spectra, dm_indices, num_harm, fast
+            )
+            det_key = det_row * len(allowed_harmonics) + det_level
+        for row_pos, (dm_index, dm) in enumerate(zip(dm_indices, dms)):
             power_spectrum = power_spectra[dm_index, :]
             # for idx_harm, harm in enumerate(allowed_harmonics):
             #     harm_start = time.time()
@@ -842,14 +898,23 @@ class PowerSpectraSearch:
             #             power_spectrum[harm_bins[last_harm:harm, :]].sum(0),
             #             out=harm_sum_powers,
             #         )
-            harmonic_sums = calc_harmonic_sum(power_spectrum, full_harm_bins)
+            if fast_shm is None:
+                harmonic_sums = calc_harmonic_sum(power_spectrum, full_harm_bins)
             for idx_harm, harm in enumerate(allowed_harmonics):
                 harm_bins = full_harm_bins[:harm]
-                harm_sum_powers = harmonic_sums[idx_harm]
-
-                power_cutoff = power_cutoff_per_harmonic[idx_harm]
                 used_nsum = nsum_per_harmonic[idx_harm]
-                detection_idx = np.where(harm_sum_powers > power_cutoff)[0]
+                if fast_shm is None:
+                    harm_sum_powers = harmonic_sums[idx_harm]
+                    power_cutoff = power_cutoff_per_harmonic[idx_harm]
+                    detection_idx = np.where(harm_sum_powers > power_cutoff)[0]
+                    detection_powers = harm_sum_powers[detection_idx]
+                else:
+                    if harm > num_harm:
+                        continue
+                    key = row_pos * len(allowed_harmonics) + idx_harm
+                    lo, hi = np.searchsorted(det_key, [key, key + 1])
+                    detection_idx = det_bin[lo:hi]
+                    detection_powers = det_power[lo:hi]
                 if not len(detection_idx):
                     continue
                 last_detection_freq = None
@@ -858,9 +923,7 @@ class PowerSpectraSearch:
                     used_nsum_detec = used_nsum[detection_idx]
                 else:
                     used_nsum_detec = used_nsum
-                sigmas = sigma_sum_powers(
-                    harm_sum_powers[detection_idx], used_nsum_detec
-                )
+                sigmas = sigma_sum_powers(detection_powers, used_nsum_detec)
                 for idx_count, idx in enumerate(detection_idx):
                     replace_last = False
                     detection_freq = freq_labels[idx] / harm
@@ -877,7 +940,7 @@ class PowerSpectraSearch:
                         else:
                             used_nsum_detec_loop = used_nsum
                         sigma = sigma_sum_powers(
-                            harm_sum_powers[idx], used_nsum_detec_loop
+                            detection_powers[idx_count], used_nsum_detec_loop
                         )
                     else:
                         sigma = sigmas[idx_count]
@@ -889,7 +952,7 @@ class PowerSpectraSearch:
                             # Array input should work properly
                             log.error("Sigma calculation for array produced nan")
                             sigma = sigma_sum_powers(
-                                harm_sum_powers[idx], used_nsum_detec_loop
+                                detection_powers[idx_count], used_nsum_detec_loop
                             )
                     if (
                         last_detection_freq
@@ -998,6 +1061,8 @@ class PowerSpectraSearch:
                 # log.debug(
                 #     f"Took {harm_end - harm_start} seconds to do harmonic={harm} sum"
                 # )
+        for shm in fast_shms:
+            shm.close()
         return detection_list
 
     def summarise(self, clusters, cluster_harm_idx):
