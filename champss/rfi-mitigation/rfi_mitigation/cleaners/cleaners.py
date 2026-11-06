@@ -9,6 +9,7 @@ from rfi_mitigation.utilities.cleaner_utils import (
     get_pdf_transforms,
     median_absolute_deviation,
 )
+from rfi_mitigation.utilities.fast_stats import binned_means_zero_as_nan
 from rfi_mitigation.utilities.noise_utils import baseline_estimation_medfilt
 from scipy.stats.mstats import kurtosis
 from sps_common.constants import L0_NCHAN, L1_NCHAN, TSAMP
@@ -532,6 +533,20 @@ class StdDevChannelCleaner(Cleaner):
         """
         super().__init__(spectra_shape)
         self.threshold = threshold
+        # Channels flagged by clean(); the full-size cleaner_mask is filled from them only
+        # when asked for, as clean() flags them in the shared mask directly
+        self.bad_channels = None
+        self._mask_filled = False
+
+    def get_mask(self):
+        if self.bad_channels is not None and not self._mask_filled:
+            self.cleaner_mask[self.bad_channels, :] = True
+            self._mask_filled = True
+        return super().get_mask()
+
+    def get_masked_fraction(self):
+        self.get_mask()
+        return super().get_masked_fraction()
 
     def summary(self):
         return dict(
@@ -539,7 +554,7 @@ class StdDevChannelCleaner(Cleaner):
             ntime=self.ntime,
             nsamp=self.nsamp,
             threshold=self.threshold,
-            nmasked=self.cleaner_mask.sum(),
+            nmasked=self.get_mask().sum(),
             cleaned=self.cleaned,
         )
 
@@ -570,20 +585,22 @@ class StdDevChannelCleaner(Cleaner):
         shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
         rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
 
-        # Replace zeros with NaN (zeros indicate masked regions after zero-filling)
-        spectra_work = spectra.copy()
-        spectra_work[spectra_work == 0] = np.nan
-
-        # Trim to multiple of time_bin
+        # Average each channel over time_bin samples, ignoring the samples past the last
+        # whole bin; a bin holding a zero (masked after zero-filling) averages to NaN
         nchan, ntime = spectra_shape
-        ntime_trimmed = (ntime // time_bin) * time_bin
-        spectra_trimmed = spectra_work[:, :ntime_trimmed]
+        if spectra.dtype == np.float32 and spectra.flags.c_contiguous:
+            # The same values, without copying the spectra
+            spectra_binned = binned_means_zero_as_nan(spectra, time_bin)
+        else:
+            spectra_work = spectra.copy()
+            spectra_work[spectra_work == 0] = np.nan
+            ntime_trimmed = (ntime // time_bin) * time_bin
+            spectra_trimmed = spectra_work[:, :ntime_trimmed]
+            spectra_binned = spectra_trimmed.reshape(nchan, -1, time_bin).mean(axis=-1)
 
-        # Reshape and average: (nchan, ntime_trimmed) -> (nchan, nbins, time_bin) -> (nchan, nbins)
-        spectra_binned = spectra_trimmed.reshape(nchan, -1, time_bin).mean(axis=-1)
-
-        # Check the fraction of channels that are already heavily flagged
-        channel_mask_fractions = rfi_mask.mean(axis=1)
+        # Check the fraction of channels that are already heavily flagged (the same
+        # values as rfi_mask.mean(axis=1))
+        channel_mask_fractions = np.count_nonzero(rfi_mask, axis=1) / ntime
         heavily_flagged_channels = channel_mask_fractions > 0.5
         num_heavily_flagged = heavily_flagged_channels.sum()
         frac_heavily_flagged = num_heavily_flagged / self.nchan
@@ -662,10 +679,8 @@ class StdDevChannelCleaner(Cleaner):
             f"based on normalized std deviation (bounds: [{lower_bound:.3f}, {upper_bound:.3f}])"
         )
 
-        # Update the cleaner mask - flag entire channels
-        self.cleaner_mask[bad_channels, :] = True
-
-        # Also update the shared memory mask directly
+        # Flag entire channels in the shared mask; get_mask() gives them as a full mask
+        self.bad_channels = bad_channels
         rfi_mask[bad_channels, :] = True
 
         self.cleaned = True

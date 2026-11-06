@@ -7,15 +7,14 @@ try:
     import numpy as np
     from prometheus_client import Summary
     from rfi_mitigation.cleaners import cleaners
-    from rfi_mitigation.utilities.cleaner_utils import (
-        combine_cleaner_masks,
-        known_bad_channels,
-    )
+    from rfi_mitigation.utilities.cleaner_utils import known_bad_channels
 except ImportError as err:
     print(err)
     exit(1)
 
 from multiprocessing import shared_memory
+
+from sps_common.sm_utils import attach_shared_memory, release_shared_memory
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +27,26 @@ rfi_processing_time = Summary(
 
 class RFIPipelineException(Exception):
     pass
+
+
+
+def merge_cleaner_mask(rfi_mask, cleaner_mask):
+    """
+    OR a cleaner's mask into rfi_mask in place; cleaner_mask may broadcast (e.g. a column
+    of flagged channels).
+
+    The same mask as rfi_mask[:] = combine_cleaner_masks(np.array([rfi_mask, mask]))[0],
+    without stacking two copies; the masked fractions are only computed for the debug log
+    when debug logging is on.
+    """
+    debug = log.isEnabledFor(logging.DEBUG)
+    if debug:
+        before_masked_frac = np.count_nonzero(rfi_mask) / rfi_mask.size
+    np.logical_or(rfi_mask, cleaner_mask, out=rfi_mask)
+    if debug:
+        masked_frac = np.count_nonzero(rfi_mask) / rfi_mask.size
+        log.debug(f"unique masked frac = {masked_frac - before_masked_frac:g}")
+        log.debug(f"total masked frac = {masked_frac:g}")
 
 
 class RFIPipeline:
@@ -101,12 +120,13 @@ class RFIPipeline:
         current_slice: slice
             Slice of time steps that is being cleaned in this step.
         """
-        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        # Attached once per worker (see attach_shared_memory)
+        shared_spectra, close_spectra = attach_shared_memory(spectra_shared_name)
         spectra_full = np.ndarray(
             spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
         )
         spectra = spectra_full[:, current_slice]
-        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        shared_mask, close_mask = attach_shared_memory(mask_shared_name)
         rfi_mask_full = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
         rfi_mask = rfi_mask_full[:, current_slice]
 
@@ -116,7 +136,7 @@ class RFIPipeline:
         cleaning_start = time.time()
 
         log.debug(f"chunk shape = {spectra_shape}")
-        initial_masked_frac = rfi_mask.sum() / rfi_mask.size
+        initial_masked_frac = np.count_nonzero(rfi_mask) / rfi_mask.size
         log.info(f"initial flagged fraction = {initial_masked_frac:g}")
 
         if self.apply_dummy_filter:
@@ -125,16 +145,7 @@ class RFIPipeline:
                 log.debug("Dummy clean START")
                 cleaner = cleaners.DummyCleaner(spectra)
                 cleaner.clean()
-                before_masked_frac = rfi_mask.mean()
-
-                rfi_mask[:], masked_frac = combine_cleaner_masks(
-                    np.array([rfi_mask, cleaner.get_mask()])
-                )
-
-                masked_frac = rfi_mask.mean()
-                unique_masked_frac = masked_frac - before_masked_frac
-                log.debug(f"unique masked frac = {unique_masked_frac:g}")
-                log.debug(f"total masked frac = {masked_frac:g}")
+                merge_cleaner_mask(rfi_mask, cleaner.get_mask())
                 log.debug("Dummy clean END")
                 dummy_end = time.time()
                 dummy_runtime = dummy_end - dummy_start
@@ -146,14 +157,9 @@ class RFIPipeline:
             with rfi_processing_time.labels("badchan_mask", "0").time():
                 badchan_start = time.time()
                 log.debug("Applying known bad channel mask")
-                before_masked_frac = rfi_mask.sum() / rfi_mask.size
-
-                rfi_mask[known_bad_channels(nchan=spectra_shape[0])] = True
-
-                masked_frac = rfi_mask.mean()
-                unique_masked_frac = masked_frac - before_masked_frac
-                log.debug(f"unique masked frac = {unique_masked_frac:g}")
-                log.debug(f"total masked frac = {masked_frac:g}")
+                bad = np.zeros(spectra_shape[0], dtype=bool)
+                bad[known_bad_channels(nchan=spectra_shape[0])] = True
+                merge_cleaner_mask(rfi_mask, bad[:, np.newaxis])
                 badchan_end = time.time()
                 badchan_runtime = badchan_end - badchan_start
                 badchan_time_per_chan = badchan_runtime / spectra_shape[0]
@@ -168,16 +174,7 @@ class RFIPipeline:
                 log.debug("Kurtosis clean START")
                 cleaner = cleaners.KurtosisCleaner(spectra)
                 cleaner.clean()
-                before_masked_frac = rfi_mask.mean()
-
-                rfi_mask[:], masked_frac = combine_cleaner_masks(
-                    np.array([rfi_mask, cleaner.get_mask()])
-                )
-
-                masked_frac = rfi_mask.mean()
-                unique_masked_frac = masked_frac - before_masked_frac
-                log.debug(f"unique masked frac = {unique_masked_frac:g}")
-                log.debug(f"total masked frac = {masked_frac:g}")
+                merge_cleaner_mask(rfi_mask, cleaner.get_mask())
                 log.debug("Kurtosis clean END")
                 kur_end = time.time()
                 kur_runtime = kur_end - kur_start
@@ -191,16 +188,7 @@ class RFIPipeline:
                 log.debug("MAD clean START")
                 cleaner = cleaners.MedianAbsoluteDeviationCleaner(spectra)
                 cleaner.clean()
-                before_masked_frac = rfi_mask.mean()
-
-                rfi_mask[:], masked_frac = combine_cleaner_masks(
-                    np.array([rfi_mask, cleaner.get_mask()])
-                )
-
-                masked_frac = rfi_mask.mean()
-                unique_masked_frac = masked_frac - before_masked_frac
-                log.debug(f"unique masked frac = {unique_masked_frac:g}")
-                log.debug(f"total masked frac = {masked_frac:g}")
+                merge_cleaner_mask(rfi_mask, cleaner.get_mask())
                 log.debug("MAD clean END")
                 mad_end = time.time()
                 mad_runtime = mad_end - mad_start
@@ -222,16 +210,7 @@ class RFIPipeline:
                     plot_diagnostics=self.plot_diagnostics,
                 )
                 cleaner.clean(spectra, rfi_mask)
-                before_masked_frac = rfi_mask.mean()
-
-                rfi_mask[:], masked_frac = combine_cleaner_masks(
-                    np.array([rfi_mask, cleaner.get_mask()])
-                )
-
-                masked_frac = rfi_mask.mean()
-                unique_masked_frac = masked_frac - before_masked_frac
-                log.debug(f"unique masked frac = {unique_masked_frac:g}")
-                log.debug(f"total masked frac = {masked_frac:g}")
+                merge_cleaner_mask(rfi_mask, cleaner.get_mask())
                 log.debug("SK clean END")
                 speckur_end = time.time()
                 speckur_runtime = speckur_end - speckur_start
@@ -251,16 +230,7 @@ class RFIPipeline:
                     spectra, plot_diagnostics=self.plot_diagnostics
                 )
                 cleaner.clean()
-                before_masked_frac = rfi_mask.mean()
-
-                rfi_mask[:], masked_frac = combine_cleaner_masks(
-                    np.array([rfi_mask, cleaner.get_mask()])
-                )
-
-                masked_frac = rfi_mask.mean()
-                unique_masked_frac = masked_frac - before_masked_frac
-                log.debug(f"unique masked frac = {unique_masked_frac:g}")
-                log.debug(f"total masked frac = {masked_frac:g}")
+                merge_cleaner_mask(rfi_mask, cleaner.get_mask())
                 log.debug("Power spectrum clean END")
                 powspec_end = time.time()
                 powspec_runtime = powspec_end - powspec_start
@@ -276,16 +246,7 @@ class RFIPipeline:
                 log.debug("StdDev Channel clean START")
                 cleaner = cleaners.StdDevChannelCleaner(spectra.shape)
                 cleaner.clean(spectra, rfi_mask)
-                before_masked_frac = rfi_mask.mean()
-
-                rfi_mask[:], masked_frac = combine_cleaner_masks(
-                    np.array([rfi_mask, cleaner.get_mask()])
-                )
-
-                masked_frac = rfi_mask.mean()
-                unique_masked_frac = masked_frac - before_masked_frac
-                log.debug(f"unique masked frac = {unique_masked_frac:g}")
-                log.debug(f"total masked frac = {masked_frac:g}")
+                merge_cleaner_mask(rfi_mask, cleaner.get_mask())
                 log.debug("StdDev Channel clean END")
                 stddev_end = time.time()
                 stddev_runtime = stddev_end - stddev_start
@@ -297,7 +258,7 @@ class RFIPipeline:
 
         # update cleaned flag and append to the list of output instances
 
-        log.info(f"final flagged fraction = {rfi_mask.mean():g}")
+        log.info(f"final flagged fraction = {np.count_nonzero(rfi_mask) / rfi_mask.size:g}")
 
         cleaning_end = time.time()
         log.debug(f"Took {cleaning_end - cleaning_start} seconds to clean chunk")
@@ -313,8 +274,8 @@ class RFIPipeline:
             plt.savefig("cleaned_waterfall.png")
             plt.clf()
 
-        shared_spectra.close()
-        shared_mask.close()
+        release_shared_memory(shared_spectra, close_spectra)
+        release_shared_memory(shared_mask, close_mask)
 
 
 class RFIGlobalPipeline:
@@ -381,7 +342,7 @@ class RFIGlobalPipeline:
         rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
 
         log.debug(f"full data shape = {spectra_shape}")
-        initial_masked_frac = rfi_mask.sum() / rfi_mask.size
+        initial_masked_frac = np.count_nonzero(rfi_mask) / rfi_mask.size
         log.info(f"initial flagged fraction = {initial_masked_frac:g}")
 
         if self.apply_stddev_filter:
@@ -391,16 +352,13 @@ class RFIGlobalPipeline:
                 cleaner = cleaners.StdDevChannelCleaner(spectra_shape)
                 cleaner.clean(spectra_shared_name, mask_shared_name, spectra_shape, spec_dtype)
 
-                # Re-access mask after cleaner modifies it
-                shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
-                rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
-                before_masked_frac = rfi_mask.mean()
-
-                rfi_mask[:], masked_frac = combine_cleaner_masks(
-                    np.array([rfi_mask, cleaner.get_mask()])
-                )
-
-                masked_frac = rfi_mask.mean()
+                # The cleaner has already flagged its channels in this shared mask, so
+                # OR-ing in its full mask (a stack of two full-size masks) would change
+                # nothing; setting its channels again keeps that contract explicit
+                before_masked_frac = initial_masked_frac
+                if cleaner.bad_channels is not None:
+                    rfi_mask[cleaner.bad_channels, :] = True
+                masked_frac = np.count_nonzero(rfi_mask) / rfi_mask.size
                 unique_masked_frac = masked_frac - before_masked_frac
                 log.debug(f"unique masked frac = {unique_masked_frac:g}")
                 log.debug(f"total masked frac = {masked_frac:g}")
@@ -415,11 +373,7 @@ class RFIGlobalPipeline:
                     f"Corresponds to {1000 * stddev_time_per_chan} ms per channel"
                 )
 
-        # Re-access mask for final reporting
-        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
-        rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
-        log.info(f"final flagged fraction = {rfi_mask.mean():g}")
-        shared_mask.close()
+        log.info(f"final flagged fraction = {np.count_nonzero(rfi_mask) / rfi_mask.size:g}")
 
         shared_spectra.close()
         shared_mask.close()

@@ -89,3 +89,33 @@ def recreate_shared_array(shm_dict):
 def unlink_shared(shm):
     shm.close()
     shm.unlink()
+
+
+# Shared memory attached by pool workers through attach_shared_memory, kept until the
+# worker exits
+_ATTACHED = {}
+
+
+def attach_shared_memory(name):
+    """
+    Attach a shared memory block by name; returns it and whether the caller should close it.
+
+    Pool workers run thousands of small tasks on the same blocks, and closing the mapping
+    after each one costs more than many of the tasks; in a worker the block is attached
+    once and kept until the worker exits. In the main process it is attached afresh, so
+    nothing there outlives the block's unlinking.
+    """
+    import multiprocessing
+
+    if multiprocessing.parent_process() is None:
+        return shared_memory.SharedMemory(name=name), True
+    shm = _ATTACHED.get(name)
+    if shm is None:
+        shm = _ATTACHED[name] = shared_memory.SharedMemory(name=name)
+    return shm, False
+
+
+def release_shared_memory(shm, close):
+    """Close a block from attach_shared_memory if it said to."""
+    if close:
+        shm.close()

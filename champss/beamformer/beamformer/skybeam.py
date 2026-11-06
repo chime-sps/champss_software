@@ -2,7 +2,6 @@
 
 import datetime
 import logging
-import multiprocessing
 from functools import partial
 from itertools import product
 from multiprocessing import Pool, set_start_method, shared_memory
@@ -21,6 +20,8 @@ from scipy.signal import detrend
 from sps_common.constants import TSAMP
 from sps_common.fast_select import masked_median
 from sps_common.interfaces.beamformer import SkyBeam
+from sps_common.sm_utils import attach_shared_memory as _attach
+from sps_common.sm_utils import release_shared_memory as _release
 from sps_databases import db_api
 from spshuff import l1_io
 from threadpoolctl import ThreadpoolController
@@ -38,32 +39,6 @@ def _blas_single_thread():
     if _THREADPOOL_CONTROLLER is None:
         _THREADPOOL_CONTROLLER = ThreadpoolController()
     return _THREADPOOL_CONTROLLER.limit(limits=1, user_api="blas")
-
-
-# Shared memory attached by pool workers, kept until the worker exits
-_ATTACHED = {}
-
-
-def _attach(name):
-    """
-    Attach a shared memory block by name; returns it and whether the caller should close it.
-
-    Pool workers run thousands of small tasks on the same blocks, and closing the mapping
-    after each one costs more than the task; in a worker the block is attached once and
-    kept until the worker exits. In the main process it is attached afresh as before, so
-    nothing outlives its unlinking.
-    """
-    if multiprocessing.parent_process() is None:
-        return shared_memory.SharedMemory(name=name), True
-    shm = _ATTACHED.get(name)
-    if shm is None:
-        shm = _ATTACHED[name] = shared_memory.SharedMemory(name=name)
-    return shm, False
-
-
-def _release(shm, close):
-    if close:
-        shm.close()
 
 
 # Design matrices of detrend_masked_row_fast, per segment length and dtype

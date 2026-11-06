@@ -47,3 +47,17 @@ def test_loads_what_earlier_runs_cached_and_compiles_nothing(tmp_path):
         print(n, k.double(np.ones(3)).sum(), len(k.double.stats.cache_hits))
     """)
     assert out == ["1", "6.0", "1"]
+
+
+def test_parallel_kernels_are_left_alone(tmp_path):
+    (tmp_path / "parallel_for_test.py").write_text(
+        KERNEL.replace("@njit(cache=True)", "@njit(cache=True, parallel=True)")
+    )
+    run(tmp_path, """
+        import numpy as np, parallel_for_test as k
+        k.double(np.ones(3))
+    """)
+    assert run(tmp_path, """
+        from sps_common.mp_start import load_cached_kernels
+        print(load_cached_kernels("parallel_for_test"))
+    """) == ["0"]

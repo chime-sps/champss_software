@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import functools
 import logging
 import warnings
 from itertools import count, groupby
@@ -9,11 +10,26 @@ import numpy as np
 from scipy.optimize import newton
 from scipy.special import gammainc
 from sps_common.constants import L1_NCHAN
+from rfi_mitigation.utilities.fast_stats import nansum_rows_and_squares
 
 log = logging.getLogger(__name__)
 
 
 def known_bad_channels(nchan: int = 16384) -> list:
+    """
+    Known bad channel indices at nchan channels; see _known_bad_channels. The list is
+    worked out once per channel count per process, as the RFI pipeline asks for it on
+    every chunk.
+    """
+    return list(_known_bad_channels_cached(nchan))
+
+
+@functools.lru_cache(maxsize=None)
+def _known_bad_channels_cached(nchan):
+    return tuple(int(c) for c in _known_bad_channels(nchan))
+
+
+def _known_bad_channels(nchan: int = 16384) -> list:
     """
     Given a nominal set of bad channels evaluated at the native L1 frequency.
 
@@ -135,8 +151,13 @@ def generalised_spectral_kurtosis(
     """
     # assuming that the spectrum is of shape (nchan, ntime) then perform a summation
     # over the power measurements and their square over the M time samples
-    s1_sq = np.nansum(spec, axis=1) ** 2
-    s2 = np.nansum(spec**2, axis=1)
+    if isinstance(spec, np.ndarray) and spec.ndim == 2 and spec.dtype == np.float32:
+        # The same sums in one pass, without numpy's NaN-replaced copies
+        s1, s2 = nansum_rows_and_squares(spec)
+        s1_sq = s1**2
+    else:
+        s1_sq = np.nansum(spec, axis=1) ** 2
+        s2 = np.nansum(spec**2, axis=1)
     warnings.filterwarnings("ignore")
     gsk = ((m * delta + 1) / float(m - 1)) * (m * (s2 / s1_sq) - 1)
 

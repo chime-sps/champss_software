@@ -10,6 +10,7 @@ KERNEL_MODULES = (
     "sps_common.fast_select",
     "ps_processes.utilities.rednoise_fast",
     "ps_processes.processes.harmonic_search",
+    "rfi_mitigation.utilities.fast_stats",
 )
 
 LOADED = load_cached_kernels(*KERNEL_MODULES)

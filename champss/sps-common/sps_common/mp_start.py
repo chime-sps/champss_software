@@ -71,6 +71,10 @@ def load_cached_kernels(*module_names):
             cache = getattr(obj, "_cache", None)
             if cache is None or not hasattr(obj, "compile"):
                 continue
+            if getattr(obj, "targetoptions", {}).get("parallel"):
+                # Parallel kernels start a thread pool, which must not happen before
+                # the server forks
+                continue
             try:
                 index = cache._cache_file._load_index()
                 codegen = obj.targetctx.codegen()
