@@ -76,3 +76,21 @@ def test_rejects_trials_beyond_the_dropped_samples(noise):
     dt_trials = np.arange(0, MAX_DT + 50)
     with pytest.raises(ValueError):
         run(noise, 128, dt_trials)
+
+
+def test_shared_output_matches_and_is_unlinked_when_freed(noise):
+    import gc
+    import os
+
+    dt_trials = np.arange(0, MAX_DT, 2)
+    expected = run(noise, 128, dt_trials).dedisp_ts
+    fdmt = make_fdmt(128, dt_trials)
+    dts = dedisperse_streaming(
+        fdmt, make_skybeam(noise), 128, MAX_DT, dt_trials, shared=True
+    )
+    name = dts.shared_memory.name.lstrip("/")
+    np.testing.assert_array_equal(dts.dedisp_ts, expected)
+    assert os.path.exists(f"/dev/shm/{name}")
+    del dts
+    gc.collect()
+    assert not os.path.exists(f"/dev/shm/{name}")

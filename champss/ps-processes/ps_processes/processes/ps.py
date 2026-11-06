@@ -1,5 +1,6 @@
 """Class for creating power spectra."""
 
+import functools
 import logging
 import os
 import time
@@ -37,6 +38,124 @@ ps_processing_time = Summary(
     "Duration of running power spectrum creation and quality control for an pointing",
     ("pointing_id",),
 )
+
+
+def share_time_series(dedisp_time_series):
+    """
+    Make the dedispersed time series readable by the worker processes.
+
+    If dedispersion already put it in shared memory, that block is used as it is.
+    Otherwise it is copied into a new block.
+
+    Returns
+    -------
+    shared: SharedMemory or None
+        A new block, which the caller must close and unlink, or None if the existing
+        block is used.
+    info: dict
+        Name, shape and dtype of the block, for transform_rows.
+    """
+    ts = dedisp_time_series.dedisp_ts
+    existing = getattr(dedisp_time_series, "shared_memory", None)
+    if (
+        existing is not None
+        and ts.flags.c_contiguous
+        and ts.ctypes.data == np.frombuffer(existing.buf, np.uint8).ctypes.data
+        and ts.nbytes <= existing.size
+    ):
+        return None, dict(name=existing.name, shape=ts.shape, dtype=ts.dtype.str)
+    shared = shared_memory.SharedMemory(create=True, size=max(ts.nbytes, 1))
+    copy = np.ndarray(ts.shape, dtype=ts.dtype, buffer=shared.buf)
+    copy[:] = ts
+    del copy
+    return shared, dict(name=shared.name, shape=ts.shape, dtype=ts.dtype.str)
+
+
+def fourier_barycentre_index(length, beta):
+    """
+    Source bin of each barycentric power spectrum bin, or -1 where there is none.
+
+    This is the bin that interp1d(kind="nearest", bounds_error=False) picks when
+    resampling a power spectrum from topocentric bins (j * (1 - beta)) to barycentric
+    bins (j), so a gather with it gives exactly the same result. It is found by
+    interpolating the bin numbers themselves.
+    """
+    target_labels = np.arange(length)
+    initial_labels = target_labels * (1 - beta)
+    index = interp1d(
+        initial_labels,
+        np.arange(length, dtype=np.float64),
+        kind="nearest",
+        bounds_error=False,
+        fill_value=-1,
+    )(target_labels)
+    return index.astype(np.int64)
+
+
+class _RowTransformer:
+    """
+    Per-process FFT plan and buffers for forming one power spectrum at a time.
+
+    The FFT is planned once with FFTW_ESTIMATE on aligned buffers, which is the plan
+    pyfftw.interfaces.numpy_fft.rfft makes on every call, so results are identical but
+    planning and array allocation happen only once. Fourier barycentring is a gather
+    with a precomputed index instead of a nearest-neighbour interpolation per row.
+    """
+
+    def __init__(self, padded_length, ts_dtype, nbit, beta, barycentring_mode):
+        real = np.dtype(ts_dtype)
+        if real not in (np.dtype(np.float32), np.dtype(np.float64)):
+            real = np.dtype(np.float64)
+        complex_dtype = np.result_type(real, np.complex64)
+        self.fft_in = pyfftw.empty_aligned(padded_length, dtype=real)
+        self.fft_out = pyfftw.empty_aligned(padded_length // 2 + 1, dtype=complex_dtype)
+        self.fft = pyfftw.FFTW(
+            self.fft_in, self.fft_out, flags=("FFTW_ESTIMATE",), threads=1
+        )
+        nbin = padded_length // 2
+        self.power = np.empty(nbin, dtype=real)
+        self.work = np.empty(nbin, dtype=f"float{nbit}")
+        self.barycentre = barycentring_mode == "Fourier"
+        if self.barycentre:
+            index = fourier_barycentre_index(nbin, beta)
+            self.outside = np.flatnonzero(index < 0)
+            self.index = np.maximum(index, 0)
+
+    def power_spectrum(self, dts, normalise):
+        """
+        Power spectrum of one time series, padded to the planned length.
+
+        The time series is padded with zeros if normalised, otherwise with the median
+        of its last 4096 samples, as np.pad(mode="median", stat_length=4096) does. The
+        returned array is reused by the next call.
+        """
+        n = dts.shape[0]
+        self.fft_in[:n] = dts
+        if n < self.fft_in.shape[0]:
+            self.fft_in[n:] = 0 if normalise else np.median(dts[-4096:])
+        self.fft()
+        # |X|^2 of all bins but the last, with the DC bin zeroed
+        power = self.power
+        np.abs(self.fft_out[:-1], out=power)
+        power[0] = 0
+        np.square(power, out=power)
+        if power.dtype != self.work.dtype:
+            power = power.astype(self.work.dtype)
+        if self.barycentre:
+            np.take(power, self.index, out=self.work, mode="clip")
+            self.work[self.outside] = 0
+        else:
+            self.work[:] = power
+        return self.work
+
+
+def _start_worker():
+    """Pool initializer; importing this module is all the set-up a worker needs."""
+
+
+@functools.lru_cache(maxsize=2)
+def _row_transformer(padded_length, ts_dtype, nbit, beta, barycentring_mode):
+    return _RowTransformer(padded_length, ts_dtype, nbit, beta, barycentring_mode)
 
 
 @attrs(slots=True)
@@ -215,7 +334,8 @@ class PowerSpectraCreation:
             The PowerSpectra class as defined in the interface
         """
         multiprocessing.set_start_method("forkserver", force=True)
-        pool = Pool(self.num_threads)
+        # Workers import this module while the parent cleans RFI, not on their first task
+        pool = Pool(self.num_threads, initializer=_start_worker)
         if self.use_db:
             observation = db_api.get_observation(dedisp_time_series.obs_id)
             pointing_id = self.get_pointing_id_from_observation_id(
@@ -275,41 +395,41 @@ class PowerSpectraCreation:
                 f" {self.mp_chunk_size}"
             )
 
-            dedisp_series_list = [
-                dedisp_time_series.dedisp_ts[i : i + self.mp_chunk_size]
-                for i in range(
-                    0, dedisp_time_series.dedisp_ts.shape[0], self.mp_chunk_size
-                )
-            ]
-            full_indices = np.arange(dedisp_time_series.dedisp_ts.shape[0])
-            dm_indices = [
-                full_indices[i : i + self.mp_chunk_size]
-                for i in range(
-                    0, dedisp_time_series.dedisp_ts.shape[0], self.mp_chunk_size
-                )
+            # Workers read their rows of the time series from shared memory, rather
+            # than having every row pickled and piped to them
+            ts_shared, ts_info = share_time_series(dedisp_time_series)
+            ndm = dedisp_time_series.dedisp_ts.shape[0]
+            row_ranges = [
+                (i, min(i + self.mp_chunk_size, ndm))
+                for i in range(0, ndm, self.mp_chunk_size)
             ]
 
-            median_info = pool.starmap(
-                partial(
-                    self.transform_data,
-                    normalise=self.normalise,
-                    barycentring_mode=self.barycentring_mode,
-                    beta=beta,
-                    padded_length=self.padded_length,
-                    nbit=self.nbit,
-                    remove_rednoise=self.remove_rednoise,
-                    clean_rfi=self.clean_rfi,
-                    rednoise_config=self.rednoise_config,
-                    zero_replace=self.zero_replace,
-                    bad_freq_indices=bad_freq_indices,
-                    shared_target_name=power_spectra_shared.name,
-                    target_shape=power_spectra.shape,
-                ),
-                zip(dm_indices, dedisp_series_list),
-            )
-
-            pool.close()
-            pool.join()
+            try:
+                median_info = pool.starmap(
+                    partial(
+                        self.transform_rows,
+                        time_series=ts_info,
+                        normalise=self.normalise,
+                        barycentring_mode=self.barycentring_mode,
+                        beta=beta,
+                        padded_length=self.padded_length,
+                        nbit=self.nbit,
+                        remove_rednoise=self.remove_rednoise,
+                        clean_rfi=self.clean_rfi,
+                        rednoise_config=self.rednoise_config,
+                        zero_replace=self.zero_replace,
+                        bad_freq_indices=bad_freq_indices,
+                        shared_target_name=power_spectra_shared.name,
+                        target_shape=power_spectra.shape,
+                    ),
+                    row_ranges,
+                )
+            finally:
+                pool.close()
+                pool.join()
+                if ts_shared is not None:
+                    ts_shared.close()
+                    ts_shared.unlink()
             log.info("Power spectra creation successful.")
 
             if self.save_medians or self.write_medians:
@@ -464,6 +584,8 @@ class PowerSpectraCreation:
         all_medians = []
         all_scales = []
 
+        # Convert once, not twice per row
+        bad_freq_indices = np.asarray(bad_freq_indices, dtype=np.intp)
         for dm_index, dts in zip(dm_indices, dm_series_list):
             if normalise:
                 ts_mean = np.mean(dts)
@@ -472,32 +594,12 @@ class PowerSpectraCreation:
             if barycentring_mode == "Time":
                 # barycenter the time series before forming the power spectrum
                 dts = barycenter_timeseries(dts, beta)
-            n_to_pad = int(padded_length - dts.size)
-            if normalise:
-                dts = np.pad(dts, (0, n_to_pad), mode="constant", constant_values=0)
-            else:
-                dts = np.pad(dts, (0, n_to_pad), mode="median", stat_length=4096)
 
             log.debug("Computing power spectrum and corresponding frequency labels")
-            spectrum = pyfftw.interfaces.numpy_fft.rfft(dts)
-            spectrum[0] = 0
-            spectrum = spectrum[:-1]
-            power_spectrum = np.abs(spectrum) ** 2
-            power_spectrum = power_spectrum.astype(f"float{nbit}")
-
-            if barycentring_mode == "Fourier":
-                # target labels are the frequencies we want our label to have
-                # initial labels are the barycentric frequencies that are actually recorded
-                # only the relation between the labels is used so we assume tsamp=1 here
-                target_labels = np.arange(len(power_spectrum))
-                initial_labels = target_labels * (1 - beta)
-                power_spectrum = interp1d(
-                    initial_labels,
-                    power_spectrum,
-                    kind="nearest",
-                    bounds_error=False,
-                    fill_value=0,
-                )(target_labels)
+            transformer = _row_transformer(
+                padded_length, np.dtype(dts.dtype).str, nbit, beta, barycentring_mode
+            )
+            power_spectrum = transformer.power_spectrum(dts, normalise)
 
             # normalise power spectrum
             if clean_rfi:
@@ -528,6 +630,33 @@ class PowerSpectraCreation:
         shared_spectra.close()
 
         return [dm_indices, all_medians, all_scales]
+
+    @staticmethod
+    def transform_rows(start, stop, time_series, **kwargs):
+        """
+        Run transform_data on rows start to stop of a time series in shared memory.
+
+        Parameters
+        ----------
+        start, stop: int
+            The range of DM rows to transform.
+        time_series: dict
+            From share_time_series: name, shape and dtype of the shared block.
+        kwargs:
+            Passed on to transform_data.
+        """
+        shared_ts = shared_memory.SharedMemory(name=time_series["name"])
+        dedisp_ts = np.ndarray(
+            time_series["shape"], dtype=time_series["dtype"], buffer=shared_ts.buf
+        )
+        try:
+            return PowerSpectraCreation.transform_data(
+                np.arange(start, stop), dedisp_ts[start:stop], **kwargs
+            )
+        finally:
+            # Views must be gone before the block can be closed
+            del dedisp_ts
+            shared_ts.close()
 
     def get_pointing_id_from_observation_id(self, obs_id):
         """Get the corresponding pointing ID from the observation ID."""

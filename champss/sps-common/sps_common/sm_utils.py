@@ -39,6 +39,31 @@ def share_array(arr):
     return array, shm, shm_dict
 
 
+def empty_shared_array(shape, dtype):
+    """
+    Allocate a zero-filled numpy array directly in shared memory.
+
+    Parameters
+    ----------
+    shape : tuple
+        Shape of the array.
+    dtype : np.dtype
+        Data type of the array.
+
+    Returns
+    -------
+    array: np.ndarray
+        The new array, backed by shm.
+
+    shm: shared_memory.SharedMemory
+        The block holding the array; the caller is responsible for unlinking it.
+    """
+    nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
+    shm = shared_memory.SharedMemory(create=True, size=max(nbytes, 1))
+    array = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
+    return array, shm
+
+
 def recreate_shared_array(shm_dict):
     """
     Recreate a shared memory array from a dict.

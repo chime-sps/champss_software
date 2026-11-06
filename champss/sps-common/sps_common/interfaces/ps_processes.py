@@ -1,6 +1,7 @@
 """Classes used for power spectra processing."""
 
 import logging
+import weakref
 from datetime import datetime
 from glob import glob
 from multiprocessing import shared_memory
@@ -29,6 +30,14 @@ from sps_common.stack_quant import read_quantized, write_quantized
 log = logging.getLogger(__name__)
 
 
+def _unlink_shared_memory(shm):
+    """Remove a shared memory block's name; the memory is freed once unmapped."""
+    try:
+        shm.unlink()
+    except FileNotFoundError:
+        pass
+
+
 @attrs
 class DedispersedTimeSeries:
     """
@@ -47,6 +56,10 @@ class DedispersedTimeSeries:
         start_mjd (float) : The start time of the observation.
 
         obs_id (str) : The ID of the observation for sps-database purpose.
+
+        shared_memory (SharedMemory or None) : The block dedisp_ts lives in, if it was
+        allocated in shared memory, so worker processes can read it without a copy.
+        It is unlinked when this object is garbage collected or Python exits.
     """
 
     dedisp_ts = attrib(validator=instance_of(np.ndarray))
@@ -55,9 +68,12 @@ class DedispersedTimeSeries:
     dec = attrib(converter=float)
     start_mjd = attrib(converter=float)
     obs_id = attrib(converter=str)
+    shared_memory = attrib(default=None, eq=False, repr=False)
 
     def __attrs_post_init__(self):
         """Convert dm list to array and check for dm inconsistency."""
+        if self.shared_memory is not None:
+            weakref.finalize(self, _unlink_shared_memory, self.shared_memory)
         if type(self.dms) != np.ndarray:
             self.dms = np.asarray(self.dms)
         if self.dedisp_ts.shape[0] != self.dms.size:

@@ -2,6 +2,7 @@ import numpy as np
 from sps_common.constants import DM_CONSTANT, FREQ_BOTTOM, FREQ_TOP, TSAMP
 from sps_common.conversion import unix_to_mjd
 from sps_common.interfaces import DedispersedTimeSeries
+from sps_common.sm_utils import empty_shared_array
 
 
 def dedisperse(
@@ -78,6 +79,7 @@ def dedisperse_streaming(
     freq_bottom=FREQ_BOTTOM,
     freq_top=FREQ_TOP,
     tsamp=TSAMP,
+    shared=False,
 ):
     """
     Dedisperse the skybeam with a dmtlib FDMT in its streaming ("valid") mode.
@@ -98,6 +100,9 @@ def dedisperse_streaming(
         The number of samples to drop from the start. No trial may exceed it.
     dt_trials: np.ndarray
         Sorted integer delays computed by the FDMT, in time samples across the band.
+    shared: bool
+        Allocate the output in shared memory, so power spectrum workers can read it
+        without a copy. It is unlinked when the returned object is garbage collected.
     """
     if fdmt.startup_samples > maxDT:
         raise ValueError(
@@ -107,7 +112,12 @@ def dedisperse_streaming(
     spectra = skybeam.spectra[::-1]  # this returns a view
 
     ntbin = spectra.shape[1]
-    dedisp = np.zeros((len(dt_trials), ntbin - maxDT), dtype=spectra.dtype)
+    shape = (len(dt_trials), ntbin - maxDT)
+    shm = None
+    if shared:
+        dedisp, shm = empty_shared_array(shape, spectra.dtype)
+    else:
+        dedisp = np.zeros(shape, dtype=spectra.dtype)
     block_out = np.empty((len(dt_trials), chunk_size), dtype=np.float32)
 
     for start in range(0, ntbin, chunk_size):
@@ -123,10 +133,14 @@ def dedisperse_streaming(
                 :, first - start : stop - start
             ]
 
-    return make_time_series(dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp)
+    return make_time_series(
+        dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp, shared_memory=shm
+    )
 
 
-def make_time_series(dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp):
+def make_time_series(
+    dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp, shared_memory=None
+):
     """Wrap dedispersed data, labelled by delay across the band, with its DMs."""
     dms = (
         np.asarray(dt_trials)
@@ -141,6 +155,7 @@ def make_time_series(dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp):
         dec=skybeam.dec,
         start_mjd=unix_to_mjd(skybeam.utc_start),
         obs_id=skybeam.obs_id,
+        shared_memory=shared_memory,
     )
 
     return dts
