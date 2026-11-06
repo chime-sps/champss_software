@@ -44,3 +44,35 @@ def test_ordinary_arrays_are_left_alone():
     releaser.release_until(4000)
     np.testing.assert_array_equal(array, original)
     assert not releaser.enabled
+
+
+def test_release_rows_frees_only_those_rows():
+    from sps_common.sm_utils import release_rows
+
+    shape = (20, 30001)
+    array, shm = shared(shape, seed=2)
+    original = array.copy()
+    path = f"/dev/shm/{shm.name.lstrip('/')}"
+    try:
+        before = os.stat(path).st_blocks
+        assert release_rows(array, 3, 15)
+        assert os.stat(path).st_blocks < 0.5 * before  # measured before reading
+        np.testing.assert_array_equal(array[:3], original[:3])
+        np.testing.assert_array_equal(array[15:], original[15:])
+        middle = array[3:15]
+        changed = middle != original[3:15]
+        assert (middle[changed] == 0).all()
+        assert changed.mean() > 0.95
+    finally:
+        del array
+        shm.close()
+        shm.unlink()
+
+
+def test_release_rows_leaves_ordinary_arrays_alone():
+    from sps_common.sm_utils import release_rows
+
+    array = np.random.default_rng(3).normal(5, 1, (10, 5000)).astype(np.float32)
+    original = array.copy()
+    assert not release_rows(array, 2, 8)
+    np.testing.assert_array_equal(array, original)

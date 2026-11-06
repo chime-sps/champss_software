@@ -640,7 +640,9 @@ def main(
                     f" ({active_pointing.ra:.2f} {active_pointing.dec:.2f}) @"
                     f" {date:%Y-%m-%d}"
                 )
-                power_spectra = psc_pipeline.transform(dedisp_ts)
+                # The time series is freed block by block as its spectra are made:
+                # FFA has already run, and it is deleted right after
+                power_spectra = psc_pipeline.transform(dedisp_ts, release_input=True)
                 # remove dedispersed time series from memory
                 del dedisp_ts
                 gc.collect()

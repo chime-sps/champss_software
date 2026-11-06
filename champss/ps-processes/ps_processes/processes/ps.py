@@ -30,6 +30,7 @@ from sps_common.barycenter import (
 from sps_common.constants import SEC_PER_DAY, TSAMP
 from sps_common.conversion import convert_ra_dec
 from sps_common.interfaces.ps_processes import PowerSpectra
+from sps_common.sm_utils import release_rows
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
@@ -382,7 +383,7 @@ class PowerSpectraCreation:
         if self.barycentring_mode == "Topocentric" and self.barycentric_cleaning:
             self.barycentric_cleaning = False
 
-    def transform(self, dedisp_time_series, write_medians=False):
+    def transform(self, dedisp_time_series, write_medians=False, release_input=False):
         """
         Function to perform the FFT and creating the normalised power spectrum.
 
@@ -393,6 +394,11 @@ class PowerSpectraCreation:
             the metadata to process
         write_medians: bool
             Whether to write the rednoise information to a npz file.
+        release_input: bool
+            Free the memory of each block of dedispersed time series once its power
+            spectra are made, so input and output are not both held in full. Only when
+            the time series is in shared memory and nothing reads it afterwards: freed
+            samples read as zeros. Ignored otherwise.
 
         Returns
         -------
@@ -487,6 +493,7 @@ class PowerSpectraCreation:
                         bad_freq_indices=bad_freq_indices,
                         shared_target_name=power_spectra_shared.name,
                         target_shape=power_spectra.shape,
+                        release_input=release_input,
                     ),
                     row_ranges,
                 )
@@ -709,7 +716,7 @@ class PowerSpectraCreation:
         return [dm_indices, all_medians, all_scales]
 
     @staticmethod
-    def transform_rows(start, stop, time_series, **kwargs):
+    def transform_rows(start, stop, time_series, release_input=False, **kwargs):
         """
         Run transform_data on rows start to stop of a time series in shared memory.
 
@@ -719,6 +726,9 @@ class PowerSpectraCreation:
             The range of DM rows to transform.
         time_series: dict
             From share_time_series: name, shape and dtype of the shared block.
+        release_input: bool
+            Free the memory of these rows of the time series once they are transformed
+            (see PowerSpectraCreation.transform).
         kwargs:
             Passed on to transform_data.
         """
@@ -727,9 +737,13 @@ class PowerSpectraCreation:
             time_series["shape"], dtype=time_series["dtype"], buffer=shared_ts.buf
         )
         try:
-            return PowerSpectraCreation.transform_data(
+            result = PowerSpectraCreation.transform_data(
                 np.arange(start, stop), dedisp_ts[start:stop], **kwargs
             )
+            if release_input:
+                # Each row is read by this task only, and it is done with them
+                release_rows(dedisp_ts, start, stop)
+            return result
         finally:
             # Views must be gone before the block can be closed
             del dedisp_ts

@@ -170,3 +170,32 @@ class RowPrefixReleaser:
                 self.enabled = False
                 return
         self.done = col
+
+
+def release_rows(array, start, stop):
+    """
+    Return to the system the memory of rows start to stop of a C-contiguous array in
+    shared memory, once nothing will read them again.
+
+    Frees the whole pages inside those rows with madvise(MADV_REMOVE) (see
+    RowPrefixReleaser); pages shared with rows outside the range are kept, so ranges
+    released by different processes in any order never touch each other's rows. Freed
+    values read as zeros. Returns False, changing nothing, if the memory is not shared.
+    """
+    import ctypes
+    import mmap
+
+    if not (array.flags.c_contiguous and hasattr(mmap, "MADV_REMOVE")) or stop <= start:
+        return False
+    page = mmap.PAGESIZE
+    row_bytes = array.strides[0]
+    first = array.ctypes.data + start * row_bytes
+    last = array.ctypes.data + stop * row_bytes
+    begin = -(-first // page) * page
+    end = last // page * page
+    if end <= begin:
+        return True
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+    libc.madvise.restype = ctypes.c_int
+    return libc.madvise(begin, end - begin, mmap.MADV_REMOVE) == 0

@@ -6,6 +6,7 @@ import numpy as np
 import pyfftw
 import pytest
 from ps_processes.processes.ps import (
+    PowerSpectraCreation,
     _RowTransformer,
     fourier_barycentre_index,
     share_time_series,
@@ -80,3 +81,56 @@ def test_time_series_already_in_shared_memory_is_not_copied():
         del ts
         shm.close()
         shm.unlink()
+
+
+def run_transform_rows(ts_data, release, chunk=7, padded=2**14):
+    """transform_rows over all rows in chunks, as the pool would, from a shared time series."""
+    import os
+    from multiprocessing import shared_memory
+
+    ts, ts_shm = empty_shared_array(ts_data.shape, ts_data.dtype)
+    ts[:] = ts_data
+    nrow = ts_data.shape[0]
+    target = shared_memory.SharedMemory(create=True, size=nrow * padded // 2 * 4)
+    try:
+        path = f"/dev/shm/{ts_shm.name.lstrip('/')}"
+        before = os.stat(path).st_blocks
+        for start in range(0, nrow, chunk):
+            PowerSpectraCreation.transform_rows(
+                start,
+                min(start + chunk, nrow),
+                dict(name=ts_shm.name, shape=ts.shape, dtype=ts.dtype.str),
+                release_input=release,
+                normalise=True,
+                barycentring_mode="Fourier",
+                beta=-6.3e-5,
+                padded_length=padded,
+                nbit=32,
+                remove_rednoise=True,
+                clean_rfi=True,
+                rednoise_config={"b0": 10, "bmax": 1000},
+                zero_replace=True,
+                bad_freq_indices=[5, 6, 7, 400],
+                shared_target_name=target.name,
+                target_shape=(nrow, padded // 2),
+            )
+        after = os.stat(path).st_blocks  # before anything reads the freed rows
+        spectra = np.ndarray((nrow, padded // 2), np.float32, buffer=target.buf).copy()
+        return spectra, before, after
+    finally:
+        del ts
+        ts_shm.close()
+        ts_shm.unlink()
+        target.close()
+        target.unlink()
+
+
+def test_releasing_the_time_series_gives_the_same_spectra_and_frees_it():
+    rng = np.random.default_rng(5)
+    # Rows of 12000 samples, not a whole number of pages
+    ts_data = (100 + rng.normal(0, 1, (40, 12000))).astype(np.float32)
+    kept, before, after_kept = run_transform_rows(ts_data, release=False)
+    released, _, after_released = run_transform_rows(ts_data, release=True)
+    np.testing.assert_array_equal(released, kept)
+    assert after_kept == before
+    assert after_released < 0.2 * before
