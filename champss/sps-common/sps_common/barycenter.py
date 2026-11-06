@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import logging
+import threading
 
 import astropy.units as u
 import numpy as np
 from astropy.constants import c
 from astropy.coordinates import EarthLocation, SkyCoord, solar_system_ephemeris
 from astropy.time import Time
+from astropy.utils import iers
 from sps_common.constants import CHIME_ELEV, CHIME_LAT, CHIME_LON, SEC_PER_DAY
 
 # define CHIME's Earth location
@@ -16,6 +18,23 @@ CHIME_LOCATION = EarthLocation(
 
 # use the JPL planetary ephemeris
 solar_system_ephemeris.set("jpl")
+
+
+def preload_earth_orientation():
+    """
+    Start reading astropy's IERS Earth-orientation table in a background thread.
+
+    The barycentric correction needs it, and reading and merging the cached IERS-A and
+    IERS-B files takes ~0.8 s the first time in each process. astropy keeps the table it
+    reads, so the correction later uses the very same table, just without the wait. If
+    the correction is needed before this has finished, it reads the table itself.
+    """
+    thread = threading.Thread(
+        target=iers.earth_orientation_table.get, name="iers-preload", daemon=True
+    )
+    thread.start()
+    return thread
+
 
 LOGGING_CONFIG = {}
 logging_format = "[%(asctime)s] %(levelname)s::%(module)s: %(message)s"

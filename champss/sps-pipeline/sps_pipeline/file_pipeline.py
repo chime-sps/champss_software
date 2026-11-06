@@ -18,6 +18,7 @@ from sps_pipeline.config_utils import load_config
 from sps_common.constants import DM_CONSTANT
 from sps_dedispersion.dedisperse import dedisperse
 from sps_common.interfaces.beamformer import SkyBeam
+from sps_common.mp_start import use_forkserver
 from dmt.libdmt import FDMT
 from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.processes.ps_search import PowerSpectraSearch
@@ -97,7 +98,8 @@ def run_file_pipeline(
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
-    multiprocessing.set_start_method("forkserver", force=True)
+    # Forkserver, with this module imported once for all workers
+    use_forkserver(__name__, "sps_pipeline.forkserver_kernels")
 
     observation = your.Your(obs_file)
     obs_header = observation.your_header

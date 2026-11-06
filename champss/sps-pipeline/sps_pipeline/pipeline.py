@@ -39,6 +39,8 @@ from ps_processes.processes.ps import PowerSpectraCreation
 from ps_processes.ps_pipeline import PowerSpectraPipeline
 from scheduler.utils import convert_date_to_datetime
 from sps_common.interfaces import DedispersedTimeSeries
+from sps_common.barycenter import preload_earth_orientation
+from sps_common.mp_start import use_forkserver
 from sps_databases import db_api, db_utils, models
 from sps_pipeline import (  # ps,
     beamform,
@@ -354,7 +356,10 @@ def main(
     log.info("START")
     # Logging in multiprocessing child processes with Linux default
     # "fork" leads to unexpected behaviour
-    multiprocessing.set_start_method("forkserver", force=True)
+    # Forkserver, with this module imported once for all workers
+    use_forkserver(__name__, "sps_pipeline.forkserver_kernels")
+    # Read the IERS table for the barycentric correction while the data loads
+    preload_earth_orientation()
 
     date = convert_date_to_datetime(date)
 
@@ -948,7 +953,8 @@ def stack_and_search(
     - search-monthly: run the searching of the monthly stack
     """
 
-    multiprocessing.set_start_method("forkserver", force=True)
+    # Forkserver, with this module imported once for all workers
+    use_forkserver(__name__, "sps_pipeline.forkserver_kernels")
     sys.excepthook = dbexcepthook
     global pipeline_start_time
     pipeline_start_time = time.time()

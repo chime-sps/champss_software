@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import multiprocessing
 from functools import partial
 from itertools import product
 from multiprocessing import Pool, set_start_method, shared_memory
@@ -11,18 +12,98 @@ import attr
 import numpy as np
 from astropy.time import Time, TimeDelta
 from attr.validators import deep_iterable, instance_of
+from numba import njit
 from beamformer.utilities.common import get_data_list
 from numpy._typing import ArrayLike
 from rfi_mitigation.pipeline import RFIPipeline, RFIGlobalPipeline
 from scipy import linalg
 from scipy.signal import detrend
 from sps_common.constants import TSAMP
+from sps_common.fast_select import masked_median
 from sps_common.interfaces.beamformer import SkyBeam
 from sps_databases import db_api
 from spshuff import l1_io
-from threadpoolctl import threadpool_limits
+from threadpoolctl import ThreadpoolController
 
 log = logging.getLogger(__name__)
+
+# threadpool_limits() rescans every loaded library each time it is entered (~2 ms); one
+# controller per process, made on first use, limits the same thread pools
+_THREADPOOL_CONTROLLER = None
+
+
+def _blas_single_thread():
+    """The same as threadpool_limits(limits=1, user_api="blas"), without the rescan."""
+    global _THREADPOOL_CONTROLLER
+    if _THREADPOOL_CONTROLLER is None:
+        _THREADPOOL_CONTROLLER = ThreadpoolController()
+    return _THREADPOOL_CONTROLLER.limit(limits=1, user_api="blas")
+
+
+# Shared memory attached by pool workers, kept until the worker exits
+_ATTACHED = {}
+
+
+def _attach(name):
+    """
+    Attach a shared memory block by name; returns it and whether the caller should close it.
+
+    Pool workers run thousands of small tasks on the same blocks, and closing the mapping
+    after each one costs more than the task; in a worker the block is attached once and
+    kept until the worker exits. In the main process it is attached afresh as before, so
+    nothing outlives its unlinking.
+    """
+    if multiprocessing.parent_process() is None:
+        return shared_memory.SharedMemory(name=name), True
+    shm = _ATTACHED.get(name)
+    if shm is None:
+        shm = _ATTACHED[name] = shared_memory.SharedMemory(name=name)
+    return shm, False
+
+
+def _release(shm, close):
+    if close:
+        shm.close()
+
+
+# Design matrices of detrend_masked_row_fast, per segment length and dtype
+_DESIGN = {}
+
+
+def _design_matrix(npts, dtype):
+    key = (npts, np.dtype(dtype).char)
+    a = _DESIGN.get(key)
+    if a is None:
+        a = np.ones((npts, 2), dtype)
+        a[:, 0] = np.arange(1, npts + 1, dtype=dtype) / npts
+        a.flags.writeable = False
+        _DESIGN[key] = a
+    return a
+
+
+def detrend_masked_row_fast(row, valid, bp_step):
+    """
+    detrend_masked_row(row[np.newaxis], mask=valid[np.newaxis], axis=1, type="linear",
+    bp=np.arange(0, len(row), bp_step))[0] for a float32 or float64 row.
+
+    Each segment's least-squares fit is computed by the same scipy.linalg.lstsq call on the
+    same arrays, and subtracted with the same matrix product, so the result is identical;
+    the design matrix is made once per segment length and valid samples are gathered once.
+    """
+    n = row.shape[0]
+    dtype = row.dtype.char
+    bp = np.sort(np.unique(np.concatenate(np.atleast_1d(0, np.arange(0, n, bp_step), n))))
+    out = np.array(row, dtype=row.dtype).reshape(n, 1)
+    for lo, hi in zip(bp[:-1], bp[1:]):
+        idx = np.flatnonzero(valid[lo:hi])
+        if idx.size:
+            a = _design_matrix(hi - lo, dtype)[idx]
+            seg = out[lo:hi]
+            y = seg[idx]
+            coef = linalg.lstsq(a, y)[0]
+            seg[idx] = y - a @ coef
+    out[~valid] = 0
+    return out.reshape(n)
 
 
 def detrend_masked_row(
@@ -177,6 +258,25 @@ def detrend_masked_row(
         newdata = newdata.reshape(newdata_shape)
         ret = np.moveaxis(newdata, 0, axis)
         return ret
+
+
+@njit(cache=True)
+def _scale_chunk_into(data, scale, means, good, spectra, mask, start):
+    """
+    Write one chunk's intensities and mask into the spectra from column start on.
+
+    The same values as scaling the chunk by scale (the square root of its variance) and
+    adding its means in float32, one rounding each, and masking samples that are not
+    positive, not finite, or not good in the chunk's own mask; in one pass instead of ten.
+    """
+    for c in range(data.shape[0]):
+        s = scale[c]
+        m = means[c]
+        for j in range(data.shape[1]):
+            v = data[c, j] * s
+            v = v + m
+            spectra[c, start + j] = v
+            mask[c, start + j] = v <= 0 or not np.isfinite(v) or not good[c, j]
 
 
 @attr.s(slots=True)
@@ -566,7 +666,7 @@ class SkyBeamFormer:
         )
         log.info(
             "Start RFI cleaning. Current Masking fraction ="
-            f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+            f" {(np.count_nonzero(rfi_mask) / rfi_mask.size):.4f}"
         )
 
         # For now always use actual file edges
@@ -616,7 +716,7 @@ class SkyBeamFormer:
 
             log.info(
                 "RFI cleaning finished. New masking Fraction:"
-                f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+                f" {(np.count_nonzero(rfi_mask) / rfi_mask.size):.4f}"
             )
         log.info("Start filling and normalization.")
         used_nsub = np.min([self.nsub, spectra_shape[0]])
@@ -675,7 +775,7 @@ class SkyBeamFormer:
             log.info("Starting global RFI cleaning on zero-filled dataset.")
             log.info(
                 "Pre-global-clean masking Fraction:"
-                f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+                f" {(np.count_nonzero(rfi_mask) / rfi_mask.size):.4f}"
             )
             self.rfi_global_pipeline.clean(
                 spectra_shared.name,
@@ -685,12 +785,12 @@ class SkyBeamFormer:
             )
             log.info(
                 "Global RFI cleaning finished. New masking Fraction:"
-                f" {(rfi_mask.sum() / rfi_mask.size):.4f}"
+                f" {(np.count_nonzero(rfi_mask) / rfi_mask.size):.4f}"
             )
 
             # Apply the updated mask to the spectra (zero out newly masked regions)
             log.info("Applying global RFI mask to spectra")
-            spectra[rfi_mask] = 0
+            np.copyto(spectra, 0, where=rfi_mask)
 
             # Re-run zero replacement to fill newly masked regions using the existing pool
             log.info("Re-running zero replacement after global RFI cleaning")
@@ -707,12 +807,12 @@ class SkyBeamFormer:
             )
             log.info("Zero replacement complete")
 
-        completely_masked_channels = rfi_mask.min(axis=1).sum()
+        completely_masked_channels = np.count_nonzero(rfi_mask.all(axis=1))
         log.info(
             "Fraction of completely masked channels:"
             f" {(completely_masked_channels / rfi_mask.shape[0]):.3f}"
         )
-        mask_fraction = rfi_mask.sum() / rfi_mask.size
+        mask_fraction = np.count_nonzero(rfi_mask) / rfi_mask.size
 
         if self.update_db:
             log.info("Updating Database")
@@ -780,19 +880,19 @@ class SkyBeamFormer:
             Whether to flatten the bandpass by normalising each channel by subtracting the mean
             and dividing by the standard deviation. Default: False.
         """
-        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        shared_spectra, close_spectra = _attach(spectra_shared_name)
         spectra_full = np.ndarray(
             spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
         )
         spectra = spectra_full[current_freq_slice, :]
 
-        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        shared_mask, close_mask = _attach(mask_shared_name)
         rfi_mask_full = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
         rfi_mask = rfi_mask_full[current_freq_slice, :]
-        mask_fraction = rfi_mask.sum() / rfi_mask.size
+        mask_fraction = np.count_nonzero(rfi_mask) / rfi_mask.size
         if mask_fraction == 1.0:
-            shared_spectra.close()
-            shared_mask.close()
+            _release(shared_spectra, close_spectra)
+            _release(shared_mask, close_mask)
             return
         _contains_nan = np.isnan(np.min(spectra))
         _masked_frac = rfi_mask.mean()
@@ -821,8 +921,8 @@ class SkyBeamFormer:
                     # In an earlier version, the mean and std were computed using only the
                     # nonzero values, but nothing should be 0 at this point
                     spectra[:] = (spectra - spectra.mean()) / spectra.std()
-        shared_spectra.close()
-        shared_mask.close()
+        _release(shared_spectra, close_spectra)
+        _release(shared_mask, close_mask)
 
     def update_database(self, obs_id, mask_fraction, utc_start):
         """
@@ -974,17 +1074,15 @@ class SkyBeamFormer:
                     chunk_slice = slice(
                         start_offset, chunk.chunk_header.ntime + end_offset
                     )
-                    chunk_intensity = chunk.data[:, chunk_slice]
-                    chunk_mask = chunk.bad_mask[:, chunk_slice].astype(bool)
-                    chunk_intensity *= np.sqrt(chunk.variance)[:, np.newaxis]
-                    chunk_intensity += chunk.means[:, np.newaxis]
-                    spectra[:, spec_slice] = chunk_intensity
-
-                    zero_mask = np.zeros_like(chunk_intensity, dtype=bool)
-                    zero_mask[chunk_intensity <= 0] = True
-                    zero_mask[~np.isfinite(chunk_intensity)] = True
-                    full_mask = np.logical_or(zero_mask, ~chunk_mask)
-                    rfi_mask[:, spec_slice] = full_mask
+                    _scale_chunk_into(
+                        chunk.data[:, chunk_slice],
+                        np.sqrt(chunk.variance),
+                        chunk.means,
+                        chunk.bad_mask[:, chunk_slice].astype(bool, copy=False),
+                        spectra,
+                        rfi_mask,
+                        actual_start_idx,
+                    )
                     spec_slices.append(spec_slice)
         shared_spectra.close()
         shared_mask.close()
@@ -1050,24 +1148,48 @@ class SkyBeamFormer:
         add_local_median: bool
             Whether to add local median to the detrended data. Default = False
         """
-        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        shared_spectra, close_spectra = _attach(spectra_shared_name)
         spectra_full = np.ndarray(
             spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
         )
         spectra = spectra_full[current_freq_slice, current_time_slice]
-        shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
+        shared_mask, close_mask = _attach(mask_shared_name)
         rfi_mask_full = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
         rfi_mask = rfi_mask_full[current_freq_slice, current_time_slice]
-        mask_fraction = rfi_mask.sum() / rfi_mask.size
+        mask_fraction = np.count_nonzero(rfi_mask) / rfi_mask.size
         if mask_fraction == 1.0:
             spectra[:] = 0
-            shared_spectra.close()
-            shared_mask.close()
+            _release(shared_spectra, close_spectra)
+            _release(shared_mask, close_mask)
             return
 
-        spectra_masked = np.ma.masked_array(spectra, mask=rfi_mask)
         ntime = spectra.shape[1]
-        with threadpool_limits(limits=1, user_api="blas"):
+        if (
+            ntime // nsamp <= 1
+            and detrend_data
+            and add_local_median
+            and detrend_nsamp
+            and spectra.shape[0] == 1
+            and spectra.dtype == np.float32
+        ):
+            # The configured case (one channel, one median block, detrend with the median
+            # added back), with the same values as the general code below: the median
+            # is selected exactly instead of sorted, and the detrend makes the same
+            # least-squares fits with fewer copies
+            local_median = masked_median(spectra[0], rfi_mask[0])
+            if local_median is not None:
+                with _blas_single_thread():
+                    detrended = detrend_masked_row_fast(
+                        spectra[0], ~rfi_mask[0], detrend_nsamp
+                    )
+                spectra[0] = detrended + local_median
+                spectra[rfi_mask] = local_median
+                _release(shared_spectra, close_spectra)
+                _release(shared_mask, close_mask)
+                return
+
+        spectra_masked = np.ma.masked_array(spectra, mask=rfi_mask)
+        with _blas_single_thread():
             # determine sets of blocks to process
             num_blocks = ntime // nsamp
 
@@ -1153,8 +1275,8 @@ class SkyBeamFormer:
                 spectra[:] -= filled_local_medians
             else:
                 pass
-            shared_spectra.close()
-            shared_mask.close()
+            _release(shared_spectra, close_spectra)
+            _release(shared_mask, close_mask)
             return
 
     def norm_channels_to_beam(
@@ -1192,7 +1314,7 @@ class SkyBeamFormer:
         current_freq_slice: slice
             Slice of frequencies that are processed in this function
         """
-        shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
+        shared_spectra, close_spectra = _attach(spectra_shared_name)
         spectra_full = np.ndarray(
             spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf
         )
@@ -1204,3 +1326,4 @@ class SkyBeamFormer:
                     current_medians = np.median(spectra[:, beam_slice])
                     if (norm_medians != 0) and (current_medians != 0):
                         spectra[:, beam_slice] *= norm_medians / current_medians
+        _release(shared_spectra, close_spectra)
