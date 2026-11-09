@@ -8,6 +8,7 @@ from sps_common.mp_start import load_cached_kernels
 KERNEL_MODULES = (
     "beamformer.skybeam",
     "sps_common.fast_select",
+    "ps_processes.processes.ps",
     "ps_processes.utilities.rednoise_fast",
     "ps_processes.processes.harmonic_search",
     "rfi_mitigation.utilities.fast_stats",

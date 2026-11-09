@@ -8,6 +8,8 @@ from sps_databases import db_utils
 from sps_pipeline import dedisp
 import multiprocessing
 
+from sps_common.mp_start import use_forkserver
+
 import matplotlib
 
 matplotlib.use("Agg")  # Avoids overhead of interactable plot GUI backends
@@ -185,5 +187,6 @@ logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)  # import in this way for easy reload
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver", force=True)
+    # Forkserver, with this module's imports done once for all workers
+    use_forkserver("__main__", "FFA.FFA_cli")
     main()

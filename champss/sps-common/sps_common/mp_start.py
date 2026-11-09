@@ -16,6 +16,7 @@ generator, which a fresh import used to do; otherwise all would share one stream
 import multiprocessing
 import multiprocessing.forkserver
 import os
+import sys
 
 import numpy as np
 
@@ -29,6 +30,20 @@ def _reseed_numpy():
 os.register_at_fork(after_in_child=_reseed_numpy)
 
 
+def _importable(preload):
+    """preload with "__main__" replaced by its real name (python -m) or dropped."""
+    modules = []
+    for m in preload:
+        if m == "__main__":
+            spec = getattr(sys.modules.get("__main__"), "__spec__", None)
+            m = getattr(spec, "name", None)
+            if not m or m == "__main__":
+                continue
+        if m not in modules:
+            modules.append(m)
+    return modules
+
+
 def use_forkserver(*preload):
     """
     Use the forkserver start method, with preload imported once in the server.
@@ -37,11 +52,12 @@ def use_forkserver(*preload):
     ==========
     preload: str
         Modules for the server to import, typically the calling pipeline module
-        (pass __name__). "__main__" is ignored, as the server cannot import it.
+        (pass __name__). "__main__" stands for the main module's real name when it was
+        run with python -m; a script run by path cannot be imported by the server, so
+        it is dropped (name the modules it imports instead).
     """
     multiprocessing.set_start_method("forkserver", force=True)
-    modules = [m for m in preload if m != "__main__"]
-    multiprocessing.set_forkserver_preload([__name__, *modules])
+    multiprocessing.set_forkserver_preload([__name__, *_importable(preload)])
     multiprocessing.forkserver.ensure_running()
 
 

@@ -6,6 +6,8 @@ coordinates, folds at exact RA, using a user-specified parfile.
 
 import logging
 import multiprocessing
+
+from sps_common.mp_start import use_forkserver
 import os
 
 import click
@@ -96,7 +98,8 @@ def main(
 
     Note: This script does NOT create plots or update databases.
     """
-    multiprocessing.set_start_method("forkserver", force=True)
+    # Forkserver, with this module imported once for all workers
+    use_forkserver(__name__)
 
     # Verify parfile exists
     if not os.path.exists(parfile):

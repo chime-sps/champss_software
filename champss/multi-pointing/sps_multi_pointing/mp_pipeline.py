@@ -15,6 +15,7 @@ import pandas as pd
 from omegaconf import OmegaConf
 from scheduler.utils import convert_date_to_datetime
 from sps_common.interfaces.multi_pointing import KnownSourceLabel
+from sps_common.mp_start import use_forkserver
 from sps_databases import db_api, db_utils
 from sps_multi_pointing import (
     classifier,
@@ -225,7 +226,8 @@ def cli(
     use_stacks,
 ):
     """Slow Pulsar Search multiple-pointing candidate processing."""
-    multiprocessing.set_start_method("forkserver", force=True)
+    # Forkserver, with this module imported once for all workers
+    use_forkserver(__name__)
     date = convert_date_to_datetime(date)
 
     config = load_config()

@@ -16,6 +16,7 @@ from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
 from prometheus_client import Summary
+from numba import njit
 from ps_processes.utilities.rednoise_fast import rednoise_normalise_into
 from ps_processes.utilities.utilities import rednoise_normalise, rednoise_scale
 from rfi_mitigation.cleaners.periodic import DynamicPeriodicFilter, StaticPeriodicFilter
@@ -127,6 +128,31 @@ def bins_in_ranges(freq_labels, lefts, rights):
     return out
 
 
+# Offset that marks a bin with no source in _square_gather
+OUTSIDE = np.iinfo(np.int16).min
+
+
+@njit(cache=True)
+def _square_gather(power, offsets, work, nan_bins):
+    """
+    work[j] = power[j + offsets[j]] ** 2, 0 where offsets[j] is OUTSIDE, then NaN at
+    nan_bins (sorted, unique, in range): the same as squaring power in place, gathering
+    with np.take, zeroing the bins outside and setting work[nan_bins] = np.nan, in one
+    pass that reads power once.
+    """
+    p = 0
+    for j in range(work.shape[0]):
+        o = offsets[j]
+        if o == OUTSIDE:
+            work[j] = 0
+        else:
+            v = power[j + o]
+            work[j] = v * v
+        if p < nan_bins.shape[0] and nan_bins[p] == j:
+            work[j] = np.nan
+            p += 1
+
+
 class _RowTransformer:
     """
     Per-process FFT plan and buffers for forming one power spectrum at a time.
@@ -152,12 +178,23 @@ class _RowTransformer:
         self.work = np.empty(nbin, dtype=f"float{nbit}")
         self.rednoise_key = None
         self.barycentre = barycentring_mode == "Fourier"
+        self.offsets = None
         if self.barycentre:
             index = fourier_barycentre_index(nbin, beta)
             self.outside = np.flatnonzero(index < 0)
             self.index = np.maximum(index, 0)
+            # The same gather as 2-byte offsets from each bin (|offset| <= |beta| * nbin,
+            # about 105 at most), which _square_gather reads instead of the 8-byte index
+            offsets = index - np.arange(nbin)
+            inside = index >= 0
+            if (
+                real == np.float32
+                and self.work.dtype == np.float32
+                and np.all(np.abs(offsets[inside]) < -OUTSIDE)
+            ):
+                self.offsets = np.where(inside, offsets, OUTSIDE).astype(np.int16)
 
-    def rednoise_into(self, power_spectrum, out, rednoise_config):
+    def rednoise_into(self, power_spectrum, out, rednoise_config, zero_bins=None):
         """
         Red-noise normalise power_spectrum[1:] straight into out[1:], in one pass.
 
@@ -165,6 +202,7 @@ class _RowTransformer:
         Returns (medians, scale) as rednoise_normalise does, or None when this path does
         not apply (not float32, other rednoise options, or a window with no unmasked
         bins); out may then be partly written and must be filled by the caller.
+        zero_bins: sorted, unique indices of out[1:] to set to zero as they are written.
         """
         if (
             power_spectrum.dtype != np.float32
@@ -182,11 +220,40 @@ class _RowTransformer:
             self.rednoise_buf = np.empty(2 * int(scale.max()), dtype=np.float32)
             self.rednoise_key = key
         medians = rednoise_normalise_into(
-            power_spectrum[1:], out[1:], self.rednoise_scale_array, self.rednoise_buf
+            power_spectrum[1:],
+            out[1:],
+            self.rednoise_scale_array,
+            self.rednoise_buf,
+            zero_bins=zero_bins,
         )
         if medians is None:
             return None
         return medians, list(self.rednoise_scale)
+
+    def power_spectrum_masked(self, dts, normalise, nan_bins):
+        """
+        power_spectrum with NaN at nan_bins, as power_spectrum(...)[nan_bins] = np.nan.
+
+        nan_bins: int array, sorted and unique within range for the one-pass path (see
+        valid_bins); otherwise the numpy steps are used.
+        """
+        if self.offsets is None or not valid_bins(nan_bins, self.work.shape[0]):
+            work = self.power_spectrum(dts, normalise)
+            work[nan_bins] = np.nan
+            return work
+        self._fft_abs(dts, normalise)
+        _square_gather(self.power, self.offsets, self.work, nan_bins)
+        return self.work
+
+    def _fft_abs(self, dts, normalise):
+        """|X| of all bins but the last into self.power, with the DC bin zeroed."""
+        n = dts.shape[0]
+        self.fft_in[:n] = dts
+        if n < self.fft_in.shape[0]:
+            self.fft_in[n:] = 0 if normalise else np.median(dts[-4096:])
+        self.fft()
+        np.abs(self.fft_out[:-1], out=self.power)
+        self.power[0] = 0
 
     def power_spectrum(self, dts, normalise):
         """
@@ -214,6 +281,15 @@ class _RowTransformer:
         else:
             self.work[:] = power
         return self.work
+
+
+def valid_bins(bins, n):
+    """Whether bins is a sorted, unique int64 array of indices in [0, n)."""
+    return (
+        isinstance(bins, np.ndarray)
+        and bins.dtype == np.int64
+        and (bins.size == 0 or (bins[0] >= 0 and bins[-1] < n and np.all(np.diff(bins) > 0)))
+    )
 
 
 def _start_worker():
@@ -659,6 +735,14 @@ class PowerSpectraCreation:
 
         # Convert once, not twice per row
         bad_freq_indices = np.asarray(bad_freq_indices, dtype=np.intp)
+        # The birdies as sorted, unique bins, if they are (flag_periodic_rfi makes them
+        # so): then the NaN and the zeros are set inside the one-pass kernels
+        sorted_bad = bad_freq_indices.astype(np.int64)
+        bad_ok = clean_rfi and valid_bins(sorted_bad, target_shape[1])
+        if bad_ok:
+            # For out[1:] in red-noise; bin 0 is set apart
+            zero_rest = sorted_bad[sorted_bad >= 1] - 1
+            bad_has_zero = sorted_bad.size > 0 and sorted_bad[0] == 0
         for dm_index, dts in zip(dm_indices, dm_series_list):
             if normalise:
                 ts_mean = np.mean(dts)
@@ -672,22 +756,38 @@ class PowerSpectraCreation:
             transformer = _row_transformer(
                 padded_length, np.dtype(dts.dtype).str, nbit, beta, barycentring_mode
             )
-            power_spectrum = transformer.power_spectrum(dts, normalise)
-
-            # normalise power spectrum
-            if clean_rfi:
-                power_spectrum[bad_freq_indices] = np.nan
+            if bad_ok:
+                power_spectrum = transformer.power_spectrum_masked(
+                    dts, normalise, sorted_bad
+                )
+            else:
+                power_spectrum = transformer.power_spectrum(dts, normalise)
+                # normalise power spectrum
+                if clean_rfi:
+                    power_spectrum[bad_freq_indices] = np.nan
+            # Whether the birdies of row are already zero
+            zeroed = False
 
             row = power_spectra[dm_index]
             # Whether the normalised spectrum has already been written into row
             in_row = False
             if remove_rednoise:
                 log.debug("Normalising power spectrum with rednoise removal")
-                fast = transformer.rednoise_into(power_spectrum, row, rednoise_config)
+                zero_now = bad_ok and zero_replace
+                fast = transformer.rednoise_into(
+                    power_spectrum,
+                    row,
+                    rednoise_config,
+                    zero_bins=zero_rest if zero_now else None,
+                )
                 if fast is not None:
                     medians, scale = fast
                     row[0] = power_spectrum[0]
                     in_row = True
+                    if zero_now:
+                        if bad_has_zero:
+                            row[0] = 0
+                        zeroed = True
                 else:
                     power_spectrum[1:], medians, scale = rednoise_normalise(
                         power_spectrum[1:], **rednoise_config
@@ -701,7 +801,7 @@ class PowerSpectraCreation:
                     np.nanmedian(power_spectrum[1:]) / np.log(2)
                 )
             result = row if in_row else power_spectrum
-            if clean_rfi:
+            if clean_rfi and not zeroed:
                 if zero_replace:
                     result[bad_freq_indices] = 0
                 else:

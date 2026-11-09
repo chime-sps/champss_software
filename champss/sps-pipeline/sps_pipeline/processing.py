@@ -34,6 +34,7 @@ from scheduler.workflow import (  # docker_swarm_pending_states,
 )
 from sps_pipeline.create_quality_report import create_report_pdf
 from sps_common.interfaces import MultiPointingCandidate
+from sps_common.mp_start import use_forkserver
 from workflow.definitions.work import Work
 from workflow.http.context import HTTPContext
 from sps_databases import db_api, db_utils, models
@@ -437,9 +438,8 @@ def find_all_pipeline_processes(
     date = convert_date_to_datetime(date)
 
     log.setLevel(logging.INFO)
-    import multiprocessing
-
-    multiprocessing.set_start_method("forkserver", force=True)
+    # Forkserver, with this module imported once for all workers
+    use_forkserver(__name__)
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     strat = PointingStrategist(create_db=False)
     if not date:

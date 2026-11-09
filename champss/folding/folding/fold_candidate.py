@@ -1,5 +1,7 @@
 import logging
 import multiprocessing
+
+from sps_common.mp_start import use_forkserver
 import os
 import click
 
@@ -159,7 +161,8 @@ def main(
     if using_workflow:
         date = convert_date_to_datetime(date)
 
-    multiprocessing.set_start_method("forkserver", force=True)
+    # Forkserver, with this module imported once for all workers
+    use_forkserver(__name__)
     db_utils.connect(host=db_host, port=db_port, name=db_name)
 
     # Parse input parameters

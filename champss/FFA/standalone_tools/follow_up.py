@@ -29,6 +29,7 @@ import sps_common.barycenter as barycenter
 from scipy import interpolate
 from sps_pipeline import utils
 from sps_common.constants import TSAMP
+from sps_common.mp_start import use_forkserver
 #from sps_common.interfaces import SinglePointingCandidate_FFA, SearchAlgorithm_FFA
 try:
     import importlib.resources as pkg_resources
@@ -187,5 +188,8 @@ logging.root.addHandler(log_stream)
 log = logging.getLogger(__name__)# import in this way for easy reload
 
 if __name__ == '__main__':
-    multiprocessing.set_start_method('forkserver', force=True)
+    # Forkserver, with this script's heavy imports done once for all workers
+    use_forkserver(
+        "beamformer.skybeam", "sps_pipeline.dedisp", "sps_pipeline.utils", "FFA.FFA_search"
+    )
     main()

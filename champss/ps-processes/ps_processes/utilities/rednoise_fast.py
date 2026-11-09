@@ -24,7 +24,7 @@ from sps_common.fast_select import _kth_and_below
 LN2 = np.log(2)
 
 
-@njit(cache=True)
+@njit(cache=True, error_model="numpy")
 def _nanmedian32(x, start, stop, buf, work):
     """np.nanmedian(x[start:stop]) for float32 x; NaN if there are no finite values."""
     n = 0
@@ -41,7 +41,7 @@ def _nanmedian32(x, start, stop, buf, work):
     return np.float32(lower + upper) / np.float32(2)
 
 
-@njit(cache=True)
+@njit(cache=True, error_model="numpy")
 def _divide_by_slope(x, out, lo, hi, first, last, ln2):
     """out[lo:hi] = x[lo:hi] / (np.linspace(first, last, hi - lo) / ln2), as numpy does."""
     num = hi - lo
@@ -61,9 +61,19 @@ def _divide_by_slope(x, out, lo, hi, first, last, ln2):
         out[lo + i] = np.float32(np.float64(x[lo + i]) / (y / ln2))
 
 
-@njit(cache=True)
-def _rednoise_into(x, out, scale, medians, buf, work, ln2):
+@njit(cache=True, error_model="numpy")
+def _zero_listed(out, zero_idx, p, hi):
+    """Zero out[zero_idx[p:]] below hi (zero_idx sorted); returns the next p."""
+    while p < zero_idx.shape[0] and zero_idx[p] < hi:
+        out[zero_idx[p]] = 0
+        p += 1
+    return p
+
+
+@njit(cache=True, error_model="numpy")
+def _rednoise_into(x, out, scale, medians, buf, work, ln2, zero_idx):
     ps_len = x.shape[0]
+    p = 0  # next of zero_idx; bins are written in increasing order, segment by segment
     start = 0
     old_mid = 0
     old_median = np.float32(1)
@@ -80,12 +90,15 @@ def _rednoise_into(x, out, scale, medians, buf, work, ln2):
             covered = min(mid, ps_len)
             for i in range(covered):
                 out[i] = x[i] / d
+            p = _zero_listed(out, zero_idx, p, covered)
         elif start + bins >= ps_len:
             _divide_by_slope(x, out, old_mid, ps_len, old_median, median, ln2)
             covered = ps_len
+            p = _zero_listed(out, zero_idx, p, covered)
         else:
             _divide_by_slope(x, out, old_mid, mid, old_median, median, ln2)
             covered = max(covered, mid)
+            p = _zero_listed(out, zero_idx, p, covered)
         start += bins
         old_mid = mid
         old_median = median
@@ -94,7 +107,7 @@ def _rednoise_into(x, out, scale, medians, buf, work, ln2):
     return True
 
 
-def rednoise_normalise_into(power_spectrum, out, scale, buf):
+def rednoise_normalise_into(power_spectrum, out, scale, buf, zero_bins=None):
     """
     Red-noise normalise a float32 spectrum into out, as rednoise_normalise would.
 
@@ -108,6 +121,9 @@ def rednoise_normalise_into(power_spectrum, out, scale, buf):
         int64 window widths, from rednoise_scale(len(power_spectrum), b0, bmax).
     buf: np.ndarray
         float32 work space at least twice as long as the widest window.
+    zero_bins: np.ndarray or None
+        Sorted, unique int64 indices of out to set to zero once written (as
+        out[zero_bins] = 0 afterwards would), each while it is still in cache.
 
     Returns
     =======
@@ -117,5 +133,9 @@ def rednoise_normalise_into(power_spectrum, out, scale, buf):
     """
     medians = np.empty(len(scale), dtype=np.float32)
     half = len(buf) // 2
-    ok = _rednoise_into(power_spectrum, out, scale, medians, buf[:half], buf[half:], LN2)
+    if zero_bins is None:
+        zero_bins = np.empty(0, dtype=np.int64)
+    ok = _rednoise_into(
+        power_spectrum, out, scale, medians, buf[:half], buf[half:], LN2, zero_bins
+    )
     return medians if ok else None

@@ -25,3 +25,18 @@ def test_workers_get_preload_and_their_own_random_streams():
     assert len(first_draw) > 1
     # Forked from one server, the workers would share numpy's global state unless reseeded
     assert len(set(first_draw.values())) == len(first_draw)
+
+
+def test_main_module_name(monkeypatch):
+    import types
+
+    from sps_common import mp_start
+
+    script = types.ModuleType("__main__")
+    script.__spec__ = None  # run by path
+    monkeypatch.setitem(sys.modules, "__main__", script)
+    assert mp_start._importable(("__main__", "a.b", "a.b")) == ["a.b"]
+    module = types.ModuleType("__main__")
+    module.__spec__ = types.SimpleNamespace(name="FFA.FFA_cli")  # python -m FFA.FFA_cli
+    monkeypatch.setitem(sys.modules, "__main__", module)
+    assert mp_start._importable(("__main__", "FFA.FFA_cli")) == ["FFA.FFA_cli"]
