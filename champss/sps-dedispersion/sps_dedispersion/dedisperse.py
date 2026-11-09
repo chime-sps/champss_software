@@ -84,6 +84,7 @@ def dedisperse_streaming(
     tsamp=TSAMP,
     shared=False,
     release_input=False,
+    expand_threads=1,
 ):
     """
     Dedisperse the skybeam with a dmtlib FDMT in its streaming ("valid") mode.
@@ -112,6 +113,9 @@ def dedisperse_streaming(
         so input and output are not both held in full (see RowPrefixReleaser). Only for
         spectra in shared memory that nothing reads afterwards: freed samples read as
         zeros. Ignored for other arrays.
+    expand_threads: int
+        For a skybeam of 8-bit codes (skybeam.coded): threads that expand each block's
+        rows to float32, the next block being expanded while the FDMT runs on this one.
     """
     if fdmt.startup_samples > maxDT:
         raise ValueError(
@@ -119,8 +123,40 @@ def dedisperse_streaming(
         )
 
     channels = getattr(skybeam, "channels", None)
+    coded = getattr(skybeam, "coded", None)
     releaser = RowPrefixReleaser(skybeam.spectra) if release_input else None
-    if channels is None:
+    if coded is not None:
+        # 8-bit codes and tables (spectra holds the codes): each block is expanded to
+        # float32 at full width, highest frequency first; releasing frees the codes
+        from beamformer.coded import expand_values_into
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        spectra = skybeam.spectra
+        rows = np.arange(spectra.shape[0]) if channels is None else np.asarray(channels)
+        flipped_rows = skybeam.nchan - 1 - rows
+        # Two full-width buffers: the FDMT reads one while the next block fills the other
+        buffers = [np.zeros((skybeam.nchan, chunk_size), dtype=np.float32) for _ in range(2)]
+        nthreads = max(1, int(expand_threads))
+        bounds = np.linspace(0, len(rows), nthreads + 1).astype(int)
+        groups = [(a, b) for a, b in zip(bounds[:-1], bounds[1:]) if b > a]
+        row_pool = ThreadPoolExecutor(len(groups))
+        prefetcher = ThreadPoolExecutor(1)
+
+        def expand_block(buf, start, stop):
+            tasks = [
+                row_pool.submit(
+                    expand_values_into, coded.codes[a:b], coded.parts[a:b],
+                    coded.params[a:b], coded.rowp[a:b], *coded.layout, start, stop,
+                    buf, flipped_rows[a:b],
+                )  # fmt: skip
+                for a, b in groups
+            ]
+            for task in tasks:
+                task.result()
+            buf[flipped_rows, stop - start :] = 0  # padding of the last block
+            return buf
+    elif channels is None:
         spectra = skybeam.spectra[::-1]  # this returns a view
     else:
         # The skybeam holds only some channels (the rest are zero): each block is built
@@ -130,16 +166,26 @@ def dedisperse_streaming(
         full_block = np.zeros((skybeam.nchan, chunk_size), dtype=spectra.dtype)
 
     ntbin = spectra.shape[1]
+    out_dtype = np.float32 if coded is not None else spectra.dtype
     shape = (len(dt_trials), ntbin - maxDT)
     shm = None
     if shared:
-        dedisp, shm = empty_shared_array(shape, spectra.dtype)
+        dedisp, shm = empty_shared_array(shape, out_dtype)
     else:
-        dedisp = np.zeros(shape, dtype=spectra.dtype)
+        dedisp = np.zeros(shape, dtype=out_dtype)
     block_out = np.empty((len(dt_trials), chunk_size), dtype=np.float32)
 
-    for start in range(0, ntbin, chunk_size):
-        if channels is None:
+    if coded is not None:
+        pending = prefetcher.submit(expand_block, buffers[0], 0, min(chunk_size, ntbin))
+    for k, start in enumerate(range(0, ntbin, chunk_size)):
+        if coded is not None:
+            stop = min(start + chunk_size, ntbin)
+            block = pending.result()
+            if stop < ntbin:
+                pending = prefetcher.submit(
+                    expand_block, buffers[(k + 1) % 2], stop, min(stop + chunk_size, ntbin)
+                )
+        elif channels is None:
             block = spectra[:, start : start + chunk_size]
             stop = start + block.shape[1]
             if block.shape[1] < chunk_size:
@@ -159,6 +205,9 @@ def dedisperse_streaming(
             dedisp[:, first - maxDT : stop - maxDT] = block_out[
                 :, first - start : stop - start
             ]
+    if coded is not None:
+        prefetcher.shutdown()
+        row_pool.shutdown()
 
     return make_time_series(
         dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp, shared_memory=shm

@@ -29,6 +29,7 @@ beamform:
   flatten_bandpass: True
   max_mask_frac: 0.9
   subtract_incoh_beam: null  # Path to incoherent beam .npz file, or null to disable
+  eight_bit: True  # Keep beamformed data as 8-bit L1 codes plus tables: ~5x less memory, same values (falls back to float32 where it cannot)
 dedisp:
   numdms: 40
   maxdm: 1700

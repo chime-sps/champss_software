@@ -72,10 +72,31 @@ py::array_t<DTYPE_F> decode(const py::array_t<uint32_t> &dat_encoded, const ssiz
 }
 
 
+// The quantization levels (0-4) of previously encoded data, without dequantizing:
+// decode(x, n) equals dequant5[decode_codes(x, n)]
+py::array_t<uint8_t> decode_codes(const py::array_t<uint32_t> &dat_encoded, const ssize_t nsamp)
+{
+	uint32_t* datptr = (uint32_t*) dat_encoded.data(0);
+	const ssize_t nframe = dat_encoded.size();
+	const ssize_t dat_size = nframe * sizeof(uint32_t);
+	std::vector<uint8_t> decode_buf(decode_bound(dat_size));
+
+	const ssize_t recovered_samples = huff_decode_kernel(datptr, get_ptr<uint8_t>(decode_buf),
+														nframe, nsamp);
+	assert(recovered_samples == nsamp);
+
+	auto ret = py::array_t<uint8_t>({nsamp,}, {sizeof(uint8_t),});
+	std::memcpy(ret.mutable_data(0), get_ptr<uint8_t>(decode_buf), nsamp * sizeof(uint8_t));
+	return ret;
+}
+
+
 PYBIND11_MODULE(huffman, m) {
-    m.def("encode", &encode, 
+    m.def("encode", &encode,
     							"A function to quantize + huffman compress mean-zero gaussian, unit-variance data");
-    m.def("decode", &decode, 
+    m.def("decode", &decode,
     							"A function to decompress + dequantize previously encoded data");
+    m.def("decode_codes", &decode_codes,
+    							"A function to decompress previously encoded data to its quantization levels (0-4)");
 }
 } // namespace spshuff

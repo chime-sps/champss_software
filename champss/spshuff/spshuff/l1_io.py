@@ -3,6 +3,7 @@ from textwrap import indent
 
 import numpy as np
 from spshuff import decode, encode
+from spshuff.huffman import decode_codes
 from spshuff.huff_utils import (
     check_eof,
     data_dtype,
@@ -287,10 +288,13 @@ class Chunk:
         quantize_now=False,
         shape=None,
         copy=True,
+        codes=False,
     ):
         # copy=False is for callers that own data and hand it over (it is then not copied
-        # if it already has the data type)
-        mydat = data.astype(data_dtype, copy=copy)
+        # if it already has the data type). codes=True keeps data as the uint8
+        # quantization levels (0-4) that decode_codes gives, not dequantized
+        self.codes = codes
+        mydat = data if codes else data.astype(data_dtype, copy=copy)
         self.chunk_header = chunk_header
         nfreq, ntime = self.chunk_header.shape
 
@@ -318,7 +322,11 @@ class Chunk:
         return chunk_dt.itemsize + 2 * summary_dtype.itemsize + 2 * data_dtype.itemsize
 
     @classmethod
-    def from_file(cls, f, shape=None):
+    def from_file(cls, f, shape=None, codes=False):
+        """
+        Read one chunk. With codes=True, data holds the uint8 quantization levels
+        (0-4; the values are huff_utils.dequant5 of them), which needs the native shape.
+        """
         chunk_header = ChunkHeader.from_file(f)
 
         nfreq, ntime = chunk_header.shape
@@ -364,6 +372,11 @@ class Chunk:
         ndat = nfreq * ntime
         indat = np.fromfile(f, count=nenc, dtype=np.uint32)
         # indat = np.zeros(nenc//4,dtype=np.uint32)
+        if codes:
+            if shape is not None and downsample_required:
+                raise ValueError("Quantization levels can only be read at the native shape.")
+            data = decode_codes(indat, ndat).reshape((nfreq, ntime))
+            return cls(chunk_header, means, variance, bad_mask, data, copy=False, codes=True)
         data = decode(indat, ndat)
         data = data.reshape((nfreq, ntime))
 
@@ -498,7 +511,7 @@ def test_chunk():
 
 
 class IntensityFile:
-    def __init__(self, fh, chunks=[], file=None, read_now=False, ds_shape=None):
+    def __init__(self, fh, chunks=[], file=None, read_now=False, ds_shape=None, codes=False):
         """
         The high-level intensity file object. This represents either an in-memory
         chunked intensity file without an optional file reference for reads/writes.
@@ -518,6 +531,8 @@ class IntensityFile:
         self.fh = fh
         self.chunks = chunks.copy()
         self.ds_shape = ds_shape
+        # Read chunks as quantization levels (Chunk.from_file(codes=True))
+        self.codes = codes
 
         if read_now:
             self.read_chunks()
@@ -573,7 +588,7 @@ class IntensityFile:
         assert self.file is not None
 
         if self.has_chunks():
-            this_chunk = Chunk.from_file(self.file, shape=self.ds_shape)
+            this_chunk = Chunk.from_file(self.file, shape=self.ds_shape, codes=self.codes)
             self.chunks.append(this_chunk)
             return this_chunk
         else:
@@ -588,7 +603,7 @@ class IntensityFile:
         assert self.file is not None
 
         while self.has_chunks():
-            this_chunk = Chunk.from_file(self.file, shape=self.ds_shape)
+            this_chunk = Chunk.from_file(self.file, shape=self.ds_shape, codes=self.codes)
             self.chunks.append(this_chunk)
 
     def __getitem__(self, key):
@@ -649,7 +664,7 @@ class IntensityFile:
         return True
 
     @classmethod
-    def from_file(cls, f, shape=None):
+    def from_file(cls, f, shape=None, codes=False):
         """
         Construct an :class:`.IntensityFile` object from a file object.
 
@@ -658,9 +673,11 @@ class IntensityFile:
         :param shape: shape to downsample each chunk if additional downsampling is
             desired
         :type shape: list (nfreq, ntime), optional
+        :param codes: keep each chunk's data as uint8 quantization levels (native shape)
+        :type codes: bool, optional
         """
         fh = FileHeader.from_file(f)
-        int_file = IntensityFile(fh, file=f, ds_shape=shape)
+        int_file = IntensityFile(fh, file=f, ds_shape=shape, codes=codes)
         int_file.read_chunks()
         return int_file
 

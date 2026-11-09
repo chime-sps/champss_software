@@ -275,6 +275,9 @@ class SkyBeam:
         If spectra holds only some channels, their indices out of nchan (row k is
         channel channels[k]); the others are all zero. None (the default) if spectra
         holds every channel. full_spectra() gives the (nchan, ntime) array either way.
+    coded: beamformer.coded.CodedSpectra or None
+        If set, the data are 8-bit codes and tables (the beamformer's eight_bit) and
+        spectra is the codes array (uint8); full_spectra() expands them to float32.
     """
 
     spectra = attrib(validator=instance_of(np.ndarray))
@@ -291,6 +294,7 @@ class SkyBeam:
     pointing_id = attrib(default=None, converter=optional(str), on_setattr=convert)
     nbits = attrib(default=32, converter=int)
     channels = attrib(default=None)
+    coded = attrib(default=None, eq=False, repr=False)
 
     def __attrs_post_init__(self):
         nrow = self.nchan if self.channels is None else len(self.channels)
@@ -354,6 +358,13 @@ class SkyBeam:
 
     def full_spectra(self):
         """The spectra with every channel, (nchan, ntime); a new array if channels is set."""
+        if self.coded is not None:
+            values = self.coded.expand()[0]
+            if self.channels is None:
+                return values
+            full = np.zeros((self.nchan, self.ntime), dtype=np.float32)
+            full[self.channels] = values
+            return full
         if self.channels is None:
             return self.spectra
         full = np.zeros((self.nchan, self.ntime), dtype=self.spectra.dtype)

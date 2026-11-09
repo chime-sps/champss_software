@@ -93,6 +93,7 @@ def run_fdmt(pointing, skybeam, config, num_threads=1):
             dt_trials,
             shared=True,
             release_input=True,
+            expand_threads=int(np.min([num_threads, 8])),
         )
         log.info(
             f"FDMT Dedispersion ({pointing.ra:.2f} {pointing.dec:.2f}) completed with"

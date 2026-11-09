@@ -656,10 +656,25 @@ class StdDevChannelCleaner(Cleaner):
             spectra_trimmed = spectra_work[:, :ntime_trimmed]
             spectra_binned = spectra_trimmed.reshape(nchan, -1, time_bin).mean(axis=-1)
 
+        self.clean_binned(spectra_binned, np.count_nonzero(rfi_mask, axis=1), ntime, channels)
+        # Flag the channels in the shared mask
+        if self.bad_channels is not None:
+            bad = self.bad_channels if channels is None else self.bad_channels[channels]
+            rfi_mask[bad, :] = True
+        shared_spectra.close()
+        shared_mask.close()
+
+    def clean_binned(self, spectra_binned, held_masked_counts, ntime, channels=None):
+        """
+        clean()'s channel decisions from its inputs: spectra_binned, the time-bin means
+        of the held rows (a bin holding a zero is NaN), and held_masked_counts, their
+        masked samples out of ntime. Sets bad_channels (left None if the cleaner skips)
+        and held_masked_counts; flags nothing itself.
+        """
         # Check the fraction of channels that are already heavily flagged (the same
         # values as rfi_mask.mean(axis=1))
         # Masked samples per channel before this cleaner, kept for the caller's totals
-        self.held_masked_counts = np.count_nonzero(rfi_mask, axis=1)
+        self.held_masked_counts = held_masked_counts
         channel_mask_fractions = self.held_masked_counts / ntime
         if channels is not None:
             # Absent channels are all zero (so every bin averages to NaN) and fully masked
@@ -700,8 +715,6 @@ class StdDevChannelCleaner(Cleaner):
         if len(clean_channel_stds) == 0:
             log.error("No clean channels available for statistics - skipping cleaner")
             self.cleaned = True
-            shared_spectra.close()
-            shared_mask.close()
             return
 
         log.debug(
@@ -746,15 +759,9 @@ class StdDevChannelCleaner(Cleaner):
             f"based on normalized std deviation (bounds: [{lower_bound:.3f}, {upper_bound:.3f}])"
         )
 
-        # Flag entire channels in the shared mask; get_mask() gives them as a full mask
+        # get_mask() gives them as a full mask; the caller flags them
         self.bad_channels = bad_channels
-        rfi_mask[bad_channels if channels is None else bad_channels[channels], :] = True
-
         self.cleaned = True
-
-        # Close shared memory handles
-        shared_spectra.close()
-        shared_mask.close()
 
 
 class PowerSpectrumCleaner(Cleaner):

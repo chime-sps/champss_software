@@ -154,6 +154,18 @@ class RFIPipeline:
         shared_mask, close_mask = attach_shared_memory(mask_shared_name)
         rfi_mask_full = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
         rfi_mask = rfi_mask_full[:, current_slice]
+        self.clean_arrays(spectra, rfi_mask, spectra_shape, channels=channels, nchan=nchan)
+        release_shared_memory(shared_spectra, close_spectra)
+        release_shared_memory(shared_mask, close_mask)
+
+
+    def clean_arrays(self, spectra, rfi_mask, spectra_shape, channels=None, nchan=None):
+        """
+        clean() on arrays: spectra and rfi_mask are one time slice (all held rows), and
+        rfi_mask is updated in place; spectra_shape is the whole spectra's shape (only
+        its number of rows is used). The beamformer's 8-bit path passes slices it has
+        expanded from codes.
+        """
         # The channels of the arrays worked on below, if they hold only some of them
         held = channels
         if channels is not None:
@@ -336,8 +348,6 @@ class RFIPipeline:
         if channels is not None and held is None:
             # The cleaners only add to the mask; the spectra are not changed
             held_mask[:] = rfi_mask[channels]
-        release_shared_memory(shared_spectra, close_spectra)
-        release_shared_memory(shared_mask, close_mask)
 
 
 class RFIGlobalPipeline:

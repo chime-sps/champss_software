@@ -13,10 +13,11 @@ import numpy as np
 from astropy.time import Time, TimeDelta
 from attr.validators import deep_iterable, instance_of
 from numba import njit
+from beamformer import coded
 from beamformer.utilities.common import get_data_list
 from numpy._typing import ArrayLike
 from rfi_mitigation.pipeline import RFIPipeline, RFIGlobalPipeline
-from rfi_mitigation.utilities.fast_stats import _pairwise_sum
+from rfi_mitigation.utilities.fast_stats import _pairwise_sum, binned_means_zero_as_nan
 from scipy import linalg
 from scipy.signal import detrend
 from sps_common.constants import TSAMP
@@ -81,6 +82,27 @@ def detrend_masked_row_fast(row, valid, bp_step):
             seg[idx] = y - a @ coef
     out[~valid] = 0
     return out.reshape(n)
+
+
+
+def detrend_coefficients(row, valid, bp_step):
+    """
+    The least-squares fits detrend_masked_row_fast subtracts: a list of (lo, hi, c0, c1)
+    per segment [lo, hi) of row with valid samples, the fit being c0 * (i + 1) / (hi - lo)
+    + c1 at sample lo + i (the same lstsq calls on the same arrays, float32 coefficients).
+    """
+    n = row.shape[0]
+    dtype = row.dtype.char
+    bp = np.sort(np.unique(np.concatenate(np.atleast_1d(0, np.arange(0, n, bp_step), n))))
+    out = []
+    column = row.reshape(n, 1)
+    for lo, hi in zip(bp[:-1], bp[1:]):
+        idx = np.flatnonzero(valid[lo:hi])
+        if idx.size:
+            a = _design_matrix(hi - lo, dtype)[idx]
+            coef = linalg.lstsq(a, column[lo:hi][idx])[0]
+            out.append((int(lo), int(hi), coef[0, 0], coef[1, 0]))
+    return out
 
 
 def detrend_masked_row(
@@ -258,6 +280,54 @@ def _scale_chunk_into(data, scale, means, good, spectra, mask, start, rows):
             mask[k, start + j] = v <= 0 or not np.isfinite(v) or good[c, j] == 0
 
 
+def chunk_placements(sps_chunks, utc_start, beam_start_idx, beam_end_idx, ntime):
+    """
+    Where each chunk of a file goes in the beam's spectra: yields (chunk, chunk_slice,
+    spec_slice), the chunk's samples chunk_slice going to the spectra's columns
+    spec_slice, in fpga0 order, for the chunks that overlap [beam_start_idx,
+    beam_end_idx) and the spectra.
+    """
+    subfiles = []
+    last_fpga0 = 0
+    last_nfreq = 0
+    for i, chunk in enumerate(sorted(sps_chunks, key=lambda x: x.chunk_header.fpga0)):
+        chunk_header = chunk.chunk_header
+        if i == 0:
+            subfiles.append([chunk])
+            last_fpga0 = chunk_header.fpga0
+            last_nfreq = chunk_header.nfreq
+            continue
+        not_contiguous = (
+            round((chunk_header.fpga0 - last_fpga0) * 2.56e-6 / TSAMP) != 1024
+        )
+        different_nchan = chunk_header.nfreq != last_nfreq
+        if not_contiguous or different_nchan:
+            subfiles.append([chunk])
+        else:
+            subfiles[-1].extend([chunk])
+        last_fpga0 = chunk_header.fpga0
+        last_nfreq = chunk_header.nfreq
+    utc_start_obj = Time(utc_start, format="unix", scale="utc")
+    for subfile in subfiles:
+        for chunk in subfile:
+            current_time = Time(
+                chunk.chunk_header.frame0_nano * 1e-9, format="unix", scale="utc"
+            ) + TimeDelta(0.0, chunk.chunk_header.fpga0 * 2.56e-6, format="sec")
+            start_idx = round((current_time - utc_start_obj).to_value("sec") / TSAMP)
+            end_idx = start_idx + chunk.chunk_header.ntime
+            actual_start_idx = max(start_idx, beam_start_idx, 0)
+            actual_end_idx = min(end_idx, beam_end_idx, ntime)
+            if (actual_end_idx - actual_start_idx) < 1:
+                continue
+            start_offset = actual_start_idx - start_idx
+            end_offset = actual_end_idx - end_idx
+            yield (
+                chunk,
+                slice(start_offset, chunk.chunk_header.ntime + end_offset),
+                slice(actual_start_idx, actual_end_idx),
+            )
+
+
 def _chunk_summaries(path):
     """
     The channel count, means and variances of every chunk of an L1 intensity file,
@@ -383,6 +453,45 @@ def _flatten_or_clear_row(row, mask, buf, block, zero_masked):
     return 2, nmask
 
 
+
+@njit(cache=True, error_model="numpy")
+def _flatten_stats(row, mask, buf, block):
+    """
+    _flatten_or_clear_row(zero_masked=False) without changing the row: returns (status,
+    masked, mean, std), status 0 if fully masked, 1 if it would clear the row, 2 if it
+    would flatten the non-zero values to (value - mean) / std. Same arithmetic.
+    """
+    n = row.shape[0]
+    nmask = 0
+    for i in range(n):
+        nmask += mask[i]
+    zero = np.float32(0)
+    if nmask == n:
+        return 0, n, zero, zero
+    has_nan = False
+    vmax = np.float32(-np.inf)
+    nz = 0
+    for i in range(n):
+        v = row[i]
+        if np.isnan(v):
+            has_nan = True
+        elif v > vmax:
+            vmax = v
+        if v != 0:
+            buf[nz] = v
+            nz += 1
+    if nmask / n > 0.75 or has_nan or vmax == 0:
+        return 1, n, zero, zero
+    total = _blocked_sum(buf, nz, block)
+    mean = np.float32(np.float64(total) / nz)
+    mean_in_std = total / np.float32(nz)
+    for k in range(nz):
+        d = buf[k] - mean_in_std
+        buf[k] = d * d
+    std = np.sqrt(np.float32(np.float64(_blocked_sum(buf, nz, block)) / nz))
+    return 2, nmask, mean, std
+
+
 # Work buffers of _flatten_or_clear_row, per row length
 _ROW_BUFFERS = {}
 
@@ -463,6 +572,16 @@ class SkyBeamFormer:
 
     active_beams: List[int]
         The list of beam columns to be used for beamforming from 0 to 3. Default [0, 1, 2, 3]
+
+    eight_bit: bool
+        Keep the beamformed data as the L1 data's 8-bit codes plus small tables
+        (beamformer.coded) instead of float32 spectra and a bool mask, about 5 times
+        less memory; fill, detrending, normalisation and flattening become table updates.
+        Used for the configured layout (held channels, one median block per beam,
+        detrending with the median added, flattening, 32-bit, no incoherent beam
+        subtraction); otherwise, or if the files' chunks cannot be held so, the float
+        path is used. The values are the float path's, bit for bit (see
+        beamformer.coded). Default = False (the pipeline's configuration turns it on)
     """
 
     basepath = attr.ib(default="./", validator=instance_of(str))
@@ -493,6 +612,7 @@ class SkyBeamFormer:
     rfi_global_pipeline = attr.ib(init=False)
     max_mask_frac = attr.ib(default=1.0, validator=instance_of(float))
     subtract_incoh_beam = attr.ib(default=None)
+    eight_bit = attr.ib(default=False, validator=instance_of(bool))
 
     @extn.validator
     def _validate_extension(self, attribute, value):
@@ -619,6 +739,15 @@ class SkyBeamFormer:
                 " no data in any chunk"
             )
         spectra_shape = (nchan - n_absent, active_pointing.ntime)
+        if self._codes_apply(channels, beam_slices):
+            result = self._form_skybeam_coded(
+                pool, active_pointing, data_list, beam_slices, beams_start_idx,
+                beams_end_idx, utc_start, channels, nchan,
+            )  # fmt: skip
+            if result is not None:
+                pool.close()
+                pool.join()
+                return result
 
         def masked_fraction():
             """Masked fraction of the full layout: absent channels are fully masked."""
@@ -1139,6 +1268,369 @@ class SkyBeamFormer:
                 "RFI mask is empty, this implies skybeam has not been formed"
             )
 
+    def read_to_coded(
+        self,
+        spec,
+        channel_downsampling_factor,
+        utc_start,
+        file_name,
+        beam_start_idx,
+        beam_end_idx,
+        channels=None,
+    ):
+        """
+        read_to_shared_spectra into 8-bit codes and tables (beamformer.coded; spec from
+        coded.allocate_shared) instead of float32 spectra and a bool mask: the same
+        placement, values and mask.
+
+        Returns the spectra slices written, as read_to_shared_spectra does. Raises
+        coded.OverlappingChunks if the chunks cannot be held in the codes' layout.
+        """
+        try:
+            with open(file_name, "rb") as f:
+                int_file = l1_io.IntensityFile.from_file(
+                    f, shape=(16384 // channel_downsampling_factor, None), codes=True
+                )
+                sps_chunks = int_file.get_chunks()
+        except IndexError:
+            log.error(f"File {file_name} defect.")
+            return []
+        cs = coded.attach(spec)
+        nrow, ntime = cs.shape
+        nchan = nrow if channels is None else 16384 // channel_downsampling_factor
+        if nchan != sps_chunks[0].chunk_header.nfreq:
+            log.error("Shape mismatch between spectra and file.")
+            return []
+        rows = np.arange(nchan) if channels is None else np.asarray(channels, dtype=np.int64)
+        # Pieces of this file already started inside each block: the next is part 2
+        starts_inside = {}
+        spec_slices = []
+        for chunk, chunk_slice, spec_slice in chunk_placements(
+            sps_chunks, utc_start, beam_start_idx, beam_end_idx, ntime
+        ):
+            block = int(np.searchsorted(cs.bstart, spec_slice.start, side="right") - 1)
+            first_part = 1 + starts_inside.get(block, 0)
+            if spec_slice.start != cs.bstart[block]:
+                starts_inside[block] = first_part
+            conflicts = coded.codes_chunk_into(
+                chunk.data[:, chunk_slice],
+                np.sqrt(chunk.variance),
+                chunk.means,
+                chunk.bad_mask[:, chunk_slice],
+                cs.codes,
+                cs.parts,
+                cs.bstart,
+                spec_slice.start,
+                rows,
+                first_part,
+            )
+            if conflicts:
+                raise coded.OverlappingChunks(
+                    f"{file_name}: chunks overlap at column {spec_slice.start}"
+                )
+            spec_slices.append(spec_slice)
+        return spec_slices
+
+    def coded_column_max(self, spec, t0, t1):
+        """spectra.max(0) of the float spectra over columns t0:t1, from codes."""
+        cs = coded.attach(spec)
+        out = np.full(t1 - t0, -np.inf, dtype=np.float32)
+        coded.column_max(cs.codes, cs.parts, cs.bstart, t0, t1, out)
+        return out
+
+    def coded_count_masked(self, spec, row):
+        return coded.count_masked(coded.attach(spec).codes[row : row + 1])
+
+    def coded_clean_slice(self, spec, channels, nchan, current_slice):
+        """The chunk cleaners on one slice, as RFIPipeline.clean does on the float spectra."""
+        cs = coded.attach(spec)
+        values, mask = cs.expand(t0=current_slice.start, t1=current_slice.stop, raw_masked=True)
+        self.rfi_pipeline.clean_arrays(values, mask, cs.shape, channels=channels, nchan=nchan)
+        coded.set_masked(cs.codes, mask, current_slice.start)
+
+    def coded_fill_norm_flatten(self, spec, beam_slices, time_bin, row):
+        """
+        For one channel row: fill and detrend each beam (fill_and_norm_shared_spectra),
+        normalise the beams (norm_channels_to_beam) and flatten the row
+        (zero_replace_shared_spectra with flatten_bandpass), recorded in the row's
+        tables; the values then expand to exactly the float path's.
+
+        The values after each step are the previous ones put through that step's float32
+        operation, so after one expansion of the filled row they are kept in a work row
+        and updated in place. From it also come the stddev cleaner's inputs (time-bin
+        means, masked count) and the second flattening (masked samples zeroed, then
+        flattened again) as it will be if the stddev cleaner leaves this row alone.
+
+        Returns a dict: masked, fully (zero_replace_shared_spectra's counts), binned,
+        status2, mean2, std2.
+        """
+        cs = coded.attach(spec)
+        params = cs.params[row]
+        values, mask = cs.expand(row)
+        values, mask = values[0], mask[0]
+        # Fill and detrend each beam, from its loaded values
+        for beam_slice in beam_slices:
+            g0, g1 = cs.blocks_in(beam_slice.start, beam_slice.stop)
+            v, m = values[beam_slice], mask[beam_slice]
+            if m.all():
+                # fill_and_norm_shared_spectra zeroes it
+                params[g0:g1, coded.FILL] = 0
+                continue
+            median = masked_median(v, m)
+            if median is None:
+                raise ValueError("Unexpected: no unmasked values for the median.")
+            params[g0:g1, coded.MEDIAN] = median
+            params[g0:g1, coded.FILL] = median
+            with _blas_single_thread():
+                fits = detrend_coefficients(v, ~m, self.detrend_nsamp)
+            for lo, hi, c0, c1 in fits:
+                h0, h1 = cs.blocks_in(beam_slice.start + lo, beam_slice.start + hi)
+                params[h0:h1, coded.C0] = c0
+                params[h0:h1, coded.C1] = c1
+        # The filled values; from here on the work row is updated as each step would be
+        coded.expand_row(
+            cs.codes[row], cs.parts[row], params, cs.rowp[row], *cs.layout,
+            0, cs.shape[1], values, mask, False,
+        )  # fmt: skip
+        if self.beam_to_normalise is not None:
+            medians = [np.median(values[s]) for s in beam_slices]
+            norm = medians[self.beam_to_normalise]
+            if norm != 0:
+                for b, beam_slice in enumerate(beam_slices):
+                    if b != self.beam_to_normalise and medians[b] != 0:
+                        g0, g1 = cs.blocks_in(beam_slice.start, beam_slice.stop)
+                        factor = norm / medians[b]  # float32, as in norm_channels_to_beam
+                        params[g0:g1, coded.FACTOR] = factor
+                        params[g0:g1, coded.FILL] *= factor
+                        values[beam_slice] *= factor
+        n = values.shape[0]
+        buf = _ROW_BUFFERS.get(n)
+        if buf is None:
+            buf = _ROW_BUFFERS[n] = np.empty(n, dtype=np.float32)
+        status, masked, mean, std = _flatten_stats(values, mask, buf, np.getbufsize())
+        result = dict(masked=int(masked), fully=int(masked == n))
+        if status == 1:
+            # Cleared: all zero and masked
+            params[:, coded.FILL] = 0
+            codes = cs.codes[row]
+            codes[codes != coded.NO_DATA] |= coded.MASKED_BIT
+            values[:] = 0
+            mask[:] = True
+        elif status == 2:
+            cs.rowp[row, coded.MEAN1] = mean
+            cs.rowp[row, coded.STD1] = std
+            fill = params[:, coded.FILL]
+            nonzero = fill != 0
+            fill[nonzero] = (fill[nonzero] - mean) / std
+            nonzero = values != 0
+            values[nonzero] = (values[nonzero] - mean) / std
+        # The stddev cleaner's inputs: the flattened row, as it bins the shared spectra
+        result["binned"] = binned_means_zero_as_nan(values[None], time_bin)[0]
+        # The second flattening if this row is not flagged: masked samples zeroed
+        values[mask] = 0
+        status2, masked2, mean2, std2 = _flatten_stats(values, mask, buf, np.getbufsize())
+        result.update(status2=int(status2), mean2=mean2, std2=std2)
+        return result
+
+    def coded_apply_second_flatten(self, cs, row, status2, mean2, std2, flagged):
+        """
+        The second zero replacement of one row (masked samples zero, then flatten), from
+        coded_fill_norm_flatten's statistics; a row the stddev cleaner flagged is fully
+        masked. Returns zero_replace_shared_spectra's (masked, fully masked).
+        """
+        n = cs.shape[1]
+        cs.params[row][:, coded.FILL] = 0
+        codes = cs.codes[row]
+        if flagged or status2 == 1:
+            codes[codes != coded.NO_DATA] |= coded.MASKED_BIT
+            return n, 1
+        if status2 == 2:
+            cs.rowp[row, coded.MEAN2] = mean2
+            cs.rowp[row, coded.STD2] = std2
+        masked = int(coded.count_masked(codes[None]))
+        return masked, int(masked == n)
+
+    def _form_skybeam_coded(
+        self, pool, active_pointing, data_list, beam_slices, beams_start_idx,
+        beams_end_idx, utc_start, channels, nchan,
+    ):  # fmt: skip
+        """
+        form_skybeam on 8-bit codes and tables (see eight_bit). Returns what
+        form_skybeam does, or None if the files' chunks cannot be held so (the caller
+        then uses the float path).
+        """
+        nrow = len(channels)
+        ntime = active_pointing.ntime
+        n_absent = nchan - nrow
+        # As the float path's slicing does, beams end at the spectra's end
+        beam_slices = [slice(min(s.start, ntime), min(s.stop, ntime)) for s in beam_slices]
+        bstart = coded.block_starts(ntime, beam_slices)
+        seg_start, seg_npts = coded.segments(bstart, beam_slices, self.detrend_nsamp)
+        spec, blocks = coded.allocate_shared(nrow, bstart, seg_start, seg_npts)
+        codes_shared = blocks[0]
+
+        def free(blocks):
+            coded.detach([b.name for b in blocks])
+            for b in blocks:
+                b.close()
+                b.unlink()
+
+        log.info(f"Created 8-bit arrays ({nrow} x {ntime} codes, {len(bstart) - 1} blocks).")
+        files = [
+            [file, beam_start_idx, beam_end_idx]
+            for (beam, beam_start_idx, beam_end_idx) in zip(data_list, beams_start_idx, beams_end_idx)
+            for file in beam
+        ]
+        try:
+            raw_spec_slices = pool.starmap(
+                partial(self.read_to_coded, spec, 16384 // nchan, utc_start, channels=channels),
+                files,
+            )
+        except coded.OverlappingChunks as e:
+            log.warning(f"{e}; using the float path.")
+            free(blocks)
+            return None
+        cs = coded._arrays(spec, blocks)
+
+        step = -(-ntime // max(len(raw_spec_slices), 1))
+        step = max(step, coded.BLOCK)
+        bounds = [(t0, min(t0 + step, ntime)) for t0 in range(0, ntime, step)]
+        column_max = np.concatenate(
+            pool.starmap(partial(self.coded_column_max, spec), bounds)
+        )
+        if n_absent:
+            column_max = np.maximum(column_max, 0)
+        data_fraction = np.count_nonzero(column_max) / ntime
+        log.info(f"Data fraction: {data_fraction}")
+        rows = range(nrow)
+
+        def total_masked():
+            return int(sum(pool.map(partial(self.coded_count_masked, spec), rows)))
+
+        def masked_fraction_of(masked):
+            return (masked + n_absent * ntime) / (nchan * ntime)
+
+        if self.min_data_frac > data_fraction:
+            log.error(f"Data Fraction below {self.min_data_frac}")
+            del cs
+            free(blocks[1:])
+            return None, codes_shared
+        raw_spec_slices = [s for slices in raw_spec_slices for s in slices]
+        log.info("Finished loading.")
+
+        if self.run_rfi_mitigation:
+            log.info(
+                "Start RFI cleaning. Current Masking fraction ="
+                f" {masked_fraction_of(total_masked()):.4f}"
+            )
+            log.info(f"Spectra are split into {len(raw_spec_slices)} chunks for RFI cleaning.")
+            pool.map(partial(self.coded_clean_slice, spec, channels, nchan), raw_spec_slices)
+            log.info(
+                "RFI cleaning finished. New masking Fraction:"
+                f" {masked_fraction_of(total_masked()):.4f}"
+            )
+        log.info("Start filling and normalization.")
+        steps = pool.map(partial(self.coded_fill_norm_flatten, spec, beam_slices, 1024), rows)
+        results = [(s["masked"], s["fully"]) for s in steps]
+        log.info("Finished filling, normalization and zero replacement.")
+
+        global_stddev = (
+            self.run_rfi_mitigation
+            and self.rfi_global_pipeline is not None
+            and self.rfi_global_pipeline.apply_stddev_filter
+        )
+        if global_stddev:
+            from rfi_mitigation.cleaners.cleaners import StdDevChannelCleaner
+
+            log.info("Starting global RFI cleaning on zero-filled dataset.")
+            pre_global = sum(m for m, _ in results)
+            log.info(f"Pre-global-clean masking Fraction: {masked_fraction_of(pre_global):.4f}")
+            binned = np.array([s["binned"] for s in steps])
+            counts = np.array([m for m, _ in results])
+            cleaner = StdDevChannelCleaner((nchan, ntime))
+            cleaner.clean_binned(binned, counts, ntime, channels)
+            if cleaner.bad_channels is not None:
+                held_bad = cleaner.bad_channels[channels]
+                post_global = int(counts.sum() + (ntime - counts[held_bad]).sum())
+            else:
+                held_bad = np.zeros(nrow, dtype=bool)
+                post_global = int(counts.sum())
+            log.info(
+                "Global RFI cleaning finished. New masking Fraction:"
+                f" {masked_fraction_of(post_global):.4f}"
+            )
+            log.info("Re-running zero replacement after global RFI cleaning")
+            # Its statistics were computed with the first, for rows left unflagged
+            results = [
+                self.coded_apply_second_flatten(
+                    cs, r, s["status2"], s["mean2"], s["std2"], bool(held_bad[r])
+                )
+                for r, s in zip(rows, steps)
+            ]
+            log.info("Zero replacement complete")
+
+        fully_masked = sum(f for _, f in results)
+        log.info(
+            "Fraction of completely masked channels:"
+            f" {((fully_masked + n_absent) / nchan):.3f}"
+        )
+        mask_fraction = masked_fraction_of(sum(m for m, _ in results))
+        if self.update_db:
+            log.info("Updating Database")
+            self.update_database(active_pointing.obs_id, mask_fraction, utc_start)
+        if self.max_mask_frac < mask_fraction:
+            log.error(f"Mask Fraction above {self.max_mask_frac}")
+            del cs
+            free(blocks[1:])
+            return None, codes_shared
+        # The tables are small: keep private copies and free their shared memory; the
+        # codes stay in shared memory, returned for the caller to free
+        result = coded.CodedSpectra(
+            cs.codes, cs.parts.copy(), cs.params.copy(), cs.rowp.copy(), *cs.layout
+        )
+        del cs
+        free(blocks[1:])
+        skybeam = SkyBeam(
+            spectra=result.codes,
+            ra=active_pointing.ra,
+            dec=active_pointing.dec,
+            nchan=nchan,
+            ntime=ntime,
+            channels=channels,
+            maxdm=active_pointing.maxdm,
+            beam_row=active_pointing.beam_row,
+            utc_start=float(utc_start),
+            obs_id=active_pointing.obs_id,
+            nbits=self.nbits,
+            coded=result,
+        )
+        log.info("Beamforming finished.")
+        return skybeam, codes_shared
+
+    def _codes_apply(self, channels, beam_slices):
+        """Whether this configuration and layout can use the 8-bit path."""
+        if not self.eight_bit:
+            return False
+        reasons = []
+        if channels is None or self.subtract_incoh_beam is not None:
+            reasons.append("not the held-channel layout")
+        if self.nbits != 32:
+            reasons.append("nbits is not 32")
+        if not (self.detrend_data and self.add_local_median and self.detrend_nsamp):
+            reasons.append("not detrending with the local median added")
+        elif self.detrend_nsamp % coded.BLOCK:
+            reasons.append("detrend_nsamp is not a multiple of 1024")
+        if not self.flatten_bandpass:
+            reasons.append("flatten_bandpass is off")
+        if any((s.stop - s.start) // self.masking_timescale > 1 for s in beam_slices):
+            reasons.append("more than one median block per beam")
+        if self.beam_to_normalise is not None and not 0 <= self.beam_to_normalise < len(beam_slices):
+            reasons.append("beam_to_normalise is not one of the beams")
+        if reasons:
+            log.warning("8-bit beamforming not used: " + "; ".join(reasons))
+            return False
+        return True
+
     def read_to_shared_spectra(
         self,
         spectra_shared_name,
@@ -1197,84 +1689,30 @@ class SkyBeamFormer:
         except IndexError:
             log.error(f"File {file_name} defect.")
             return []
-        last_fpga0 = 0
-        last_nfreq = 0
         shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
         spectra = np.ndarray(spectra_shape, dtype=spec_dtype, buffer=shared_spectra.buf)
         shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
         rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
-
         nchan = spectra.shape[0] if channels is None else 16384 // channel_downsampling_factor
         if nchan != sps_chunks[0].chunk_header.nfreq:
             log.error("Shape mismatch between spectra and file.")
             return []
-        # Row k of the spectra holds channel rows[k]
         rows = np.arange(nchan) if channels is None else np.asarray(channels, dtype=np.int64)
-
-        utc_start_obj = Time(utc_start, format="unix", scale="utc")
-        # sort the chunks by start time to loop through
-        for i, chunk in enumerate(
-            sorted(sps_chunks, key=lambda x: x.chunk_header.fpga0)
-        ):
-            chunk_header = chunk.chunk_header
-            if i == 0:
-                subfiles.append([chunk])
-                last_fpga0 = chunk_header.fpga0
-                last_nfreq = chunk_header.nfreq
-                continue
-            # split into different subfiles if nchan is different, or they are not contiguous
-            # (can be tuned to be not contiguous by n chunks and still be processed together)
-            not_contiguous = (
-                round((chunk_header.fpga0 - last_fpga0) * 2.56e-6 / TSAMP) != 1024
-            )
-            different_nchan = chunk_header.nfreq != last_nfreq
-            if not_contiguous or different_nchan:
-                subfiles.append([chunk])
-            else:
-                subfiles[-1].extend([chunk])
-            last_fpga0 = chunk_header.fpga0
-            last_nfreq = chunk_header.nfreq
-
         spec_slices = []
-
-        for subfile in subfiles:
-            for i, chunk in enumerate(subfile):
-                current_time = Time(
-                    subfile[i].chunk_header.frame0_nano * 1e-9,
-                    format="unix",
-                    scale="utc",
-                ) + TimeDelta(
-                    0.0, subfile[i].chunk_header.fpga0 * 2.56e-6, format="sec"
-                )
-                # Expect indices without cuts
-                start_idx = round(
-                    (current_time - utc_start_obj).to_value("sec") / TSAMP
-                )
-                end_idx = start_idx + chunk.chunk_header.ntime
-
-                actual_start_idx = max(start_idx, beam_start_idx, 0)
-                actual_end_idx = min(end_idx, beam_end_idx, spectra_shape[1])
-
-                if (actual_end_idx - actual_start_idx) < 1:
-                    continue
-                else:
-                    start_offset = actual_start_idx - start_idx
-                    end_offset = actual_end_idx - end_idx
-                    spec_slice = slice(actual_start_idx, actual_end_idx)
-                    chunk_slice = slice(
-                        start_offset, chunk.chunk_header.ntime + end_offset
-                    )
-                    _scale_chunk_into(
-                        chunk.data[:, chunk_slice],
-                        np.sqrt(chunk.variance),
-                        chunk.means,
-                        chunk.bad_mask[:, chunk_slice],
-                        spectra,
-                        rfi_mask,
-                        actual_start_idx,
-                        rows,
-                    )
-                    spec_slices.append(spec_slice)
+        for chunk, chunk_slice, spec_slice in chunk_placements(
+            sps_chunks, utc_start, beam_start_idx, beam_end_idx, spectra_shape[1]
+        ):
+            _scale_chunk_into(
+                chunk.data[:, chunk_slice],
+                np.sqrt(chunk.variance),
+                chunk.means,
+                chunk.bad_mask[:, chunk_slice],
+                spectra,
+                rfi_mask,
+                spec_slice.start,
+                rows,
+            )
+            spec_slices.append(spec_slice)
         shared_spectra.close()
         shared_mask.close()
         return spec_slices
