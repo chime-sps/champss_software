@@ -144,6 +144,13 @@ ps:
     stack_nbit: 16
     quant_step: null  # If set, store the monthly stack as compressed 16-bit multiples of this step
     max_quant_days: 32  # Days a quantized monthly stack may hold before it is refused
+    # Store each DM row of the monthly stack only up to its smearing cutoff 1/(2 t_eff), the
+    # intra-channel smearing taken at ref_freq_mhz (600: conservative; the masked band's mean
+    # smearing with a -1.6 spectrum is at ~495 MHz). Applies only with quant_step; not exact
+    # (power above the cutoff is dropped). null stores every bin. See sps_common.freq_cut
+    freq_cut:
+      ref_freq_mhz: 600.0
+      factor: 0.5
     infile_overwrite: False
     readout_stack: True
   ps_search_config:

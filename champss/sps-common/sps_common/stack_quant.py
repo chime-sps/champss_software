@@ -76,16 +76,18 @@ def _unzigzag(z):
 
 
 @njit(cache=True, nogil=True)
-def _encode_row(spectrum, inv_step, offset, limit, z, over):
+def _encode_row(spectrum, inv_step, offset, limit, z, over, keep):
     """
-    zigzag(rint(spectrum * inv_step) - offset) into z, as write_quantized stores it.
+    zigzag(rint(spectrum * inv_step) - offset) into z, as write_quantized stores it,
+    with bins from keep on taken as zero power.
 
     Bins whose code does not fit in 16 bits get 0 and are listed in over. Returns how
     many there are, or -1 if a value is at least limit in size or is not finite.
     """
     n_over = 0
     for j in range(spectrum.shape[0]):
-        r = np.rint(spectrum[j] * inv_step)
+        v = spectrum[j] if j < keep else np.float32(0)
+        r = np.rint(v * inv_step)
         if not abs(r) < limit:
             return -1
         x = np.int64(r) - offset
@@ -188,7 +190,7 @@ def _ordered(executor, tasks, window):
         yield pending.popleft().result()
 
 
-def write_quantized(h5f, spectra, step, num_days, threads=None):
+def write_quantized(h5f, spectra, step, num_days, threads=None, keep=None):
     """
     Write a 2D array of (dm, freq) power, already a sum of rounded days or a single day.
 
@@ -204,6 +206,10 @@ def write_quantized(h5f, spectra, step, num_days, threads=None):
         The number of days in the stack, which sets the expected noise level.
     threads: int or None
         Threads compressing rows (default THREADS); 0 uses the HDF5 filters.
+    keep: array_like or None
+        Number of leading bins to store in each row; the rest are stored as zero power,
+        which compresses to almost nothing (see sps_common.freq_cut). Saved as the
+        "kept bins" dataset. None stores every bin.
     """
     offset = int(round(num_days / step))
     dataset = h5f.create_dataset(
@@ -219,19 +225,25 @@ def write_quantized(h5f, spectra, step, num_days, threads=None):
     nbin = spectra.shape[1] if len(spectra) else 0
     limit = CODE_LIMIT - abs(offset)
     local = _Local()
+    if keep is not None:
+        keep = np.minimum(np.asarray(keep, dtype=np.int64), nbin)
+        if keep.shape != (len(spectra),) or (keep < 0).any():
+            raise ValueError("keep needs one non-negative count per row.")
 
     def encode(i, z, over_buf):
         """Encode row i into z; returns its overflow (bins, codes) or None."""
         spectrum = np.ascontiguousarray(spectra[i], dtype=np.float32)
-        n_over = _encode_row(spectrum, inv_step, offset, limit, z, over_buf)
+        k = nbin if keep is None else int(keep[i])
+        n_over = _encode_row(spectrum, inv_step, offset, limit, z, over_buf, k)
         if n_over < 0:
             raise ValueError(f"Power in row {i} is too large to store at step {step}.")
         if not n_over:
             return None
         over = over_buf[:n_over].copy()
-        return over, np.rint(spectrum[over] * inv_step).astype(np.int32)
+        values = np.where(over < k, spectrum[over], np.float32(0))
+        return over, np.rint(values * inv_step).astype(np.int32)
 
-    def keep(i, overflow):
+    def record(i, overflow):
         if overflow is not None:
             rows.append(np.full(len(overflow[0]), i))
             bins.append(overflow[0])
@@ -259,12 +271,12 @@ def write_quantized(h5f, spectra, step, num_days, threads=None):
             for start, out in _ordered(executor, tasks, 2 * threads):
                 for i, (chunk, overflow) in enumerate(out, start):
                     dataset.id.write_direct_chunk((i, 0), chunk)
-                    keep(i, overflow)
+                    record(i, overflow)
     else:
         z = np.empty(nbin, dtype=np.uint16)
         over_buf = np.empty(nbin, dtype=np.int64)
         for i in range(len(spectra)):
-            keep(i, encode(i, z, over_buf))
+            record(i, encode(i, z, over_buf))
             dataset[i] = z
     h5f.create_dataset(
         "overflow row", data=np.concatenate(rows) if rows else [], dtype="i4"
@@ -275,6 +287,8 @@ def write_quantized(h5f, spectra, step, num_days, threads=None):
     h5f.create_dataset(
         "overflow code", data=np.concatenate(codes) if codes else [], dtype="i8"
     )
+    if keep is not None:
+        h5f.create_dataset("kept bins", data=keep, dtype="i4")
     h5f.attrs["quant_step"] = step
     h5f.attrs["quant_offset"] = offset
 

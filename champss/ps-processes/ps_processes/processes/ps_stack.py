@@ -29,6 +29,7 @@ from ps_processes.utilities.qc import (
 from ps_processes.utilities.utilities import check_in_range, grab_metric_history
 from scipy.stats import median_abs_deviation
 from sps_common.interfaces import PowerSpectra
+from sps_common.freq_cut import freq_cut_settings, stored_freq_cut
 from sps_common.stack_quant import QuantizedStack, quant_bias, round_power
 from sps_databases import db_api
 
@@ -86,6 +87,16 @@ class PowerSpectraStack:
 
     max_lock_age: float
         Maximum age of the stack lock file before it gets ignored. Default = 1800
+
+    freq_cut: dict or None
+        With quant_step, store each DM row of the stack only up to its smearing cutoff
+        (sps_common.freq_cut): optional keys ref_freq_mhz (default 600) and factor
+        (default 0.5). Not exact: power above the cutoff is dropped. Ignored without
+        quant_step. Default = None
+
+    nchan: int or None
+        Number of channels of the pointing, which sets the smearing; needed with
+        freq_cut. The pipeline sets it. Default = None
     """
 
     mode = attribute(default="month")
@@ -103,6 +114,8 @@ class PowerSpectraStack:
     write_when_file_not_found = attribute(default=True, validator=instance_of(bool))
     quant_step = attribute(default=None)
     max_quant_days = attribute(default=32, validator=instance_of(int))
+    freq_cut = attribute(default=None)
+    nchan = attribute(default=None)
 
     @mode.validator
     def _validate_mode(self, attribute, value):
@@ -120,6 +133,15 @@ class PowerSpectraStack:
             64,
             128,
         ], f"The {attribute.name} value must be 16, 32, 64 or 128"
+
+    def freq_cut_settings(self):
+        """
+        The full freq_cut settings for writing (with nchan), or None. The cut applies
+        only to quantized stacks (quant_step set); otherwise it is ignored.
+        """
+        if self.freq_cut is None or self.quant_step is None:
+            return None
+        return freq_cut_settings({**self.freq_cut, "nchan": self.nchan})
 
     def stack(self, pspec):
         """
@@ -218,7 +240,10 @@ class PowerSpectraStack:
                     )
                     os.remove(stack_file_path)
             pspec.write(
-                stack_file_path, nbit=self.stack_nbit, quant_step=self.quant_step
+                stack_file_path,
+                nbit=self.stack_nbit,
+                quant_step=self.quant_step,
+                freq_cut=self.freq_cut_settings(),
             )
             if self.update_db:
                 log.info(
@@ -320,6 +345,7 @@ class PowerSpectraStack:
                         stack_file_path,
                         nbit=self.stack_nbit,
                         quant_step=self.quant_step,
+                        freq_cut=self.freq_cut_settings(),
                     )
                     if self.update_db:
                         self.update_stack_database(pspec, ps_stack_db.pointing_id)
@@ -529,6 +555,13 @@ class PowerSpectraStack:
             assert h5f.attrs.get("quant_step") == self.quant_step, (
                 "The stack on disk and the config do not have the same quant_step."
             )
+            # A stack already cut can only be written with the same cut: above it, it
+            # no longer holds the earlier days
+            on_disk = stored_freq_cut(h5f)
+            assert on_disk is None or on_disk == self.freq_cut_settings(), (
+                f"The stack on disk was cut with {on_disk}, the config gives"
+                f" {self.freq_cut_settings()}."
+            )
             log.info(f"Stacking the {self.mode} power spectra into the current stack")
             if self.quant_step is not None:
                 assert (
@@ -704,7 +737,12 @@ class PowerSpectraStack:
         if os.path.isfile(temp_path):
             log.info(f"Found old temp file {temp_path}. Will remove this file.")
             os.remove(temp_path)
-        pspec.write(temp_path, nbit=self.stack_nbit, quant_step=self.quant_step)
+        pspec.write(
+            temp_path,
+            nbit=self.stack_nbit,
+            quant_step=self.quant_step,
+            freq_cut=self.freq_cut_settings(),
+        )
         log.info(
             f"Deleting the existing {self.mode} power spectra stack '{stack_file_path}'"
         )

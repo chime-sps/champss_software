@@ -25,6 +25,7 @@ from sps_common.interfaces.single_pointing import (
     check_detection_statistic,
 )
 from sps_common.sm_utils import share_array
+from sps_common.freq_cut import freq_cut_settings, kept_bins
 from sps_common.stack_quant import read_quantized, write_quantized
 
 log = logging.getLogger(__name__)
@@ -477,7 +478,7 @@ class PowerSpectra:
                 power_spectra_shared=power_spectra_shared,
             )
 
-    def write(self, filename, nbit=32, quant_step=None):
+    def write(self, filename, nbit=32, quant_step=None, freq_cut=None):
         """
         Write the PowerSpectra class to a hdf5 file.
 
@@ -492,6 +493,11 @@ class PowerSpectra:
         quant_step: float
             If set, store the power spectra as compressed 16-bit integer multiples of
             this step instead of using nbit. See sps_common.stack_quant.
+
+        freq_cut: dict or None
+            With quant_step, store each DM row only up to its smearing cutoff
+            (sps_common.freq_cut): keys nchan, and optionally ref_freq_mhz and factor.
+            The settings are saved as the file's freq_cut_* attributes.
         """
 
         # CAUTION: When changing this method, make sure to adapt .check_file_keys aswell
@@ -503,8 +509,18 @@ class PowerSpectra:
             self.remove_injections()
         with h5py.File(filename, "w") as h5f:
             if quant_step is not None:
-                write_quantized(h5f, self.power_spectra, quant_step, self.num_days)
+                keep = None
+                if freq_cut is not None:
+                    settings = freq_cut_settings(freq_cut)
+                    keep = kept_bins(self.freq_labels, self.dms, **settings)
+                    for key, value in settings.items():
+                        h5f.attrs[f"freq_cut_{key}"] = value
+                write_quantized(
+                    h5f, self.power_spectra, quant_step, self.num_days, keep=keep
+                )
             else:
+                if freq_cut is not None:
+                    raise ValueError("freq_cut needs quant_step.")
                 h5f.create_dataset(
                     "power spectra",
                     data=self.power_spectra,

@@ -627,8 +627,12 @@ def main(
                     **OmegaConf.to_container(config.ps_creation),
                     num_threads=num_threads,
                 )
+                ps_config = OmegaConf.to_container(config.ps)
+                if (ps_config.get("ps_stack_config") or {}).get("freq_cut") is not None:
+                    # The stack's frequency cut depends on the pointing's channels
+                    ps_config["ps_stack_config"]["nchan"] = active_pointing.nchan
                 ps_pipeline = PowerSpectraPipeline(
-                    **OmegaConf.to_container(config.ps),
+                    **ps_config,
                     run_ps_stack=stack,
                     num_threads=num_threads,
                     known_source_threshold=known_source_threshold,
