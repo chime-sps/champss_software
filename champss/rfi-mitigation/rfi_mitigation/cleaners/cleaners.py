@@ -581,6 +581,7 @@ class StdDevChannelCleaner(Cleaner):
         # Channels flagged by clean(); the full-size cleaner_mask is filled from them only
         # when asked for, as clean() flags them in the shared mask directly
         self.bad_channels = None
+        self.held_masked_counts = None
         self._mask_filled = False
 
     def get_mask(self):
@@ -657,7 +658,9 @@ class StdDevChannelCleaner(Cleaner):
 
         # Check the fraction of channels that are already heavily flagged (the same
         # values as rfi_mask.mean(axis=1))
-        channel_mask_fractions = np.count_nonzero(rfi_mask, axis=1) / ntime
+        # Masked samples per channel before this cleaner, kept for the caller's totals
+        self.held_masked_counts = np.count_nonzero(rfi_mask, axis=1)
+        channel_mask_fractions = self.held_masked_counts / ntime
         if channels is not None:
             # Absent channels are all zero (so every bin averages to NaN) and fully masked
             binned = np.full((self.nchan, spectra_binned.shape[1]), np.nan, spectra_binned.dtype)

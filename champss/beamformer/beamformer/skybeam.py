@@ -16,6 +16,7 @@ from numba import njit
 from beamformer.utilities.common import get_data_list
 from numpy._typing import ArrayLike
 from rfi_mitigation.pipeline import RFIPipeline, RFIGlobalPipeline
+from rfi_mitigation.utilities.fast_stats import _pairwise_sum
 from scipy import linalg
 from scipy.signal import detrend
 from sps_common.constants import TSAMP
@@ -314,6 +315,76 @@ def held_channels(files, nchan):
     if live.all() or not live.any():
         return None
     return np.flatnonzero(live)
+
+
+@njit(cache=True)
+def _blocked_sum(a, n, block):
+    """
+    numpy's float32 sum of a[:n] as a whole: it is reduced in blocks of the buffer size,
+    pairwise within each, adding the block sums in order.
+    """
+    acc = a.dtype.type(0)
+    for start in range(0, n, block):
+        acc += _pairwise_sum(a, start, min(block, n - start))
+    return acc
+
+
+# error_model='numpy': a division by zero gives inf or NaN, as in numpy, instead of raising
+@njit(cache=True, error_model="numpy")
+def _flatten_or_clear_row(row, mask, buf, block, zero_masked):
+    """
+    zero_replace_shared_spectra with flatten_bandpass for one channel, in two passes.
+
+    With zero_masked, masked samples are first set to zero, as
+    np.copyto(row, 0, where=mask) would. Returns (status, masked samples after):
+    status 0 if the row is fully masked (left alone), 1 if it was cleared (more than
+    75% masked, a NaN, or a maximum of zero) and 2 if it was normalised: the non-zero
+    values become (value - mean) / std over them, as numpy computes those (mean() and
+    the final step of std() divide in float64 and round; the mean inside std() divides
+    in float32), and zeros become +0.0. buf holds at least len(row) values.
+    """
+    n = row.shape[0]
+    nmask = 0
+    for i in range(n):
+        nmask += mask[i]
+    if nmask == n:
+        if zero_masked:
+            row[:] = 0
+        return 0, n
+    has_nan = False
+    vmax = np.float32(-np.inf)
+    nz = 0
+    for i in range(n):
+        v = row[i]
+        if zero_masked and mask[i]:
+            v = np.float32(0)
+            row[i] = v
+        if np.isnan(v):
+            has_nan = True
+        elif v > vmax:
+            vmax = v
+        if v != 0:
+            buf[nz] = v
+            nz += 1
+    if nmask / n > 0.75 or has_nan or vmax == 0:
+        row[:] = 0
+        mask[:] = True
+        return 1, n
+    total = _blocked_sum(buf, nz, block)
+    mean = np.float32(np.float64(total) / nz)
+    mean_in_std = total / np.float32(nz)
+    for k in range(nz):
+        d = buf[k] - mean_in_std
+        buf[k] = d * d
+    std = np.sqrt(np.float32(np.float64(_blocked_sum(buf, nz, block)) / nz))
+    for i in range(n):
+        v = row[i]
+        row[i] = (v - mean) / std if v != 0 else np.float32(0)
+    return 2, nmask
+
+
+# Work buffers of _flatten_or_clear_row, per row length
+_ROW_BUFFERS = {}
 
 
 @attr.s(slots=True)
@@ -819,64 +890,75 @@ class SkyBeamFormer:
                 nsub_slices,
             )
         log.info("Finished filling and normalization.")
-        pool.map(
-            partial(
-                self.zero_replace_shared_spectra,
-                spectra_shared.name,
-                mask_shared.name,
-                spectra_shape,
-                spec_dtype,
-                flatten_bandpass=self.flatten_bandpass,
-            ),
-            nsub_slices,
+        # If the slices cover every channel, zero replacement's counts of each give the
+        # mask's totals, and it can zero the masked samples itself; otherwise the whole
+        # mask is counted, and zeroed, here
+        covered = spectra_shape[0] % chan_per_nsub == 0
+        zero_replace = partial(
+            self.zero_replace_shared_spectra,
+            spectra_shared.name,
+            mask_shared.name,
+            spectra_shape,
+            spec_dtype,
+            flatten_bandpass=self.flatten_bandpass,
         )
+        results = pool.map(zero_replace, nsub_slices)
+
+        def total_masked():
+            if covered:
+                return sum(masked for masked, _ in results)
+            return int(np.count_nonzero(rfi_mask))
+
+        def masked_fraction_of(masked):
+            """Of the full layout: absent channels are fully masked."""
+            return (masked + n_absent * spectra_shape[1]) / (nchan * spectra_shape[1])
 
         # Global RFI pass: run on full dataset after zero replacement
         # This allows cleaner statistics since masked regions are now filled
         if self.run_rfi_mitigation and self.rfi_global_pipeline is not None:
             log.info("Starting global RFI cleaning on zero-filled dataset.")
+            pre_global = total_masked()
             log.info(
                 "Pre-global-clean masking Fraction:"
-                f" {masked_fraction():.4f}"
+                f" {masked_fraction_of(pre_global):.4f}"
             )
-            self.rfi_global_pipeline.clean(
+            post_global = self.rfi_global_pipeline.clean(
                 spectra_shared.name,
                 mask_shared.name,
                 spectra_shape,
                 spec_dtype,
                 channels=channels,
                 nchan=nchan,
+                initial_masked=pre_global,
             )
             log.info(
                 "Global RFI cleaning finished. New masking Fraction:"
-                f" {masked_fraction():.4f}"
+                f" {masked_fraction_of(post_global):.4f}"
             )
 
-            # Apply the updated mask to the spectra (zero out newly masked regions)
+            # Apply the updated mask to the spectra (zero out newly masked regions):
+            # zero replacement does it per channel when its slices cover them all
             log.info("Applying global RFI mask to spectra")
-            np.copyto(spectra, 0, where=rfi_mask)
+            if not covered:
+                np.copyto(spectra, 0, where=rfi_mask)
 
             # Re-run zero replacement to fill newly masked regions using the existing pool
             log.info("Re-running zero replacement after global RFI cleaning")
-            pool.map(
-                partial(
-                    self.zero_replace_shared_spectra,
-                    spectra_shared.name,
-                    mask_shared.name,
-                    spectra_shape,
-                    spec_dtype,
-                    flatten_bandpass=self.flatten_bandpass,
-                ),
-                nsub_slices,
+            results = pool.map(
+                partial(zero_replace, zero_masked_first=covered), nsub_slices
             )
             log.info("Zero replacement complete")
 
-        completely_masked_channels = np.count_nonzero(rfi_mask.all(axis=1)) + n_absent
+        if covered:
+            fully_masked = sum(rows for _, rows in results)
+        else:
+            fully_masked = int(np.count_nonzero(rfi_mask.all(axis=1)))
+        completely_masked_channels = fully_masked + n_absent
         log.info(
             "Fraction of completely masked channels:"
             f" {(completely_masked_channels / nchan):.3f}"
         )
-        mask_fraction = masked_fraction()
+        mask_fraction = masked_fraction_of(total_masked())
 
         if self.update_db:
             log.info("Updating Database")
@@ -915,6 +997,7 @@ class SkyBeamFormer:
         spec_dtype,
         current_freq_slice,
         flatten_bandpass=False,
+        zero_masked_first=False,
     ):
         """
         Mask zeroes, fully mask channels and flatten bandpass.
@@ -944,6 +1027,16 @@ class SkyBeamFormer:
         flatten_bandpass: bool
             Whether to flatten the bandpass by normalising each channel by subtracting the mean
             and dividing by the standard deviation. Default: False.
+
+        zero_masked_first: bool
+            Set the masked samples of these channels to zero first, as
+            np.copyto(spectra, 0, where=rfi_mask) over them would. Default: False.
+
+        Returns
+        =======
+        (masked, fully_masked): (int, int)
+            Masked samples, and channels masked in every sample, in these channels
+            afterwards.
         """
         shared_spectra, close_spectra = _attach(spectra_shared_name)
         spectra_full = np.ndarray(
@@ -954,12 +1047,41 @@ class SkyBeamFormer:
         shared_mask, close_mask = _attach(mask_shared_name)
         rfi_mask_full = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
         rfi_mask = rfi_mask_full[current_freq_slice, :]
-        mask_fraction = np.count_nonzero(rfi_mask) / rfi_mask.size
-        if mask_fraction == 1.0:
+
+        def counts():
+            result = (
+                int(np.count_nonzero(rfi_mask)),
+                int(np.count_nonzero(rfi_mask.all(axis=1))),
+            )
             _release(shared_spectra, close_spectra)
             _release(shared_mask, close_mask)
-            return
-        _contains_nan = np.isnan(np.min(spectra))
+            return result
+
+        fast = (
+            flatten_bandpass
+            and spectra.shape[0] == 1
+            and spectra.dtype == np.float32
+            and spectra.flags.c_contiguous
+            and rfi_mask.flags.c_contiguous
+        )
+        if zero_masked_first and not fast:
+            np.copyto(spectra, 0, where=rfi_mask)
+        if not fast:
+            mask_fraction = np.count_nonzero(rfi_mask) / rfi_mask.size
+            if mask_fraction == 1.0:
+                return counts()
+        if fast:
+            # The configured case, one channel: the same values in two passes
+            n = spectra.shape[1]
+            buf = _ROW_BUFFERS.get(n)
+            if buf is None:
+                buf = _ROW_BUFFERS[n] = np.empty(n, dtype=np.float32)
+            _, masked = _flatten_or_clear_row(
+                spectra[0], rfi_mask[0], buf, np.getbufsize(), zero_masked_first
+            )
+            _release(shared_spectra, close_spectra)
+            _release(shared_mask, close_mask)
+            return int(masked), int(masked == n)
         _masked_frac = rfi_mask.mean()
         _contains_nan = np.isnan(np.min(spectra))
         _local_max = np.max(spectra)
@@ -986,8 +1108,7 @@ class SkyBeamFormer:
                     # In an earlier version, the mean and std were computed using only the
                     # nonzero values, but nothing should be 0 at this point
                     spectra[:] = (spectra - spectra.mean()) / spectra.std()
-        _release(shared_spectra, close_spectra)
-        _release(shared_mask, close_mask)
+        return counts()
 
     def update_database(self, obs_id, mask_fraction, utc_start):
         """

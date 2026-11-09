@@ -39,16 +39,18 @@ class Shared:
             b.unlink()
 
 
-def run(pipeline_cls, masks, spectra, mask, channels=None, slices=None):
+def run(pipeline_cls, masks, spectra, mask, channels=None, slices=None, **more):
     shared = Shared(spectra, mask)
     try:
         pipeline = pipeline_cls(masks)
         names = (shared.blocks[0].name, shared.blocks[1].name, spectra.shape, "float32")
         extra = {} if channels is None else dict(channels=channels, nchan=NCHAN)
+        extra.update(more)
         with warnings.catch_warnings(), np.errstate(all="ignore"):
             warnings.simplefilter("ignore")
             if slices is None:
-                pipeline.clean(*names, **extra)
+                returned = pipeline.clean(*names, **extra)
+                assert returned == np.count_nonzero(shared.mask)
             else:
                 for s in slices:
                     pipeline.clean(*names, s, **extra)
@@ -124,3 +126,16 @@ def test_expanded_chunks_give_the_same_mask_as_held_rows(monkeypatch):
     assert (direct[0] != mask[channels]).any()
     np.testing.assert_array_equal(direct[0], expanded[0])
     np.testing.assert_array_equal(direct[1], expanded[1])
+
+
+@pytest.mark.parametrize("compact", [False, True])
+def test_global_pipeline_count_with_a_known_initial_count(compact):
+    spectra, mask, channels = make_data(1)
+    spectra[700] *= 3
+    if compact:
+        spectra, mask, extra = spectra[channels], mask[channels], {"channels": channels}
+    else:
+        extra = {}
+    # run() checks the returned count against the mask
+    run(RFIGlobalPipeline, {"stddev": True}, spectra, mask,
+        initial_masked=int(np.count_nonzero(mask)), **extra)

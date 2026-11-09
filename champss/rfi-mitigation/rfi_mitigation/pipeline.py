@@ -380,6 +380,7 @@ class RFIGlobalPipeline:
         spec_dtype,
         channels=None,
         nchan=None,
+        initial_masked=None,
     ):
         """
         Run the requested global cleaners on the full beamformed dataset.
@@ -404,6 +405,15 @@ class RFIGlobalPipeline:
 
         nchan: int
             The full number of channels, with channels.
+
+        initial_masked: int or None
+            The number of masked samples in the shared mask, if the caller knows it;
+            otherwise it is counted.
+
+        Returns
+        -------
+        masked: int
+            The number of masked samples in the shared mask afterwards.
         """
         shared_spectra = shared_memory.SharedMemory(name=spectra_shared_name)
         spectra = np.ndarray(
@@ -417,10 +427,13 @@ class RFIGlobalPipeline:
         n_absent = 0 if channels is None else nchan - len(channels)
         full_size = rfi_mask.size + n_absent * spectra_shape[1]
 
-        def masked_fraction():
-            return (np.count_nonzero(rfi_mask) + n_absent * spectra_shape[1]) / full_size
+        def fraction(masked):
+            return (masked + n_absent * spectra_shape[1]) / full_size
 
-        initial_masked_frac = masked_fraction()
+        if initial_masked is None:
+            initial_masked = int(np.count_nonzero(rfi_mask))
+        masked = initial_masked
+        initial_masked_frac = fraction(masked)
         log.info(f"initial flagged fraction = {initial_masked_frac:g}")
 
         if self.apply_stddev_filter:
@@ -443,8 +456,14 @@ class RFIGlobalPipeline:
                 before_masked_frac = initial_masked_frac
                 if cleaner.bad_channels is not None:
                     bad = cleaner.bad_channels
-                    rfi_mask[bad if channels is None else bad[channels], :] = True
-                masked_frac = masked_fraction()
+                    held_bad = bad if channels is None else bad[channels]
+                    rfi_mask[held_bad, :] = True
+                    # Flagged channels are now fully masked; the others are as counted
+                    counts = cleaner.held_masked_counts
+                    masked = int(counts.sum() + (spectra_shape[1] - counts[held_bad]).sum())
+                elif cleaner.held_masked_counts is not None:
+                    masked = int(cleaner.held_masked_counts.sum())
+                masked_frac = fraction(masked)
                 unique_masked_frac = masked_frac - before_masked_frac
                 log.debug(f"unique masked frac = {unique_masked_frac:g}")
                 log.debug(f"total masked frac = {masked_frac:g}")
@@ -459,7 +478,8 @@ class RFIGlobalPipeline:
                     f"Corresponds to {1000 * stddev_time_per_chan} ms per channel"
                 )
 
-        log.info(f"final flagged fraction = {masked_fraction():g}")
+        log.info(f"final flagged fraction = {fraction(masked):g}")
 
         shared_spectra.close()
         shared_mask.close()
+        return masked
