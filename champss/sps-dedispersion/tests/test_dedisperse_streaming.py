@@ -125,3 +125,23 @@ def test_releasing_the_input_gives_the_same_output_and_frees_it():
         del spectra
         shm.close()
         shm.unlink()
+
+
+@pytest.mark.parametrize("chunk_size", [128, 700])
+def test_compact_skybeam_gives_the_same_output(noise, chunk_size):
+    # Some channels all zero, as the beamformer leaves channels with no data
+    full = noise.copy()
+    rng = np.random.default_rng(4)
+    dead = np.zeros(NCHAN, bool)
+    dead[rng.choice(NCHAN, 25, replace=False)] = True
+    dead[0] = dead[-1] = True
+    full[dead] = 0
+    channels = np.flatnonzero(~dead)
+    dt_trials = np.arange(0, MAX_DT, 3)
+    expected = run(full, chunk_size, dt_trials).dedisp_ts
+    compact = make_skybeam(full[channels].copy())
+    compact.nchan, compact.channels = NCHAN, channels
+    got = dedisperse_streaming(
+        make_fdmt(chunk_size, dt_trials), compact, chunk_size, MAX_DT, dt_trials
+    ).dedisp_ts
+    np.testing.assert_array_equal(got, expected)

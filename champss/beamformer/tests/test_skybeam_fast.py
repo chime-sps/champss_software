@@ -57,9 +57,23 @@ def test_chunk_scaling_matches_numpy():
 
     spectra = np.zeros((nf, 2000), np.float32)
     mask = np.ones((nf, 2000), bool)
-    _scale_chunk_into(data[:, cols], np.sqrt(variance), means, good[:, cols], spectra, mask, 500)
+    _scale_chunk_into(
+        data[:, cols], np.sqrt(variance), means, good[:, cols], spectra, mask, 500,
+        np.arange(nf),
+    )
     np.testing.assert_array_equal(spectra, expected_spectra)
     np.testing.assert_array_equal(mask, expected_mask)
+
+    # Only some channels held: row k takes channel rows[k]
+    rows = np.array([0, 3, 4, 9, 40, 63])
+    held_spectra = np.zeros((len(rows), 2000), np.float32)
+    held_mask = np.ones((len(rows), 2000), bool)
+    _scale_chunk_into(
+        data[:, cols], np.sqrt(variance), means, good[:, cols], held_spectra, held_mask,
+        500, rows,
+    )
+    np.testing.assert_array_equal(held_spectra, expected_spectra[rows])
+    np.testing.assert_array_equal(held_mask, expected_mask[rows])
 
 
 def run_fill(spectra, mask, monkeypatch, fast):

@@ -271,6 +271,10 @@ class SkyBeam:
 
     nbits: int
         The number of bits to save the skybeam formed into a filterbank. Default = 32.
+    channels: np.ndarray or None
+        If spectra holds only some channels, their indices out of nchan (row k is
+        channel channels[k]); the others are all zero. None (the default) if spectra
+        holds every channel. full_spectra() gives the (nchan, ntime) array either way.
     """
 
     spectra = attrib(validator=instance_of(np.ndarray))
@@ -286,9 +290,11 @@ class SkyBeam:
     obs_id = attrib(default=None, converter=optional(str), on_setattr=convert)
     pointing_id = attrib(default=None, converter=optional(str), on_setattr=convert)
     nbits = attrib(default=32, converter=int)
+    channels = attrib(default=None)
 
     def __attrs_post_init__(self):
-        if self.spectra.shape != (self.nchan, self.ntime):
+        nrow = self.nchan if self.channels is None else len(self.channels)
+        if self.spectra.shape != (nrow, self.ntime):
             raise ValueError(
                 "The attribute spectra does not have the right number of channels and"
                 " number of time samples."
@@ -346,6 +352,14 @@ class SkyBeam:
                 " 255."
             )
 
+    def full_spectra(self):
+        """The spectra with every channel, (nchan, ntime); a new array if channels is set."""
+        if self.channels is None:
+            return self.spectra
+        full = np.zeros((self.nchan, self.ntime), dtype=self.spectra.dtype)
+        full[self.channels] = self.spectra
+        return full
+
     def write(self, oname):
         """
         Write spectra to filterbank format.
@@ -362,7 +376,7 @@ class SkyBeam:
             srcname = f"J{srcra[:4]}+{srcdec[:2]}"
         start_mjd = unix_to_mjd(self.utc_start)
         write_to_filterbank(
-            self.spectra,
+            self.full_spectra(),
             self.nchan,
             self.ntime,
             TSAMP,
@@ -387,4 +401,4 @@ class SkyBeam:
         from sps_common.filterbank import append_spectra
 
         with open(oname, "ab") as fb_out:
-            append_spectra(fb_out, self.spectra, nbits=self.nbits, verbose=False)
+            append_spectra(fb_out, self.full_spectra(), nbits=self.nbits, verbose=False)

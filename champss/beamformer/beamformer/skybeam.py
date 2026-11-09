@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import os
 from functools import partial
 from itertools import product
 from multiprocessing import Pool, set_start_method, shared_memory
@@ -236,22 +237,83 @@ def detrend_masked_row(
 
 
 @njit(cache=True)
-def _scale_chunk_into(data, scale, means, good, spectra, mask, start):
+def _scale_chunk_into(data, scale, means, good, spectra, mask, start, rows):
     """
-    Write one chunk's intensities and mask into the spectra from column start on.
+    Write one chunk's intensities and mask into the spectra from column start on; row k
+    of the spectra takes channel rows[k] of the chunk.
 
     The same values as scaling the chunk by scale (the square root of its variance) and
     adding its means in float32, one rounding each, and masking samples that are not
     positive, not finite, or not good in the chunk's own mask; in one pass instead of ten.
     """
-    for c in range(data.shape[0]):
+    for k in range(rows.shape[0]):
+        c = rows[k]
         s = scale[c]
         m = means[c]
         for j in range(data.shape[1]):
             v = data[c, j] * s
             v = v + m
-            spectra[c, start + j] = v
-            mask[c, start + j] = v <= 0 or not np.isfinite(v) or not good[c, j]
+            spectra[k, start + j] = v
+            mask[k, start + j] = v <= 0 or not np.isfinite(v) or good[c, j] == 0
+
+
+def _chunk_summaries(path):
+    """
+    The channel count, means and variances of every chunk of an L1 intensity file,
+    read from the chunk headers without decoding the data (the format of
+    spshuff.l1_io: file header; per chunk a header, means, variances, the packed mask,
+    the encoded length in 32-bit words and the encoded data). Raises IndexError for an
+    empty file, as l1_io.IntensityFile.from_file does.
+    """
+    out = []
+    with open(path, "rb") as f:
+        size = os.fstat(f.fileno()).st_size
+        header = np.frombuffer(f.read(l1_io.file_dt.itemsize), dtype=l1_io.file_dt)
+        if len(header) == 0:
+            raise IndexError(f"{path} is empty")
+        if header[0]["version"] != l1_io.THIS_VERSION:
+            raise ValueError(f"{path} has L1 format version {header[0]['version']}")
+        summary = np.dtype(l1_io.summary_dtype)
+        while size - f.tell() >= l1_io.Chunk.min_size():
+            chunk = np.frombuffer(f.read(l1_io.chunk_dt.itemsize), dtype=l1_io.chunk_dt)[0]
+            nfreq, ntime = int(chunk["nfreq"]), int(chunk["ntime"])
+            means = np.frombuffer(f.read(nfreq * summary.itemsize), dtype=summary)
+            variance = np.frombuffer(f.read(nfreq * summary.itemsize), dtype=summary)
+            f.seek(nfreq * ntime // 8, 1)
+            nenc = int(np.frombuffer(f.read(8), dtype=np.int64)[0])
+            f.seek(nenc * 4, 1)
+            if len(means) != nfreq or len(variance) != nfreq or f.tell() > size:
+                raise ValueError(f"{path} ends inside a chunk")
+            out.append((nfreq, means, variance))
+    return out
+
+
+def held_channels(files, nchan):
+    """
+    The channels to hold in the beamformed spectra: all but those whose mean and variance
+    are zero in every chunk of every file.
+
+    Such a channel's intensities are exactly zero and masked everywhere (zero times the
+    decoded data plus zero, and not positive), the cleaners see it as no data, and the
+    beamformer leaves it zero; so the spectra need not hold it. Returns the sorted channel
+    indices, or None (hold every channel) if any file's chunks are not stored at nchan
+    channels, a file cannot be read here, or no channel would be left out.
+    """
+    live = np.zeros(nchan, dtype=bool)
+    for path in files:
+        try:
+            summaries = _chunk_summaries(path)
+        except IndexError:
+            continue  # the loader skips empty files too
+        except (OSError, ValueError):
+            return None
+        for nfreq, means, variance in summaries:
+            if nfreq != nchan:
+                return None
+            live |= (means != 0) | (variance != 0)
+    if live.all() or not live.any():
+        return None
+    return np.flatnonzero(live)
 
 
 @attr.s(slots=True)
@@ -472,7 +534,25 @@ class SkyBeamFormer:
             extn=self.extn,
             per_beam_list=True,
         )
-        spectra_shape = (active_pointing.nchan, active_pointing.ntime)
+        nchan = active_pointing.nchan
+        # Hold only the channels with data: the others are exactly zero and masked in
+        # every chunk, and stay so (see held_channels). Only with one channel per fill
+        # slice, as a fill over several channels would give them the slice's median.
+        channels = None
+        if self.nsub >= nchan and self.subtract_incoh_beam is None:
+            channels = held_channels([f for beam in data_list for f in beam], nchan)
+        n_absent = 0 if channels is None else nchan - len(channels)
+        if channels is not None:
+            log.info(
+                f"Holding {len(channels)} of {nchan} channels; the other {n_absent} have"
+                " no data in any chunk"
+            )
+        spectra_shape = (nchan - n_absent, active_pointing.ntime)
+
+        def masked_fraction():
+            """Masked fraction of the full layout: absent channels are fully masked."""
+            masked = np.count_nonzero(rfi_mask) + n_absent * spectra_shape[1]
+            return masked / (nchan * spectra_shape[1])
         buffer_size_spectra = int(spectra_shape[0] * spectra_shape[1] * self.nbits / 8)
         spectra_shared = shared_memory.SharedMemory(
             create=True, size=buffer_size_spectra
@@ -503,6 +583,7 @@ class SkyBeamFormer:
                 spec_dtype,
                 16384 // active_pointing.nchan,
                 utc_start,
+                channels=channels,
             ),
             flattened_data_list,
         )
@@ -510,7 +591,11 @@ class SkyBeamFormer:
         # Here I use data fraction as the fraction of time steps which are present at the start.
         # This does not take into account values whether these values
         # are masked or not in the RFI mask.
-        data_fraction = np.count_nonzero(spectra.max(0)) / spectra_shape[1]
+        column_max = spectra.max(0)
+        if n_absent:
+            # The absent channels' zeros take part in the full layout's maximum
+            column_max = np.maximum(column_max, 0)
+        data_fraction = np.count_nonzero(column_max) / spectra_shape[1]
         log.info(f"Data fraction: {data_fraction}")
         if self.min_data_frac > data_fraction:
             mask_shared.close()
@@ -641,7 +726,7 @@ class SkyBeamFormer:
         )
         log.info(
             "Start RFI cleaning. Current Masking fraction ="
-            f" {(np.count_nonzero(rfi_mask) / rfi_mask.size):.4f}"
+            f" {masked_fraction():.4f}"
         )
 
         # For now always use actual file edges
@@ -685,13 +770,15 @@ class SkyBeamFormer:
                     mask_shared.name,
                     spectra_shape,
                     spec_dtype,
+                    channels=channels,
+                    nchan=nchan,
                 ),
                 raw_spec_slices,
             )
 
             log.info(
                 "RFI cleaning finished. New masking Fraction:"
-                f" {(np.count_nonzero(rfi_mask) / rfi_mask.size):.4f}"
+                f" {masked_fraction():.4f}"
             )
         log.info("Start filling and normalization.")
         used_nsub = np.min([self.nsub, spectra_shape[0]])
@@ -750,17 +837,19 @@ class SkyBeamFormer:
             log.info("Starting global RFI cleaning on zero-filled dataset.")
             log.info(
                 "Pre-global-clean masking Fraction:"
-                f" {(np.count_nonzero(rfi_mask) / rfi_mask.size):.4f}"
+                f" {masked_fraction():.4f}"
             )
             self.rfi_global_pipeline.clean(
                 spectra_shared.name,
                 mask_shared.name,
                 spectra_shape,
                 spec_dtype,
+                channels=channels,
+                nchan=nchan,
             )
             log.info(
                 "Global RFI cleaning finished. New masking Fraction:"
-                f" {(np.count_nonzero(rfi_mask) / rfi_mask.size):.4f}"
+                f" {masked_fraction():.4f}"
             )
 
             # Apply the updated mask to the spectra (zero out newly masked regions)
@@ -782,12 +871,12 @@ class SkyBeamFormer:
             )
             log.info("Zero replacement complete")
 
-        completely_masked_channels = np.count_nonzero(rfi_mask.all(axis=1))
+        completely_masked_channels = np.count_nonzero(rfi_mask.all(axis=1)) + n_absent
         log.info(
             "Fraction of completely masked channels:"
-            f" {(completely_masked_channels / rfi_mask.shape[0]):.3f}"
+            f" {(completely_masked_channels / nchan):.3f}"
         )
-        mask_fraction = np.count_nonzero(rfi_mask) / rfi_mask.size
+        mask_fraction = masked_fraction()
 
         if self.update_db:
             log.info("Updating Database")
@@ -804,8 +893,9 @@ class SkyBeamFormer:
             spectra=spectra,
             ra=active_pointing.ra,
             dec=active_pointing.dec,
-            nchan=spectra.shape[0],
+            nchan=nchan,
             ntime=spectra.shape[1],
+            channels=channels,
             maxdm=active_pointing.maxdm,
             beam_row=active_pointing.beam_row,
             utc_start=float(utc_start),
@@ -939,6 +1029,7 @@ class SkyBeamFormer:
         file_name,
         beam_start_idx,
         beam_end_idx,
+        channels=None,
     ):
         """
         Class for reading raw files directly to shared spectra.
@@ -992,9 +1083,12 @@ class SkyBeamFormer:
         shared_mask = shared_memory.SharedMemory(name=mask_shared_name)
         rfi_mask = np.ndarray(spectra_shape, dtype=bool, buffer=shared_mask.buf)
 
-        if spectra.shape[0] != sps_chunks[0].chunk_header.nfreq:
+        nchan = spectra.shape[0] if channels is None else 16384 // channel_downsampling_factor
+        if nchan != sps_chunks[0].chunk_header.nfreq:
             log.error("Shape mismatch between spectra and file.")
             return []
+        # Row k of the spectra holds channel rows[k]
+        rows = np.arange(nchan) if channels is None else np.asarray(channels, dtype=np.int64)
 
         utc_start_obj = Time(utc_start, format="unix", scale="utc")
         # sort the chunks by start time to loop through
@@ -1053,10 +1147,11 @@ class SkyBeamFormer:
                         chunk.data[:, chunk_slice],
                         np.sqrt(chunk.variance),
                         chunk.means,
-                        chunk.bad_mask[:, chunk_slice].astype(bool, copy=False),
+                        chunk.bad_mask[:, chunk_slice],
                         spectra,
                         rfi_mask,
                         actual_start_idx,
+                        rows,
                     )
                     spec_slices.append(spec_slice)
         shared_spectra.close()

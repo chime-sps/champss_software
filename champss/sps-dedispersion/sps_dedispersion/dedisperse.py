@@ -37,7 +37,10 @@ def dedisperse(
         uniform grid set by dm_step. All must be less than maxDT.
     """
 
-    spectra = skybeam.spectra[::-1]  # this returns a view
+    if getattr(skybeam, "channels", None) is not None:
+        spectra = skybeam.full_spectra()[::-1]  # expanded to every channel
+    else:
+        spectra = skybeam.spectra[::-1]  # this returns a view
 
     # Chunking setup
     ntbin = spectra.shape[1]
@@ -115,8 +118,16 @@ def dedisperse_streaming(
             f"FDMT needs {fdmt.startup_samples} startup samples, only dropping {maxDT}"
         )
 
-    spectra = skybeam.spectra[::-1]  # this returns a view
+    channels = getattr(skybeam, "channels", None)
     releaser = RowPrefixReleaser(skybeam.spectra) if release_input else None
+    if channels is None:
+        spectra = skybeam.spectra[::-1]  # this returns a view
+    else:
+        # The skybeam holds only some channels (the rest are zero): each block is built
+        # at full width, highest frequency first, so the FDMT sees exactly what it would
+        spectra = skybeam.spectra
+        flipped_rows = skybeam.nchan - 1 - np.asarray(channels)
+        full_block = np.zeros((skybeam.nchan, chunk_size), dtype=spectra.dtype)
 
     ntbin = spectra.shape[1]
     shape = (len(dt_trials), ntbin - maxDT)
@@ -128,11 +139,17 @@ def dedisperse_streaming(
     block_out = np.empty((len(dt_trials), chunk_size), dtype=np.float32)
 
     for start in range(0, ntbin, chunk_size):
-        block = spectra[:, start : start + chunk_size]
-        stop = start + block.shape[1]
-        if block.shape[1] < chunk_size:
-            # Output samples only depend on earlier input, so padding the end is safe
-            block = np.pad(block, ((0, 0), (0, chunk_size - block.shape[1])))
+        if channels is None:
+            block = spectra[:, start : start + chunk_size]
+            stop = start + block.shape[1]
+            if block.shape[1] < chunk_size:
+                # Output samples only depend on earlier input, so padding the end is safe
+                block = np.pad(block, ((0, 0), (0, chunk_size - block.shape[1])))
+        else:
+            stop = min(start + chunk_size, ntbin)
+            full_block[flipped_rows, : stop - start] = spectra[:, start:stop]
+            full_block[flipped_rows, stop - start :] = 0  # padding of the last block
+            block = full_block
         fdmt.execute(block, out=block_out)
         if releaser is not None:
             # The FDMT keeps what it needs of earlier blocks in its own history

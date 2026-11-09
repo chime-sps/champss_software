@@ -378,6 +378,36 @@ class SpectralKurtosisCleaner(Cleaner):
         # whether to produce plots at different stages of the clean to check validity
         # of SK and median filtering
         self.plot_diagnostics = plot_diagnostics
+        # (start, end, flags per channel) of each chunk cleaned, in order. The full-size
+        # cleaner_mask is filled from these only when asked for; apply_to needs only them
+        self.flagged = []
+        self._mask_filled = False
+
+    def get_mask(self):
+        if not self._mask_filled:
+            for start_idx, end_idx, sk_mask in self.flagged:
+                self.cleaner_mask[:, start_idx:end_idx] = sk_mask[:, np.newaxis]
+            self._mask_filled = True
+        return super().get_mask()
+
+    def get_masked_fraction(self):
+        self.get_mask()
+        return super().get_masked_fraction()
+
+    def apply_to(self, rfi_mask, channels=None):
+        """
+        Add the flagged samples to rfi_mask in place: the same as OR-ing in get_mask(),
+        writing only the flagged rows. With channels, rfi_mask holds only those channels.
+        """
+        if self.nscales > 1:
+            # A later scale overwrites an earlier one in get_mask(), so the flags of
+            # different scales cannot simply be added
+            mask = self.get_mask()
+            np.logical_or(rfi_mask, mask if channels is None else mask[channels], out=rfi_mask)
+            return
+        for start_idx, end_idx, sk_mask in self.flagged:
+            rows = sk_mask if channels is None else sk_mask[channels]
+            rfi_mask[rows, start_idx:end_idx] = True
 
     def summary(self):
         return dict(
@@ -386,28 +416,38 @@ class SpectralKurtosisCleaner(Cleaner):
             nsamp=self.nsamp,
             scales=self.scales,
             nscales=self.nscales,
-            nmasked=self.cleaner_mask.sum(),
+            nmasked=self.get_mask().sum(),
             cleaned=self.cleaned,
         )
 
-    def clean(self, spectra, rfi_mask):
+    def clean(self, spectra, rfi_mask, channels=None):
+        """
+        Find the flagged channels of each chunk; rfi_mask is only read (see apply_to).
+
+        With channels, spectra and rfi_mask hold only those channels of the cleaner's
+        nchan; the others are all zero and fully masked, and are treated exactly as if
+        they were held (their estimator is NaN, so they are never flagged on their own).
+        """
         log.info("Running Spectral Kurtosis cleaner")
-        self.clean_all_scales(spectra, rfi_mask)
+        self.clean_all_scales(spectra, rfi_mask, channels)
         self.cleaned = True
 
-    def clean_all_scales(self, spectra, rfi_mask):
+    def clean_all_scales(self, spectra, rfi_mask, channels=None):
         for s in self.scales:
             log.info(f"scale, M = {s} ({self.ntime // s} chunks)")
-            self.clean_single_scale(s, spectra, rfi_mask)
+            self.clean_single_scale(s, spectra, rfi_mask, channels)
 
-    def clean_single_scale(self, scale: int, spectra, rfi_mask):
+    def clean_single_scale(self, scale: int, spectra, rfi_mask, channels=None):
         n_chan_scrunch = L1_NCHAN / self.nchan
         log.debug(f"Channel downsample factor: {n_chan_scrunch}")
         for ichunk in range(self.ntime // scale):
             start_idx = ichunk * scale
             end_idx = (ichunk + 1) * scale
             spec_chunk = spectra[:, start_idx:end_idx]
-            current_mask_frac = rfi_mask[:, start_idx:end_idx].mean()
+            # The same value as the mean of the full mask; absent channels are all masked
+            masked = np.count_nonzero(rfi_mask[:, start_idx:end_idx])
+            masked += (self.nchan - spectra.shape[0]) * scale
+            current_mask_frac = masked / (self.nchan * scale)
 
             # generalized spectral kurtosis estimator
             # (Nita, Gary & Hellbourg 2017, eq. 5)
@@ -417,6 +457,11 @@ class SpectralKurtosisCleaner(Cleaner):
             n = 96 * n_chan_scrunch
             delta = d * n
             spec_sk = generalised_spectral_kurtosis(spec_chunk, m=scale, delta=delta)
+            if channels is not None:
+                # An all-zero channel's estimator is 0/0
+                held_sk = spec_sk
+                spec_sk = np.full(self.nchan, np.nan, dtype=held_sk.dtype)
+                spec_sk[channels] = held_sk
 
             scl, loc, a, b = get_pdf_transforms(scale, n, d, ret_ab=True)
             # scale the SK spectrum based on the moments
@@ -501,7 +546,7 @@ class SpectralKurtosisCleaner(Cleaner):
                 plot_diagnostic_masked_spectrum(spec_chunk, sk_mask, ichunk)
 
             # update the mask chunk-wise
-            self.cleaner_mask[:, start_idx:end_idx] = sk_mask[:, np.newaxis]
+            self.flagged.append((start_idx, end_idx, sk_mask))
 
 
 class StdDevChannelCleaner(Cleaner):
@@ -558,7 +603,15 @@ class StdDevChannelCleaner(Cleaner):
             cleaned=self.cleaned,
         )
 
-    def clean(self, spectra_shared_name, mask_shared_name, spectra_shape, spec_dtype, time_bin=1024):
+    def clean(
+        self,
+        spectra_shared_name,
+        mask_shared_name,
+        spectra_shape,
+        spec_dtype,
+        time_bin=1024,
+        channels=None,
+    ):
         """
         Flag channels based on anomalous standard deviation across full pointing.
 
@@ -574,6 +627,10 @@ class StdDevChannelCleaner(Cleaner):
             Data type of spectra
         time_bin : int
             Number of time samples to average together. Default: 1024
+        channels : np.ndarray or None
+            If the shared arrays hold only some channels (see RFIPipeline.clean), their
+            indices out of the cleaner's nchan; the others are all zero and fully
+            masked, and give exactly the statistics they would in the full layout.
         """
         from multiprocessing import shared_memory
 
@@ -601,6 +658,13 @@ class StdDevChannelCleaner(Cleaner):
         # Check the fraction of channels that are already heavily flagged (the same
         # values as rfi_mask.mean(axis=1))
         channel_mask_fractions = np.count_nonzero(rfi_mask, axis=1) / ntime
+        if channels is not None:
+            # Absent channels are all zero (so every bin averages to NaN) and fully masked
+            binned = np.full((self.nchan, spectra_binned.shape[1]), np.nan, spectra_binned.dtype)
+            binned[channels] = spectra_binned
+            fractions = np.ones(self.nchan)
+            fractions[channels] = channel_mask_fractions
+            spectra_binned, channel_mask_fractions = binned, fractions
         heavily_flagged_channels = channel_mask_fractions > 0.5
         num_heavily_flagged = heavily_flagged_channels.sum()
         frac_heavily_flagged = num_heavily_flagged / self.nchan
@@ -681,7 +745,7 @@ class StdDevChannelCleaner(Cleaner):
 
         # Flag entire channels in the shared mask; get_mask() gives them as a full mask
         self.bad_channels = bad_channels
-        rfi_mask[bad_channels, :] = True
+        rfi_mask[bad_channels if channels is None else bad_channels[channels], :] = True
 
         self.cleaned = True
 

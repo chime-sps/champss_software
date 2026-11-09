@@ -25,6 +25,15 @@ def known_bad_channels(nchan: int = 16384) -> list:
 
 
 @functools.lru_cache(maxsize=None)
+def known_bad_channel_flags(nchan: int) -> np.ndarray:
+    """The known bad channels as a boolean array over nchan channels; do not modify it."""
+    flags = np.zeros(nchan, dtype=bool)
+    flags[known_bad_channels(nchan)] = True
+    flags.flags.writeable = False
+    return flags
+
+
+@functools.lru_cache(maxsize=None)
 def _known_bad_channels_cached(nchan):
     return tuple(int(c) for c in _known_bad_channels(nchan))
 

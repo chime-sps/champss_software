@@ -286,8 +286,11 @@ class Chunk:
         data,
         quantize_now=False,
         shape=None,
+        copy=True,
     ):
-        mydat = data.astype(data_dtype)
+        # copy=False is for callers that own data and hand it over (it is then not copied
+        # if it already has the data type)
+        mydat = data.astype(data_dtype, copy=copy)
         self.chunk_header = chunk_header
         nfreq, ntime = self.chunk_header.shape
 
@@ -308,7 +311,7 @@ class Chunk:
                 (nfreq, ntime)
             )
         else:
-            self.data = mydat.copy()
+            self.data = mydat.copy() if copy else mydat
 
     @classmethod
     def min_size(cls):
@@ -379,7 +382,8 @@ class Chunk:
                 chunk_header, means2, vars2, bad_mask2, data2_scaled, quantize_now=True
             )
         else:
-            return cls(chunk_header, means, variance, bad_mask, data)
+            # data was just decoded and nothing else holds it
+            return cls(chunk_header, means, variance, bad_mask, data, copy=False)
 
     def to_file(self, f):
         self.chunk_header.to_file(f)
