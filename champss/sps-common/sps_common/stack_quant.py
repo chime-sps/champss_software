@@ -13,11 +13,27 @@ the information content of the stack even when sums are well above 255. Values t
 not fit in 16 bits after this mapping are kept exactly in a sparse overflow list.
 
 Reading these files needs the zstd HDF5 filter, which importing this module registers.
+
+HDF5 runs its filters one chunk at a time, so with the zstandard package rows are instead
+shuffled and compressed (or decompressed and unshuffled) in threads, and the chunks written
+(or read) whole with write_direct_chunk (read_direct_chunk). The chunks are the same bytes
+the filters would make, so the data are stored identically (HDF5 places the chunks in the
+file differently) and readable with or without zstandard.
 """
+
+import os
+import threading
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 
 import hdf5plugin
 import numpy as np
 from numba import njit
+
+try:
+    import zstandard
+except ImportError:  # the HDF5 filters are used instead
+    zstandard = None
 
 CODE_MAX = np.iinfo(np.uint16).max
 # Level 1 gives the same size as 3 on these stacks (noise does not reward effort), faster
@@ -25,6 +41,13 @@ ZSTD_LEVEL = 1
 # Integer work is done in int32, which holds any sum below ~5e8 power at step 0.25
 CODE_LIMIT = 2**30
 READ_BLOCK_ROWS = 32
+# Threads that compress or decompress rows; 0 leaves it to the HDF5 filters
+THREADS = min(8, os.cpu_count() or 1)
+# Rows per threaded task when writing
+WRITE_BLOCK_ROWS = 8
+# HDF5 filter ids: byte shuffle, and the registered zstd filter
+H5Z_SHUFFLE = 2
+H5Z_ZSTD = 32015
 
 
 def quant_bias(step):
@@ -52,7 +75,7 @@ def _unzigzag(z):
 # scale is computed in float64 and stored as float32, as np.multiply does.
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _encode_row(spectrum, inv_step, offset, limit, z, over):
     """
     zigzag(rint(spectrum * inv_step) - offset) into z, as write_quantized stores it.
@@ -75,7 +98,7 @@ def _encode_row(spectrum, inv_step, offset, limit, z, over):
     return n_over
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def _decode_block(raw, offset, scale, ov_row, ov_bin, ov_code, out, add, step):
     """
     Decode stored rows into out, or with add, set out to its own power rounded to step
@@ -99,7 +122,73 @@ def _decode_block(raw, offset, scale, ov_row, ov_bin, ov_code, out, add, step):
         out[ov_row[m], ov_bin[m]] = ov_val[m]
 
 
-def write_quantized(h5f, spectra, step, num_days):
+@njit(cache=True, nogil=True)
+def _shuffle2(z, out):
+    """HDF5's shuffle filter for 2-byte values: all low bytes, then all high bytes."""
+    n = z.shape[0]
+    for j in range(n):
+        v = z[j]
+        out[j] = v & 0xFF
+        out[n + j] = v >> 8
+
+
+@njit(cache=True, nogil=True)
+def _unshuffle2(b, out):
+    """The inverse of _shuffle2."""
+    n = out.shape[0]
+    for j in range(n):
+        out[j] = np.uint16(b[j]) | (np.uint16(b[n + j]) << 8)
+
+
+def _threads(threads):
+    """The number of threads to use, or 0 for the HDF5 filters."""
+    if zstandard is None:
+        return 0
+    return THREADS if threads is None else max(int(threads), 0)
+
+
+def _direct_chunks(dataset):
+    """Whether dataset's chunks are single rows, shuffled then zstd-compressed."""
+    if dataset.chunks != (1, dataset.shape[1]) or dataset.dtype != np.uint16:
+        return False
+    plist = dataset.id.get_create_plist()
+    filters = [plist.get_filter(i)[0] for i in range(plist.get_nfilters())]
+    return filters == [H5Z_SHUFFLE, H5Z_ZSTD]
+
+
+class _Local(threading.local):
+    """Per-thread zstd contexts and work buffers."""
+
+    def compressor(self):
+        if not hasattr(self, "_c"):
+            self._c = zstandard.ZstdCompressor(level=ZSTD_LEVEL)
+        return self._c
+
+    def decompressor(self):
+        if not hasattr(self, "_d"):
+            self._d = zstandard.ZstdDecompressor()
+        return self._d
+
+    def buffer(self, name, n, dtype):
+        b = getattr(self, name, None)
+        if b is None or b.shape[0] < n:
+            b = np.empty(n, dtype=dtype)
+            setattr(self, name, b)
+        return b[:n]
+
+
+def _ordered(executor, tasks, window):
+    """Results of tasks (callables) run on executor, in order, at most window at once."""
+    pending = deque()
+    for task in tasks:
+        pending.append(executor.submit(task))
+        if len(pending) >= window:
+            yield pending.popleft().result()
+    while pending:
+        yield pending.popleft().result()
+
+
+def write_quantized(h5f, spectra, step, num_days, threads=None):
     """
     Write a 2D array of (dm, freq) power, already a sum of rounded days or a single day.
 
@@ -113,6 +202,8 @@ def write_quantized(h5f, spectra, step, num_days):
         The rounding step.
     num_days: int
         The number of days in the stack, which sets the expected noise level.
+    threads: int or None
+        Threads compressing rows (default THREADS); 0 uses the HDF5 filters.
     """
     offset = int(round(num_days / step))
     dataset = h5f.create_dataset(
@@ -126,21 +217,55 @@ def write_quantized(h5f, spectra, step, num_days):
     rows, bins, codes = [], [], []
     inv_step = np.float32(1 / step)
     nbin = spectra.shape[1] if len(spectra) else 0
-    z = np.empty(nbin, dtype=np.uint16)
-    over_buf = np.empty(nbin, dtype=np.int64)
-    for i, spectrum in enumerate(spectra):
-        spectrum = np.ascontiguousarray(spectrum, dtype=np.float32)
-        n_over = _encode_row(
-            spectrum, inv_step, offset, CODE_LIMIT - abs(offset), z, over_buf
-        )
+    limit = CODE_LIMIT - abs(offset)
+    local = _Local()
+
+    def encode(i, z, over_buf):
+        """Encode row i into z; returns its overflow (bins, codes) or None."""
+        spectrum = np.ascontiguousarray(spectra[i], dtype=np.float32)
+        n_over = _encode_row(spectrum, inv_step, offset, limit, z, over_buf)
         if n_over < 0:
             raise ValueError(f"Power in row {i} is too large to store at step {step}.")
-        if n_over:
-            over = over_buf[:n_over].copy()
-            rows.append(np.full(n_over, i))
-            bins.append(over)
-            codes.append(np.rint(spectrum[over] * inv_step).astype(np.int32))
-        dataset[i] = z
+        if not n_over:
+            return None
+        over = over_buf[:n_over].copy()
+        return over, np.rint(spectrum[over] * inv_step).astype(np.int32)
+
+    def keep(i, overflow):
+        if overflow is not None:
+            rows.append(np.full(len(overflow[0]), i))
+            bins.append(overflow[0])
+            codes.append(overflow[1])
+
+    threads = _threads(threads)
+    if threads and nbin:
+
+        def compress_rows(start, stop):
+            z = local.buffer("z", nbin, np.uint16)
+            over_buf = local.buffer("over", nbin, np.int64)
+            shuffled = local.buffer("shuffled", 2 * nbin, np.uint8)
+            out = []
+            for i in range(start, stop):
+                overflow = encode(i, z, over_buf)
+                _shuffle2(z, shuffled)
+                out.append((local.compressor().compress(shuffled), overflow))
+            return start, out
+
+        tasks = (
+            lambda s=s: compress_rows(s, min(s + WRITE_BLOCK_ROWS, len(spectra)))
+            for s in range(0, len(spectra), WRITE_BLOCK_ROWS)
+        )
+        with ThreadPoolExecutor(threads) as executor:
+            for start, out in _ordered(executor, tasks, 2 * threads):
+                for i, (chunk, overflow) in enumerate(out, start):
+                    dataset.id.write_direct_chunk((i, 0), chunk)
+                    keep(i, overflow)
+    else:
+        z = np.empty(nbin, dtype=np.uint16)
+        over_buf = np.empty(nbin, dtype=np.int64)
+        for i in range(len(spectra)):
+            keep(i, encode(i, z, over_buf))
+            dataset[i] = z
     h5f.create_dataset(
         "overflow row", data=np.concatenate(rows) if rows else [], dtype="i4"
     )
@@ -162,8 +287,11 @@ class QuantizedStack:
     bright source fills the list.
     """
 
-    def __init__(self, h5f):
+    def __init__(self, h5f, threads=None):
         self.h5f = h5f
+        dataset = h5f["power spectra"]
+        # Threads decompressing rows (default THREADS); 0 uses the HDF5 filters
+        self.threads = _threads(threads) if _direct_chunks(dataset) else 0
         self.step = h5f.attrs["quant_step"]
         self.offset = int(h5f.attrs["quant_offset"])
         self.nrow = h5f["power spectra"].shape[0]
@@ -216,6 +344,10 @@ class QuantizedStack:
 
     def _decode(self, spectra, start, stop, scale, add, step):
         """Decode rows start:stop into spectra, a few rows at a time."""
+        # Threads only pay off over several blocks (rows read one at a time would start
+        # a pool for each)
+        if self.threads and stop - start > READ_BLOCK_ROWS:
+            return self._decode_threaded(spectra, start, stop, scale, add, step)
         dataset = self.h5f["power spectra"]
         raw = np.empty((READ_BLOCK_ROWS, dataset.shape[1]), dtype=np.uint16)
         for b0 in range(start, stop, READ_BLOCK_ROWS):
@@ -236,6 +368,80 @@ class QuantizedStack:
             )
 
 
-def read_quantized(h5f, start=0, stop=None, raw=False):
+    def _decode_threaded(self, spectra, start, stop, scale, add, step):
+        """
+        _decode with the chunks read whole here and decompressed, unshuffled and decoded
+        in threads, a block of rows per task.
+        """
+        dataset = self.h5f["power spectra"]
+        nbin = dataset.shape[1]
+        local = _Local()
+
+        def decode(b0, b1, chunks):
+            raw = local.buffer("raw", READ_BLOCK_ROWS * nbin, np.uint16)
+            raw = raw[: (b1 - b0) * nbin].reshape(b1 - b0, nbin)
+            for r, chunk in enumerate(chunks):
+                data = local.decompressor().decompress(chunk, max_output_size=2 * nbin)
+                if len(data) != 2 * nbin:
+                    raise ValueError(f"Row {b0 + r} decompressed to {len(data)} bytes.")
+                _unshuffle2(np.frombuffer(data, dtype=np.uint8), raw[r])
+            lo, hi = np.searchsorted(self.overflow_row, [b0, b1])
+            _decode_block(
+                raw,
+                self.offset,
+                scale,
+                self.overflow_row[lo:hi] - b0,
+                self.overflow_bin[lo:hi],
+                self.overflow_code[lo:hi],
+                spectra[b0 - start : b1 - start],
+                add,
+                step,
+            )
+
+        def read(b0, b1):
+            chunks = []
+            for i in range(b0, b1):
+                mask, chunk = dataset.id.read_direct_chunk((i, 0))
+                if mask:
+                    # A chunk HDF5 stored without some filter: read the block through them
+                    return None
+                chunks.append(chunk)
+            return chunks
+
+        def tasks():
+            for b0 in range(start, stop, READ_BLOCK_ROWS):
+                b1 = min(b0 + READ_BLOCK_ROWS, stop)
+                chunks = read(b0, b1)
+                if chunks is None:
+                    yield lambda b0=b0, b1=b1: self._decode_filtered(
+                        spectra, start, b0, b1, scale, add, step
+                    )
+                else:
+                    yield lambda b0=b0, b1=b1, c=chunks: decode(b0, b1, c)
+
+        with ThreadPoolExecutor(self.threads) as executor:
+            for _ in _ordered(executor, tasks(), 2 * self.threads):
+                pass
+
+    def _decode_filtered(self, spectra, start, b0, b1, scale, add, step):
+        """Rows b0:b1 through the HDF5 filters (h5py serialises the call)."""
+        dataset = self.h5f["power spectra"]
+        block = np.empty((b1 - b0, dataset.shape[1]), dtype=np.uint16)
+        dataset.read_direct(block, np.s_[b0:b1])
+        lo, hi = np.searchsorted(self.overflow_row, [b0, b1])
+        _decode_block(
+            block,
+            self.offset,
+            scale,
+            self.overflow_row[lo:hi] - b0,
+            self.overflow_bin[lo:hi],
+            self.overflow_code[lo:hi],
+            spectra[b0 - start : b1 - start],
+            add,
+            step,
+        )
+
+
+def read_quantized(h5f, start=0, stop=None, raw=False, threads=None):
     """Read rows of a quantized stack as float32. See QuantizedStack.rows."""
-    return QuantizedStack(h5f).rows(start, stop, raw)
+    return QuantizedStack(h5f, threads=threads).rows(start, stop, raw)
