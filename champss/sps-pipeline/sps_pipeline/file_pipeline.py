@@ -307,6 +307,11 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     type=str,
     help="Name of used telescope, could probably also be extracted, but your does not interpret telescope ids.",
 )
+@click.option(
+    "--norm-input",
+    is_flag=True,
+    default=False,
+)
 def run_file_pipeline(
     obs_file,
     stack_file,
@@ -320,6 +325,7 @@ def run_file_pipeline(
     fmax,
     zero_dm_birdies,
     telescope,
+    norm_input,
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
@@ -370,9 +376,13 @@ def run_file_pipeline(
         n_bad += nb
         n_masked += nm
         # this is DIFFERENT than `your`'s method! i think this is right...?
-        obs_spectrum[:, start // tdec : (start + n) // tdec] = (
-            block.reshape(n // tdec, tdec, nchan).mean(axis=1).T
-        )
+        input_block = block.reshape(n // tdec, tdec, nchan).mean(axis=1).T
+        if norm_input:
+            # FOr now ignore do not properly take zero input into account
+            input_block = (
+                input_block - np.nanmean(input_block, 1)[:, None]
+            ) / np.nanstd(input_block, 1)[:, None]
+        obs_spectrum[:, start // tdec : (start + n) // tdec] = input_block
         if i % 10 == 0:
             log.info(f"Read {start + n:,} / {nout * tdec:,} samples")
 
@@ -386,9 +396,13 @@ def run_file_pipeline(
             f"rfifind mask replaced {n_masked} samples ({n_masked / ntot:.1%} of data)."
         )
 
-    if obs_header.foff < 0:
-        obs_spectrum = obs_spectrum[::-1, :]  # make sure channels go low -> high
-    log.info(f"Loaded data with shape {obs_spectrum.shape}.")
+    if obs_header.foff > 0:
+        # make sure channels go high -> low (CHIME order); dedisperse() flips them
+        # back to low -> high, which is what the FDMT expects
+        obs_spectrum = obs_spectrum[::-1, :]
+    log.info(
+        f"Loaded data with shape {obs_spectrum.shape} (channels ordered high -> low)."
+    )
 
     TSAMP = obs_header.tsamp * tdec
     fdmt_config = config.dedisp.fdmt
@@ -410,8 +424,8 @@ def run_file_pipeline(
     nsamps = fdmt_config.chunk_size + num_dms
     dm_step = fdmt_config.dm_step
     fdmt = FDMT(
-        obs_header.fch1,
-        obs_header.fch1 + obs_header.bw,
+        FREQ_BOTTOM,
+        FREQ_TOP,
         obs_spectrum.shape[0],
         nsamps,
         TSAMP,
