@@ -372,13 +372,6 @@ class Features_FFA:
                 # Now we are writing out the values out only when factor==1 for the
                 # dm-sigma and dm-freq-sigma array
                 if factor == 1:
-                    dm_freq_sigma_full = np.zeros(
-                        (
-                            2 * self.array_ranges["dm_in_dm_freq"] + 1,
-                            2 * self.array_ranges["freq_in_dm_freq"] + 1,
-                            len(used_harmonics),
-                        )
-                    )
                     f0_idx_min_sigma, f0_idx_max_sigma = get_min_max_index(
                         nearest_bins,
                         self.array_ranges["freq_in_dm_freq"],
@@ -388,6 +381,15 @@ class Features_FFA:
                         best_dm_trial,
                         self.array_ranges["dm_in_dm_freq"],
                         len(pspec_meta_data.dms),
+                    )
+                    # Size from the actual index ranges, which are clipped when the
+                    # spectra contain fewer DM trials / freq bins than requested
+                    dm_freq_sigma_full = np.zeros(
+                        (
+                            dm_idx_max_sigma - dm_idx_min_sigma,
+                            f0_idx_max_sigma - f0_idx_min_sigma,
+                            len(used_harmonics),
+                        )
                     )
                     freq_labels_sigma = (
                         pspec_meta_data.freq_labels[
@@ -440,10 +442,7 @@ class Features_FFA:
                     )
                     dm_sigma_full = np.zeros(
                         (
-                            min(
-                                self.array_ranges["dm_in_dm_1d"] * 2 + 1,
-                                len(pspec_meta_data.dms),
-                            ),
+                            dm_idx_max_1d - dm_idx_min_1d,
                             len(used_harmonics),
                         )
                     )
