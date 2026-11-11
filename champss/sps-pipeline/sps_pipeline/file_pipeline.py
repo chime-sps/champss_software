@@ -6,6 +6,7 @@ import multiprocessing
 import click
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from astropy.coordinates import EarthLocation
 import astropy.units as u
 
@@ -162,29 +163,49 @@ def select_channels(hdr, fmin=None, fmax=None):
     return c0, c1, f_lo, f_hi
 
 
-def load_block(observation, start, nsamp, rfi_mask=None, chans=slice(None)):
+def read_raw_block(observation, start, nsamp, chans=slice(None)):
     """
-    Load in observation and apply rfifind mask if provided.
+    Read nsamp samples starting at start in the file's native dtype.
+
+    Returns an array of shape (nsamp, nchan).
     """
     if observation.format == "fits":
-        block = observation.formatclass.get_data(observation, start, nsamp)[:, 0, chans]
-    else:
-        block = observation.get_data(start, nsamp)[:, chans].astype(np.float32)
+        return observation.formatclass.get_data(observation, start, nsamp)[:, 0, chans]
+    return observation.get_data(start, nsamp)[:, chans]
 
+
+def downsample_block(block, tdec):
+    """
+    Average groups of tdec time samples. Integer data is summed in an integer
+    accumulator first, which is much faster than converting to float32 first.
+    """
+    n, nchan = block.shape
+    if tdec == 1:
+        return block.astype(np.float32, copy=block.dtype != np.float32)
+    grouped = block.reshape(n // tdec, tdec, nchan)
+    if (
+        np.issubdtype(block.dtype, np.unsignedinteger)
+        and block.dtype.itemsize <= 2
+        and tdec < 2**16
+    ):
+        out = grouped.sum(axis=1, dtype=np.uint32).astype(np.float32)
+    else:
+        out = grouped.sum(axis=1, dtype=np.float64).astype(np.float32)
+    out *= np.float32(1.0 / tdec)
+    return out
+
+
+def fill_non_finite(block):
+    """
+    Replace non-finite samples with the mean of the finite samples in their channel.
+    Only needed for float data; integer data cannot be non-finite.
+    """
+    if not np.issubdtype(block.dtype, np.floating):
+        return block, 0
     bad = ~np.isfinite(block)
     n_bad = int(bad.sum())
-
-    n_masked = 0
-    if rfi_mask is not None:
-        zap, ptsperint, sample_offset = rfi_mask
-        ints = np.minimum(
-            (sample_offset + start + np.arange(nsamp)) // ptsperint, zap.shape[0] - 1
-        )
-        masked = zap[ints]
-        n_masked = int((masked & ~bad).sum())
-        bad |= masked
-
-    if bad.any():
+    if n_bad:
+        block = block.astype(np.float32, copy=True)
         good = ~bad
         fill = np.where(good, block, 0).sum(axis=0, dtype=np.float64) / np.maximum(
             good.sum(axis=0), 1
@@ -192,7 +213,79 @@ def load_block(observation, start, nsamp, rfi_mask=None, chans=slice(None)):
         np.copyto(
             block, np.broadcast_to(fill.astype(np.float32), block.shape), where=bad
         )
+    return block, n_bad
+
+
+def apply_rfi_mask(block, start, tdec, rfi_mask):
+    """
+    Apply the rfifind mask to a downsampled block in place.
+
+    block has shape (nout, nchan); output sample j covers input samples
+    [start + j*tdec, start + (j+1)*tdec). An output sample is masked in a channel
+    if any input sample it covers is masked. Masked values are replaced by the
+    channel's mean over the unmasked output samples of this block.
+
+    Works on runs of output samples that share the same rfifind intervals, so the
+    cost scales with the number of intervals instead of the number of samples.
+
+    Returns the number of masked input samples (masked output samples * tdec).
+    """
+    zap, ptsperint, sample_offset = rfi_mask
+    nout, nchan = block.shape
+    last_int = zap.shape[0] - 1
+    first = sample_offset + start + np.arange(nout) * tdec
+    int_first = np.minimum(first // ptsperint, last_int)
+    int_last = np.minimum((first + tdec - 1) // ptsperint, last_int)
+
+    # boundaries of runs with identical (int_first, int_last)
+    change = np.flatnonzero((np.diff(int_first) != 0) | (np.diff(int_last) != 0)) + 1
+    edges = np.concatenate(([0], change, [nout]))
+
+    runs = []
+    masked_sum = np.zeros(nchan, dtype=np.float64)
+    masked_count = np.zeros(nchan, dtype=np.int64)
+    for r0, r1 in zip(edges[:-1], edges[1:]):
+        chan_mask = zap[int_first[r0]] | zap[int_last[r0]]
+        if not chan_mask.any():
+            continue
+        runs.append((r0, r1, chan_mask))
+        masked_sum += np.where(
+            chan_mask, block[r0:r1].sum(axis=0, dtype=np.float64), 0.0
+        )
+        masked_count += chan_mask * (r1 - r0)
+
+    if not runs:
+        return 0
+    total = block.sum(axis=0, dtype=np.float64)
+    fill = ((total - masked_sum) / np.maximum(nout - masked_count, 1)).astype(
+        np.float32
+    )
+    for r0, r1, chan_mask in runs:
+        block[r0:r1, chan_mask] = fill[chan_mask]
+    return int(masked_count.sum()) * tdec
+
+
+def process_block(raw, start, tdec=1, rfi_mask=None):
+    """
+    Turn a raw block (nsamp, nchan) into a downsampled, masked float32 block of
+    shape (nsamp // tdec, nchan).
+    """
+    raw, n_bad = fill_non_finite(raw)
+    block = downsample_block(raw, tdec)
+    n_masked = 0
+    if rfi_mask is not None:
+        n_masked = apply_rfi_mask(block, start, tdec, rfi_mask)
     return block, n_bad, n_masked
+
+
+def load_block(observation, start, nsamp, rfi_mask=None, chans=slice(None), tdec=1):
+    """
+    Load in observation, downsample by tdec and apply rfifind mask if provided.
+
+    Returns a float32 array of shape (nsamp // tdec, nchan).
+    """
+    raw = read_raw_block(observation, start, nsamp, chans)
+    return process_block(raw, start, tdec, rfi_mask)
 
 
 def apply_logging_config(config, log_file="./logs/default.log"):
@@ -370,21 +463,32 @@ def run_file_pipeline(
     obs_spectrum = np.empty((nchan, nout), dtype=np.float32)
 
     n_bad = n_masked = 0
-    for i, start in enumerate(range(0, nout * tdec, gulp)):
-        n = min(gulp, nout * tdec - start)
-        block, nb, nm = load_block(observation, start, n, rfi_mask, chans)
-        n_bad += nb
-        n_masked += nm
-        # this is DIFFERENT than `your`'s method! i think this is right...?
-        input_block = block.reshape(n // tdec, tdec, nchan).mean(axis=1).T
-        if norm_input:
-            # FOr now ignore do not properly take zero input into account
-            input_block = (
-                input_block - np.nanmean(input_block, 1)[:, None]
-            ) / np.nanstd(input_block, 1)[:, None]
-        obs_spectrum[:, start // tdec : (start + n) // tdec] = input_block
-        if i % 10 == 0:
-            log.info(f"Read {start + n:,} / {nout * tdec:,} samples")
+    starts = list(range(0, nout * tdec, gulp))
+
+    def read(start):
+        return read_raw_block(observation, start, min(gulp, nout * tdec - start), chans)
+
+    # read the next block in a background thread while processing the current one
+    with ThreadPoolExecutor(max_workers=1) as reader:
+        next_raw = reader.submit(read, starts[0])
+        for i, start in enumerate(starts):
+            raw = next_raw.result()
+            if i + 1 < len(starts):
+                next_raw = reader.submit(read, starts[i + 1])
+            n = raw.shape[0]
+            block, nb, nm = process_block(raw, start, tdec, rfi_mask)
+            del raw
+            n_bad += nb
+            n_masked += nm
+            input_block = block.T
+            if norm_input:
+                # FOr now ignore do not properly take zero input into account
+                input_block = (
+                    input_block - np.nanmean(input_block, 1)[:, None]
+                ) / np.nanstd(input_block, 1)[:, None]
+            obs_spectrum[:, start // tdec : (start + n) // tdec] = input_block
+            if i % 10 == 0:
+                log.info(f"Read {start + n:,} / {nout * tdec:,} samples")
 
     ntot = nout * tdec * nchan
     if n_bad:
