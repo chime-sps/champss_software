@@ -405,6 +405,54 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     is_flag=True,
     default=False,
 )
+@click.option(
+    "--static-birdies",
+    is_flag=True,
+    default=False,
+    help=(
+        "Zap the static list of known periodic RFI frequencies used by the SPS/CHAMPSS "
+        "pipeline (rfi_mitigation/data/birdies.yaml, e.g. LTE at 1.5625 Hz and 60 Hz "
+        "mains with their harmonics). These values were derived from CHIME/SPS data, "
+        "so they may not apply to data from other telescopes or backends."
+    ),
+)
+@click.option(
+    "--manual-candidates",
+    "--mc",
+    default=[],
+    type=str,
+    multiple=True,
+    help=(
+        "Create manual candidates in the single-observation and stack search. "
+        "Modes:"
+        "'--mc skip_search': Skip normal search; "
+        "'--mc \"para freq dm\"': Create candidate at freq and dm; "
+        "The following modes need the SPS database (see --db-host): "
+        "'--mc \"PSR psr_name\"': Create candidate at known source psr_name; "
+        "'--mc \"FS fs_id\"': Create candidate for followup source at given fs_id; "
+        "'--mc \"nearby_ks 1\"': Create candidate for all known sources within given radius "
+        "(append ' search' to search around them); "
+        "'--mc \"nearby_fs 1\"': Create candidate for followup sources within given radius; "
+    ),
+)
+@click.option(
+    "--db-port",
+    default=27017,
+    type=int,
+    help="Port used for the mongodb database. Only used for database manual candidates.",
+)
+@click.option(
+    "--db-host",
+    default="sps-archiver1",
+    type=str,
+    help="Host used for the mongodb database. Only used for database manual candidates.",
+)
+@click.option(
+    "--db-name",
+    default="sps",
+    type=str,
+    help="Name used for the mongodb database. Only used for database manual candidates.",
+)
 def run_file_pipeline(
     obs_file,
     stack_file,
@@ -419,9 +467,34 @@ def run_file_pipeline(
     zero_dm_birdies,
     telescope,
     norm_input,
+    static_birdies,
+    manual_candidates,
+    db_port,
+    db_host,
+    db_name,
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
+
+    manual_candidates = list(manual_candidates)
+    db_modes = {"PSR", "FS", "nearby_ks", "nearby_fs"}
+    for mc in manual_candidates:
+        mode = mc.split(" ")[0]
+        if mode not in db_modes | {"para", "skip_search"}:
+            raise click.BadParameter(
+                f"Unknown manual candidate mode in '{mc}'.",
+                param_hint="--manual-candidates",
+            )
+        if mode == "para" and len(mc.split(" ")) < 3:
+            raise click.BadParameter(
+                f"'{mc}' needs the format 'para freq dm'.",
+                param_hint="--manual-candidates",
+            )
+    if any(mc.split(" ")[0] in db_modes for mc in manual_candidates):
+        from sps_databases import db_utils
+
+        log.info(f"Connecting to database {db_name} at {db_host}:{db_port}.")
+        db_utils.connect(host=db_host, port=db_port, name=db_name)
     multiprocessing.set_start_method("forkserver", force=True)
 
     observation = your.Your(obs_file)
@@ -576,8 +649,8 @@ def run_file_pipeline(
         tsamp=TSAMP,
         find_common_birdies=False,
         padded_length=padded_length,
-        clean_rfi=zero_dm_birdies,
-        run_static_filter=False,
+        clean_rfi=zero_dm_birdies or static_birdies,
+        run_static_filter=static_birdies,
         run_dynamic_filter=zero_dm_birdies,
         dynamic_filter_config=OmegaConf.to_container(
             config.ps_creation.dynamic_filter_config
@@ -598,6 +671,7 @@ def run_file_pipeline(
         power_spectra_detections,
     ) = pss_pipeline.search(
         power_spectra,
+        manual_candidates=manual_candidates,
     )
 
     fg = Features.from_config(
@@ -610,8 +684,11 @@ def run_file_pipeline(
         power_spectra_detection_clusters, power_spectra
     )
 
+    obs_name = os.path.splitext(os.path.basename(obs_file))[0]
     plotted_cands = spcc.plot_candidates(
-        folder="./single_observation_plots/", sigma_threshold=0, dm_threshold=-1
+        folder=f"./single_observation_plots/{obs_name}/",
+        sigma_threshold=0,
+        dm_threshold=-1,
     )
     log.info(f"Plotted {len(plotted_cands)} candidates.")
     cand_folder = "./single_observation_candidates/"
@@ -646,27 +723,33 @@ def run_file_pipeline(
         stack_path = os.path.abspath(stack_file)
         ps_stack_pipeline.replace_spectra(power_spectra_stacked, stack_path, stack_path)
 
-        pss_pipeline.full_harm_bins = None  # clear cached array
+        # clear cached arrays; the manual candidate arrays depend on the stack's
+        # bin weights and are only recomputed when full_harm_bins_raw is None
+        pss_pipeline.full_harm_bins = None
+        pss_pipeline.full_harm_bins_raw = None
         (
             power_spectra_detection_clusters_stacked,
             power_spectra_detections_stacked,
-        ) = pss_pipeline.search(power_spectra_stacked)
+        ) = pss_pipeline.search(
+            power_spectra_stacked, manual_candidates=manual_candidates
+        )
 
         spcc_stacked = fg.make_single_pointing_candidate_collection(
             power_spectra_detection_clusters_stacked, power_spectra_stacked
         )
 
+        stack_name = (
+            os.path.splitext(os.path.basename(stack_file))[0]
+            + f"_{power_spectra_stacked.num_days:03d}days"
+        )
         plotted_cands = spcc_stacked.plot_candidates(
-            folder="./stack_plots/", sigma_threshold=0, dm_threshold=-1
+            folder=f"./stack_plots/{stack_name}/", sigma_threshold=0, dm_threshold=-1
         )
         log.info(f"Plotted {len(plotted_cands)} stack candidates.")
         cand_folder = "./stack_candidates/"
         os.makedirs(cand_folder, exist_ok=True)
-        cand_path = (
-            cand_folder
-            + os.path.splitext(os.path.basename(stack_file))[0]
-            + "_candidates.npz"
-        )
+        # include the number of stacked days so earlier results are not overwritten
+        cand_path = cand_folder + stack_name + "_candidates.npz"
         spcc_stacked.write(cand_path)
         log.info(f"Wrote stack candidates to {cand_path}.")
 
