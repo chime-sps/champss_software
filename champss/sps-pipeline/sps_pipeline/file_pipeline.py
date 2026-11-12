@@ -556,10 +556,17 @@ def run_file_pipeline(
             n_masked += nm
             input_block = block.T
             if norm_input:
-                # FOr now ignore do not properly take zero input into account
-                input_block = (
-                    input_block - np.nanmean(input_block, 1)[:, None]
-                ) / np.nanstd(input_block, 1)[:, None]
+                # Normalise each channel to zero mean and unit std within this block.
+                # The data is finite at this point, so plain mean/std are enough.
+                # Channels without variance (e.g. fully masked by rfifind and filled
+                # with a constant) are set to 0 instead of dividing by 0, which would
+                # put NaNs into every DM trial.
+                mean = block.mean(axis=0, dtype=np.float64)
+                std = block.std(axis=0, dtype=np.float64)
+                std[std <= 1e-6 * np.abs(mean)] = np.inf  # constant up to rounding
+                block -= mean.astype(np.float32)
+                block /= std.astype(np.float32)
+                input_block = block.T
             obs_spectrum[:, start // tdec : (start + n) // tdec] = input_block
             if i % 10 == 0:
                 log.info(f"Read {start + n:,} / {nout * tdec:,} samples")
