@@ -288,6 +288,117 @@ def load_block(observation, start, nsamp, rfi_mask=None, chans=slice(None), tdec
     return process_block(raw, start, tdec, rfi_mask)
 
 
+def read_par_orbit(par_file):
+    """
+    Read the position and binary orbit from a TEMPO/PINT par file.
+
+    Supports orbits given with T0/ECC/OM (BT, DD, DDK, ...) or with
+    TASC/EPS1/EPS2 (ELL1). Returns a dict with the orbital parameters in
+    days, light-seconds and radians, and the pulsar position as a SkyCoord.
+    """
+    from astropy.coordinates import SkyCoord
+
+    values = {}
+    with open(par_file) as f:
+        for line in f:
+            parts = line.split()
+            if len(parts) >= 2 and not line.startswith("#"):
+                values[parts[0].upper()] = parts[1]
+
+    def get(key, default=None):
+        val = values.get(key, default)
+        if val is None:
+            raise click.BadParameter(f"{key} missing in par file {par_file}.")
+        return float(str(val).replace("D", "E"))
+
+    pb = get("PB")
+    a1 = get("A1")
+    if "TASC" in values:
+        eps1, eps2 = get("EPS1", 0.0), get("EPS2", 0.0)
+        ecc = np.hypot(eps1, eps2)
+        om = np.arctan2(eps1, eps2)
+        t0 = get("TASC") + om / (2 * np.pi) * pb
+    else:
+        ecc = get("ECC", get("E", 0.0) if "E" in values else 0.0)
+        om = np.radians(get("OM", 0.0))
+        t0 = get("T0")
+    ra = values.get("RAJ")
+    dec = values.get("DECJ")
+    if ra is None or dec is None:
+        raise click.BadParameter(f"RAJ/DECJ missing in par file {par_file}.")
+    coord = SkyCoord(ra, dec, unit=(u.hourangle, u.deg))
+    return dict(
+        pb=pb,
+        a1=a1,
+        ecc=ecc,
+        om=om,
+        t0=t0,
+        omdot=np.radians(get("OMDOT", 0.0)) / 365.25,  # rad / day
+        pbdot=get("PBDOT", 0.0),
+        coord=coord,
+    )
+
+
+def orbital_radial_velocity(orbit, mjd_utc, location):
+    """
+    Line-of-sight velocity of the pulsar in its orbit (in units of c, positive
+    when moving away) at the given topocentric UTC MJD.
+
+    The observed (barycentric) spin frequency is f_intrinsic / (1 + v).
+    """
+    t = Time(mjd_utc, format="mjd", scale="utc", location=location)
+    t_bary = (t.tdb + t.light_travel_time(orbit["coord"], "barycentric")).mjd
+    dt = t_bary - orbit["t0"]
+    pb = orbit["pb"] + orbit["pbdot"] * dt
+    mean_anomaly = 2 * np.pi * (dt / pb % 1)
+    ecc = orbit["ecc"]
+    ecc_anomaly = mean_anomaly
+    for _ in range(50):
+        ecc_anomaly = mean_anomaly + ecc * np.sin(ecc_anomaly)
+    true_anomaly = 2 * np.arctan2(
+        np.sqrt(1 + ecc) * np.sin(ecc_anomaly / 2),
+        np.sqrt(1 - ecc) * np.cos(ecc_anomaly / 2),
+    )
+    om = orbit["om"] + orbit["omdot"] * dt
+    return (
+        2
+        * np.pi
+        * orbit["a1"]
+        / (pb * 86400.0 * np.sqrt(1 - ecc**2))
+        * (np.cos(om + true_anomaly) + ecc * np.cos(om))
+    )
+
+
+def doppler_correct_power_spectra(power_spectra, velocity, chunk=64):
+    """
+    Resample a single-observation PowerSpectra in place into the pulsar frame.
+
+    The pulsar's power at intrinsic frequency f appears at f / (1 + velocity),
+    so output bin k takes the power of input bin round(k / (1 + velocity)).
+    The day's masked bins are mapped the same way so that bin weights stay
+    correct in the stack. Bins that map outside the spectrum are zeroed and
+    masked.
+    """
+    if len(power_spectra.bad_freq_indices) != 1:
+        raise ValueError("Doppler correction expects a single-observation spectrum.")
+    nbin = len(power_spectra.freq_labels)
+    src = np.rint(np.arange(nbin) / (1.0 + velocity)).astype(np.int64)
+    valid = src < nbin
+    src = np.minimum(src, nbin - 1)
+
+    bad = np.zeros(nbin, dtype=bool)
+    bad[np.asarray(power_spectra.bad_freq_indices[0], dtype=np.int64)] = True
+    bad_new = bad[src] | ~valid
+
+    ps = power_spectra.power_spectra
+    for i in range(0, ps.shape[0], chunk):
+        rows = ps[i : i + chunk][:, src]
+        rows[:, ~valid] = 0
+        ps[i : i + chunk] = rows
+    power_spectra.bad_freq_indices = [np.flatnonzero(bad_new).tolist()]
+    return src
+
+
 def apply_logging_config(config, log_file="./logs/default.log"):
     """
     Applies logging settings from the given configuration.
@@ -454,6 +565,18 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     type=str,
     help="Name used for the mongodb database. Only used for database manual candidates.",
 )
+@click.option(
+    "--doppler-par",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help=(
+        "Par file of a binary pulsar. Before stacking, each observation's power "
+        "spectrum is shifted into the pulsar frame using the orbital Doppler factor "
+        "at the middle of the observation, so the pulsar adds up at its intrinsic "
+        "frequency. Single-observation candidates are not affected. Only use a "
+        "stack file that was built with the same par file."
+    ),
+)
 def run_file_pipeline(
     obs_file,
     stack_file,
@@ -473,6 +596,7 @@ def run_file_pipeline(
     db_port,
     db_host,
     db_name,
+    doppler_par,
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
@@ -710,6 +834,16 @@ def run_file_pipeline(
     log.info(f"Wrote candidates to {cand_path}.")
 
     stack_nbit = config.ps.ps_stack_config.stack_nbit
+
+    if doppler_par is not None:
+        orbit = read_par_orbit(doppler_par)
+        mid_mjd = tstart + obs_header.nspectra * obs_header.tsamp / 2 / 86400.0
+        velocity = orbital_radial_velocity(orbit, mid_mjd, telescope_location)
+        log.info(
+            f"Doppler correcting spectrum with {doppler_par}: v/c = {velocity:+.3e} "
+            f"at MJD {mid_mjd:.5f} (frequency shift factor {1 / (1 + velocity):.8f})."
+        )
+        doppler_correct_power_spectra(power_spectra, velocity)
 
     stack_exists = os.path.isfile(stack_file)
     if not stack_exists:
