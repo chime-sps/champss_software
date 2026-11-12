@@ -300,7 +300,7 @@ class PowerSpectraSearch:
                         with open(injection_path) as file:
                             injection_list = yaml.safe_load(file)
                         injection_df = pd.DataFrame(injection_list)
-                    except:
+                    except Exception:
                         injection_df = pd.read_pickle(injection_path)
                     if len(injection_indices) == 0:
                         injection_indices = np.arange(len(injection_df))
@@ -608,6 +608,10 @@ class PowerSpectraSearch:
                 if split_manual_cand[0] == "para":
                     freq = float(split_manual_cand[1])
                     dm = float(split_manual_cand[2])
+                    # 'para freq dm search' searches +-0.01 Hz and +-5 DM trials
+                    # around freq and dm instead of using only the nearest bin
+                    if "search" in split_manual_cand[3:]:
+                        man_search = True
                     used_manual_candidates.append([manual_cand, freq, dm, man_search])
                 elif split_manual_cand[0] == "nearby_ks":
                     known_sources = db_api.get_nearby_known_sources(

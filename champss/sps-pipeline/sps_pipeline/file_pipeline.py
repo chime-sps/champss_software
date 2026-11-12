@@ -427,6 +427,7 @@ def apply_logging_config(config, log_file="./logs/default.log"):
         "Modes:"
         "'--mc skip_search': Skip normal search; "
         "'--mc \"para freq dm\"': Create candidate at freq and dm; "
+        "'--mc \"para freq dm search\"': Same, but search +-0.01 Hz and +-5 DM trials around it; "
         "The following modes need the SPS database (see --db-host): "
         "'--mc \"PSR psr_name\"': Create candidate at known source psr_name; "
         "'--mc \"FS fs_id\"': Create candidate for followup source at given fs_id; "
