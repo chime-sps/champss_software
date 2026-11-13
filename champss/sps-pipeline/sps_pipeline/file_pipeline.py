@@ -577,6 +577,19 @@ def apply_logging_config(config, log_file="./logs/default.log"):
         "stack file that was built with the same par file."
     ),
 )
+@click.option(
+    "--doppler-mass-ratio",
+    default=None,
+    type=float,
+    help=(
+        "Correct for a companion of the pulsar in --doppler-par instead of the "
+        "pulsar itself. Value is m_pulsar / m_companion, where m_pulsar is the mass "
+        "of the pulsar in the par file. The companion orbits in the opposite "
+        "direction with a projected semi-major axis A1 * m_pulsar / m_companion, so "
+        "its velocity is -(m_pulsar / m_companion) * v_pulsar. Use a separate stack "
+        "file for each value."
+    ),
+)
 def run_file_pipeline(
     obs_file,
     stack_file,
@@ -597,9 +610,20 @@ def run_file_pipeline(
     db_host,
     db_name,
     doppler_par,
+    doppler_mass_ratio,
 ):
     config = load_config(config_file, config_options)
     apply_logging_config(config)
+
+    if doppler_mass_ratio is not None:
+        if doppler_par is None:
+            raise click.BadParameter(
+                "needs --doppler-par.", param_hint="--doppler-mass-ratio"
+            )
+        if doppler_mass_ratio <= 0:
+            raise click.BadParameter(
+                "must be positive.", param_hint="--doppler-mass-ratio"
+            )
 
     manual_candidates = list(manual_candidates)
     db_modes = {"PSR", "FS", "nearby_ks", "nearby_fs"}
@@ -839,9 +863,15 @@ def run_file_pipeline(
         orbit = read_par_orbit(doppler_par)
         mid_mjd = tstart + obs_header.nspectra * obs_header.tsamp / 2 / 86400.0
         velocity = orbital_radial_velocity(orbit, mid_mjd, telescope_location)
+        target = "pulsar"
+        if doppler_mass_ratio is not None:
+            # the companion moves opposite to the pulsar, scaled by the mass ratio
+            velocity = -doppler_mass_ratio * velocity
+            target = f"companion (m_pulsar / m_companion = {doppler_mass_ratio})"
         log.info(
-            f"Doppler correcting spectrum with {doppler_par}: v/c = {velocity:+.3e} "
-            f"at MJD {mid_mjd:.5f} (frequency shift factor {1 / (1 + velocity):.8f})."
+            f"Doppler correcting spectrum for the {target} in {doppler_par}: "
+            f"v/c = {velocity:+.3e} at MJD {mid_mjd:.5f} "
+            f"(frequency shift factor {1 / (1 + velocity):.8f})."
         )
         doppler_correct_power_spectra(power_spectra, velocity)
 
