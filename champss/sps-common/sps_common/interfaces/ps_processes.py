@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from glob import glob
 from multiprocessing import shared_memory, Pool
-from typing import List
+from typing import List, Optional
 from scipy.stats import mode
 from functools import partial
 
@@ -56,6 +56,7 @@ class DedispersedTimeSeries:
     dec = attrib(converter=float)
     start_mjd = attrib(converter=float)
     obs_id = attrib(converter=str)
+    nchan = attrib(type=Optional[int], default=None)
 
     def __attrs_post_init__(self):
         """Convert dm list to array and check for dm inconsistency."""
@@ -213,6 +214,7 @@ class PowerSpectra:
     injections = attrib(
         type=List, default=[]
     )  # Injections are not stored in the written hdf5
+    nchan = attrib(type=Optional[int], default=None)
 
     def __attrs_post_init__(self):
         """Convert list to arrays."""
@@ -417,6 +419,11 @@ class PowerSpectra:
         else:
             beta = h5f.attrs["beta"]
 
+        if isinstance(h5f.attrs["nchan"], h5py.Empty):
+            nchan = None
+        else:
+            nchan = h5f.attrs["nchan"]
+
         if "rn medians" in h5f.keys():
             rn_medians = np.ones(h5f["rn medians"].shape)
             h5f["rn medians"].read_direct(rn_medians)
@@ -440,6 +447,7 @@ class PowerSpectra:
                 rn_medians=rn_medians,
                 rn_scales=rn_scales,
                 rn_dm_indices=rn_dm_indices,
+                nchan=nchan,
             )
 
         else:
@@ -455,6 +463,7 @@ class PowerSpectra:
                 bad_freq_indices=bad_freq_indices,
                 obs_id=obs_id.astype(str).tolist(),
                 power_spectra_shared=power_spectra_shared,
+                nchan=nchan,
             )
 
     def write(self, filename, nbit=32):
@@ -519,6 +528,9 @@ class PowerSpectra:
                 h5f.attrs.create("beta", data=None, dtype="f")
             else:
                 h5f.attrs["beta"] = self.beta
+
+            if self.nchan is not None:
+                h5f.attrs["nchan"] = self.nchan
 
     @classmethod
     def check_file_keys(

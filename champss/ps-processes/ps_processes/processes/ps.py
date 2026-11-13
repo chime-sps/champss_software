@@ -383,6 +383,7 @@ class PowerSpectraCreation:
             rn_medians=rn_medians,
             rn_scales=rn_scales,
             rn_dm_indices=rn_dm_indices,
+            nchan=dedisp_time_series.nchan,
         )
 
     @staticmethod
