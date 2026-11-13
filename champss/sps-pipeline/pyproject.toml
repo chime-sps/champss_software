@@ -10,7 +10,7 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.12,<3.13"
 beamformer = {path = "../beamformer", develop=true}
 candidate-processor = {path = "../candidate-processor", develop=true}
 workflow-core = {git = "https://github.com/CHIMEFRB/workflow.git"}
@@ -36,6 +36,7 @@ requests = "<2.32.0"
 your = "^0.6.7"
 riptide-ffa = "^0.2.5"
 mysql-connector-python = "^9.5.0"
+dmtlib = {git = "https://github.com/pravirkr/dmt.git", rev = "595214f3d7358a4b8512652f49191ea63b140409"}
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"

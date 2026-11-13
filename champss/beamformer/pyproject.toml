@@ -10,7 +10,7 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.12,<3.13"
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}
 spshuff = {path = "../spshuff", develop=true}
 sps-common = {path = "../sps-common", develop=true}
@@ -21,6 +21,8 @@ numpy = "^1.24.3"
 prometheus-client = "^0.17.1"
 pytz = "^2023.3"
 scipy = "^1.10.1"
+numba = ">=0.59,<0.61"
+threadpoolctl = "^3.1.0"
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"

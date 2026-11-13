@@ -10,13 +10,13 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.12,<3.13"
 astropy = "~6.1"
 attrs = "^22.2.0"
-h5py = "~3.9"
+h5py = ">=3.10,<3.16"
 hdf5plugin = ">=4.0"
 zstandard = ">=0.22"
-numba = "^0.58"
+numba = ">=0.59,<0.61"
 matplotlib = "^3.7.1"
 pytz = "^2023.3"
 scipy = "^1.10.1"

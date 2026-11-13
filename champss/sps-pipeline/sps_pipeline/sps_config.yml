@@ -36,8 +36,8 @@ dedisp:
   nsub: 64
   fdmt:
     dm_step: 2
-    max_snr_loss: null  # If set, replaces dm_step with a non-uniform S/N-loss DM grid
-    library: dmt  # dmt: the raw_init fork. dmtlib: upstream, streaming, ignores cpp
+    max_snr_loss: 0.1  # Non-uniform DM grid losing at most this S/N fraction (replaces dm_step); null: uniform dm_step grid
+    library: dmtlib  # dmtlib: upstream, streaming, ignores cpp. dmt: the raw_init fork (do not mix the two in one stack)
     num_dms_fac: 1
     chunk_size: 40960
     cpp: True
@@ -143,7 +143,7 @@ ps:
               upper_limit_dynamic: 3
             - metric: num_clusters
     stack_nbit: 16
-    quant_step: null  # If set, store the monthly stack as compressed 16-bit multiples of this step
+    quant_step: 0.25  # Store the monthly stack as compressed 16-bit multiples of this step; null: stack_nbit floats
     max_quant_days: 32  # Days a quantized monthly stack may hold before it is refused
     # Store each DM row of the monthly stack only up to its smearing cutoff 1/(2 t_eff), the
     # intra-channel smearing taken at ref_freq_mhz (600: conservative; the masked band's mean

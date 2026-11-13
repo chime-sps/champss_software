@@ -13,7 +13,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.12,<3.13"
 beamformer = {path = "../beamformer", develop=true}
 sps-common = {path = "../sps-common", develop=true}
 sps-databases = {path = "../sps-databases", develop=true}
@@ -23,7 +23,7 @@ msgpack-python = "^0.5.6"
 numpy = "^1.24.3"
 pytz = "^2023.3"
 pyzmq = "^27.1.0"
-setuptools = "^65.6.3"
+setuptools = ">=69"
 trio = "^0.22.0"
 
 [tool.poetry.group.dev.dependencies]

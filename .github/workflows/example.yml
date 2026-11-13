@@ -74,7 +74,7 @@ jobs:
       # Setup Python and pip
       - uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: 3.12
       # Setup SSH agent to access private GitHub repository dependencies
       - uses: webfactory/ssh-agent@v0.4.1
         with:

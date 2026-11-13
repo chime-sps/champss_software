@@ -1,5 +1,6 @@
 # Stage 1: Install dependencies
-FROM python:3.11-slim as base
+# trixie: dmtlib needs GCC >= 13 (bookworm has 12)
+FROM python:3.12-slim-trixie as base
 
 ARG SLACK_APP_TOKEN
 
@@ -12,6 +13,8 @@ RUN set -ex \
     && apt-get update \
     && apt-get install -yqq --no-install-recommends \
     curl \
+    cmake \
+    libfftw3-dev \
     git \
     libblas3 \
     liblapack3 \
@@ -32,11 +35,11 @@ ENV PATH="/champss_module/miniconda3/bin:$PATH"
 ENV TEMPO2="/champss_module/miniconda3/share/tempo2"
 
 RUN set -ex \
-    && curl -O https://repo.anaconda.com/miniconda/Miniconda3-py311_24.1.2-0-Linux-x86_64.sh \
-    && chmod 700 Miniconda3-py311_24.1.2-0-Linux-x86_64.sh \
-    && bash Miniconda3-py311_24.1.2-0-Linux-x86_64.sh -b -p ./miniconda3 \
+    && curl -O https://repo.anaconda.com/miniconda/Miniconda3-py312_24.1.2-0-Linux-x86_64.sh \
+    && chmod 700 Miniconda3-py312_24.1.2-0-Linux-x86_64.sh \
+    && bash Miniconda3-py312_24.1.2-0-Linux-x86_64.sh -b -p ./miniconda3 \
     && source ./miniconda3/bin/activate \
-    && conda install -c conda-forge dspsr=2024.08.01=py311ha2d4b42_0  
+    && conda install -c conda-forge dspsr=2024.08.01=py312h3d5c965_0  
 
 # Stage 3: Install Pip dependencies
 FROM miniconda as pip

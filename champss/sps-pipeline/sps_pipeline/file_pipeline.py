@@ -236,20 +236,29 @@ def run_file_pipeline(
 
     stack_nbit = config.ps.ps_stack_config.stack_nbit
 
+    stack_config = OmegaConf.to_container(config.ps.ps_stack_config)
+    stack_config["qc"] = False
+    stack_config["qc_config"] = {}
+    # The stack's frequency cut depends on the number of channels
+    stack_config["nchan"] = skybeam.nchan
+    ps_stack_pipeline = PowerSpectraStack(
+        mode="month",
+        update_db=False,
+        spectra_nbit=stack_nbit,
+        **stack_config,
+    )
+
     stack_exists = os.path.isfile(stack_file)
     if not stack_exists:
         log.info(f"Stack does not exist. Writing new stack to {stack_file}.")
-        power_spectra.write(stack_file, nbit=stack_nbit)
-    else:
-        stack_config = OmegaConf.to_container(config.ps.ps_stack_config)
-        stack_config["qc"] = False
-        stack_config["qc_config"] = {}
-        ps_stack_pipeline = PowerSpectraStack(
-            mode="month",
-            update_db=False,
-            spectra_nbit=stack_nbit,
-            **stack_config,
+        # Written as the stack step would write it, so that later days can be added
+        power_spectra.write(
+            stack_file,
+            nbit=stack_nbit,
+            quant_step=ps_stack_pipeline.quant_step,
+            freq_cut=ps_stack_pipeline.freq_cut_settings(),
         )
+    else:
         power_spectra_stacked = ps_stack_pipeline.stack_power_spectra_readout(
             power_spectra, stack_file
         )

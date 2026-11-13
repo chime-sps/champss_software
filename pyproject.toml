@@ -10,11 +10,12 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.12,<3.13"
 beamformer = {path = "./champss/beamformer", develop=true}
 candidate-processor = {path = "./champss/candidate-processor", develop=true}
 controller = {path = "./champss/controller", develop=true}
 dmt = {git = "https://github.com/chime-sps/dmt.git", rev = "raw_init"}
+dmtlib = {git = "https://github.com/pravirkr/dmt.git", rev = "595214f3d7358a4b8512652f49191ea63b140409"}
 folding = {path = "./champss/folding", develop=true}
 ps-processes = {path = "./champss/ps-processes", develop=true}
 rfi-mitigation = {path = "./champss/rfi-mitigation", develop=true}
