@@ -3,9 +3,10 @@
 import logging
 from datetime import datetime
 from glob import glob
-from multiprocessing import shared_memory
+from multiprocessing import shared_memory, Pool
 from typing import List, Optional
 from scipy.stats import mode
+from functools import partial
 
 import astropy.units as u
 import h5py
@@ -23,7 +24,8 @@ from sps_common.interfaces.single_pointing import (
     SearchAlgorithm,
     check_detection_statistic,
 )
-from sps_common.sm_utils import share_array
+from ps_processes.utilities.utilities import rednoise_normalise
+from sps_common.sm_utils import share_array, recreate_shared_array
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +60,7 @@ class DedispersedTimeSeries:
 
     def __attrs_post_init__(self):
         """Convert dm list to array and check for dm inconsistency."""
-        if type(self.dms) != np.ndarray:
+        if type(self.dms) is not np.ndarray:
             self.dms = np.asarray(self.dms)
         if self.dedisp_ts.shape[0] != self.dms.size:
             raise ValueError(
@@ -268,7 +270,7 @@ class PowerSpectra:
 
     @bad_freq_indices.validator
     def _validate_bad_freq_indices(self, attribute, value):
-        if type(value) != list:
+        if type(value) is not list:
             raise AttributeError(
                 f"The data type of {attribute.name} is not a nested list. It is a"
                 f" {type(value)}"
@@ -555,7 +557,7 @@ class PowerSpectra:
         try:
             h5f = h5py.File(filename, "r")
             file_ok = all(field in h5f.keys() for field in checked_fields)
-        except:
+        except Exception:
             file_ok = False
         return file_ok
 
@@ -631,6 +633,48 @@ class PowerSpectra:
             )
         self.injections = []
 
+    def make_same_weight(self, min_weight=1.0):
+        """Change the weights to have all the same values"""
+        fractions = self.get_bin_weights_fraction()
+        factors = 1 / fractions
+        factors[fractions < min_weight] = 0
+        self.power_spectra[:] = self.power_spectra * factors[None, :]
+        bad_freq_sample = np.arange(len(self.freq_labels))[factors == 0]
+        self.bad_freq_indices = [
+            bad_freq_sample,
+        ] * self.num_days
+
+    def remove_rednoise(self, rn_dict=dict(b0=10, bmax=10000), nthreads=8):
+        """Run rednoise normalisation on the power spectrum"""
+        self.move_to_shared_memory()
+        pool = Pool(processes=nthreads)
+        pool.map(
+            partial(
+                remove_rednoise_from_pspec_row,
+                power_spectra_shared_dict=self.power_spectra_shared_dict,
+                rn_dict=rn_dict,
+            ),
+            range(self.power_spectra.shape[0]),
+        )
+        pool.close()
+        pool.join()
+        self.power_spectra *= self.num_days / np.log(2)
+
+
+def remove_rednoise_from_pspec_row(
+    dm_index, power_spectra_shared_dict, rn_dict=dict(b0=10, bmax=10000)
+):
+    """Run rednoise normalisation on a single row of the power spectrum"""
+    power_spectra, shared_spectra = recreate_shared_array(power_spectra_shared_dict)
+    rednoise_normalise(
+        power_spectra[dm_index],
+        **rn_dict,
+        get_medians=False,
+        ignore_zeros=True,
+        out=power_spectra[dm_index],
+    )
+    shared_spectra.close()
+
 
 @attrs
 class PowerSpectraDetections:
@@ -686,10 +730,10 @@ class PowerSpectraDetections:
 
     @obs_id.validator
     def _validate_obs_id(self, attribute, value):
-        if type(value) != list:
+        if type(value) is not list:
             raise AttributeError(f"The data type of {attribute.name} is not list.")
         for val in value:
-            if type(val) != str:
+            if type(val) is not str:
                 raise AttributeError(f"The elements of {attribute.name} are not str.")
 
     @classmethod
