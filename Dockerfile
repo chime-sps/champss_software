@@ -9,6 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+
 RUN set -ex \
     && apt-get update \
     && apt-get install -yqq --no-install-recommends \
