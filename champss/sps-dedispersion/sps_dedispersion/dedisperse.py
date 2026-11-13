@@ -52,7 +52,7 @@ def dedisperse(
         if cpp:
             dedisp[:, i * chunk_size : (i + 1) * chunk_size] = fdmt.execute(
                 spectra_chunk
-            )[::dm_step, maxDT:][:dedisp.shape[0]]
+            )[::dm_step, maxDT:][: dedisp.shape[0]]
         else:
             dedisp[:, i * chunk_size : (i + 1) * chunk_size] = fdmt.fdmt(
                 spectra_chunk, padding=True, frontpadding=False
@@ -72,6 +72,7 @@ def dedisperse(
         dec=skybeam.dec,
         start_mjd=unix_to_mjd(skybeam.utc_start),
         obs_id=skybeam.obs_id,
+        nchan=skybeam.nchan,
     )
 
     return dts
