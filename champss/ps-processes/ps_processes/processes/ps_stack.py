@@ -421,6 +421,9 @@ class PowerSpectraStack:
                 h5f["rn medians"] = stacked_rn_medians
                 h5f["rn scales"] = stacked_rn_scales
 
+            if pspec.nchan is not None:
+                h5f.attrs.setdefault("nchan", pspec.nchan)
+
         log.info("Stacking completed")
         if self.update_db:
             log.info(f"Updating the stack database for {pspec.ra} {pspec.dec}")
@@ -606,6 +609,9 @@ class PowerSpectraStack:
                 log.error("The daily power spectrum does not have rednoise info saved.")
             if pspec_stack.rn_medians is None:
                 log.error("The power spectra stack does not have rednoise info saved.")
+
+        if pspec_stack.nchan is None:
+            pspec_stack.nchan = pspec.nchan
 
         stack_end = time.time()
         log.debug(f"Took {stack_end - stack_start} seconds to stack power spectra")
