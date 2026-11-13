@@ -8,6 +8,8 @@ readme = "README.md"
 exclude = [
     "tests"
 ]
+# The numba warm-up manifest (sps_common.numba_warmup), read from the installed package
+include = ["sps_common/numba_signatures.json"]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"

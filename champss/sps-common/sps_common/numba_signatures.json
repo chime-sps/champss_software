@@ -1,0 +1,372 @@
+{
+ "beamformer.coded": {
+  "_block_of": [
+   [
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64"
+   ]
+  ],
+  "_expand_into": [
+   [
+    "Array(uint8, 1, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(bool, 1, 'C', False, aligned=True)",
+    "Literal[bool](False)",
+    "Literal[bool](False)"
+   ],
+   [
+    "Array(uint8, 1, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(bool, 1, 'C', False, aligned=True)",
+    "bool",
+    "Literal[bool](True)"
+   ]
+  ],
+  "_raw_table": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "codes_chunk_into": [
+   [
+    "Array(uint8, 2, 'A', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(uint8, 2, 'A', False, aligned=True)",
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(float32, 3, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64"
+   ],
+   [
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(float32, 3, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64"
+   ]
+  ],
+  "column_max": [
+   [
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(float32, 3, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "count_masked": [
+   [
+    "Array(uint8, 2, 'C', False, aligned=True)"
+   ]
+  ],
+  "expand_row": [
+   [
+    "Array(uint8, 1, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(bool, 1, 'C', False, aligned=True)",
+    "bool"
+   ]
+  ],
+  "expand_rows": [
+   [
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(float32, 3, 'C', False, aligned=True)",
+    "Array(float32, 3, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(bool, 2, 'C', False, aligned=True)",
+    "bool"
+   ]
+  ],
+  "expand_values_into": [
+   [
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(float32, 3, 'C', False, aligned=True)",
+    "Array(float32, 3, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "set_masked": [
+   [
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(bool, 2, 'C', False, aligned=True)",
+    "int64"
+   ]
+  ]
+ },
+ "beamformer.skybeam": {
+  "_blocked_sum": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Literal[int](0)",
+    "int64"
+   ],
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64"
+   ]
+  ],
+  "_flatten_stats": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(bool, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "int64"
+   ]
+  ]
+ },
+ "ps_processes.processes.harmonic_search": {
+  "harmonic_search_rows": [
+   [
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "Array(uint8, 1, 'C', False, aligned=True)",
+    "Array(uint16, 2, 'C', False, aligned=True)",
+    "bool",
+    "Array(float64, 1, 'C', False, aligned=True)",
+    "Array(float64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ]
+  ]
+ },
+ "ps_processes.processes.ps": {
+  "_square_gather": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int16, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)"
+   ]
+  ]
+ },
+ "ps_processes.utilities.rednoise_fast": {
+  "_divide_by_slope": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Literal[int](0)",
+    "int64",
+    "float32",
+    "float32",
+    "float64"
+   ],
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "float32",
+    "float32",
+    "float64"
+   ]
+  ],
+  "_nanmedian32": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Literal[int](0)",
+    "int64",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ],
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "_rednoise_into": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "float64",
+    "Array(int64, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "_zero_listed": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Literal[int](0)",
+    "int64"
+   ],
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64"
+   ]
+  ]
+ },
+ "rfi_mitigation.utilities.fast_stats": {
+  "_binned_means_zero_as_nan_serial": [
+   [
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "int64",
+    "int64"
+   ]
+  ],
+  "_block_sum": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Literal[int](0)",
+    "int64"
+   ],
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64"
+   ]
+  ],
+  "_nansum_rows_and_squares": [
+   [
+    "Array(float32, 2, 'C', False, aligned=True)"
+   ]
+  ],
+  "_pairwise_sum": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Literal[int](0)",
+    "int64"
+   ],
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64"
+   ]
+  ]
+ },
+ "sps_common.fast_select": {
+  "_kth_and_below": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Literal[int](0)",
+    "int64",
+    "bool",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ],
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "bool",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "_masked_median32": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(bool, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "_select": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Literal[int](0)",
+    "int64"
+   ],
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64"
+   ]
+  ]
+ },
+ "sps_common.stack_quant": {
+  "_decode_block": [
+   [
+    "Array(uint16, 2, 'C', False, aligned=True)",
+    "int64",
+    "float32",
+    "Array(int32, 1, 'C', False, aligned=True)",
+    "Array(int32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "bool",
+    "float32"
+   ]
+  ],
+  "_encode_row": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "float32",
+    "int64",
+    "int64",
+    "Array(uint16, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64"
+   ]
+  ],
+  "_shuffle2": [
+   [
+    "Array(uint16, 1, 'C', False, aligned=True)",
+    "Array(uint8, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "_unshuffle2": [
+   [
+    "Array(uint8, 1, 'C', True, aligned=True)",
+    "Array(uint16, 1, 'C', False, aligned=True)"
+   ]
+  ]
+ }
+}

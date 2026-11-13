@@ -1,3 +1,5 @@
+import os
+
 from pybind11 import get_cmake_dir
 
 # Available at setup time due to pyproject.toml
@@ -22,7 +24,10 @@ ext_modules = [
         "spshuff.huffman",
         ["src/huffman.cpp"],
         cxx_std=11,
-        extra_compile_args=["-g", "-O3", "-march=native"],
+        # The CPU the code is built for: native (the build machine's CPU) by default, or an
+        # explicit target, e.g. SPSHUFF_MARCH=sapphirerapids, when images are built on one
+        # machine for nodes of another kind (see the Dockerfile's MARCH)
+        extra_compile_args=["-g", "-O3", f"-march={os.environ.get('SPSHUFF_MARCH', 'native')}"],
         define_macros=[
             ("VERSION_INFO", __version__),
             ("MAJOR_VERSION", "1"),

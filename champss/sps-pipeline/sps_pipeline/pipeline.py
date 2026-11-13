@@ -40,6 +40,7 @@ from ps_processes.ps_pipeline import PowerSpectraPipeline
 from scheduler.utils import convert_date_to_datetime
 from sps_common.interfaces import DedispersedTimeSeries
 from sps_common.barycenter import preload_earth_orientation
+from sps_common.cpus import available_cpus, missing_build_cpu_flags
 from sps_common.mp_start import use_forkserver
 from sps_databases import db_api, db_utils, models
 from sps_pipeline import (  # ps,
@@ -354,6 +355,13 @@ def main(
     you can do run-pipeline --date 20200701 317.86 20.96 rfi beamform
     """
     log.info("START")
+    missing = missing_build_cpu_flags()
+    if missing:
+        log.warning(
+            f"This CPU lacks {', '.join(missing)}, which the image's build CPU had: native"
+            " code (spshuff, dmtlib) may fail with 'illegal instruction'. Rebuild the image"
+            " for this CPU, or with an explicit MARCH (see the Dockerfile)."
+        )
     # Logging in multiprocessing child processes with Linux default
     # "fork" leads to unexpected behaviour
     # Forkserver, with this module imported once for all workers
@@ -546,8 +554,14 @@ def main(
             )  # round up to closest power of 2
             ntime_factor = max(ntime_factor, 1)  # minimum of 1
             nchan_factor = active_pointing.nchan // 1024
+            cpus = available_cpus()
             if num_threads is None:
-                num_threads = int(config.threads.thread_per_1024_chan * nchan_factor)
+                # One pool worker per CPU at most: more only oversubscribe the node
+                num_threads = min(
+                    int(config.threads.thread_per_1024_chan * nchan_factor), cpus
+                )
+            elif num_threads > cpus:
+                log.warning(f"{num_threads} threads requested, {cpus} CPUs available")
 
             log.info(f"Using {num_threads} threads to run the parallel codes")
             if fdmt and "beamform" not in components:

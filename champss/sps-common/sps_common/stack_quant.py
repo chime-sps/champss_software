@@ -28,6 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import hdf5plugin
 import numpy as np
+from sps_common.cpus import available_cpus
 from numba import njit
 
 try:
@@ -42,7 +43,7 @@ ZSTD_LEVEL = 1
 CODE_LIMIT = 2**30
 READ_BLOCK_ROWS = 32
 # Threads that compress or decompress rows; 0 leaves it to the HDF5 filters
-THREADS = min(8, os.cpu_count() or 1)
+THREADS = min(8, available_cpus())
 # Rows per threaded task when writing
 WRITE_BLOCK_ROWS = 8
 # HDF5 filter ids: byte shuffle, and the registered zstd filter

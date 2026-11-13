@@ -12,7 +12,18 @@ on:
         type: boolean
       runs_on:
         type: string
-        default: 'sps-compute2' # Temporary as BeeGFS servers have TCP settings that currently break Internet downloads
+        # The image's native code (spshuff, dmtlib) and numba cache are built for this
+        # runner's CPU: run it on the kind of node the image is for. sps-compute[4-7]
+        # (DDR5) have a different CPU from sps-compute[1-3]; an image built on one runs
+        # suboptimally, or not at all, on the other. The default builds for 4-7, the
+        # nodes that matter most. (Not a BeeGFS server: their TCP settings break
+        # Internet downloads.)
+        default: 'sps-compute4'
+      march:
+        type: string
+        # -march for the native code: 'native' (the runner's CPU) or an explicit target
+        # (see the Dockerfile's MARCH)
+        default: 'native'
 
 jobs:
   build-image-and-push-to-remote:
@@ -54,6 +65,7 @@ jobs:
           build-args: |
             SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }}
             SLACK_APP_TOKEN=${{ secrets.SLACK_APP_TOKEN }}
+            MARCH=${{ inputs.march }}
           push: true
       - run: |
           docker builder prune -f
@@ -72,6 +84,6 @@ jobs:
         with:
           install: true
       - run: |
-          DOCKER_BUILDKIT=1 docker build -f Dockerfile -t local/${{ inputs.image_name }}:${{ inputs.image_tag }} --ssh github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}} --build-arg SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }} --build-arg SLACK_APP_TOKEN=${{ secrets.SLACK_APP_TOKEN }} --load .
+          DOCKER_BUILDKIT=1 docker build -f Dockerfile -t local/${{ inputs.image_name }}:${{ inputs.image_tag }} --ssh github_ssh_id=${{ steps.set-ssh.outputs.SSH_AUTH_SOCK}} --build-arg SPS_ORG_PAT=${{ secrets.SPS_ORG_PAT }} --build-arg SLACK_APP_TOKEN=${{ secrets.SLACK_APP_TOKEN }} --build-arg MARCH=${{ inputs.march }} --load .
           docker builder prune -f
 

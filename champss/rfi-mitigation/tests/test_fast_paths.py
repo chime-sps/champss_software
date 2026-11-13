@@ -122,3 +122,19 @@ def test_sk_sums_and_estimator_match_numpy(cols):
     np.testing.assert_array_equal(g1.view(np.int32), s1.view(np.int32))
     np.testing.assert_array_equal(g2.view(np.int32), s2.view(np.int32))
     np.testing.assert_array_equal(got.view(np.int32), expected.view(np.int32))
+
+
+def test_binned_means_serial_equals_parallel():
+    from rfi_mitigation.utilities import fast_stats
+
+    rng = np.random.default_rng(4)
+    spectra = rng.random((37, 4096)).astype(np.float32)
+    spectra[3, 100] = 0
+    spectra[5] = 0
+    a = fast_stats._binned_means_zero_as_nan(spectra, 4, 1024)
+    b = fast_stats._binned_means_zero_as_nan_serial(spectra, 4, 1024)
+    np.testing.assert_array_equal(a.view(np.uint32), b.view(np.uint32))
+    np.testing.assert_array_equal(
+        fast_stats.binned_means_zero_as_nan(spectra[2:3], 1024).view(np.uint32),
+        a[2:3].view(np.uint32),
+    )

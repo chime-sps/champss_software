@@ -51,6 +51,44 @@ log = logging.getLogger()
 max_work_duration = 60 * 60  # in seconds
 
 
+def compute_node_cpus_per_gb(docker_client):
+    """
+    The fewest CPUs per GB of memory among the swarm's compute nodes
+    (node.labels.compute == true), or None if the nodes cannot be read (needs a manager).
+    """
+    ratios = []
+    try:
+        for node in docker_client.nodes.list():
+            labels = node.attrs.get("Spec", {}).get("Labels", {}) or {}
+            if str(labels.get("compute", "")).lower() != "true":
+                continue
+            resources = node.attrs.get("Description", {}).get("Resources", {})
+            cpus = resources.get("NanoCPUs", 0) / 1e9
+            mem_gb = resources.get("MemoryBytes", 0) / 1e9
+            if cpus > 0 and mem_gb > 0:
+                ratios.append(cpus / mem_gb)
+    except Exception as error:
+        log.warning(f"Could not read the swarm's compute nodes: {error}")
+        return None
+    return min(ratios) if ratios else None
+
+
+def container_cpus(cpus_per_container, tier_gb, cpus_per_gb):
+    """
+    The CPU share (CHAMPSS_CPUS) for a container reserving tier_gb of memory, or None for
+    no limit. "auto": the share of a node's CPUs that matches its share of the node's
+    memory, on the compute node with the fewest CPUs per GB, so containers packed onto a
+    node by their memory reservations never start more threads than it has cores.
+    """
+    if cpus_per_container in (None, "", "none"):
+        return None
+    if cpus_per_container == "auto":
+        if cpus_per_gb is None:
+            return None
+        return max(1, int(tier_gb * cpus_per_gb))
+    return max(1, int(cpus_per_container))
+
+
 def scale_down_service(service_name):
     try:
         docker_client = docker.from_env()
@@ -770,6 +808,18 @@ def deposit_stack_work(workflow_buckets_name, httpcontext, stack_parameters):
     type=str,
     help="Name of the stack run.",
 )
+@click.option(
+    "--cpus-per-container",
+    default="auto",
+    type=str,
+    show_default=True,
+    help=(
+        "CPUs each processing container may use (CHAMPSS_CPUS; caps its pool workers and"
+        " OpenMP/numba threads). 'auto': each memory tier's share of a compute node's"
+        " CPUs, in proportion to its memory reservation. A number: that many for every"
+        " tier. 'none': no limit (every container sizes for the whole node)."
+    ),
+)
 def run_all_pipeline_processes(
     db_host,
     db_port,
@@ -794,6 +844,7 @@ def run_all_pipeline_processes(
     alert_slack,
     mode,
     stack_name,
+    cpus_per_container,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -950,8 +1001,16 @@ def run_all_pipeline_processes(
     # Create Processing services
     processing_tier_limits = models.processing_tier_limits
     processing_tier_names = models.processing_tier_names
+    cpus_per_gb = (
+        compute_node_cpus_per_gb(docker_client) if cpus_per_container == "auto" else None
+    )
     for tier_name, tier_limit in zip(processing_tier_names, processing_tier_limits):
         service_name = f"processing-{tier_name}"
+        service_env = ["CONTAINER_NAME={{.Task.Name}}", "NODE_NAME={{.Node.Hostname}}"]
+        tier_cpus = container_cpus(cpus_per_container, tier_limit, cpus_per_gb)
+        if tier_cpus is not None:
+            service_env.append(f"CHAMPSS_CPUS={tier_cpus}")
+        log.info(f"Service {service_name}: CPU share {tier_cpus or 'unlimited'}")
         try:
             docker_client.services.get(service_name).remove()
         except docker.errors.NotFound:
@@ -969,7 +1028,7 @@ def run_all_pipeline_processes(
             ),
             # Using template Docker variables as in-container environment variables
             # that allow us this access out-of-container information
-            "env": ["CONTAINER_NAME={{.Task.Name}}", "NODE_NAME={{.Node.Hostname}}"],
+            "env": service_env,
             # This is neccessary to allow Pyroscope (py-spy) to work in Docker
             # 'cap_add': ['SYS_PTRACE'],
             "mode": docker.types.ServiceMode("replicated", replicas=0),

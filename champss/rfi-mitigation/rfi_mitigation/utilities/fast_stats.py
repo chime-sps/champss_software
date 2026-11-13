@@ -8,6 +8,8 @@ the same rounding, so these kernels give exactly what the numpy expressions they
 give, without the temporary arrays.
 """
 
+import multiprocessing
+
 import numpy as np
 from numba import njit, prange
 
@@ -118,6 +120,33 @@ def _binned_means_zero_as_nan(spectra, nbins, time_bin):
     return out
 
 
+@njit(cache=True)
+def _binned_means_zero_as_nan_serial(spectra, nbins, time_bin):
+    """
+    _binned_means_zero_as_nan without threads, for pool workers: each bin is computed on
+    its own either way, so the values are identical, and a worker starts no thread pool.
+    A function of its own, not the parallel one recompiled: numba names cache files after
+    the source function, so the two would share a cache entry and could load each other.
+    """
+    nchan = spectra.shape[0]
+    out = np.empty((nchan, nbins), dtype=spectra.dtype)
+    count = spectra.dtype.type(time_bin)
+    for c in range(nchan):
+        row = spectra[c]
+        for k in range(nbins):
+            start = k * time_bin
+            has_zero = False
+            for i in range(start, start + time_bin):
+                if row[i] == 0:
+                    has_zero = True
+                    break
+            if has_zero:
+                out[c, k] = np.nan
+            else:
+                out[c, k] = _pairwise_sum(row, start, time_bin) / count
+    return out
+
+
 def binned_means_zero_as_nan(spectra, time_bin):
     """
     Means of consecutive time_bin samples of each channel, NaN where a bin holds a zero.
@@ -128,11 +157,16 @@ def binned_means_zero_as_nan(spectra, time_bin):
         nbins = spectra.shape[1] // time_bin
         work[:, :nbins * time_bin].reshape(len(spectra), -1, time_bin).mean(axis=-1)
 
-    for C-contiguous float32 spectra, without copying them (channels run in parallel).
+    for C-contiguous float32 spectra, without copying them. Channels run in parallel in the
+    main process (NUMBA_NUM_THREADS threads; see sps_common.cpus); in a pool worker, and for
+    a single row, serially. The parallel kernel starts numba's OpenMP threads, after which
+    numba stops any process this one forks, so it is used only where nothing forks later.
     """
     if spectra.dtype != np.float32 or not spectra.flags.c_contiguous:
         raise ValueError("binned_means_zero_as_nan needs C-contiguous float32 spectra")
-    return _binned_means_zero_as_nan(spectra, spectra.shape[1] // time_bin, time_bin)
+    serial = spectra.shape[0] == 1 or multiprocessing.parent_process() is not None
+    kernel = _binned_means_zero_as_nan_serial if serial else _binned_means_zero_as_nan
+    return kernel(spectra, spectra.shape[1] // time_bin, time_bin)
 
 
 @njit(cache=True)
