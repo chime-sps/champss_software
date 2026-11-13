@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 @attrs(slots=True)
 class PowerSpectraPipeline:
     """
-    Pipeline to run ps processes.
+    Pipeline to run ps processes. 
 
     The class is initialised with various configurations.
     The required configurations are 'run_ps_creation', 'run_ps_search', 'run_ps_stack'
