@@ -2,6 +2,7 @@
 
 import datetime as dt
 import logging
+import math
 import os
 import sys
 import time
@@ -77,15 +78,17 @@ def container_cpus(cpus_per_container, tier_gb, cpus_per_gb):
     """
     The CPU share (CHAMPSS_CPUS) for a container reserving tier_gb of memory, or None for
     no limit. "auto": the share of a node's CPUs that matches its share of the node's
-    memory, on the compute node with the fewest CPUs per GB, so containers packed onto a
-    node by their memory reservations never start more threads than it has cores.
+    memory, on the compute node with the fewest CPUs per GB, rounded up. A job uses its
+    share fully only with few threads (1 thread: ~100%, 2: ~84%, 8: ~47% on average, from
+    its serial stages; dmt_planning/benchmark/cpu_timeline.py), so a node packed by memory
+    reservation is slightly overcommitted rather than left with idle CPUs.
     """
     if cpus_per_container in (None, "", "none"):
         return None
     if cpus_per_container == "auto":
         if cpus_per_gb is None:
             return None
-        return max(1, int(tier_gb * cpus_per_gb))
+        return max(1, math.ceil(tier_gb * cpus_per_gb - 1e-9))
     return max(1, int(cpus_per_container))
 
 

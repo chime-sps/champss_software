@@ -12,6 +12,7 @@ from ps_processes import (
 )
 from ps_processes.processes.ps_search import PowerSpectraSearch
 from ps_processes.processes.ps_stack import PowerSpectraStack
+from sps_common.cpus import available_cpus
 from sps_common.interfaces import PowerSpectra
 from sps_databases import db_api
 
@@ -61,7 +62,8 @@ class PowerSpectraPipeline:
         <ra>_<dec>_power_spectra_detections.npz
 
     num_threads: int
-        Number of threads to run the parallelised power spectra search process. Default = 8
+        Number of threads to run the parallelised power spectra search process.
+        Default = 8, capped at the CPUs available (sps_common.cpus.available_cpus)
 
     update_db: bool
         Whether to update the sps-databases on the processes. Default = True
@@ -74,7 +76,10 @@ class PowerSpectraPipeline:
     search_failed_spectra = attribute(validator=instance_of(bool), default=False)
     write_ps_detections = attribute(validator=instance_of(bool), default=True)
     write_ps_raw_detections = attribute(validator=instance_of(bool), default=False)
-    num_threads = attribute(validator=instance_of(int), default=8)
+    # 8, or fewer when the process may use fewer CPUs (CHAMPSS_CPUS, a cgroup quota)
+    num_threads = attribute(
+        validator=instance_of(int), factory=lambda: min(8, available_cpus())
+    )
     update_db = attribute(validator=instance_of(bool), default=True)
     known_source_threshold = attribute(validator=instance_of(float), default=np.inf)
     # private class attributes to store the initialised class objects to run the
@@ -266,7 +271,8 @@ class StackSearchPipeline:
         raw detections
 
     num_threads: int
-        Number of threads to run the parallelised power spectra search process. Default = 8
+        Number of threads to run the parallelised power spectra search process.
+        Default = 8, capped at the CPUs available (sps_common.cpus.available_cpus)
 
     update_db: bool
         Whether to update the database of the stacking process. Default = True
@@ -280,7 +286,10 @@ class StackSearchPipeline:
     min_num_days = attribute(validator=instance_of(int), default=30)
     write_ps_detections = attribute(validator=instance_of(bool), default=True)
     write_ps_raw_detections = attribute(validator=instance_of(bool), default=False)
-    num_threads = attribute(validator=instance_of(int), default=8)
+    # 8, or fewer when the process may use fewer CPUs (CHAMPSS_CPUS, a cgroup quota)
+    num_threads = attribute(
+        validator=instance_of(int), factory=lambda: min(8, available_cpus())
+    )
     update_db = attribute(validator=instance_of(bool), default=True)
     known_source_threshold = attribute(validator=instance_of(float), default=np.inf)
     # private class attributes to store the initialised class objects to run the

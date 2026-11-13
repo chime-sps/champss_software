@@ -561,7 +561,10 @@ def main(
                     int(config.threads.thread_per_1024_chan * nchan_factor), cpus
                 )
             elif num_threads > cpus:
-                log.warning(f"{num_threads} threads requested, {cpus} CPUs available")
+                # The scheduler requests tier/3 threads (processing.py); the container's
+                # CPU share (CHAMPSS_CPUS) or quota takes precedence
+                log.info(f"{num_threads} threads requested, capped at {cpus} available CPUs")
+                num_threads = cpus
 
             log.info(f"Using {num_threads} threads to run the parallel codes")
             if fdmt and "beamform" not in components:

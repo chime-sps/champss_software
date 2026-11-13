@@ -45,7 +45,10 @@ class DatabaseError(Exception):
     pass
 
 
-processing_tier_limits = range(10, 110, 10)
+# Memory reservation of each processing tier in GB: powers of 2, up to the first above
+# ram_requirement's 50 GB cap. Each tier has its own swarm service (processing.py), and
+# jobs carry their tier's name as a Workflow tag, so change these only with the queues empty.
+processing_tier_limits = [4, 8, 16, 32, 64]
 processing_tier_names = [f"max-{max_limit}GB" for max_limit in processing_tier_limits]
 
 
@@ -861,7 +864,15 @@ class Process:
 
 
 def ram_requirement(maxdm, ntime):
-    return min(100.0, (4 + maxdm * 0.05 + ntime * 1.35e-5))
+    """
+    Estimated peak RAM in GB of one pipeline job, which sets its processing tier.
+
+    Half the original estimate, min(100, 4 + 0.05 maxdm + 1.35e-5 ntime): that was about
+    twice the original code's measured peak, and the optimised pipeline peaks at about
+    half of that (J1629+4639: estimate 18 GB, peaks 9.1 GB originally and 4.4 GB now).
+    Interim, until refitted to peaks measured at scale.
+    """
+    return 0.5 * min(100.0, (4 + maxdm * 0.05 + ntime * 1.35e-5))
 
 
 @attrs
