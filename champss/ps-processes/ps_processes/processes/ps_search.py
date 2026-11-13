@@ -339,7 +339,7 @@ class PowerSpectraSearch:
                         with open(injection_path) as file:
                             injection_list = yaml.safe_load(file)
                         injection_df = pd.DataFrame(injection_list)
-                    except:
+                    except Exception:
                         injection_df = pd.read_pickle(injection_path)
                     if len(injection_indices) == 0:
                         injection_indices = np.arange(len(injection_df))
@@ -560,6 +560,9 @@ class PowerSpectraSearch:
 
             precompute_convolve_bins = True
             bin_weights = pspec.get_bin_weights()
+            # Masked harmonics are redirected to bin 0 in full_harm_bins. Bin 0 has no
+            # power, so it must not add days either (as in nsum_per_harmonic).
+            bin_weights[0] = 0
             print(all_harmonic_vals, convolve_bins)
             if precompute_convolve_bins:
                 precomputed_convolutions = {}
@@ -583,24 +586,6 @@ class PowerSpectraSearch:
                     precomputed_convolutions[str(convolve_bin)]["convolved_ndays"] = (
                         convolved_ndays
                     )
-
-                #     precomputed_convolutions[str(convolve_bin)] = {}
-                #     log.info(f"Compute window {convolve_bin}")
-                #     windowed_bins =  np.lib.stride_tricks.sliding_window_view(self.full_harm_bins, window_shape=(self.full_harm_bins.shape[0],
-                #                                                                                                  convolve_bin)).squeeze(axis=0)
-                #     for harm in all_harmonic_vals:
-                #         log.info(f"{convolve_bin} {harm}")
-                #         precomputed_convolutions[str(convolve_bin)][str(harm)] = {}
-                #         windowed_bins_harm = windowed_bins[:,:harm,:].reshape(-1, harm*convolve_bin)
-                #         unique_summed_bins = [np.unique(row) for row in windowed_bins_harm]
-                #         # This needs uneven windows currently
-                #         front_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
-                #         end_pad = [np.empty(0).astype(np.int32),]*(convolve_bin//2)
-                #         unique_summed_bins = front_pad+ unique_summed_bins + end_pad
-                #         # unique_summed_bins = List(unique_summed_bins)
-                #         convolved_ndays = calc_unique_sums(bin_weights, List(unique_summed_bins))
-                #         precomputed_convolutions[str(convolve_bin)][str(harm)]["convolved_ndays"] = convolved_ndays
-                #         precomputed_convolutions[str(convolve_bin)][str(harm)]["convolved_bins_list"] = unique_summed_bins
 
             log.info("Precomputed convolutions")
             shared_precomputed_convolutions, shm_objects = share_nested_arrays(
@@ -955,46 +940,22 @@ class PowerSpectraSearch:
                 # print(start_time-time.time())
                 for idx_harm, harm in enumerate(all_harmonic_vals):
                     harm_bins = full_harm_bins[:harm]
-                    # harm_sum_powers = harmonic_sums[idx_harm]
-                    # for convolve_bin in convolve_bins:
-                    used_nsum = nsum_per_harmonic[idx_harm]
+                    # One path for all convolution widths. With convolve_bin == 1 the
+                    # precomputed unique-bin sum is the plain harmonic sum (a bin that
+                    # occurs twice at low frequencies is counted once), and its day count
+                    # is consistent with the summed power. The previous convolve_bin == 1
+                    # branch used harm_sum_powers without ever assigning it.
+                    harm_sum_powers = harmonic_sums[idx_harm]
+                    used_nsum = precomputed["convolved_ndays"][idx_harm]
                     last_detection_freq = None
                     last_detection_sigma = None
-                    if convolve_bin == 1:
-                        power_cutoff = power_cutoff_per_harmonic[idx_harm]
-                        detection_idx = np.where(harm_sum_powers > power_cutoff)[0]
-                        if not len(detection_idx):
-                            continue
-                        if type(used_nsum) is np.ndarray:
-                            used_nsum_detec = used_nsum[detection_idx]
-                        else:
-                            used_nsum_detec = used_nsum
-                        sigmas = sigma_sum_powers(
-                            harm_sum_powers[detection_idx], used_nsum_detec
-                        )
-                    else:
-                        # used_convolutions = precomputed_convolutions[str(convolve_bin)][str(harm)]
-                        # print(start_time-time.time())
-                        convolved_power = harmonic_sums[idx_harm]
-
-                        # print(start_time-time.time())
-                        # print(convolved_power.shape, precomputed["convolved_ndays"].shape)
-                        convolved_ndays = precomputed["convolved_ndays"][idx_harm]
-                        power_cutoff = convolved_ndays
-                        check_idx = np.where(convolved_power > power_cutoff)[0]
-                        # print(start_time-time.time())
-
-                        # power_threshold = powersum_at_sigma(sigma_min, used_nsum_convolve)
-                        # probably much easier way of doing this all
-                        sigmas = sigma_sum_powers(
-                            convolved_power[check_idx], convolved_ndays[check_idx]
-                        )
-                        # print(start_time-time.time())
-                        good_idx = np.where(sigmas > sigma_min)[0]
-                        sigmas = sigmas[good_idx]
-                        detection_idx = check_idx[good_idx]
-                        # print(start_time-time.time(), len(detection_idx), len(check_idx))
-                        # print(dm_index, idx_harm, convolve_bin, len(sigmas))
+                    check_idx = np.where(harm_sum_powers > used_nsum)[0]
+                    sigmas = sigma_sum_powers(
+                        harm_sum_powers[check_idx], used_nsum[check_idx]
+                    )
+                    good_idx = np.where(sigmas > sigma_min)[0]
+                    sigmas = sigmas[good_idx]
+                    detection_idx = check_idx[good_idx]
 
                     for idx_count, idx in enumerate(detection_idx):
                         replace_last = False
