@@ -75,10 +75,11 @@ RUN set -ex \
          export DMT_ENABLE_NATIVE_ARCH=OFF CFLAGS="-march=${MARCH}" CXXFLAGS="-march=${MARCH}"; \
        fi \
     && export SPSHUFF_MARCH="${MARCH}" \
-    && python3 -m pip install . \
+    && python3 -m pip install --ignore-requires-python . \
     && get-data \
     && workflow workspace set champss.workspace.yml \
     && python3 download_files.py
+# --ignore-requires-python: cfbm (chime-frb-beam-model) still caps python <3.12, but runs fine on 3.12
 # Above "get-data" call is needed for CHIMEFRB/beam-model
 # The astropy calls allow downloading of data that might be available when running the container
 
