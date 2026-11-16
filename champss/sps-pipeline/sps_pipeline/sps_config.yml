@@ -40,6 +40,7 @@ dedisp:
     library: dmtlib  # dmtlib: upstream, streaming, ignores cpp. dmt: the raw_init fork (do not mix the two in one stack)
     num_dms_fac: 1
     chunk_size: 40960
+    input_nbits: 8  # dmtlib with 8-bit beamforming: FDMT input as uint8 in steps of sigma/16 (8), or float32 (32)
     cpp: True
 ps_creation:
   normalise: False

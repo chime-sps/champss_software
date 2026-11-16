@@ -216,3 +216,117 @@ def test_set_masked_and_count():
     coded.set_masked(cs.codes, mask, 20)
     assert cs.codes[0, 30] == 3 | coded.MASKED_BIT and cs.codes[1, 69] == 3 | coded.MASKED_BIT
     assert coded.count_masked(cs.codes) == 2 * 2048 - 200 + 2
+
+
+def _synthetic_shared(seed=3, nrow=4, ntime=9000, nsamp=2048):
+    """Random codes over shared memory: two beams, a slope in each row, some masking."""
+    rng = np.random.default_rng(seed)
+    beams = [slice(0, 4100), slice(4100, 8800)]
+    bstart = coded.block_starts(ntime, beams)
+    seg_start, seg_npts = coded.segments(bstart, beams, nsamp)
+    spec, blocks = coded.allocate_shared(nrow, bstart, seg_start, seg_npts)
+    cs = coded._arrays(spec, blocks)
+    lev = rng.integers(0, 5, (nrow, ntime))
+    part = np.zeros_like(lev)
+    cs.codes[:] = (5 * part + lev).astype(np.uint8)
+    cs.codes[rng.random((nrow, ntime)) < 0.2] |= coded.MASKED_BIT
+    cs.codes[:, 8800:] = coded.NO_DATA
+    cs.codes[2, 4100:8800] |= coded.MASKED_BIT  # one beam fully masked in one row
+    nblock = len(bstart) - 1
+    # Per block a scale and a mean drifting along the row (a trend for the fits)
+    cs.parts[:, :, 0] = rng.uniform(1.5, 2.5, (nrow, nblock))
+    cs.parts[:, :, 1] = 100 + np.linspace(0, 6, nblock)[None] * rng.uniform(0.5, 1.5, (nrow, 1))
+    return spec, blocks, cs, beams, nsamp
+
+
+def test_block_tables_match_brute_force():
+    spec, blocks, cs, beams, nsamp = _synthetic_shared()
+    try:
+        bstart, seg_start, _ = cs.layout
+        nblock = len(bstart) - 1
+        for r in range(cs.shape[0]):
+            cnt = np.empty((nblock, 15), np.int32)
+            si = np.empty((nblock, 15), np.int64)
+            si2 = np.empty(nblock, np.int64)
+            nmask = np.empty(nblock, np.int32)
+            coded.block_tables(cs.codes[r], bstart, seg_start, cnt, si, si2, nmask)
+            for g in range(nblock):
+                c = cs.codes[r, bstart[g] : bstart[g + 1]]
+                x = np.arange(bstart[g], bstart[g + 1]) - seg_start[g] + 1
+                good = c < coded.MASKED_BIT
+                assert nmask[g] == np.count_nonzero(~good)
+                assert si2[g] == (x[good] ** 2).sum()
+                for k in range(15):
+                    sel = good & (c == k)
+                    assert cnt[g, k] == sel.sum() and si[g, k] == x[sel].sum()
+    finally:
+        del cs
+        coded.detach([b.name for b in blocks])
+        for b in blocks:
+            b.close()
+            b.unlink()
+
+
+def test_weighted_median_and_line_fit():
+    from beamformer.skybeam import _line_fit, _weighted_median
+    from scipy import linalg
+    from sps_common.fast_select import masked_median
+
+    rng = np.random.default_rng(5)
+    for n in (1, 2, 7, 10):
+        values = rng.choice(np.float32([1.5, 2.25, -3, 7, 7.5]), size=5, replace=False)
+        counts = rng.integers(0, 4, 5)
+        counts[0] += n % 2 + 1
+        full = np.repeat(values, counts).astype(np.float32)
+        assert _weighted_median(values, counts) == masked_median(full, np.zeros(full.size, bool))
+    # The line fit from block tables against lstsq on the samples
+    npts = 3000
+    x = np.arange(1, npts + 1)
+    good = rng.random(npts) < 0.7
+    y = (5 + 2.5 * x / npts + rng.standard_normal(npts)).astype(np.float32)
+    a = np.stack([x / npts, np.ones(npts)], 1)
+    c0, c1 = linalg.lstsq(a[good], y[good])[0]
+    # One "block" per sample: code 0 with that sample's value
+    raw = y[:, None].astype(np.float64)
+    fit = _line_fit(good[:, None].astype(np.int32), (x * good)[:, None], x**2 * good, raw, float(npts))
+    np.testing.assert_allclose(fit, (c0, c1), rtol=1e-5, atol=1e-5)
+
+
+def test_fill_norm_flatten_tables_close_to_exact():
+    """The table statistics against the exact ones on random rows: medians equal,
+    everything else at float32 rounding level."""
+    from types import SimpleNamespace
+
+    spec, blocks, cs, beams, nsamp = _synthetic_shared()
+    bf = SimpleNamespace(detrend_nsamp=nsamp, beam_to_normalise=0)
+    try:
+        for r in range(cs.shape[0]):
+            saved = (cs.codes[r].copy(), cs.params[r].copy(), cs.rowp[r].copy())
+            ex = SkyBeamFormer.coded_fill_norm_flatten(bf, spec, beams, 1024, r)
+            ex_state = (cs.codes[r].copy(), cs.params[r].copy(), cs.rowp[r].copy())
+            cs.codes[r], cs.params[r], cs.rowp[r] = saved
+            tb = SkyBeamFormer.coded_fill_norm_flatten_tables(bf, spec, beams, 1024, r)
+            assert (ex["masked"], ex["fully"], ex["status2"]) == (tb["masked"], tb["fully"], tb["status2"])
+            np.testing.assert_array_equal(cs.codes[r], ex_state[0])
+            p, q = ex_state[1], cs.params[r]
+            np.testing.assert_array_equal(q[:, coded.MEDIAN], p[:, coded.MEDIAN])
+            np.testing.assert_allclose(q[:, coded.C0], p[:, coded.C0], atol=2e-3)
+            np.testing.assert_allclose(q[:, coded.C1], p[:, coded.C1], rtol=1e-5)
+            np.testing.assert_allclose(q[:, coded.FACTOR], p[:, coded.FACTOR], rtol=2e-3)
+            np.testing.assert_allclose(q[:, coded.FILL], p[:, coded.FILL], atol=2e-3)
+            np.testing.assert_allclose(cs.rowp[r], ex_state[2], rtol=1e-4)
+            np.testing.assert_allclose((tb["mean2"], tb["std2"]), (ex["mean2"], ex["std2"]), rtol=1e-4, atol=1e-5)
+            # Bins: NaN where a bin holds no data or a fully masked beam. The exact path
+            # also gives NaN wherever masked samples flatten to exactly zero (their fill
+            # equal to the float32 row mean), which the tables do not reproduce
+            tb_nan, ex_nan = np.isnan(tb["binned"]), np.isnan(ex["binned"])
+            assert not (tb_nan & ~ex_nan).any()
+            assert r != 2 or tb_nan[4:].all()  # row 2: the second beam fully masked
+            ok = ~ex_nan
+            np.testing.assert_allclose(tb["binned"][ok], ex["binned"][ok], atol=3e-3)
+    finally:
+        del cs
+        coded.detach([b.name for b in blocks])
+        for b in blocks:
+            b.close()
+            b.unlink()

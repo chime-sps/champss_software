@@ -85,6 +85,7 @@ def dedisperse_streaming(
     shared=False,
     release_input=False,
     expand_threads=1,
+    input_nbits=32,
 ):
     """
     Dedisperse the skybeam with a dmtlib FDMT in its streaming ("valid") mode.
@@ -115,7 +116,13 @@ def dedisperse_streaming(
         zeros. Ignored for other arrays.
     expand_threads: int
         For a skybeam of 8-bit codes (skybeam.coded): threads that expand each block's
-        rows to float32, the next block being expanded while the FDMT runs on this one.
+        rows, the next block being expanded while the FDMT runs on this one.
+    input_nbits: int
+        For a skybeam of 8-bit codes: 32 to give the FDMT float32 blocks, or 8 to give it
+        packed uint8 blocks, each value quantised in steps of 1/16 of its channel's
+        standard deviation around 128 (beamformer.coded.expand_u8_into). The FDMT then
+        sums exact integers, reading and writing a quarter of the input bytes, and its
+        output is brought back to the float input's units. Ignored for float spectra.
     """
     if fdmt.startup_samples > maxDT:
         raise ValueError(
@@ -132,11 +139,22 @@ def dedisperse_streaming(
 
         from concurrent.futures import ThreadPoolExecutor
 
+        from beamformer.coded import expand_u8_into, unpack_fdmt_u8
+
         spectra = skybeam.spectra
         rows = np.arange(spectra.shape[0]) if channels is None else np.asarray(channels)
         flipped_rows = skybeam.nchan - 1 - rows
+        packed = input_nbits == 8
+        if input_nbits not in (8, 32):
+            raise ValueError(f"input_nbits must be 8 or 32, not {input_nbits}")
+        # In packed input 128 is zero: absent channels and padding hold it
+        step = 1 / 16
+        zero = 128 if packed else 0
         # Two full-width buffers: the FDMT reads one while the next block fills the other
-        buffers = [np.zeros((skybeam.nchan, chunk_size), dtype=np.float32) for _ in range(2)]
+        buffers = [
+            np.full((skybeam.nchan, chunk_size), zero, dtype=np.uint8 if packed else np.float32)
+            for _ in range(2)
+        ]
         nthreads = max(1, int(expand_threads))
         bounds = np.linspace(0, len(rows), nthreads + 1).astype(int)
         groups = [(a, b) for a, b in zip(bounds[:-1], bounds[1:]) if b > a]
@@ -144,17 +162,27 @@ def dedisperse_streaming(
         prefetcher = ThreadPoolExecutor(1)
 
         def expand_block(buf, start, stop):
-            tasks = [
-                row_pool.submit(
-                    expand_values_into, coded.codes[a:b], coded.parts[a:b],
-                    coded.params[a:b], coded.rowp[a:b], *coded.layout, start, stop,
-                    buf, flipped_rows[a:b],
-                )  # fmt: skip
-                for a, b in groups
-            ]
+            if packed:
+                tasks = [
+                    row_pool.submit(
+                        expand_u8_into, coded.codes[a:b], coded.parts[a:b],
+                        coded.params[a:b], coded.rowp[a:b], *coded.layout, start, stop,
+                        buf, flipped_rows[a:b], step,
+                    )  # fmt: skip
+                    for a, b in groups
+                ]
+            else:
+                tasks = [
+                    row_pool.submit(
+                        expand_values_into, coded.codes[a:b], coded.parts[a:b],
+                        coded.params[a:b], coded.rowp[a:b], *coded.layout, start, stop,
+                        buf, flipped_rows[a:b],
+                    )  # fmt: skip
+                    for a, b in groups
+                ]
             for task in tasks:
                 task.result()
-            buf[flipped_rows, stop - start :] = 0  # padding of the last block
+            buf[flipped_rows, stop - start :] = zero  # padding of the last block
             return buf
     elif channels is None:
         spectra = skybeam.spectra[::-1]  # this returns a view
@@ -196,15 +224,22 @@ def dedisperse_streaming(
             full_block[flipped_rows, : stop - start] = spectra[:, start:stop]
             full_block[flipped_rows, stop - start :] = 0  # padding of the last block
             block = full_block
-        fdmt.execute(block, out=block_out)
+        if coded is not None and packed:
+            fdmt.execute(block, 8, out=block_out)
+        else:
+            fdmt.execute(block, out=block_out)
         if releaser is not None:
             # The FDMT keeps what it needs of earlier blocks in its own history
             releaser.release_until(stop)
         first = max(start, maxDT)
         if first < stop:
-            dedisp[:, first - maxDT : stop - maxDT] = block_out[
-                :, first - start : stop - start
-            ]
+            src = block_out[:, first - start : stop - start]
+            dst = dedisp[:, first - maxDT : stop - maxDT]
+            if coded is not None and packed:
+                # Every output sums one sample of every channel: 128 each
+                unpack_fdmt_u8(src, dst, 128 * skybeam.nchan, step)
+            else:
+                dst[:] = src
     if coded is not None:
         prefetcher.shutdown()
         row_pool.shutdown()

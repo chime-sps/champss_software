@@ -145,3 +145,38 @@ def test_compact_skybeam_gives_the_same_output(noise, chunk_size):
         make_fdmt(chunk_size, dt_trials), compact, chunk_size, MAX_DT, dt_trials
     ).dedisp_ts
     np.testing.assert_array_equal(got, expected)
+
+
+@pytest.mark.parametrize("chunk_size", [128, 700])
+def test_packed_8bit_input_equals_float_input_of_the_quantised_values(chunk_size):
+    """A skybeam of codes dedispersed with 8-bit FDMT input gives exactly the float FDMT
+    of its values quantised in steps of 1/16 (absent channels and padding as zero)."""
+    from beamformer import coded
+
+    rng = np.random.default_rng(7)
+    channels = np.sort(rng.choice(NCHAN, NCHAN - 9, replace=False))
+    nrow = len(channels)
+    bstart = coded.block_starts(NTIME, [slice(0, NTIME)])
+    cs = coded.CodedSpectra.new(nrow, bstart)
+    cs.codes[:] = rng.integers(0, 5, (nrow, NTIME)).astype(np.uint8)
+    cs.codes[rng.random((nrow, NTIME)) < 0.1] |= coded.MASKED_BIT
+    # Values in units of sigma, as after flattening, some beyond the 8 sigma clip
+    cs.parts[..., 0] = rng.uniform(0.5, 6, cs.parts.shape[:2])
+    cs.parts[..., 1] = rng.uniform(-0.5, 0.5, cs.parts.shape[:2])
+    cs.params[..., coded.FILL] = 0
+    skybeam = make_skybeam(cs.codes)
+    skybeam.coded, skybeam.channels, skybeam.nchan = cs, channels, NCHAN
+    dt_trials = np.arange(0, MAX_DT, 3)
+    packed = dedisperse_streaming(
+        make_fdmt(chunk_size, dt_trials), skybeam, chunk_size, MAX_DT, dt_trials, input_nbits=8
+    ).dedisp_ts
+    values, _ = cs.expand()
+    q = np.clip(np.rint(values * 16), -128, 127).astype(np.float32) / 16
+    full = np.zeros((NCHAN, NTIME), np.float32)
+    full[channels] = q
+    expected = run(full, chunk_size, dt_trials).dedisp_ts
+    np.testing.assert_array_equal(packed, expected)
+    # Rounding moves each sample by at most 1/32: a sum over NCHAN by at most NCHAN/32
+    full[channels] = np.clip(values, -8, 127 / 16)
+    unrounded = run(full, chunk_size, dt_trials).dedisp_ts
+    assert np.abs(packed - unrounded).max() <= NCHAN / 32

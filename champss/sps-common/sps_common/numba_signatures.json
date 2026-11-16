@@ -44,6 +44,32 @@
     "Array(float32, 1, 'C', False, aligned=True)"
    ]
   ],
+  "binned_affine_means": [
+   [
+    "Array(uint8, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float64, 2, 'C', False, aligned=True)",
+    "Array(float64, 1, 'C', False, aligned=True)",
+    "Array(float64, 1, 'C', False, aligned=True)",
+    "float64",
+    "float64",
+    "bool",
+    "int64",
+    "Array(float64, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "block_tables": [
+   [
+    "Array(uint8, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int32, 2, 'C', False, aligned=True)",
+    "Array(int64, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int32, 1, 'C', False, aligned=True)"
+   ]
+  ],
   "codes_chunk_into": [
    [
     "Array(uint8, 2, 'A', False, aligned=True)",
@@ -117,6 +143,22 @@
     "bool"
    ]
   ],
+  "expand_u8_into": [
+   [
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(float32, 3, 'C', False, aligned=True)",
+    "Array(float32, 3, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "int64",
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "float64"
+   ]
+  ],
   "expand_values_into": [
    [
     "Array(uint8, 2, 'C', False, aligned=True)",
@@ -138,6 +180,20 @@
     "Array(bool, 2, 'C', False, aligned=True)",
     "int64"
    ]
+  ],
+  "unpack_fdmt_u8": [
+   [
+    "Array(float32, 2, 'A', False, aligned=True)",
+    "Array(float32, 2, 'A', False, aligned=True)",
+    "int64",
+    "float64"
+   ],
+   [
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(float32, 2, 'A', False, aligned=True)",
+    "int64",
+    "float64"
+   ]
   ]
  },
  "beamformer.skybeam": {
@@ -153,6 +209,15 @@
     "int64"
    ]
   ],
+  "_flatten_or_clear_row": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(bool, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "int64",
+    "bool"
+   ]
+  ],
   "_flatten_stats": [
    [
     "Array(float32, 1, 'C', False, aligned=True)",
@@ -160,12 +225,74 @@
     "Array(float32, 1, 'C', False, aligned=True)",
     "int64"
    ]
+  ],
+  "_scale_chunk_into": [
+   [
+    "Array(float32, 2, 'A', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(bool, 2, 'A', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(bool, 2, 'C', False, aligned=True)",
+    "int64",
+    "Array(int64, 1, 'C', False, aligned=True)"
+   ],
+   [
+    "Array(float32, 2, 'A', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(uint8, 2, 'A', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(bool, 2, 'C', False, aligned=True)",
+    "int64",
+    "Array(int64, 1, 'C', False, aligned=True)"
+   ],
+   [
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(uint8, 2, 'C', False, aligned=True)",
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(bool, 2, 'C', False, aligned=True)",
+    "int64",
+    "Array(int64, 1, 'C', False, aligned=True)"
+   ]
   ]
  },
  "ps_processes.processes.harmonic_search": {
   "harmonic_search_rows": [
    [
     "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "Array(uint8, 1, 'C', False, aligned=True)",
+    "Array(uint16, 2, 'C', False, aligned=True)",
+    "bool",
+    "Array(float64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ],
+   [
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "Array(uint8, 1, 'C', False, aligned=True)",
+    "Array(uint16, 2, 'C', False, aligned=True)",
+    "bool",
+    "Array(float64, 1, 'C', False, aligned=True)",
+    "Array(float64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ],
+   [
+    "Array(float32, 2, 'C', True, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
     "int64",
@@ -256,6 +383,13 @@
   ]
  },
  "rfi_mitigation.utilities.fast_stats": {
+  "_binned_means_zero_as_nan": [
+   [
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "int64",
+    "int64"
+   ]
+  ],
   "_binned_means_zero_as_nan_serial": [
    [
     "Array(float32, 2, 'C', False, aligned=True)",
@@ -276,6 +410,9 @@
    ]
   ],
   "_nansum_rows_and_squares": [
+   [
+    "Array(float32, 2, 'A', False, aligned=True)"
+   ],
    [
     "Array(float32, 2, 'C', False, aligned=True)"
    ]

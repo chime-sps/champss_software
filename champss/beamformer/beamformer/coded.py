@@ -292,6 +292,47 @@ def expand_values_into(codes, parts, params, rowp, bstart, seg_start, seg_npts, 
 
 
 @njit(cache=True, nogil=True)
+def expand_u8_into(codes, parts, params, rowp, bstart, seg_start, seg_npts, t0, t1, out, out_rows, step):
+    """
+    expand_values_into for 8-bit FDMT input: each value v becomes
+    clip(128 + rint(v / step), 0, 255) in the uint8 out[out_rows[r], :t1 - t0]. After
+    flattening the values are in units of each channel's standard deviation, so step
+    1/16 keeps ~0.03% of the variance as quantisation noise, and clips at 8 sigma.
+    A row is expanded into a float32 scratch row, small enough to stay in cache.
+    """
+    nomask = np.empty(0, dtype=np.bool_)
+    scratch = np.empty(t1 - t0, dtype=np.float32)
+    inv = np.float32(1.0 / step)
+    for r in range(codes.shape[0]):
+        _expand_into(
+            codes[r], parts[r], params[r], rowp[r], bstart, seg_start, seg_npts,
+            t0, t1, scratch, nomask, False, False,
+        )  # fmt: skip
+        dst = out[out_rows[r]]
+        for k in range(t1 - t0):
+            q = np.rint(scratch[k] * inv) + 128
+            if q < 0:
+                q = 0
+            elif q > 255:
+                q = 255
+            dst[k] = np.uint8(q)
+
+
+@njit(cache=True, nogil=True)
+def unpack_fdmt_u8(src, dst, offset, step):
+    """
+    dst = (src - offset) * step, row by row: an FDMT of 8-bit input (offset 128 per
+    channel summed) back to the float input's units. Exact: the sums are integers below
+    2**24.
+    """
+    off = np.float32(offset)
+    s = np.float32(step)
+    for i in range(src.shape[0]):
+        for j in range(src.shape[1]):
+            dst[i, j] = (src[i, j] - off) * s
+
+
+@njit(cache=True, nogil=True)
 def set_masked(codes, mask, t0):
     """Mask the samples of codes[:, t0:t0 + mask.shape[1]] where mask is True."""
     for r in range(mask.shape[0]):
@@ -333,6 +374,65 @@ def column_max(codes, parts, bstart, t0, t1, out):
                     out[tt - t0] = v
             t = end
             g += 1
+
+@njit(cache=True, nogil=True)
+def block_tables(codes, bstart, seg_start, cnt, si, si2, nmask):
+    """
+    Per-block tables of one row's codes, for statistics without expanding the row:
+    cnt[g, c] and si[g, c], the count of unmasked samples with code c in block g and the
+    sum of their positions x = t - seg_start[g] + 1 in the detrending segment; si2[g], the
+    sum of x * x over the block's unmasked samples; nmask[g], its masked (or no-data)
+    samples. Within a block an unmasked sample's value is then affine in x for each code.
+    """
+    nblock = bstart.shape[0] - 1
+    for g in range(nblock):
+        for c in range(NPART * NLEVEL):
+            cnt[g, c] = 0
+            si[g, c] = 0
+        x0 = seg_start[g] - 1
+        sq = np.int64(0)
+        nm = 0
+        for t in range(bstart[g], bstart[g + 1]):
+            c = codes[t]
+            if c >= MASKED_BIT:
+                nm += 1
+                continue
+            x = np.int64(t - x0)
+            cnt[g, c] += 1
+            si[g, c] += x
+            sq += x * x
+        si2[g] = sq
+        nmask[g] = nm
+
+
+@njit(cache=True, nogil=True)
+def binned_affine_means(codes, bstart, seg_start, a, b, fill, mean, std, flat, time_bin, out):
+    """
+    Means of consecutive time_bin columns of one row whose unmasked values are
+    a[g, code] - b[g] * x (x as in block_tables) and masked values fill[g], then, if flat,
+    (v - mean) / std for v != 0: NaN for a bin holding a zero, as
+    binned_means_zero_as_nan does on the expanded row. out has one entry per whole bin.
+    """
+    g = 0
+    for k in range(out.shape[0]):
+        s = 0.0
+        zero = False
+        for t in range(k * time_bin, (k + 1) * time_bin):
+            while t >= bstart[g + 1]:
+                g += 1
+            c = codes[t]
+            if c >= MASKED_BIT:
+                v = fill[g]
+            else:
+                v = a[g, c] - b[g] * (t - seg_start[g] + 1)
+            if v == 0:
+                zero = True
+                break
+            if flat:
+                v = (v - mean) / std
+            s += v
+        out[k] = np.nan if zero else s / time_bin
+
 
 class CodedSpectra:
     """

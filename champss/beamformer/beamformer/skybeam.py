@@ -496,6 +496,45 @@ def _flatten_stats(row, mask, buf, block):
 _ROW_BUFFERS = {}
 
 
+def _weighted_median(values, counts):
+    """
+    The median of a multiset given as float32 values and their counts, as masked_median
+    takes it: the middle value, or for an even total the float32 mean of the two middle
+    values.
+    """
+    keep = counts > 0
+    values, counts = values[keep], counts[keep]
+    order = np.argsort(values, kind="stable")
+    values, cum = values[order], np.cumsum(counts[order])
+    total = int(cum[-1])
+    upper = values[np.searchsorted(cum, total // 2, side="right")]
+    if total % 2:
+        return np.float32(upper)
+    lower = values[np.searchsorted(cum, total // 2 - 1, side="right")]
+    return np.float32(lower + upper) / np.float32(2)
+
+
+def _line_fit(cnt, si, si2, raw, npts):
+    """
+    The least-squares line c0 * x / npts + c1 through one detrending segment's unmasked
+    values (x = 1..npts), from its block tables; None if it has none. With one distinct x
+    the fit is the minimum-norm solution, as lstsq gives.
+    """
+    n = float(cnt.sum())
+    if n == 0:
+        return None
+    sx = si.sum() / npts
+    sxx = si2.sum() / (npts * npts)
+    sy = (cnt * raw).sum()
+    sxy = (si * raw).sum() / npts
+    det = sxx * n - sx * sx
+    if det <= 1e-12 * sxx * n:
+        x = sx / n
+        y = sy / n
+        return np.float32(y * x / (x * x + 1)), np.float32(y / (x * x + 1))
+    return np.float32((sxy * n - sx * sy) / det), np.float32((sxx * sy - sx * sxy) / det)
+
+
 @attr.s(slots=True)
 class SkyBeamFormer:
     """
@@ -582,6 +621,13 @@ class SkyBeamFormer:
         subtraction); otherwise, or if the files' chunks cannot be held so, the float
         path is used. The values are the float path's, bit for bit (see
         beamformer.coded). Default = False (the pipeline's configuration turns it on)
+
+    exact_stats: bool
+        With eight_bit: compute the fill, detrending, normalisation and flattening
+        statistics exactly as the float path does, from expanded rows (bit-identical
+        output). False (default): from per-block tables of the codes, without expanding
+        rows (coded_fill_norm_flatten_tables): the same steps at float32-rounding level,
+        several times less CPU time and memory traffic.
     """
 
     basepath = attr.ib(default="./", validator=instance_of(str))
@@ -613,6 +659,7 @@ class SkyBeamFormer:
     max_mask_frac = attr.ib(default=1.0, validator=instance_of(float))
     subtract_incoh_beam = attr.ib(default=None)
     eight_bit = attr.ib(default=False, validator=instance_of(bool))
+    exact_stats = attr.ib(default=False, validator=instance_of(bool))
 
     @extn.validator
     def _validate_extension(self, attribute, value):
@@ -1432,6 +1479,137 @@ class SkyBeamFormer:
         result.update(status2=int(status2), mean2=mean2, std2=std2)
         return result
 
+    def coded_fill_norm_flatten_tables(self, spec, beam_slices, time_bin, row):
+        """
+        coded_fill_norm_flatten from per-block tables of the codes (coded.block_tables),
+        without expanding the row: one pass over its codes for the tables, one for the
+        stddev cleaner's bin means, the rest on tables of (block, code) entries.
+
+        The same steps and results, computed differently:
+        - fill medians: exact (before detrending a block holds at most 15 distinct values);
+        - detrending fits: the same least-squares fits, from sums in float64;
+        - beam medians for normalisation: each (block, code) at its mean position, which
+          is within half a block's trend of each sample's value;
+        - flattening means and standard deviations: from moments, in float64.
+        Values therefore differ from the float path's at the level of float32 rounding,
+        and the normalisation factors slightly more.
+        """
+        cs = coded.attach(spec)
+        codes, parts, params = cs.codes[row], cs.parts[row], cs.params[row]
+        bstart, seg_start, seg_npts = cs.layout
+        n = cs.shape[1]
+        nblock = bstart.shape[0] - 1
+        ncode = coded.NPART * coded.NLEVEL
+        cnt = np.empty((nblock, ncode), dtype=np.int32)
+        si = np.empty((nblock, ncode), dtype=np.int64)
+        si2 = np.empty(nblock, dtype=np.int64)
+        nmask = np.empty(nblock, dtype=np.int32)
+        coded.block_tables(codes, bstart, seg_start, cnt, si, si2, nmask)
+        # Raw value of each (block, code), with the float loader's float32 operations
+        scale = parts[:, 0::2]
+        offset = parts[:, 1::2]
+        raw = (
+            (coded.DEQUANT[None, None, :] * scale[:, :, None]) + offset[:, :, None]
+        ).reshape(nblock, ncode)
+        npts = seg_npts.astype(np.float64)
+        c0 = np.zeros(nblock)
+        c1 = np.zeros(nblock)
+        median_g = np.zeros(nblock)
+        beam_blocks = [cs.blocks_in(s.start, s.stop) for s in beam_slices]
+        for g0, g1 in beam_blocks:
+            if cnt[g0:g1].sum() == 0:
+                params[g0:g1, coded.FILL] = 0
+                continue
+            median = _weighted_median(raw[g0:g1].ravel(), cnt[g0:g1].ravel())
+            params[g0:g1, coded.MEDIAN] = median
+            params[g0:g1, coded.FILL] = median
+            median_g[g0:g1] = median
+            # One least-squares line per detrending segment (blocks sharing seg_start)
+            g = g0
+            while g < g1:
+                h = g
+                while h < g1 and seg_start[h] == seg_start[g]:
+                    h += 1
+                fit = _line_fit(cnt[g:h], si[g:h], si2[g:h], raw[g:h], npts[g])
+                if fit is not None:
+                    params[g:h, coded.C0], params[g:h, coded.C1] = fit
+                    c0[g:h], c1[g:h] = params[g, coded.C0], params[g, coded.C1]
+                g = h
+        factor = np.ones(nblock)
+        if self.beam_to_normalise is not None:
+            medians = []
+            for g0, g1 in beam_blocks:
+                xbar = si[g0:g1] / np.maximum(cnt[g0:g1], 1)
+                values = raw[g0:g1] - (xbar / npts[g0:g1, None] * c0[g0:g1, None] + c1[g0:g1, None]) + median_g[g0:g1, None]
+                fill = params[g0:g1, coded.FILL].astype(np.float64)
+                medians.append(
+                    _weighted_median(
+                        np.concatenate([values.ravel(), fill]).astype(np.float32),
+                        np.concatenate([cnt[g0:g1].ravel(), nmask[g0:g1]]),
+                    )
+                )
+            norm = medians[self.beam_to_normalise]
+            if norm != 0:
+                for b, (g0, g1) in enumerate(beam_blocks):
+                    if b != self.beam_to_normalise and medians[b] != 0:
+                        f = np.float32(norm / medians[b])
+                        params[g0:g1, coded.FACTOR] = f
+                        params[g0:g1, coded.FILL] *= f
+                        factor[g0:g1] = f
+        # Values: unmasked a[g, c] - b[g] * x, masked the block's fill
+        a = (raw - c1[:, None] + median_g[:, None]) * factor[:, None]
+        b = c0 * factor / npts
+        fill = params[:, coded.FILL].astype(np.float64)
+        n_unmasked = cnt.sum()
+        masked = int(nmask.sum())
+        s1 = (cnt * a).sum() - (b * si.sum(1)).sum()
+        s2 = (cnt * a * a).sum() - 2 * (b * (a * si).sum(1)).sum() + (b * b * si2).sum()
+        fill_nz = fill != 0
+        nz = n_unmasked + nmask[fill_nz].sum()
+        m1 = s1 + (nmask * fill)[fill_nz].sum()
+        m2 = s2 + (nmask * fill * fill)[fill_nz].sum()
+        result = dict(masked=masked, fully=int(masked == n))
+        status = 0 if masked == n else (1 if masked / n > 0.75 or nz == 0 else 2)
+        mean = std = 0.0
+        if status == 1:
+            # Cleared: all zero and masked
+            params[:, coded.FILL] = 0
+            codes[codes != coded.NO_DATA] |= coded.MASKED_BIT
+            result.update(masked=n, fully=1)
+            result["binned"] = np.full(n // time_bin, np.nan, dtype=np.float32)
+            result.update(status2=0, mean2=np.float32(0), std2=np.float32(0))
+            return result
+        if status == 2:
+            mean = m1 / nz
+            std = np.sqrt(max(m2 / nz - mean * mean, 0.0))
+            cs.rowp[row, coded.MEAN1] = np.float32(mean)
+            cs.rowp[row, coded.STD1] = np.float32(std)
+            pf = params[:, coded.FILL]
+            nonzero = pf != 0
+            pf[nonzero] = (pf[nonzero] - np.float32(mean)) / np.float32(std)
+        binned = np.empty(n // time_bin, dtype=np.float64)
+        coded.binned_affine_means(
+            codes, bstart, seg_start, a, b, fill, mean, std if std else 1.0,
+            status == 2, time_bin, binned,
+        )  # fmt: skip
+        result["binned"] = binned.astype(np.float32)
+        # Second flattening, if the stddev cleaner leaves the row: masked samples zero
+        if masked == n:
+            status2, mean2, std2 = 0, 0.0, 0.0
+        elif masked / n > 0.75 or n_unmasked == 0:
+            status2, mean2, std2 = 1, 0.0, 0.0
+        else:
+            if status == 2:
+                t1 = (s1 - n_unmasked * mean) / std
+                t2 = (s2 - 2 * mean * s1 + n_unmasked * mean * mean) / (std * std)
+            else:
+                t1, t2 = s1, s2
+            mean2 = t1 / n_unmasked
+            std2 = np.sqrt(max(t2 / n_unmasked - mean2 * mean2, 0.0))
+            status2 = 2
+        result.update(status2=status2, mean2=np.float32(mean2), std2=np.float32(std2))
+        return result
+
     def coded_apply_second_flatten(self, cs, row, status2, mean2, std2, flagged):
         """
         The second zero replacement of one row (masked samples zero, then flatten), from
@@ -1530,7 +1708,10 @@ class SkyBeamFormer:
                 f" {masked_fraction_of(total_masked()):.4f}"
             )
         log.info("Start filling and normalization.")
-        steps = pool.map(partial(self.coded_fill_norm_flatten, spec, beam_slices, 1024), rows)
+        fill_norm_flatten = (
+            self.coded_fill_norm_flatten if self.exact_stats else self.coded_fill_norm_flatten_tables
+        )
+        steps = pool.map(partial(fill_norm_flatten, spec, beam_slices, 1024), rows)
         results = [(s["masked"], s["fully"]) for s in steps]
         log.info("Finished filling, normalization and zero replacement.")
 
