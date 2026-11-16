@@ -1493,6 +1493,9 @@ class SkyBeamFormer:
         - flattening means and standard deviations: from moments, in float64.
         Values therefore differ from the float path's at the level of float32 rounding,
         and the normalisation factors slightly more.
+
+        One deliberate difference: the stddev cleaner gets the bin means before
+        flattening (see below), so its statistic is well conditioned.
         """
         cs = coded.attach(spec)
         codes, parts, params = cs.codes[row], cs.parts[row], cs.params[row]
@@ -1587,10 +1590,16 @@ class SkyBeamFormer:
             pf = params[:, coded.FILL]
             nonzero = pf != 0
             pf[nonzero] = (pf[nonzero] - np.float32(mean)) / np.float32(std)
+        # The stddev cleaner's input: ~1 s bin means BEFORE flattening, whose mean is the
+        # channel's bandpass level. The cleaner divides by that mean (flattening the
+        # statistic across the band) and thresholds std / mean, each channel's
+        # fractional variability. After flattening the mean is zero by construction, and
+        # the division made the statistic 1 / (float32 rounding residue); the original
+        # float path, and exact_stats, still do that.
         binned = np.empty(n // time_bin, dtype=np.float64)
         coded.binned_affine_means(
             codes, bstart, seg_start, a, b, fill, mean, std if std else 1.0,
-            status == 2, time_bin, binned,
+            False, time_bin, binned,
         )  # fmt: skip
         result["binned"] = binned.astype(np.float32)
         # Second flattening, if the stddev cleaner leaves the row: masked samples zero

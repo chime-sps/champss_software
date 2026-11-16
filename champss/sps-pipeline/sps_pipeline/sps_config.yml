@@ -15,7 +15,7 @@ rfi:
   powspec: False     # run power spectrum cleaner
   dummy: False       # run a dummy filter that does nothing
 rfi_global:
-  stddev: True       # run standard deviation channel cleaner on full dataset after filling
+  stddev: False      # standard deviation channel cleaner on the full dataset after filling: off pending review (see optimizations/figures/stddev_cleaner)
 beamform:
   nbits: 32
   nsub: 16384

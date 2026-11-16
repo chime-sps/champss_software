@@ -322,8 +322,12 @@ def test_fill_norm_flatten_tables_close_to_exact():
             tb_nan, ex_nan = np.isnan(tb["binned"]), np.isnan(ex["binned"])
             assert not (tb_nan & ~ex_nan).any()
             assert r != 2 or tb_nan[4:].all()  # row 2: the second beam fully masked
+            # The tables give the cleaner the bin means before flattening: the exact
+            # path's flattened ones mapped back with its own mean and std
             ok = ~ex_nan
-            np.testing.assert_allclose(tb["binned"][ok], ex["binned"][ok], atol=3e-3)
+            m, s = ex_state[2][coded.MEAN1], ex_state[2][coded.STD1]
+            unflattened = m + s * ex["binned"][ok].astype(np.float64)
+            np.testing.assert_allclose(tb["binned"][ok], unflattened, rtol=1e-4)
     finally:
         del cs
         coded.detach([b.name for b in blocks])

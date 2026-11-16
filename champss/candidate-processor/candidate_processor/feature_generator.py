@@ -33,12 +33,6 @@ def make_issubclass_validator(parent):
     return subclass_validator
 
 
-###################################################################
-######################## DataGetter Classes ########################
-
-
-@attrs
-
 class _CodedSpectraView:
     """
     Power read from 16-bit coded spectra (code * step) with the indexing of an array:
@@ -57,6 +51,12 @@ class _CodedSpectraView:
     def __len__(self):
         return len(self.codes)
 
+
+###################################################################
+######################## DataGetter Classes ########################
+
+
+@attrs
 class DataGetter:
     """
     Parent for classes which get the correct kind of data from the
