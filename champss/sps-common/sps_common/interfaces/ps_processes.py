@@ -541,6 +541,10 @@ class PowerSpectra:
                     keep = kept_bins(self.freq_labels, self.dms, **settings)
                     for key, value in settings.items():
                         h5f.attrs[f"freq_cut_{key}"] = value
+                    # What t_eff combines (informational; not compared between stacks)
+                    h5f.attrs["freq_cut_t_eff"] = (
+                        "sqrt(tsamp^2 + t_smear(ref_freq_mhz)^2 + t_DM_rms^2)"
+                    )
                 # Coded spectra are decoded row by row: the same multiples of the step
                 spectra = self.decoded_rows() if self.is_coded else self.power_spectra
                 write_quantized(h5f, spectra, quant_step, self.num_days, keep=keep)
