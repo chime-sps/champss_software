@@ -274,6 +274,7 @@
     "Array(int64, 1, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
     "Array(float32, 1, 'C', False, aligned=True)"
    ],
    [
@@ -289,10 +290,27 @@
     "Array(int64, 1, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
     "Array(float32, 1, 'C', False, aligned=True)"
    ],
    [
-    "Array(float32, 2, 'C', True, aligned=True)",
+    "Array(uint16, 2, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "int64",
+    "Array(uint8, 1, 'C', False, aligned=True)",
+    "Array(uint16, 2, 'C', False, aligned=True)",
+    "bool",
+    "Array(float64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)"
+   ],
+   [
+    "Array(uint16, 2, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
     "int64",
@@ -304,14 +322,15 @@
     "Array(int64, 1, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)",
     "Array(float32, 1, 'C', False, aligned=True)"
    ]
   ]
  },
  "ps_processes.processes.ps": {
-  "_square_gather": [
+  "_power_gather": [
    [
-    "Array(float32, 1, 'C', False, aligned=True)",
+    "Array(complex64, 1, 'C', False, aligned=True)",
     "Array(int16, 1, 'C', False, aligned=True)",
     "Array(float32, 1, 'C', False, aligned=True)",
     "Array(int64, 1, 'C', False, aligned=True)"
@@ -503,6 +522,22 @@
    [
     "Array(uint8, 1, 'C', True, aligned=True)",
     "Array(uint16, 1, 'C', False, aligned=True)"
+   ]
+  ],
+  "decode_daily_into": [
+   [
+    "Array(uint16, 2, 'C', False, aligned=True)",
+    "float64",
+    "Array(float32, 2, 'C', False, aligned=True)"
+   ]
+  ],
+  "encode_daily": [
+   [
+    "Array(float32, 1, 'C', False, aligned=True)",
+    "float32",
+    "Array(uint16, 1, 'C', False, aligned=True)",
+    "Array(int64, 1, 'C', False, aligned=True)",
+    "Array(float32, 1, 'C', False, aligned=True)"
    ]
   ]
  }

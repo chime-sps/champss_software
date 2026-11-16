@@ -61,6 +61,45 @@ def round_power(power, step):
     return np.rint(power / step) * step
 
 
+# Daily spectra kept as 16-bit codes (PowerSpectra with quant_step): code = rint(power /
+# step), the rounding the stack applies when it adds a day, so the stack built from codes
+# is the same. Codes above this saturate, the exact power kept aside (PowerSpectra.overflow)
+DAILY_CODE_MAX = CODE_MAX
+
+
+@njit(cache=True, nogil=True)
+def encode_daily(power, inv_step, codes, over_bin, over_power):
+    """
+    codes[j] = rint(power[j] * inv_step), as round_power rounds, saturating at
+    DAILY_CODE_MAX (0 for negative or NaN power). The bins that saturate go to
+    over_bin and their power to over_power. Returns how many there are; over_* must be as
+    long as power.
+    """
+    n = 0
+    for j in range(power.shape[0]):
+        v = power[j]
+        r = np.rint(v * inv_step)
+        if not r > 0:  # also NaN
+            codes[j] = 0
+        elif r > DAILY_CODE_MAX:
+            codes[j] = DAILY_CODE_MAX
+            over_bin[n] = j
+            over_power[n] = v
+            n += 1
+        else:
+            codes[j] = np.uint16(r)
+    return n
+
+
+@njit(cache=True, nogil=True)
+def decode_daily_into(codes, step, out):
+    """out = codes * step as float32 (exact for step a power of two)."""
+    s = np.float32(step)
+    for i in range(codes.shape[0]):
+        for j in range(codes.shape[1]):
+            out[i, j] = np.float32(codes[i, j]) * s
+
+
 def _zigzag(x):
     """Map signed int32 to unsigned: 0, -1, 1, -2, ... -> 0, 1, 2, 3, ..."""
     return (x << 1) ^ (x >> 31)

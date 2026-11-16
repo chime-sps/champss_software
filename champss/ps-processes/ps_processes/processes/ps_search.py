@@ -415,7 +415,7 @@ class PowerSpectraSearch:
 
         if self.mean_bin_sigma_threshold:
             # Filter out bins where mean sigma across all DM trials would be above some threshold
-            mean_spec = pspec.power_spectra.mean(0)
+            mean_spec = pspec.power_spectra.mean(0) * pspec.code_scale()
             mean_sigma = sigma_sum_powers(mean_spec, pspec.get_bin_weights())
             bad_freq_indices = np.arange(pspec.power_spectra.shape[1])[
                 mean_sigma >= self.mean_bin_sigma_threshold
@@ -514,6 +514,8 @@ class PowerSpectraSearch:
                 nsum=None,
                 lut=fast["lut"],
                 level_cutoff=fast["level_cutoff"],
+                # Power of one code for 16-bit spectra (PowerSpectra.quant_step)
+                step=pspec.quant_step,
             )
             if fast["nsum"] is not None:
                 _, shm_nsum16, fast_shm["nsum"] = share_array(fast["nsum"])
@@ -548,7 +550,8 @@ class PowerSpectraSearch:
             detection_list = pool.starmap(
                 partial(
                     self.search_candidates,
-                    pspec.power_spectra_shared_dict,
+                    # The step lets the table-based fallback decode 16-bit spectra
+                    dict(pspec.power_spectra_shared_dict, step=pspec.quant_step),
                     self.num_harm,
                     shm_full_harm_bins_dict,
                     shm_freq_labels_dict,
@@ -879,11 +882,16 @@ class PowerSpectraSearch:
                 level_cutoff=fast_shm["level_cutoff"],
             )
             det_row, det_level, det_bin, det_power = search_rows(
-                power_spectra, dm_indices, num_harm, fast
+                power_spectra, dm_indices, num_harm, fast, step=fast_shm.get("step")
             )
             det_key = det_row * len(allowed_harmonics) + det_level
         for row_pos, (dm_index, dm) in enumerate(zip(dm_indices, dms)):
             power_spectrum = power_spectra[dm_index, :]
+            if fast_shm is None and power_spectrum.dtype == np.uint16:
+                # The table-based kernel sums powers: decode the row
+                power_spectrum = power_spectrum.astype(np.float32) * np.float32(
+                    shm_spec_dict["step"]
+                )
             # for idx_harm, harm in enumerate(allowed_harmonics):
             #     harm_start = time.time()
             #     if harm > num_harm:
@@ -1154,7 +1162,7 @@ class PowerSpectraSearch:
                     sorted_harm_bins = sorted(
                         used_full_harm_bins[:harmonic, freq_index].astype(int)
                     )
-                    powers = pspec.power_spectra[dm_index, sorted_harm_bins]
+                    powers = pspec.powers(dm_index, sorted_harm_bins)
                     powers_sum = powers.sum()
                     used_nsum_detec = used_nsum[freq_index]
                     sigma = sigma_sum_powers(powers_sum, used_nsum_detec)

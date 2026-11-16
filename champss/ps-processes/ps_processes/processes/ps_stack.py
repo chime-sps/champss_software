@@ -568,6 +568,19 @@ class PowerSpectraStack:
                     h5f.attrs["number of days"] + pspec.num_days <= self.max_quant_days
                 ), f"The stack already holds the maximum of {self.max_quant_days} days."
                 stack = QuantizedStack(h5f)
+                if pspec.is_coded:
+                    assert pspec.quant_step == self.quant_step, (
+                        "The daily spectra and the stack do not have the same quant_step."
+                    )
+                    # The stack's sums need more than 16 bits: decode into float32 (the
+                    # same multiples of the step), then free the codes
+                    decoded = pspec.decoded(release=True)
+                    # Swap first: the block cannot close while a view of it is held
+                    pspec.power_spectra = decoded
+                    pspec.unlink_shared_memory()
+                    pspec.quant_step = None
+                    pspec.overflow = None
+                    pspec.float_rows = None
                 spectra = pspec.power_spectra
                 if (
                     isinstance(spectra, np.ndarray)
@@ -786,7 +799,12 @@ class PowerSpectraStack:
             metric_parameters = current_metric.get("parameters", {})
             minimum_bin_weight = current_metric.get("minimum_bin_weight", 0)
             red_noise_current = current_metric.get("red_noise_nbins", red_noise_default)
-            tested_ps = np.asarray(pspec.power_spectra)[tested_channels, 1:]
+            if pspec.is_coded:
+                # Exact float rows (PowerSpectra.float_rows): KS statistics are inflated
+                # by the rounding of the codes
+                tested_ps = np.array([pspec.powers(c) for c in tested_channels])[:, 1:]
+            else:
+                tested_ps = np.asarray(pspec.power_spectra)[tested_channels, 1:]
             # We need to cut both red_noise_bins and the one with a too low bin_weight
             # There are probably quicker ways to peform this slicing
             all_indices = np.arange(tested_ps.shape[1])

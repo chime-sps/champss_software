@@ -17,6 +17,20 @@ from sps_common.sm_utils import empty_shared_array
 N = 2**14
 
 
+def assert_same_power(got, expected):
+    """
+    Equal up to FFT rounding: the transformer's FFT runs in place, the reference's out of
+    place, which FFTW computes with different rounding. The error of a bin scales with the
+    spectrum's total power, so it is bounded relative to the largest bin (float32: 1e-6;
+    the un-normalised test series put ~1e10 into the lowest bins). Bins outside the
+    barycentred spectrum stay exactly zero.
+    """
+    assert got.dtype == expected.dtype and got.shape == expected.shape
+    np.testing.assert_array_equal(got == 0, expected == 0)
+    tol = (1e-6 if got.dtype == np.float32 else 1e-13) * np.abs(expected).max()
+    np.testing.assert_allclose(got, expected, rtol=1e-4, atol=tol)
+
+
 def reference(dts, normalise, beta, barycentring_mode, nbit=32):
     """The steps as transform_data did them before the per-process plan."""
     n_to_pad = N - dts.size
@@ -46,15 +60,14 @@ def test_row_transformer_is_identical(beta, normalise, dtype):
         dts = (50 + rng.standard_normal(size)).astype(dtype)
         expected = reference(dts, normalise, beta, "Fourier")
         got = transformer.power_spectrum(dts, normalise)
-        assert got.dtype == expected.dtype
-        np.testing.assert_array_equal(got, expected)
+        assert_same_power(got, expected)
 
 
 def test_topocentric_and_nbit64():
     dts = np.random.default_rng(1).standard_normal(N - 100).astype(np.float32)
     transformer = _RowTransformer(N, "<f4", 64, 1e-4, "Topocentric")
     expected = reference(dts, False, 1e-4, "Topocentric", nbit=64)
-    np.testing.assert_array_equal(transformer.power_spectrum(dts, False), expected)
+    assert_same_power(transformer.power_spectrum(dts, False), expected)
 
 
 @pytest.mark.parametrize("beta", [-2e-4, 2e-4])

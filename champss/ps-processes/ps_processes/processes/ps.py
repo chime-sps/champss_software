@@ -128,17 +128,17 @@ def bins_in_ranges(freq_labels, lefts, rights):
     return out
 
 
-# Offset that marks a bin with no source in _square_gather
+# Offset that marks a bin with no source in _power_gather
 OUTSIDE = np.iinfo(np.int16).min
 
 
 @njit(cache=True)
-def _square_gather(power, offsets, work, nan_bins):
+def _power_gather(spectrum, offsets, work, nan_bins):
     """
-    work[j] = power[j + offsets[j]] ** 2, 0 where offsets[j] is OUTSIDE, then NaN at
-    nan_bins (sorted, unique, in range): the same as squaring power in place, gathering
-    with np.take, zeroing the bins outside and setting work[nan_bins] = np.nan, in one
-    pass that reads power once.
+    work[j] = |spectrum[j + offsets[j]]|**2 (re * re + im * im, the DC bin as 0), 0 where
+    offsets[j] is OUTSIDE, then NaN at nan_bins (sorted, unique, in range): the power,
+    barycentric gather and masking in one pass over the complex FFT output, instead of
+    |X| into a power row and then squaring and gathering from that.
     """
     p = 0
     for j in range(work.shape[0]):
@@ -146,8 +146,12 @@ def _square_gather(power, offsets, work, nan_bins):
         if o == OUTSIDE:
             work[j] = 0
         else:
-            v = power[j + o]
-            work[j] = v * v
+            k = j + o
+            if k == 0:
+                work[j] = 0
+            else:
+                x = spectrum[k]
+                work[j] = x.real * x.real + x.imag * x.imag
         if p < nan_bins.shape[0] and nan_bins[p] == j:
             work[j] = np.nan
             p += 1
@@ -168,8 +172,12 @@ class _RowTransformer:
         if real not in (np.dtype(np.float32), np.dtype(np.float64)):
             real = np.dtype(np.float64)
         complex_dtype = np.result_type(real, np.complex64)
-        self.fft_in = pyfftw.empty_aligned(padded_length, dtype=real)
+        # In place: the real input is the start of the complex output's buffer. Half the
+        # working set of separate buffers, so the FFT of each 2**20-sample row makes about
+        # a third of the memory traffic and takes ~35% less CPU time with several workers
+        # (dmt_planning/ps_fft/fft_traffic.py); the result differs only in rounding
         self.fft_out = pyfftw.empty_aligned(padded_length // 2 + 1, dtype=complex_dtype)
+        self.fft_in = self.fft_out.view(real)[:padded_length]
         self.fft = pyfftw.FFTW(
             self.fft_in, self.fft_out, flags=("FFTW_ESTIMATE",), threads=1
         )
@@ -184,7 +192,7 @@ class _RowTransformer:
             self.outside = np.flatnonzero(index < 0)
             self.index = np.maximum(index, 0)
             # The same gather as 2-byte offsets from each bin (|offset| <= |beta| * nbin,
-            # about 105 at most), which _square_gather reads instead of the 8-byte index
+            # about 105 at most), which _power_gather reads instead of the 8-byte index
             offsets = index - np.arange(nbin)
             inside = index >= 0
             if (
@@ -241,19 +249,17 @@ class _RowTransformer:
             work = self.power_spectrum(dts, normalise)
             work[nan_bins] = np.nan
             return work
-        self._fft_abs(dts, normalise)
-        _square_gather(self.power, self.offsets, self.work, nan_bins)
+        self._fft(dts, normalise)
+        _power_gather(self.fft_out, self.offsets, self.work, nan_bins)
         return self.work
 
-    def _fft_abs(self, dts, normalise):
-        """|X| of all bins but the last into self.power, with the DC bin zeroed."""
+    def _fft(self, dts, normalise):
+        """The padded FFT of dts into self.fft_out."""
         n = dts.shape[0]
         self.fft_in[:n] = dts
         if n < self.fft_in.shape[0]:
             self.fft_in[n:] = 0 if normalise else np.median(dts[-4096:])
         self.fft()
-        np.abs(self.fft_out[:-1], out=self.power)
-        self.power[0] = 0
 
     def power_spectrum(self, dts, normalise):
         """
@@ -263,16 +269,14 @@ class _RowTransformer:
         of its last 4096 samples, as np.pad(mode="median", stat_length=4096) does. The
         returned array is reused by the next call.
         """
-        n = dts.shape[0]
-        self.fft_in[:n] = dts
-        if n < self.fft_in.shape[0]:
-            self.fft_in[n:] = 0 if normalise else np.median(dts[-4096:])
-        self.fft()
-        # |X|^2 of all bins but the last, with the DC bin zeroed
+        self._fft(dts, normalise)
+        # |X|^2 = re * re + im * im of all bins but the last, with the DC bin zeroed (the
+        # same arithmetic as _power_gather, so both paths give the same values)
         power = self.power
-        np.abs(self.fft_out[:-1], out=power)
+        spectrum = self.fft_out[:-1]
+        np.square(spectrum.real, out=power)
+        power += np.square(spectrum.imag)
         power[0] = 0
-        np.square(power, out=power)
         if power.dtype != self.work.dtype:
             power = power.astype(self.work.dtype)
         if self.barycentre:
@@ -378,6 +382,16 @@ class PowerSpectraCreation:
     nbit: int
         The number of bits to process the power spectra in. Default = 32
 
+    quant_step: float or None
+        If set (with nbit 32), keep the spectra as 16-bit codes, rint(power / quant_step),
+        the rounding the monthly stack applies to each day: half the memory and memory
+        traffic of float32, and the stack built from them is the same. Saturating bins
+        keep their exact power aside (PowerSpectra.overflow). Default = None (float).
+
+    float_rows: sequence of int
+        With quant_step, rows also kept as exact float32 spectra (PowerSpectra.float_rows),
+        for the quality checks; row 0 is always kept. Default = (0,)
+
     num_threads: int
         The number of threads to run the parallel processing of the FFT process. Default = 8
 
@@ -415,6 +429,8 @@ class PowerSpectraCreation:
     use_db = attribute(validator=instance_of(bool), default=True)
     update_db = attribute(validator=instance_of(bool), default=True)
     nbit = attribute(validator=instance_of(int), default=32)
+    quant_step = attribute(default=None)
+    float_rows = attribute(default=(0,))
     num_threads = attribute(validator=instance_of(int), default=8)
     mp_chunk_size: bool = attribute(default=10)
     save_medians: bool = attribute(default=True)
@@ -526,13 +542,26 @@ class PowerSpectraCreation:
                 dedisp_time_series.dedisp_ts.shape[0],
                 int(self.padded_length // 2),
             )
-            buffer_size = int(target_shape[0] * target_shape[1] * self.nbit / 8)
+            coded = self.quant_step is not None
+            if coded and self.nbit != 32:
+                raise ValueError("quant_step needs nbit 32.")
+            target_dtype = np.uint16 if coded else np.dtype(f"float{self.nbit}")
+            buffer_size = int(target_shape[0] * target_shape[1] * np.dtype(target_dtype).itemsize)
             power_spectra_shared = shared_memory.SharedMemory(
                 create=True, size=buffer_size
             )
             power_spectra = np.ndarray(
-                target_shape, dtype=f"float{self.nbit}", buffer=power_spectra_shared.buf
+                target_shape, dtype=target_dtype, buffer=power_spectra_shared.buf
             )
+            float_rows = []
+            float_shared = None
+            if coded:
+                float_rows = sorted(
+                    {0} | {int(r) for r in self.float_rows if 0 <= int(r) < target_shape[0]}
+                )
+                float_shared = shared_memory.SharedMemory(
+                    create=True, size=len(float_rows) * target_shape[1] * 4
+                )
 
             if not self.mp_chunk_size:
                 self.mp_chunk_size = (
@@ -570,6 +599,9 @@ class PowerSpectraCreation:
                         shared_target_name=power_spectra_shared.name,
                         target_shape=power_spectra.shape,
                         release_input=release_input,
+                        quant_step=self.quant_step,
+                        float_rows=float_rows,
+                        float_target_name=None if float_shared is None else float_shared.name,
                     ),
                     row_ranges,
                 )
@@ -580,6 +612,28 @@ class PowerSpectraCreation:
                     ts_shared.close()
                     ts_shared.unlink()
             log.info("Power spectra creation successful.")
+            overflow = None
+            float_row_arrays = None
+            if coded:
+                parts = [info[3] for info in median_info]
+                overflow = {
+                    key: np.concatenate([part[k] for part in parts]) if parts else np.empty(0)
+                    for k, key in enumerate(("row", "bin", "power"))
+                }
+                overflow["row"] = overflow["row"].astype(np.int64)
+                overflow["bin"] = overflow["bin"].astype(np.int64)
+                overflow["power"] = overflow["power"].astype(np.float32)
+                held = np.ndarray(
+                    (len(float_rows), target_shape[1]), np.float32, buffer=float_shared.buf
+                )
+                float_row_arrays = {r: held[k].copy() for k, r in enumerate(float_rows)}
+                del held
+                float_shared.close()
+                float_shared.unlink()
+                log.info(
+                    f"Power spectra kept as 16-bit codes (step {self.quant_step});"
+                    f" {len(overflow['row'])} bins above the 16-bit range kept exactly."
+                )
 
             if self.save_medians or self.write_medians:
                 median_dm_indices = []
@@ -623,7 +677,7 @@ class PowerSpectraCreation:
             if self.update_db:
                 self.update_database(
                     observation,
-                    power_spectra[0],
+                    float_row_arrays[0] if coded else power_spectra[0],
                     bad_freq_indices,
                     beta,
                     self.barycentring_mode,
@@ -652,6 +706,9 @@ class PowerSpectraCreation:
             rn_medians=rn_medians,
             rn_scales=rn_scales,
             rn_dm_indices=rn_dm_indices,
+            quant_step=self.quant_step,
+            overflow=overflow,
+            float_rows=float_row_arrays,
         )
 
     @staticmethod
@@ -670,6 +727,9 @@ class PowerSpectraCreation:
         bad_freq_indices=[],
         shared_target_name=None,
         target_shape=None,
+        quant_step=None,
+        float_rows=(),
+        float_target_name=None,
     ):
         """
         Create the power spectrum from a dedispersed time series.
@@ -725,10 +785,29 @@ class PowerSpectraCreation:
         power_spectrum: np.ndarray
             The power spectrum form from the FFT of the dedispersed time series.
         """
+        coded = quant_step is not None
         shared_spectra = shared_memory.SharedMemory(name=shared_target_name)
         power_spectra = np.ndarray(
-            target_shape, dtype=f"float{nbit}", buffer=shared_spectra.buf
+            target_shape,
+            dtype=np.uint16 if coded else f"float{nbit}",
+            buffer=shared_spectra.buf,
         )
+        if coded:
+            # Each row is made in a float32 scratch row as below, then encoded
+            from sps_common.stack_quant import encode_daily
+
+            scratch = np.empty(target_shape[1], dtype=np.float32)
+            inv_step = np.float32(1 / quant_step)
+            over_bin = np.empty(target_shape[1], dtype=np.int64)
+            over_power = np.empty(target_shape[1], dtype=np.float32)
+            over_parts = ([], [], [])
+            float_pos = {int(r): k for k, r in enumerate(float_rows)}
+            float_spectra = None
+            if float_target_name is not None:
+                float_shared = shared_memory.SharedMemory(name=float_target_name)
+                float_spectra = np.ndarray(
+                    (len(float_rows), target_shape[1]), np.float32, buffer=float_shared.buf
+                )
 
         all_medians = []
         all_scales = []
@@ -768,7 +847,7 @@ class PowerSpectraCreation:
             # Whether the birdies of row are already zero
             zeroed = False
 
-            row = power_spectra[dm_index]
+            row = scratch if coded else power_spectra[dm_index]
             # Whether the normalised spectrum has already been written into row
             in_row = False
             if remove_rednoise:
@@ -811,9 +890,27 @@ class PowerSpectraCreation:
 
             if not in_row:
                 row[:] = power_spectrum
+            if coded:
+                k = float_pos.get(int(dm_index))
+                if k is not None and float_spectra is not None:
+                    float_spectra[k] = row
+                n = encode_daily(row, inv_step, power_spectra[dm_index], over_bin, over_power)
+                if n:
+                    over_parts[0].append(np.full(n, dm_index, dtype=np.int64))
+                    over_parts[1].append(over_bin[:n].copy())
+                    over_parts[2].append(over_power[:n].copy())
+        del power_spectra
         shared_spectra.close()
-
-        return [dm_indices, all_medians, all_scales]
+        if not coded:
+            return [dm_indices, all_medians, all_scales]
+        if float_spectra is not None:
+            del float_spectra
+            float_shared.close()
+        overflow = tuple(
+            np.concatenate(p) if p else np.empty(0, dtype=d)
+            for p, d in zip(over_parts, (np.int64, np.int64, np.float32))
+        )
+        return [dm_indices, all_medians, all_scales, overflow]
 
     @staticmethod
     def transform_rows(start, stop, time_series, release_input=False, **kwargs):

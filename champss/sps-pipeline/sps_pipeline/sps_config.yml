@@ -63,6 +63,7 @@ ps_creation:
   zero_replace: True
   remove_rednoise: True
   nbit: 32
+  coded_spectra: True  # With a 16-bit stack (ps.ps_stack_config.quant_step): keep the daily spectra as its 16-bit codes
   save_medians: True
   write_medians: True
   write_zero_dm_medians: True

@@ -38,6 +38,25 @@ def make_issubclass_validator(parent):
 
 
 @attrs
+
+class _CodedSpectraView:
+    """
+    Power read from 16-bit coded spectra (code * step) with the indexing of an array:
+    whatever is indexed is decoded to float32. Saturated bins read as the saturated code.
+    """
+
+    def __init__(self, codes, step):
+        self.codes = codes
+        self.step = np.float32(step)
+        self.shape = codes.shape
+        self.dtype = np.dtype(np.float32)
+
+    def __getitem__(self, index):
+        return np.asarray(self.codes[index], dtype=np.float32) * self.step
+
+    def __len__(self):
+        return len(self.codes)
+
 class DataGetter:
     """
     Parent for classes which get the correct kind of data from the
@@ -638,6 +657,9 @@ class Features:
             dtype=pspec_meta_data.dtype,
             buffer=shared_spectra.buf,
         )
+        if pspec_meta_data.get("step") is not None:
+            # 16-bit codes (PowerSpectra.quant_step): read as power
+            power_spectra = _CodedSpectraView(power_spectra, pspec_meta_data.step)
         cluster = cluster_dict.cluster
         # Calculate candidate arrays
         (
@@ -1033,6 +1055,7 @@ class Features:
                 "freq_labels": power_spectra.freq_labels,
                 "num_days": power_spectra.num_days,
                 "freq_bin_weights": power_spectra.get_bin_weights(),
+                "step": power_spectra.quant_step,
             }
         )
         with Pool(self.num_threads) as pool:

@@ -55,6 +55,22 @@ from sps_pipeline import (  # ps,
 default_datpath = "/data/chime/sps/raw"
 
 
+def coded_spectra_options(config):
+    """
+    PowerSpectraCreation options for 16-bit daily spectra: with a 16-bit stack
+    (ps.ps_stack_config.quant_step), the spectra are kept as its codes, and the rows the
+    quality checks test as exact float32. ps_creation.coded_spectra: false keeps float32.
+    """
+    stack_config = (OmegaConf.to_container(config.ps) or {}).get("ps_stack_config") or {}
+    step = stack_config.get("quant_step")
+    if step is None or not config.ps_creation.get("coded_spectra", True):
+        return {}
+    rows = {0}
+    for metric in ((stack_config.get("qc_config") or {}).get("qc_metrics") or {}).values():
+        rows.update(int(c) for c in (metric or {}).get("channels", [0]))
+    return dict(quant_step=float(step), float_rows=tuple(sorted(rows)))
+
+
 def apply_logging_config(config, log_file="./logs/default.log"):
     """
     Applies logging settings from the given configuration.
@@ -640,9 +656,12 @@ def main(
                 # that we can delete dedispersed time series from memory first
                 # before stacking.
                 config.ps_creation.padded_length = ntime_factor * padded_length
+                creation_config = OmegaConf.to_container(config.ps_creation)
+                creation_config.pop("coded_spectra", None)
                 psc_pipeline = PowerSpectraCreation(
-                    **OmegaConf.to_container(config.ps_creation),
+                    **creation_config,
                     num_threads=num_threads,
+                    **coded_spectra_options(config),
                 )
                 ps_config = OmegaConf.to_container(config.ps)
                 if (ps_config.get("ps_stack_config") or {}).get("freq_cut") is not None:

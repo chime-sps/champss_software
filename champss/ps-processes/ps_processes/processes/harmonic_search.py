@@ -65,7 +65,9 @@ def prepare_fast_search(
     sigma_min: float
         Detection threshold, used to tabulate the cutoff per summed day count.
     spectra_dtype: np.dtype
-        dtype of the power spectra; only float32 and float64 are supported.
+        dtype of the power spectra: float32, float64, or uint16 for 16-bit codes (then
+        search_rows takes the code step and compares sums of codes with the cutoffs
+        divided by it, exactly, as the step is a power of two).
 
     Returns
     =======
@@ -75,7 +77,9 @@ def prepare_fast_search(
     """
     from sps_common.interfaces.utilities import powersum_at_sigma
 
-    if np.dtype(spectra_dtype) not in (np.dtype(np.float32), np.dtype(np.float64)):
+    if np.dtype(spectra_dtype) not in (
+        np.dtype(np.float32), np.dtype(np.float64), np.dtype(np.uint16)
+    ):
         return None
     harm_bins = np.asarray(harm_bins)
     if harm_bins.ndim != 2 or harm_bins.shape[0] != num_harm or num_harm > 32:
@@ -94,7 +98,8 @@ def prepare_fast_search(
     if nsum.ndim == 1:
         # The table-based search compares a row of sums with one cutoff scalar, which
         # numpy 1.x does in the dtype of the sums; follow whatever numpy does here.
-        compare_dtype = np.result_type(np.empty(1, spectra_dtype), cutoff[0])
+        sums_dtype = np.float32 if np.dtype(spectra_dtype) == np.uint16 else spectra_dtype
+        compare_dtype = np.result_type(np.empty(1, sums_dtype), cutoff[0])
         fast["level_cutoff"] = cutoff[:levels].astype(compare_dtype)
         return fast
     nsum = nsum[:levels]
@@ -126,6 +131,7 @@ def harmonic_search_rows(
     out_level,
     out_bin,
     out_power,
+    acc_like,
 ):
     """
     Harmonic sums of the given rows of spectra, keeping the bins above the cutoff.
@@ -140,6 +146,9 @@ def harmonic_search_rows(
         From prepare_fast_search; nsum is ignored unless use_nsum.
     out_row, out_level, out_bin, out_power: arrays
         Filled with (position in rows, harmonic level, bin, summed power) per detection.
+    acc_like: array
+        Its dtype is that of the sums: the spectra's, or float32 for uint16 codes (sums
+        of up to 32 codes are exact in float32).
 
     Returns
     =======
@@ -150,7 +159,7 @@ def harmonic_search_rows(
     length = spectra.shape[1]
     cap = out_bin.shape[0]
     count = 0
-    acc = np.empty(BLOCK, dtype=spectra.dtype)
+    acc = np.empty(BLOCK, dtype=acc_like.dtype)
     # For j = 32 a + t, bin = a * num + offset[parity of a * num, t]: the pattern repeats
     # every 32 bins, except that ties round to even, which depends on that parity.
     offset = np.empty((num_harm, 2, 32), dtype=np.int64)
@@ -211,9 +220,12 @@ def harmonic_search_rows(
     return count
 
 
-def search_rows(spectra, rows, num_harm, fast, capacity=1 << 16):
+def search_rows(spectra, rows, num_harm, fast, capacity=1 << 16, step=None):
     """
     Run harmonic_search_rows, growing the output if needed, sorted by row, level, bin.
+
+    For uint16 spectra (16-bit codes), step is the power of one code: the cutoffs are
+    compared in code units and the summed powers returned as power (float32).
 
     Returns
     =======
@@ -223,11 +235,20 @@ def search_rows(spectra, rows, num_harm, fast, capacity=1 << 16):
     rows = np.asarray(rows, dtype=np.int64)
     use_nsum = fast["nsum"] is not None
     nsum = fast["nsum"] if use_nsum else np.zeros((1, 1), dtype=np.uint16)
+    coded = spectra.dtype == np.uint16
+    if coded and step is None:
+        raise ValueError("uint16 spectra need the code step.")
+    lut, level_cutoff = fast["lut"], fast["level_cutoff"]
+    sums_dtype = np.float32 if coded else spectra.dtype
+    if coded:
+        # sum * step > cutoff exactly when sum > cutoff / step (step a power of two)
+        lut = lut / step
+        level_cutoff = level_cutoff / step
     while True:
         out_row = np.empty(capacity, dtype=np.int64)
         out_level = np.empty(capacity, dtype=np.int64)
         out_bin = np.empty(capacity, dtype=np.int64)
-        out_power = np.empty(capacity, dtype=spectra.dtype)
+        out_power = np.empty(capacity, dtype=sums_dtype)
         count = harmonic_search_rows(
             spectra,
             rows,
@@ -236,20 +257,24 @@ def search_rows(spectra, rows, num_harm, fast, capacity=1 << 16):
             fast["excl"],
             nsum,
             use_nsum,
-            fast["lut"],
-            fast["level_cutoff"],
+            lut,
+            level_cutoff,
             out_row,
             out_level,
             out_bin,
             out_power,
+            np.empty(0, dtype=sums_dtype),
         )
         if count <= capacity:
             break
         capacity = count
     order = np.lexsort((out_bin[:count], out_level[:count], out_row[:count]))
+    power = out_power[:count][order]
+    if coded:
+        power = power * np.float32(step)
     return (
         out_row[:count][order],
         out_level[:count][order],
         out_bin[:count][order],
-        out_power[:count][order],
+        power,
     )

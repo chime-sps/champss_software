@@ -629,7 +629,7 @@ class Injection:
             harms *= bin_fractions[bins]
         injected_indices = np.ix_(dm_indices, bins)
         _, detection_nharm, detection_sigma, _ = self.predict_sigma(
-            harms + self.pspec[injected_indices],
+            harms + self.pspec[injected_indices] * np.float32(self.pspec_obj.code_scale()),
             bins,
             dm_indices,
             n_harm,
@@ -702,7 +702,10 @@ def main(
 
     if remove_spectra:
         log.info("Replacing spectra with expected mean value.")
-        pspec.power_spectra[:] = pspec.num_days
+        if pspec.is_coded:
+            pspec.power_spectra[:] = int(round(pspec.num_days / pspec.quant_step))
+        else:
+            pspec.power_spectra[:] = pspec.num_days
         pspec.bad_freq_indices = [[]]
 
     # If the power is 0 nothing should be injected
@@ -738,9 +741,16 @@ def main(
             injection_output_dict["freq_indices"],
         )
 
-        pspec.power_spectra[injected_indices] += injection_output_dict[
-            "injected_powers"
-        ].astype(pspec.power_spectra.dtype)
+        if pspec.is_coded:
+            # As codes, rounded as the stack rounds; remove_injections takes the same off
+            codes = pspec.power_spectra[injected_indices].astype(np.int64) + np.rint(
+                injection_output_dict["injected_powers"] / pspec.quant_step
+            ).astype(np.int64)
+            pspec.power_spectra[injected_indices] = np.clip(codes, 0, 65535)
+        else:
+            pspec.power_spectra[injected_indices] += injection_output_dict[
+                "injected_powers"
+            ].astype(pspec.power_spectra.dtype)
 
     pspec.power_spectra[:, zero_bins] = 0
 

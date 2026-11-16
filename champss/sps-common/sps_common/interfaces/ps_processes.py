@@ -209,6 +209,18 @@ class PowerSpectra:
 
         power_spectra_shared (multiprocessing.shared_memory.SharedMemory or None):
         Shared memory object storing the power spectrum if it is kept in stored memory.
+
+        quant_step (float or None): If set, power_spectra holds uint16 codes,
+        rint(power / quant_step) (the rounding the stack applies when adding a day),
+        saturating at sps_common.stack_quant.DAILY_CODE_MAX; the exact power of the bins
+        that saturate is in overflow. Use powers() / decoded() for power values.
+
+        overflow (dict or None): With quant_step, the saturated bins: arrays "row",
+        "bin" and "power" (float32).
+
+        float_rows (dict or None): With quant_step, exact float32 power spectra of some
+        rows (row index -> array), for the quality checks, which are distorted by
+        rounding.
     """
 
     power_spectra = attrib()
@@ -229,6 +241,9 @@ class PowerSpectra:
     injections = attrib(
         type=List, default=[]
     )  # Injections are not stored in the written hdf5
+    quant_step = attrib(default=None)
+    overflow = attrib(default=None)
+    float_rows = attrib(default=None)
 
     def __attrs_post_init__(self):
         """Convert list to arrays."""
@@ -515,15 +530,15 @@ class PowerSpectra:
                     keep = kept_bins(self.freq_labels, self.dms, **settings)
                     for key, value in settings.items():
                         h5f.attrs[f"freq_cut_{key}"] = value
-                write_quantized(
-                    h5f, self.power_spectra, quant_step, self.num_days, keep=keep
-                )
+                # Coded spectra are decoded row by row: the same multiples of the step
+                spectra = self.decoded_rows() if self.is_coded else self.power_spectra
+                write_quantized(h5f, spectra, quant_step, self.num_days, keep=keep)
             else:
                 if freq_cut is not None:
                     raise ValueError("freq_cut needs quant_step.")
                 h5f.create_dataset(
                     "power spectra",
-                    data=self.power_spectra,
+                    data=self.decoded(),
                     dtype=f"f{int(nbit / 8)}",
                     chunks=(1, self.freq_labels.size),
                 )
@@ -599,6 +614,90 @@ class PowerSpectra:
                 self.power_spectra, dtype=self.power_spectra[0].dtype
             )
 
+    @property
+    def is_coded(self):
+        """Whether power_spectra holds 16-bit codes (see quant_step)."""
+        return self.quant_step is not None
+
+    def powers(self, row, bins=None):
+        """
+        Float32 power of one row (all bins, or the given bins), exact for float_rows,
+        decoded from the codes otherwise (with the saturated bins' exact power).
+        """
+        if not self.is_coded:
+            r = np.asarray(self.power_spectra[row])
+            return r if bins is None else r[bins]
+        if self.float_rows and row in self.float_rows:
+            r = self.float_rows[row]
+            return r if bins is None else np.asarray(r)[bins]
+        codes = np.asarray(self.power_spectra[row])
+        sel = codes if bins is None else codes[bins]
+        out = sel.astype(np.float32) * np.float32(self.quant_step)
+        ov = self.overflow
+        if ov is not None and len(ov["row"]):
+            here = ov["row"] == row
+            if here.any():
+                ov_bins, ov_power = ov["bin"][here], ov["power"][here]
+                if bins is None:
+                    out[ov_bins] = ov_power
+                else:
+                    pos = {int(b): k for k, b in enumerate(np.atleast_1d(bins))}
+                    for b, v in zip(ov_bins, ov_power):
+                        k = pos.get(int(b))
+                        if k is not None:
+                            out[k] = v
+        return out
+
+    def decoded(self, out=None, release=False, block_rows=32):
+        """
+        All power spectra as float32 (a new array, or out), exact at saturated bins.
+        For uncoded spectra, the spectra themselves.
+
+        release: free the memory of the codes block by block as they are decoded (codes
+        in shared memory only), so codes and floats are not both held in full. The
+        codes read as zero afterwards: only when nothing reads them again.
+        """
+        if not self.is_coded:
+            return self.power_spectra
+        from sps_common.sm_utils import release_rows
+        from sps_common.stack_quant import decode_daily_into
+
+        codes = np.asarray(self.power_spectra)
+        if out is None:
+            out = np.empty(codes.shape, dtype=np.float32)
+        for b0 in range(0, codes.shape[0], block_rows):
+            b1 = min(b0 + block_rows, codes.shape[0])
+            decode_daily_into(codes[b0:b1], self.quant_step, out[b0:b1])
+            if release:
+                release_rows(codes, b0, b1)
+        ov = self.overflow
+        if ov is not None and len(ov["row"]):
+            out[ov["row"], ov["bin"]] = ov["power"]
+        return out
+
+    def decoded_rows(self):
+        """
+        The power spectra row by row as float32 (see powers), with an array's len, shape
+        and row indexing, without decoding them all at once (for writing).
+        """
+        pspec = self
+
+        class _Rows:
+            shape = np.asarray(pspec.power_spectra).shape
+            dtype = np.dtype(np.float32)
+
+            def __len__(self):
+                return self.shape[0]
+
+            def __getitem__(self, i):
+                return pspec.powers(int(i))
+
+        return _Rows()
+
+    def code_scale(self):
+        """The power of one code unit: quant_step for coded spectra, else 1."""
+        return 1.0 if not self.is_coded else float(self.quant_step)
+
     def get_bin_weights(self):
         """
         Return the weight of each frequency bin.
@@ -659,9 +758,17 @@ class PowerSpectra:
                 injection["bins"],
             )
 
-            self.power_spectra[injected_indices] -= injection["injected_powers"].astype(
-                self.power_spectra.dtype
-            )
+            if self.is_coded:
+                # Injections were added as codes (ps_inject): take the same codes off
+                codes = self.power_spectra[injected_indices].astype(np.int64)
+                codes -= np.rint(
+                    injection["injected_powers"] / self.quant_step
+                ).astype(np.int64)
+                self.power_spectra[injected_indices] = np.clip(codes, 0, None)
+            else:
+                self.power_spectra[injected_indices] -= injection[
+                    "injected_powers"
+                ].astype(self.power_spectra.dtype)
         self.injections = []
 
 
