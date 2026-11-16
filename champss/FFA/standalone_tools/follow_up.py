@@ -128,7 +128,8 @@ def main(
     log.info(f"Tobs: {tobs}, beta: {barycentric_beta}")
 
     dm_index = np.argmin(abs(dedisp_ts.dms - dm_target))
-    ts = riptide.TimeSeries.from_numpy_array(dedisp_ts.dedisp_ts[dm_index], TSAMP)
+    # rows_float: the values, also for an int16 series (DedispersedTimeSeries.scale)
+    ts = riptide.TimeSeries.from_numpy_array(dedisp_ts.rows_float(dm_index, dm_index + 1)[0], TSAMP)
 
     bins = 256
     # Need to fold at the TOPOCENTRIC period not barycentric

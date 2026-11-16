@@ -333,6 +333,26 @@ def unpack_fdmt_u8(src, dst, offset, step):
 
 
 @njit(cache=True, nogil=True)
+def unpack_fdmt_i16(src, dst, offset, k):
+    """
+    dst = rint((src - offset) / k) as int16, clipped to +-32767: an FDMT of 8-bit input
+    (exact integer sums) stored in half the bytes of float32. With k = nchan / 256 the
+    largest possible sum, 128 * nchan, maps to 32768, so only that extreme clips; the
+    values are dst * k / 16 in the float input's units (see unpack_fdmt_u8).
+    """
+    off = np.float64(offset)
+    inv = 1.0 / k
+    for i in range(src.shape[0]):
+        for j in range(src.shape[1]):
+            v = np.rint((np.float64(src[i, j]) - off) * inv)
+            if v > 32767:
+                v = 32767
+            elif v < -32767:
+                v = -32767
+            dst[i, j] = np.int16(v)
+
+
+@njit(cache=True, nogil=True)
 def set_masked(codes, mask, t0):
     """Mask the samples of codes[:, t0:t0 + mask.shape[1]] where mask is True."""
     for r in range(mask.shape[0]):

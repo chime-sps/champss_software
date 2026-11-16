@@ -86,6 +86,7 @@ def dedisperse_streaming(
     release_input=False,
     expand_threads=1,
     input_nbits=32,
+    int16_series=True,
 ):
     """
     Dedisperse the skybeam with a dmtlib FDMT in its streaming ("valid") mode.
@@ -123,6 +124,11 @@ def dedisperse_streaming(
         standard deviation around 128 (beamformer.coded.expand_u8_into). The FDMT then
         sums exact integers, reading and writing a quarter of the input bytes, and its
         output is brought back to the float input's units. Ignored for float spectra.
+    int16_series: bool
+        With input_nbits 8: store the dedispersed series as int16, (sum - offset) / k
+        rounded with k = max(1, nchan / 256), half the memory and traffic of float32 (the
+        returned DedispersedTimeSeries has scale k / 16; rows_float gives the values).
+        Rounding adds k**2 / 12 to a variance of ~256 nchan: negligible. False: float32.
     """
     if fdmt.startup_samples > maxDT:
         raise ValueError(
@@ -139,7 +145,7 @@ def dedisperse_streaming(
 
         from concurrent.futures import ThreadPoolExecutor
 
-        from beamformer.coded import expand_u8_into, unpack_fdmt_u8
+        from beamformer.coded import expand_u8_into, unpack_fdmt_i16, unpack_fdmt_u8
 
         spectra = skybeam.spectra
         rows = np.arange(spectra.shape[0]) if channels is None else np.asarray(channels)
@@ -195,6 +201,10 @@ def dedisperse_streaming(
 
     ntbin = spectra.shape[1]
     out_dtype = np.float32 if coded is not None else spectra.dtype
+    series_k = None
+    if coded is not None and packed and int16_series:
+        out_dtype = np.int16
+        series_k = max(1, skybeam.nchan // 256)
     shape = (len(dt_trials), ntbin - maxDT)
     shm = None
     if shared:
@@ -235,7 +245,9 @@ def dedisperse_streaming(
         if first < stop:
             src = block_out[:, first - start : stop - start]
             dst = dedisp[:, first - maxDT : stop - maxDT]
-            if coded is not None and packed:
+            if series_k is not None:
+                unpack_fdmt_i16(src, dst, 128 * skybeam.nchan, series_k)
+            elif coded is not None and packed:
                 # Every output sums one sample of every channel: 128 each
                 unpack_fdmt_u8(src, dst, 128 * skybeam.nchan, step)
             else:
@@ -245,12 +257,14 @@ def dedisperse_streaming(
         row_pool.shutdown()
 
     return make_time_series(
-        dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp, shared_memory=shm
+        dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp, shared_memory=shm,
+        scale=None if series_k is None else series_k * step,
     )
 
 
 def make_time_series(
-    dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp, shared_memory=None
+    dedisp, dt_trials, skybeam, freq_bottom, freq_top, tsamp, shared_memory=None,
+    scale=None,
 ):
     """Wrap dedispersed data, labelled by delay across the band, with its DMs."""
     dms = (
@@ -267,6 +281,7 @@ def make_time_series(
         start_mjd=unix_to_mjd(skybeam.utc_start),
         obs_id=skybeam.obs_id,
         shared_memory=shared_memory,
+        scale=scale,
     )
 
     return dts

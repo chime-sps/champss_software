@@ -41,6 +41,7 @@ dedisp:
     num_dms_fac: 1
     chunk_size: 40960
     input_nbits: 8  # dmtlib with 8-bit beamforming: FDMT input as uint8 in steps of sigma/16 (8), or float32 (32)
+    int16_series: True  # With input_nbits 8: keep the dedispersed series as int16 (half the memory of float32)
     cpp: True
 ps_creation:
   normalise: False

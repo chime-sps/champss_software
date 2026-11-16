@@ -61,6 +61,9 @@ class DedispersedTimeSeries:
         shared_memory (SharedMemory or None) : The block dedisp_ts lives in, if it was
         allocated in shared memory, so worker processes can read it without a copy.
         It is unlinked when this object is garbage collected or Python exits.
+
+        scale (float or None) : If set, dedisp_ts holds integers (int16) whose values are
+        dedisp_ts * scale; see rows_float. None: dedisp_ts holds the values.
     """
 
     dedisp_ts = attrib(validator=instance_of(np.ndarray))
@@ -70,6 +73,14 @@ class DedispersedTimeSeries:
     start_mjd = attrib(converter=float)
     obs_id = attrib(converter=str)
     shared_memory = attrib(default=None, eq=False, repr=False)
+    scale = attrib(default=None)
+
+    def rows_float(self, start=0, stop=None, step=1):
+        """Rows start:stop:step of the time series as float32 values (scaled if stored as integers)."""
+        rows = self.dedisp_ts[start:stop:step]
+        if self.scale is None:
+            return rows
+        return rows.astype(np.float32) * np.float32(self.scale)
 
     def __attrs_post_init__(self):
         """Convert dm list to array and check for dm inconsistency."""

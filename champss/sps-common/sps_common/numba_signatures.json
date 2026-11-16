@@ -181,6 +181,20 @@
     "int64"
    ]
   ],
+  "unpack_fdmt_i16": [
+   [
+    "Array(float32, 2, 'A', False, aligned=True)",
+    "Array(int16, 2, 'A', False, aligned=True)",
+    "int64",
+    "int64"
+   ],
+   [
+    "Array(float32, 2, 'C', False, aligned=True)",
+    "Array(int16, 2, 'A', False, aligned=True)",
+    "int64",
+    "int64"
+   ]
+  ],
   "unpack_fdmt_u8": [
    [
     "Array(float32, 2, 'A', False, aligned=True)",

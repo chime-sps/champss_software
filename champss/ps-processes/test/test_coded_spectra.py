@@ -151,3 +151,17 @@ def test_decoded_with_release_and_decoded_rows():
         del codes, pspec
         shm.close()
         shm.unlink()
+
+
+@pytest.mark.parametrize("normalise", [False, True])
+def test_int16_series_gives_the_spectra_of_its_values(normalise):
+    """transform_data on an int16 series with ts_scale: the spectra of the same values
+    held as float32 (scaled while copied into the FFT buffer)."""
+    rng = np.random.default_rng(8)
+    ints = np.rint(rng.normal(0, 128, (4, NTS))).astype(np.int16)
+    ints[1] += (60 * np.sin(np.arange(NTS) * 0.3)).astype(np.int16)
+    scale = 4 / 16
+    values = ints.astype(np.float32) * np.float32(scale)
+    a, *_ = run_rows(values, normalise=normalise)
+    b, *_ = run_rows(ints, normalise=normalise, ts_scale=scale)
+    np.testing.assert_array_equal(a, b)

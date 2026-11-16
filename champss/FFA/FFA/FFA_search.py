@@ -506,7 +506,11 @@ def FFA_search(
     total_start_time = time.time()
 
     # Takes one of every dm_downsample DM trials from initial array
-    ts = dedisp_ts.dedisp_ts[::dm_downsample]
+    if getattr(dedisp_ts, "scale", None) is not None:
+        # An int16 series (DedispersedTimeSeries.scale): its values as float32
+        ts = dedisp_ts.rows_float(step=dm_downsample)
+    else:
+        ts = dedisp_ts.dedisp_ts[::dm_downsample]
     dms = dedisp_ts.dms[::dm_downsample]
     if dm_max is None:
         dm_max = dms[-1]

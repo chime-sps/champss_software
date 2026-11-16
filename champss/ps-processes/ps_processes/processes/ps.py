@@ -238,7 +238,7 @@ class _RowTransformer:
             return None
         return medians, list(self.rednoise_scale)
 
-    def power_spectrum_masked(self, dts, normalise, nan_bins):
+    def power_spectrum_masked(self, dts, normalise, nan_bins, scale=None):
         """
         power_spectrum with NaN at nan_bins, as power_spectrum(...)[nan_bins] = np.nan.
 
@@ -246,22 +246,32 @@ class _RowTransformer:
         valid_bins); otherwise the numpy steps are used.
         """
         if self.offsets is None or not valid_bins(nan_bins, self.work.shape[0]):
-            work = self.power_spectrum(dts, normalise)
+            work = self.power_spectrum(dts, normalise, scale)
             work[nan_bins] = np.nan
             return work
-        self._fft(dts, normalise)
+        self._fft(dts, normalise, scale)
         _power_gather(self.fft_out, self.offsets, self.work, nan_bins)
         return self.work
 
-    def _fft(self, dts, normalise):
-        """The padded FFT of dts into self.fft_out."""
+    def _fft(self, dts, normalise, scale=None):
+        """
+        The padded FFT of dts into self.fft_out. scale: dts holds integers (an int16
+        series, DedispersedTimeSeries.scale) whose values are dts * scale, scaled as
+        they are copied in.
+        """
         n = dts.shape[0]
-        self.fft_in[:n] = dts
+        if scale is None:
+            self.fft_in[:n] = dts
+            pad = 0 if normalise else np.median(dts[-4096:])
+        else:
+            s = self.fft_in.dtype.type(scale)
+            np.multiply(dts, s, out=self.fft_in[:n], dtype=self.fft_in.dtype)
+            pad = 0 if normalise else np.median(dts[-4096:]) * s
         if n < self.fft_in.shape[0]:
-            self.fft_in[n:] = 0 if normalise else np.median(dts[-4096:])
+            self.fft_in[n:] = pad
         self.fft()
 
-    def power_spectrum(self, dts, normalise):
+    def power_spectrum(self, dts, normalise, scale=None):
         """
         Power spectrum of one time series, padded to the planned length.
 
@@ -269,7 +279,7 @@ class _RowTransformer:
         of its last 4096 samples, as np.pad(mode="median", stat_length=4096) does. The
         returned array is reused by the next call.
         """
-        self._fft(dts, normalise)
+        self._fft(dts, normalise, scale)
         # |X|^2 = re * re + im * im of all bins but the last, with the DC bin zeroed (the
         # same arithmetic as _power_gather, so both paths give the same values)
         power = self.power
@@ -601,6 +611,7 @@ class PowerSpectraCreation:
                         release_input=release_input,
                         quant_step=self.quant_step,
                         float_rows=float_rows,
+                        ts_scale=getattr(dedisp_time_series, "scale", None),
                         float_target_name=None if float_shared is None else float_shared.name,
                     ),
                     row_ranges,
@@ -730,6 +741,7 @@ class PowerSpectraCreation:
         quant_step=None,
         float_rows=(),
         float_target_name=None,
+        ts_scale=None,
     ):
         """
         Create the power spectrum from a dedispersed time series.
@@ -823,6 +835,11 @@ class PowerSpectraCreation:
             zero_rest = sorted_bad[sorted_bad >= 1] - 1
             bad_has_zero = sorted_bad.size > 0 and sorted_bad[0] == 0
         for dm_index, dts in zip(dm_indices, dm_series_list):
+            row_scale = ts_scale
+            if row_scale is not None and (normalise or barycentring_mode == "Time"):
+                # These steps work on values: convert the integer series first
+                dts = dts.astype(np.float32) * np.float32(row_scale)
+                row_scale = None
             if normalise:
                 ts_mean = np.mean(dts)
                 ts_std = np.std(dts)
@@ -832,15 +849,17 @@ class PowerSpectraCreation:
                 dts = barycenter_timeseries(dts, beta)
 
             log.debug("Computing power spectrum and corresponding frequency labels")
+            # An integer series is transformed as float32 (scaled as it is copied in)
+            ts_dtype = "<f4" if row_scale is not None else np.dtype(dts.dtype).str
             transformer = _row_transformer(
-                padded_length, np.dtype(dts.dtype).str, nbit, beta, barycentring_mode
+                padded_length, ts_dtype, nbit, beta, barycentring_mode
             )
             if bad_ok:
                 power_spectrum = transformer.power_spectrum_masked(
-                    dts, normalise, sorted_bad
+                    dts, normalise, sorted_bad, row_scale
                 )
             else:
-                power_spectrum = transformer.power_spectrum(dts, normalise)
+                power_spectrum = transformer.power_spectrum(dts, normalise, row_scale)
                 # normalise power spectrum
                 if clean_rfi:
                     power_spectrum[bad_freq_indices] = np.nan
@@ -1238,7 +1257,11 @@ class PowerSpectraCreation:
         medians_path = None
         if self.run_dynamic_filter:
             log.info("Running dynamic periodic signal filter")
-            zero_dm_ts = dedisp_time_series.dedisp_ts[0]
+            zero_dm_ts = (
+                dedisp_time_series.rows_float(0, 1)[0]
+                if getattr(dedisp_time_series, "scale", None) is not None
+                else dedisp_time_series.dedisp_ts[0]
+            )
             if self.normalise:
                 zero_dm_ts = self.normalise_ts(zero_dm_ts)
             if self.barycentring_mode == "Time" and self.barycentric_cleaning:

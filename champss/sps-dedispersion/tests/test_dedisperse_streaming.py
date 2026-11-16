@@ -167,9 +167,12 @@ def test_packed_8bit_input_equals_float_input_of_the_quantised_values(chunk_size
     skybeam = make_skybeam(cs.codes)
     skybeam.coded, skybeam.channels, skybeam.nchan = cs, channels, NCHAN
     dt_trials = np.arange(0, MAX_DT, 3)
-    packed = dedisperse_streaming(
+    dts = dedisperse_streaming(
         make_fdmt(chunk_size, dt_trials), skybeam, chunk_size, MAX_DT, dt_trials, input_nbits=8
-    ).dedisp_ts
+    )
+    # An int16 series: at NCHAN <= 256 it holds the integer sums exactly
+    assert dts.dedisp_ts.dtype == np.int16 and dts.scale == 1 / 16
+    packed = dts.rows_float()
     values, _ = cs.expand()
     q = np.clip(np.rint(values * 16), -128, 127).astype(np.float32) / 16
     full = np.zeros((NCHAN, NTIME), np.float32)
@@ -180,3 +183,38 @@ def test_packed_8bit_input_equals_float_input_of_the_quantised_values(chunk_size
     full[channels] = np.clip(values, -8, 127 / 16)
     unrounded = run(full, chunk_size, dt_trials).dedisp_ts
     assert np.abs(packed - unrounded).max() <= NCHAN / 32
+
+
+def coded_skybeam(nchan, ntime, seed=7):
+    from beamformer import coded
+
+    rng = np.random.default_rng(seed)
+    bstart = coded.block_starts(ntime, [slice(0, ntime)])
+    cs = coded.CodedSpectra.new(nchan, bstart)
+    cs.codes[:] = rng.integers(0, 5, (nchan, ntime)).astype(np.uint8)
+    cs.codes[rng.random((nchan, ntime)) < 0.1] |= coded.MASKED_BIT
+    cs.parts[..., 0] = rng.uniform(0.5, 1.5, cs.parts.shape[:2])
+    cs.params[..., coded.FILL] = 0
+    skybeam = make_skybeam(cs.codes)
+    skybeam.coded, skybeam.channels, skybeam.nchan = cs, np.arange(nchan), nchan
+    return skybeam
+
+
+def test_int16_series_rounds_the_sums_by_at_most_half_a_step():
+    """At 512 channels (k = 2) the int16 series is the float32 one rounded to k / 16."""
+    nchan, ntime, chunk = 512, 1500, 700
+    dt_trials = np.arange(0, MAX_DT, 5)
+
+    def run(int16):
+        fdmt = dmtlib.FDMT(FBOT, FTOP, nchan, chunk, TSAMP, dt_grid=dt_trials, use_box_smearing=False)
+        return dedisperse_streaming(
+            fdmt, coded_skybeam(nchan, ntime), chunk, MAX_DT, dt_trials,
+            input_nbits=8, int16_series=int16,
+        )  # fmt: skip
+
+    f, i = run(False), run(True)
+    assert f.dedisp_ts.dtype == np.float32 and f.scale is None
+    assert i.dedisp_ts.dtype == np.int16 and i.scale == 2 / 16
+    diff = np.abs(i.rows_float() - f.dedisp_ts)
+    assert diff.max() <= 1 / 16 + 1e-6
+    np.testing.assert_array_equal(i.rows_float(3, 9, 2), i.rows_float()[3:9:2])
