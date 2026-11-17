@@ -36,7 +36,7 @@ requests = "<2.32.0"
 your = "^0.6.7"
 riptide-ffa = "^0.2.5"
 mysql-connector-python = "^9.5.0"
-dmtlib = {git = "https://github.com/pravirkr/dmt.git", rev = "595214f3d7358a4b8512652f49191ea63b140409"}
+dmtlib = {git = "https://github.com/pravirkr/dmt.git", tag = "v0.8.0"}
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^3.4.0"
