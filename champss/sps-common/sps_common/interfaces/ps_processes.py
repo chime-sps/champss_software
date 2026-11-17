@@ -418,8 +418,8 @@ class PowerSpectra:
             beta = None
         else:
             beta = h5f.attrs["beta"]
-
-        if isinstance(h5f.attrs["nchan"], h5py.Empty):
+        # Older files will not include the nchan attribute
+        if "nchan" not in h5f.attrs or isinstance(h5f.attrs["nchan"], h5py.Empty):
             nchan = None
         else:
             nchan = h5f.attrs["nchan"]
