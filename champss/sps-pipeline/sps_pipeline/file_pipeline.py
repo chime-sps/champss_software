@@ -239,8 +239,13 @@ def run_file_pipeline(
     stack_config = OmegaConf.to_container(config.ps.ps_stack_config)
     stack_config["qc"] = False
     stack_config["qc_config"] = {}
-    # The stack's frequency cut depends on the number of channels
+    # The stack's frequency cut depends on the number of channels and on the DM grid
     stack_config["nchan"] = skybeam.nchan
+    if stack_config.get("freq_cut") is not None:
+        # This pipeline always dedisperses on the uniform grid of every dm_step-th delay
+        stack_config["freq_cut"] = {
+            **stack_config["freq_cut"], "max_snr_loss": 0.0, "dm_step": int(config.dedisp.fdmt.dm_step)
+        }
     ps_stack_pipeline = PowerSpectraStack(
         mode="month",
         update_db=False,

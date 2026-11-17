@@ -55,6 +55,12 @@ from sps_pipeline import (  # ps,
 default_datpath = "/data/chime/sps/raw"
 
 
+def dm_grid_options(config):
+    """The DM grid of the dedispersion, for the stack frequency cut (sps_common.freq_cut)."""
+    fdmt = config.dedisp.fdmt
+    return dict(max_snr_loss=fdmt.get("max_snr_loss"), dm_step=int(fdmt.get("dm_step", 2)))
+
+
 def coded_spectra_options(config):
     """
     PowerSpectraCreation options for 16-bit daily spectra: with a 16-bit stack
@@ -665,8 +671,10 @@ def main(
                 )
                 ps_config = OmegaConf.to_container(config.ps)
                 if (ps_config.get("ps_stack_config") or {}).get("freq_cut") is not None:
-                    # The stack's frequency cut depends on the pointing's channels
+                    # The stack's frequency cut depends on the pointing's channels and on
+                    # the DM grid (its DM-step smearing)
                     ps_config["ps_stack_config"]["nchan"] = active_pointing.nchan
+                    ps_config["ps_stack_config"]["freq_cut"].update(dm_grid_options(config))
                 ps_pipeline = PowerSpectraPipeline(
                     **ps_config,
                     run_ps_stack=stack,

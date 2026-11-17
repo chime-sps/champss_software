@@ -44,30 +44,38 @@ def test_cutoff_values():
 
 def test_dm_step_smearing():
     from sps_common.dm_grid import snr_loss_dt_grid
-    from sps_common.freq_cut import dm_step_smearing
+    from sps_common.freq_cut import dm_grid_step, dm_step_smearing
 
-    # A uniform grid of every 2nd delay: half the step, RMS over the offset: 1 / sqrt(3)
+    # The uniform grid of every 2nd delay: half the step, RMS over the offset: 1 / sqrt(3)
     dms = np.arange(0, 400, 2) / DT_PER_DM
-    np.testing.assert_allclose(dm_step_smearing(dms, 1024, trials=dms), TSAMP / np.sqrt(3))
-    # The S/N-loss grid: from its (whole-sample) trials, close to the grid formula
-    grid = snr_loss_dt_grid(1024, 3000, 0.1) / DT_PER_DM
-    from_trials = dm_step_smearing(grid, 1024, trials=grid)
-    formula = dm_step_smearing(grid, 1024)
-    np.testing.assert_allclose(from_trials[10:-10], formula[10:-10], rtol=0.15)
-    # kept_bins uses the trials it is given
-    labels = np.arange(4000) * (NYQUIST / 4000)
-    expected = np.searchsorted(labels, smearing_cutoff(grid, 1024, trials=grid), side="right")
-    np.testing.assert_array_equal(kept_bins(labels, grid, 1024), expected)
+    np.testing.assert_allclose(
+        dm_step_smearing(dms, 1024, max_snr_loss=0, dm_step=2), TSAMP / np.sqrt(3)
+    )
+    np.testing.assert_allclose(dm_grid_step(dms, 1024, max_snr_loss=None, dm_step=3), 3.0)
+    # The S/N-loss grid: the rule's step is the grid's mean step (its trials are the rule's
+    # steps rounded to whole samples), over windows of 20 trials
+    for nchan in (1024, 4096):
+        grid = snr_loss_dt_grid(nchan, 4000, 0.1)
+        dms = grid / DT_PER_DM
+        step = dm_grid_step(dms, nchan)
+        w = 20
+        mean_step = (grid[w:] - grid[:-w]) / w
+        mid = dm_grid_step((dms[w:] + dms[:-w]) / 2, nchan)
+        np.testing.assert_allclose(mean_step[::w], mid[::w], rtol=0.05)
+        # Smooth: the cutoff never rises with DM
+        assert np.all(np.diff(step) >= 0)
+        assert np.all(np.diff(smearing_cutoff(dms, nchan)) <= 0)
     # Including it never raises the cutoff above the channel smearing's alone
+    grid = snr_loss_dt_grid(1024, 3000, 0.1) / DT_PER_DM
     smear = 2 * DM_CONSTANT * grid * ((FREQ_TOP - FREQ_BOTTOM) / 1024) / 600.0**3
-    assert np.all(smearing_cutoff(grid, 1024, trials=grid) <= np.minimum(0.5 / np.hypot(TSAMP, smear), NYQUIST))
+    assert np.all(smearing_cutoff(grid, 1024) <= np.minimum(0.5 / np.hypot(TSAMP, smear), NYQUIST))
 
 
 def test_kept_bins():
     labels = np.arange(1000) * (NYQUIST / 1000)
     dms = np.array([0.0, 50.0, 500.0])
     keep = kept_bins(labels, dms, 1024)
-    cut = smearing_cutoff(dms, 1024, trials=dms)
+    cut = smearing_cutoff(dms, 1024)
     assert keep[0] == np.searchsorted(labels, cut[0], side="right")
     for k, c in zip(keep[1:], cut[1:]):
         assert labels[k - 1] <= c < labels[k]
@@ -122,7 +130,11 @@ def test_settings():
         "nchan": 1024,
         "ref_freq_mhz": 600.0,
         "factor": 0.5,
+        "max_snr_loss": 0.1,
+        "dm_step": 2,
     }
+    # The uniform grid: max_snr_loss None is stored as 0
+    assert freq_cut_settings({"nchan": 1024, "max_snr_loss": None})["max_snr_loss"] == 0.0
     with pytest.raises(ValueError):
         freq_cut_settings({"ref_freq_mhz": 600})
     with pytest.raises(ValueError):
@@ -153,7 +165,7 @@ def test_power_spectra_write(tmp_path):
     path = tmp_path / "s.h5"
     pspec.write(str(path), quant_step=STEP, freq_cut={"nchan": 1024, "ref_freq_mhz": 600.0})
     with h5py.File(path) as f:
-        assert stored_freq_cut(f) == {"nchan": 1024, "ref_freq_mhz": 600.0, "factor": 0.5}
+        assert stored_freq_cut(f) == freq_cut_settings({"nchan": 1024})
         expected = kept_bins(labels, pspec.dms, 1024)
         np.testing.assert_array_equal(f["kept bins"][()], expected)
         back = read_quantized(f, raw=True)
@@ -165,3 +177,7 @@ def test_power_spectra_write(tmp_path):
         assert stored_freq_cut(f) is None and "kept bins" not in f
     with pytest.raises(ValueError):
         pspec.write(str(tmp_path / "f32.h5"), freq_cut={"nchan": 1024})
+    # A stack written before the DM grid was in the settings reads as the default grid
+    with h5py.File(path, "a") as f:
+        del f.attrs["freq_cut_max_snr_loss"], f.attrs["freq_cut_dm_step"]
+        assert stored_freq_cut(f) == freq_cut_settings({"nchan": 1024})
