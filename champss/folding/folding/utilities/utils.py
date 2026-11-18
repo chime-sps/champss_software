@@ -44,7 +44,7 @@ def candidate_name(ra_deg, dec_deg, j2000=True):
     return candidate_name
 
 
-def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
+def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False, tzrsite="chime", tzrfrq=600.195312):
     """
     Create an ephemeris file for folding.
 
@@ -84,6 +84,9 @@ def create_ephemeris(name, ra, dec, dm, obs_date, f0, ephem_path, fs_id=False):
         ["DECJD", str(dec)],
         ["EPHVER", "2"],
         ["UNITS", "TDB"],
+        ["TZRMJD", str(pepoch)],
+        ["TZRSITE", tzrsite],
+        ["TZRFRQ", str(tzrfrq)]
     ]
 
     with open(ephem_path, "w") as file:
