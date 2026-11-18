@@ -770,6 +770,15 @@ def deposit_stack_work(workflow_buckets_name, httpcontext, stack_parameters):
     type=str,
     help="Name of the stack run.",
 )
+@click.option(
+    "--pointing-file",
+    default=None,
+    type=str,
+    help=(
+        "Only for --mode stack-search: text file with the pointings to search, one"
+        " 'ra dec' (or 'ra_dec') per line. Default: search all monthly stacks."
+    ),
+)
 def run_all_pipeline_processes(
     db_host,
     db_port,
@@ -794,9 +803,14 @@ def run_all_pipeline_processes(
     alert_slack,
     mode,
     stack_name,
+    pointing_file,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
+    if pointing_file and mode != "stack-search":
+        log.warning(
+            "--pointing-file is only used with --mode stack-search, ignoring it."
+        )
 
     log.setLevel(logging.INFO)
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -898,6 +912,7 @@ def run_all_pipeline_processes(
             basepath + f"/stack_runs/{stack_name}/",
             4,
             config_options=pipeline_config_options,
+            pointing_file=pointing_file,
         )
         process_ids = []
         pool = Pool(4)
@@ -1249,6 +1264,15 @@ def run_all_pipeline_processes(
     type=bool,
     help="Create merged plots of the fold and ps representation.",
 )
+@click.option(
+    "--pointing-file",
+    default=None,
+    type=str,
+    help=(
+        "Only with --run-stack-search: text file with the pointings to search, one"
+        " 'ra dec' (or 'ra_dec') per line. Default: search all monthly stacks."
+    ),
+)
 def start_processing_manager(
     db_host,
     db_port,
@@ -1275,6 +1299,7 @@ def start_processing_manager(
     run_stack_search,
     stack_name,
     create_combined_plots,
+    pointing_file,
 ):
     """Manager function containing the multiple processing steps."""
     # atexit.register(remove_processing_services, None, None)
@@ -1304,6 +1329,14 @@ def start_processing_manager(
         if not stack_name:
             log.info("Please define --stack-name when using --run-stack-search")
             sys.exit()
+        if pointing_file and not os.path.isfile(pointing_file):
+            log.error(f"Pointing file {pointing_file} does not exist.")
+            sys.exit(1)
+    elif pointing_file:
+        log.warning(
+            "--pointing-file is only used with --run-stack-search, ignoring it."
+        )
+        pointing_file = None
         old_mp_run_folder = basepath + "mp_runs/" + stack_name
         if os.path.exists(old_mp_run_folder):
             log.error(
@@ -1463,6 +1496,8 @@ def start_processing_manager(
                         pipeline_args.extend(
                             ["--mode", mode, "--stack-name", stack_name]
                         )
+                        if pointing_file:
+                            pipeline_args.extend(["--pointing-file", pointing_file])
                     else:
                         pipeline_args.extend(["--mode", "pipeline"])
                     process_ids = run_all_pipeline_processes.main(
@@ -2157,6 +2192,16 @@ def start_processing_manager(
     type=str,
     help="Name of the stack-run",
 )
+@click.option(
+    "--pointing-file",
+    default=None,
+    type=str,
+    help=(
+        "Only with --run-stack-search: text file with the pointings to search, one"
+        " 'ra dec' (or 'ra_dec') per line. Best placed inside --basepath, otherwise its"
+        " folder is mounted into the manager container additionally."
+    ),
+)
 def start_processing_services(
     db_host,
     db_port,
@@ -2178,12 +2223,37 @@ def start_processing_services(
     pipeline_config_options,
     run_stack_search,
     stack_name,
+    pointing_file,
 ):
     """Start the processing manager and the cleanup service."""
     # Please run "docker login" in your CLI to allow retrieval of the images
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
+
+    mounts = [
+        f"{datpath}:{datpath}",
+        "/data/chime/sps/logs:/data/chime/sps/logs",
+        f"{basepath}:{basepath}",
+        f"{foldpath}:{foldpath}",
+        # Need this mount so container can access host machine's Docker Client
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "/data/candidate_viewer/champss_candidate_viewer/:/data/candidate_viewer/champss_candidate_viewer/",
+    ]
+    pointing_file_option = ""
+    if pointing_file:
+        if not run_stack_search:
+            log.warning(
+                "--pointing-file is only used with --run-stack-search, ignoring it."
+            )
+        else:
+            pointing_file = os.path.abspath(pointing_file)
+            pointing_file_option = f" --pointing-file {pointing_file}"
+            # The manager container needs to see the file
+            mounted = [m.split(":")[0].rstrip("/") + "/" for m in mounts]
+            if not any(pointing_file.startswith(m) for m in mounted):
+                pointing_folder = os.path.dirname(pointing_file)
+                mounts.append(f"{pointing_folder}:{pointing_folder}")
 
     docker_service_manager = {
         "image": manager_docker_image_name,
@@ -2201,6 +2271,7 @@ def start_processing_services(
             f' --pipeline-arguments "{pipeline_arguments}"'
             f' --pipeline-config-options "{pipeline_config_options}"'
             f" --run-stack-search {run_stack_search} --stack-name {stack_name}"
+            f"{pointing_file_option}"
         ),
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
@@ -2209,15 +2280,7 @@ def start_processing_services(
         "constraints": ["node.hostname == sps-archiver1"],
         # Will throw an error if you give two of the same bind mount paths
         # e.g. avoid double-mounting basepath and stackpath when they are the same
-        "mounts": [
-            f"{datpath}:{datpath}",
-            "/data/chime/sps/logs:/data/chime/sps/logs",
-            f"{basepath}:{basepath}",
-            f"{foldpath}:{foldpath}",
-            # Need this mount so container can access host machine's Docker Client
-            "/var/run/docker.sock:/var/run/docker.sock",
-            "/data/candidate_viewer/champss_candidate_viewer/:/data/candidate_viewer/champss_candidate_viewer/",
-        ],
+        "mounts": mounts,
         # An externally created Docker Network that allows these spawned containers
         # to communicate with other containers (MongoDB, Prometheus, etc) that have
         # also been manually added to this network
