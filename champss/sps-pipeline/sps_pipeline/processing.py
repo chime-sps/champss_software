@@ -2325,6 +2325,14 @@ def start_processing_manager(
         " otherwise its folder is mounted into the manager container additionally."
     ),
 )
+@click.option(
+    "--skip-finding-processes/--no-skip-finding-processes",
+    default=False,
+    help=(
+        "Passed to the manager: skip creating the daily processes from the raw data"
+        " (e.g. when rerunning days whose processes already exist)."
+    ),
+)
 def start_processing_services(
     db_host,
     db_port,
@@ -2347,6 +2355,7 @@ def start_processing_services(
     run_stack_search,
     stack_name,
     pointing_file,
+    skip_finding_processes,
 ):
     """Start the processing manager and the cleanup service."""
     # Please run "docker login" in your CLI to allow retrieval of the images
@@ -2390,6 +2399,7 @@ def start_processing_services(
             f' --pipeline-config-options "{pipeline_config_options}"'
             f" --run-stack-search {run_stack_search} --stack-name {stack_name}"
             f"{pointing_file_option}"
+            f"{' --skip-finding-processes' if skip_finding_processes else ''}"
         ),
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
