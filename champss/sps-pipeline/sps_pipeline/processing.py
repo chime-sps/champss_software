@@ -869,16 +869,12 @@ def run_all_pipeline_processes(
             for arg_string in split_args:
                 arg_string = arg_string.strip()
                 if arg_string != "":
-                    arg_count = len(arg_string.split(" "))
-                    if arg_count > 2:
-                        argument, value = arg_string.split(" ", 1)
-                        workflow_params[argument] = (value,)
-                    elif arg_count == 1:
-                        workflow_params[argument] = value
+                    parts = arg_string.split(" ", 1)
+                    if len(parts) == 2:
+                        workflow_params[parts[0]] = parts[1].strip()
                     else:
-                        log.error(
-                            "Flags not implimented yet. Reformated your option to --option_python_name True"
-                        )
+                        # A flag without a value, e.g. "--plot"
+                        workflow_params[parts[0]] = True
         process_ids = [process["_id"] for process in all_processes]
         pool = Pool(4)
         # First deposit all process in workflow bucket
