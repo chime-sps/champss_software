@@ -564,6 +564,27 @@ def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_p
     return all_active_pointings
 
 
+def parse_pipeline_arguments(pipeline_arguments):
+    """
+    Parse the --pipeline-arguments string into work parameters.
+
+    Options are separated by "--" and use the python names of the parameters,
+    e.g. "--plot --config_file sps_config_binary.yml". "--name value" stores the
+    value as a string, "--name" alone stores True.
+    """
+    parsed = {}
+    for arg_string in pipeline_arguments.split("--"):
+        arg_string = arg_string.strip()
+        if arg_string == "":
+            continue
+        parts = arg_string.split(" ", 1)
+        if len(parts) == 2:
+            parsed[parts[0]] = parts[1].strip()
+        else:
+            parsed[parts[0]] = True
+    return parsed
+
+
 def deposit_pipeline_work(
     workflow_params, workflow_buckets_name, httpcontext, process_dict
 ):
@@ -864,17 +885,7 @@ def run_all_pipeline_processes(
             "manual_candidates": ["nearby_ks 0.5 search", "injections"],
             "injection_path": "random",
         }
-        if pipeline_arguments != "":
-            split_args = pipeline_arguments.split("--")
-            for arg_string in split_args:
-                arg_string = arg_string.strip()
-                if arg_string != "":
-                    parts = arg_string.split(" ", 1)
-                    if len(parts) == 2:
-                        workflow_params[parts[0]] = parts[1].strip()
-                    else:
-                        # A flag without a value, e.g. "--plot"
-                        workflow_params[parts[0]] = True
+        workflow_params.update(parse_pipeline_arguments(pipeline_arguments))
         process_ids = [process["_id"] for process in all_processes]
         pool = Pool(4)
         # First deposit all process in workflow bucket
@@ -895,6 +906,9 @@ def run_all_pipeline_processes(
             4,
             config_options=pipeline_config_options,
         )
+        extra_arguments = parse_pipeline_arguments(pipeline_arguments)
+        for process in all_processes:
+            process["arguments"].update(extra_arguments)
         process_ids = []
         pool = Pool(4)
         # First deposit all process in workflow bucket
