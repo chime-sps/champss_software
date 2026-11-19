@@ -170,6 +170,11 @@ class PowerSpectraSearch:
     max_search_frequency: float = attribute(default=np.inf)
     convolve_min_bin: int = attribute(default=3)
     convolve_max_bin: int = attribute(default=64)
+    # convolve_window_merge: when thinning neighbouring detections of one DM trial
+    #   and harmonic, treat detections within one convolution window width
+    #   (convolve_bin / harm bins at the fundamental) as neighbours instead of within
+    #   one frequency bin, and only keep the strongest.
+    convolve_window_merge: bool = attribute(default=False)
     run_rednoise: bool = attribute(default=False)
     run_rednoise_reweight: bool = attribute(default=False)
     run_rednoise_reweight_threshold: float = attribute(default=0.95)
@@ -614,6 +619,7 @@ class PowerSpectraSearch:
                     self.sigma_min,
                     # precomputed_convolutions,
                     self.min_dm,
+                    self.convolve_window_merge,
                 ),
                 zip(dm_indices, dm_split),
             )
@@ -843,6 +849,7 @@ class PowerSpectraSearch:
         sigma_min,
         # precomputed_convolutions,
         min_dm,
+        window_merge,
         dm_indices,
         dms,
     ):
@@ -956,6 +963,13 @@ class PowerSpectraSearch:
                     good_idx = np.where(sigmas > sigma_min)[0]
                     sigmas = sigmas[good_idx]
                     detection_idx = check_idx[good_idx]
+                    merge_freq = MIN_SEARCH_FREQ * 1
+                    if convolve_bin > 1 and window_merge:
+                        # The window spans convolve_bin bins at the highest summed
+                        # harmonic, which is convolve_bin / harm bins at the fundamental.
+                        merge_freq = max(
+                            MIN_SEARCH_FREQ, freq_labels[1] * convolve_bin / harm
+                        )
 
                     for idx_count, idx in enumerate(detection_idx):
                         replace_last = False
@@ -1008,7 +1022,7 @@ class PowerSpectraSearch:
                             if (
                                 last_detection_freq
                                 and np.abs(detection_freq - last_detection_freq)
-                                < MIN_SEARCH_FREQ * 1
+                                < merge_freq
                             ):
                                 if sigma < last_detection_sigma:
                                     continue
