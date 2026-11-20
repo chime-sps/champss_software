@@ -591,6 +591,13 @@ class PowerSpectraSearch:
                     precomputed_convolutions[str(convolve_bin)]["convolved_ndays"] = (
                         convolved_ndays
                     )
+                    # As in main, sigma is only computed for positions whose summed
+                    # power is above the power equivalent to sigma_min, here per width
+                    # from the windowed day counts. Slightly below sigma_min so that
+                    # rounding cannot drop a detection; the exact sigma test follows.
+                    precomputed_convolutions[str(convolve_bin)]["power_cutoff"] = (
+                        power_cutoff_at_sigma(self.sigma_min - 0.01, convolved_ndays)
+                    )
 
             log.info("Precomputed convolutions")
             shared_precomputed_convolutions, shm_objects = share_nested_arrays(
@@ -956,7 +963,9 @@ class PowerSpectraSearch:
                     used_nsum = precomputed["convolved_ndays"][idx_harm]
                     last_detection_freq = None
                     last_detection_sigma = None
-                    check_idx = np.where(harm_sum_powers > used_nsum)[0]
+                    check_idx = np.where(
+                        harm_sum_powers > precomputed["power_cutoff"][idx_harm]
+                    )[0]
                     sigmas = sigma_sum_powers(
                         harm_sum_powers[check_idx], used_nsum[check_idx]
                     )
@@ -1373,6 +1382,19 @@ def prepare_unique_harmonic_bins(full_harm_bins, convolve_bin):
         offsets.append(h_offsets)
 
     return flat_bins, offsets
+
+
+def power_cutoff_at_sigma(sigma, nsum):
+    """
+    powersum_at_sigma for every element of nsum (inf where nsum <= 0), evaluated
+    once per distinct value of nsum.
+    """
+    nsum = np.asarray(nsum, dtype=float)
+    values, inverse = np.unique(nsum, return_inverse=True)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cut = np.asarray(powersum_at_sigma(sigma, values), dtype=float)
+    cut[values <= 0] = np.inf
+    return cut[inverse].reshape(nsum.shape)
 
 
 @njit

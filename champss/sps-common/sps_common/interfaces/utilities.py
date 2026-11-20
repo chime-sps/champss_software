@@ -64,12 +64,16 @@ def powersum_at_sigma(sigma, nsum):
 
     Equivalent to a detection of significance 'sigma'. Adapted from presto.
 
+    For positive sigma the tail probability is computed as ndtr(-sigma) instead of
+    1 - ndtr(sigma). Both are the same probability, but 1 - ndtr(sigma) loses
+    precision for large sigma and is exactly 0 above ~8.2 sigma, which made the
+    result inf. With the upper-tail form the result is valid up to ~37 sigma.
+
     Parameters
     ----------
         sigma: float or np.ndarray
             The sigma that should be reached by the sums.
-            This value should not exceed 8.2.
-            Otherwise the result will be inf.
+            Above ~37 sigma the result will be inf.
         nsum: int or np.ndarrar
             The number of summands.
 
@@ -79,7 +83,9 @@ def powersum_at_sigma(sigma, nsum):
             The approximate sum that is equivalent to a detection
             of significance 'sigma'.
     """
-    return 0.5 * chdtri(2.0 * nsum, 1.0 - ndtr(sigma))
+    tail = np.where(np.asarray(sigma) > 0, ndtr(-np.asarray(sigma)), 1.0 - ndtr(sigma))
+    result = 0.5 * chdtri(2.0 * nsum, tail)
+    return result[()] if np.ndim(result) == 0 else result
 
 
 def sigma_sum_powers(power, nsum, max_iter=20):
