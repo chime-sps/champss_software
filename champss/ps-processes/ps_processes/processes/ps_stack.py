@@ -248,11 +248,9 @@ class PowerSpectraStack:
                         " database."
                     )
                 old_stack_file_path = ps_stack_db.datapath_cumul
-            locked = False
             corrupt_reason = None
             if os.path.isfile(old_stack_file_path):
                 self.lock_stack(self.get_stack_file_path(pspec, unique=False))
-                locked = True
                 # Damage to the file structure (e.g. a stack that was being written
                 # when a node crashed) is found before anything is read, so the
                 # current spectra can start a new stack.
@@ -354,8 +352,7 @@ class PowerSpectraStack:
                         f" {'was corrupt' if corrupt_reason else 'does not exist'}."
                     )
                     stack_file_path = self.get_stack_file_path(pspec)
-                    if not locked:
-                        self.lock_stack(self.get_stack_file_path(pspec, unique=False))
+                    self.lock_stack(self.get_stack_file_path(pspec, unique=False))
                     self.write_stack_safely(pspec, stack_file_path)
                     if self.update_db:
                         self.update_stack_database(pspec, ps_stack_db.pointing_id)
@@ -1262,6 +1259,10 @@ class PowerSpectraStack:
         ==========
         stack_file_path: str
             The path to the power spectra stack which will be locked.
+
+        Calling this while the lock is already held by this object does nothing. FileLock
+        is reentrant: a second acquire would need a second release, so a single
+        unlock_stack would leave the stack locked for other processes.
         """
         if not hasattr(self, "lock"):
             if stack_file_path:
@@ -1272,13 +1273,17 @@ class PowerSpectraStack:
                 log.error("Trying to set a lock but no path to stack provided.")
                 return
 
+        if self.lock.is_locked:
+            log.debug(f"Stack lock at {self.lock.lock_file} is already held.")
+            return
+
         try:
             log.info("Trying to acquire stack lock.")
             self.lock.acquire(poll_interval=1)
             log.info(f"Stack lock acquired at {self.lock.lock_file}")
         except Timeout:
             log.error(
-                "Lock not acquired after {self.max_lock_age} seconds. "
+                f"Lock not acquired after {self.max_lock_age} seconds. "
                 "Will forcefully delete the lock file and try again."
             )
             try:

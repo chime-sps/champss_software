@@ -235,3 +235,20 @@ def test_healthy_stack_is_not_quarantined(stack_setup, monkeypatch):
     assert not (root / "stack_corrupt").exists() and slack == []
     new = root / "stack" / "12.34_56.78_20260912_12_power_spectra_stack.hdf5"
     assert read_value(new) == 6 and not old.exists()
+
+
+# --- stack lock ----------------------------------------------------------------------
+def test_lock_stack_twice_needs_only_one_unlock(tmp_path):
+    stacker = PowerSpectraStack(update_db=False, qc=False)
+    stack_path = str(tmp_path / "12.34_56.78_power_spectra_stack.hdf5")
+    stacker.lock_stack(stack_path)
+    stacker.lock_stack(stack_path)  # e.g. corrupt stack: locked before and after
+    assert stacker.lock.lock_counter == 1
+    stacker.unlock_stack()
+    assert not stacker.lock.is_locked
+    # another lock object (as in another process) can take it now
+    from filelock import FileLock
+
+    other = FileLock(stacker.lock.lock_file, timeout=1)
+    other.acquire()
+    other.release()
