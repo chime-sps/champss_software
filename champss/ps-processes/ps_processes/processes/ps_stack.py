@@ -4,6 +4,7 @@ import datetime
 import itertools
 import logging
 import os
+import shutil
 import time
 from pathlib import PurePath
 
@@ -16,6 +17,7 @@ from attr import s as attrs
 from attr.validators import instance_of
 from filelock import FileLock, Timeout
 from ps_processes import (
+    CorruptStackError,
     FailedChi2TestError,
     IncompleteMonthlyStackError,
     NoPsStackDbError,
@@ -26,11 +28,30 @@ from ps_processes.utilities.qc import (
     validate_ps_chisqr_outlier_bins,
 )
 from ps_processes.utilities.utilities import check_in_range, grab_metric_history
+from scheduler.workflow import message_slack
 from scipy.stats import median_abs_deviation
 from sps_common.interfaces import PowerSpectra
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
+
+
+def fsync_path(path, directory=False):
+    """
+    Flush a file (or a folder entry, e.g. after a rename) from the OS cache to disk.
+
+    fsync of a folder is not supported by every file system; failures there are only
+    logged, since the file content itself has already been flushed.
+    """
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    except OSError as error:
+        if not directory:
+            raise
+        log.debug(f"fsync of folder {path} not possible: {error}")
+    finally:
+        os.close(fd)
 
 
 @attrs(slots=True)
@@ -198,7 +219,7 @@ class PowerSpectraStack:
                         f"Stack file {stack_file_path} aready exists on disk but appears to be broken. Will delete old file."
                     )
                     os.remove(stack_file_path)
-            pspec.write(stack_file_path, nbit=self.stack_nbit)
+            self.write_stack_safely(pspec, stack_file_path)
             if self.update_db:
                 log.info(
                     f"Creating new database entry for {pspec.ra:.2f} {pspec.dec:.2f}."
@@ -227,8 +248,17 @@ class PowerSpectraStack:
                         " database."
                     )
                 old_stack_file_path = ps_stack_db.datapath_cumul
+            corrupt_reason = None
             if os.path.isfile(old_stack_file_path):
                 self.lock_stack(self.get_stack_file_path(pspec, unique=False))
+                # Damage to the file structure (e.g. a stack that was being written
+                # when a node crashed) is found before anything is read, so the
+                # current spectra can start a new stack.
+                if not PowerSpectra.check_file_keys(old_stack_file_path):
+                    corrupt_reason = (
+                        "the file cannot be opened or misses the expected datasets"
+                    )
+            if os.path.isfile(old_stack_file_path) and corrupt_reason is None:
                 if self.infile_overwrite and self.mode == "month":
                     # Infile overwrite does not support unique file names
                     # The name of the old stack will be retained
@@ -241,36 +271,59 @@ class PowerSpectraStack:
                     self.unlock_stack()
                     return pspec
                 else:
-                    if self.readout_stack:
-                        log.info(
-                            f"Stacking {self.mode} power spectra stack from"
-                            f" {old_stack_file_path} into current stack via readout method."
-                        )
-                        pspec_stack = self.stack_power_spectra_readout(
-                            pspec, old_stack_file_path
-                        )
-                    else:
-                        log.info(
-                            f"Reading power spectra stack from {old_stack_file_path}."
-                        )
-                        pspec_stack = PowerSpectra.read(
-                            old_stack_file_path, nbit=self.spectra_nbit
-                        )
-                        log.info(
-                            "Stacking the current power spectra stack to the"
-                            f" {self.mode} power spectra stack."
-                        )
-                        pspec_stack = self.stack_power_spectra(
+                    try:
+                        if self.readout_stack:
+                            log.info(
+                                f"Stacking {self.mode} power spectra stack from"
+                                f" {old_stack_file_path} into current stack via readout"
+                                " method."
+                            )
+                            pspec_stack = self.stack_power_spectra_readout(
+                                pspec, old_stack_file_path
+                            )
+                        else:
+                            log.info(
+                                "Reading power spectra stack from"
+                                f" {old_stack_file_path}."
+                            )
+                            pspec_stack = PowerSpectra.read(
+                                old_stack_file_path, nbit=self.spectra_nbit
+                            )
+                            log.info(
+                                "Stacking the current power spectra stack to the"
+                                f" {self.mode} power spectra stack."
+                            )
+                            pspec_stack = self.stack_power_spectra(
+                                pspec,
+                                pspec_stack,
+                            )
+                    except (OSError, KeyError) as error:
+                        # The data part of the file is broken. The readout method has
+                        # already added part of the old stack to the current spectra,
+                        # so they cannot be used to start a new stack either.
+                        reason = f"reading failed with {type(error).__name__}: {error}"
+                        self.quarantine_corrupt_stack(
                             pspec,
-                            pspec_stack,
+                            old_stack_file_path,
+                            ps_stack_db.pointing_id,
+                            reason,
+                            new_stack_started=False,
                         )
+                        self.unlock_stack()
+                        raise CorruptStackError(
+                            f"The {self.mode} stack {old_stack_file_path} is corrupt"
+                            f" ({reason}). It was moved to the stack_corrupt folder; the"
+                            " current spectra were not stacked. The next observation"
+                            " starts a new stack."
+                        ) from error
                     stack_file_path = self.get_stack_file_path(pspec)
                     log.info(f"Writing new power spectra stack to {stack_file_path}.")
-                    self.replace_spectra(
-                        pspec_stack, old_stack_file_path, stack_file_path
-                    )
+                    # Order matters for crash safety: write the new stack, point the
+                    # database to it, and only then delete the previous stack.
+                    self.replace_spectra(pspec_stack, stack_file_path)
                     if self.update_db:
                         self.update_stack_database(pspec_stack, ps_stack_db.pointing_id)
+                    self.remove_replaced_stack(old_stack_file_path, stack_file_path)
                     if self.mode == "cumul" and self.delete_monthly_stack:
                         # deletes the existing monthly power spectra stack
                         self.delete_stack(
@@ -284,15 +337,23 @@ class PowerSpectraStack:
                     else:
                         return pspec_stack
             else:
-                if self.write_when_file_not_found:
+                if corrupt_reason is not None:
+                    self.quarantine_corrupt_stack(
+                        pspec,
+                        old_stack_file_path,
+                        ps_stack_db.pointing_id,
+                        corrupt_reason,
+                        new_stack_started=True,
+                    )
+                if self.write_when_file_not_found or corrupt_reason is not None:
                     log.info(
-                        "The power spectra stack for"
-                        f" {pspec.ra:.2f} {pspec.dec:.2f} does not exist, creating a"
-                        " new power spectra stack"
+                        "Creating a new power spectra stack for"
+                        f" {pspec.ra:.2f} {pspec.dec:.2f}, as the stack"
+                        f" {'was corrupt' if corrupt_reason else 'does not exist'}."
                     )
                     stack_file_path = self.get_stack_file_path(pspec)
                     self.lock_stack(self.get_stack_file_path(pspec, unique=False))
-                    pspec.write(stack_file_path, nbit=self.stack_nbit)
+                    self.write_stack_safely(pspec, stack_file_path)
                     if self.update_db:
                         self.update_stack_database(pspec, ps_stack_db.pointing_id)
                     if self.mode == "cumul" and self.delete_monthly_stack:
@@ -304,8 +365,8 @@ class PowerSpectraStack:
                 else:
                     raise FileNotFoundError(
                         f"Cannot locate the {self.mode} power spectra stack"
-                        f" '{stack_file_path}'. Will not write new file due to"
-                        "PowerSpectraStack.write_when_file_not_found==False."
+                        f" '{old_stack_file_path}'. Will not write new file due to"
+                        " PowerSpectraStack.write_when_file_not_found==False."
                     )
             return pspec
 
@@ -385,7 +446,7 @@ class PowerSpectraStack:
             del h5f.attrs["observation ids"]
             h5f.attrs["observation ids"] = list(new_obs_ids)
 
-            if type(pspec.rn_medians) != np.ndarray:
+            if type(pspec.rn_medians) is not np.ndarray:
                 log.error("This power spectrum does not have rednoise info saved.")
 
             elif "rn medians" not in h5f.keys():
@@ -495,7 +556,7 @@ class PowerSpectraStack:
             log.info(f"Updating the new {self.mode} power spectra information")
             pspec.num_days += h5f.attrs["number of days"]
 
-            if type(pspec.rn_medians) != np.ndarray:
+            if type(pspec.rn_medians) is not np.ndarray:
                 log.error("This power spectrum does not have rednoise info saved.")
 
             elif "rn medians" not in h5f.keys():
@@ -604,7 +665,7 @@ class PowerSpectraStack:
             pspec_stack.rn_scales.extend(pspec.rn_scales)
             pspec_stack.rn_dm_indices.extend(pspec.rn_scales)
 
-        except:
+        except Exception:
             if pspec.rn_medians is None:
                 log.error("The daily power spectrum does not have rednoise info saved.")
             if pspec_stack.rn_medians is None:
@@ -618,37 +679,161 @@ class PowerSpectraStack:
 
         return pspec_stack
 
-    def replace_spectra(self, pspec, old_stack_file_path, stack_file_path):
+    def write_stack_safely(self, pspec, stack_file_path):
         """
-        Script to replace the power spectra stack of the stack_file_path with the given
-        power spectra stack. The process will write the new stack into a temporary
-        location before removing the pre-existing stack, finally rename the new stack to
+        Write a power spectra stack so that a crash can never leave a broken file at
         stack_file_path.
+
+        The stack is written to a temporary file in the same folder, flushed to disk with
+        fsync, checked to be readable and only then moved to stack_file_path with an
+        atomic os.replace (followed by an fsync of the folder). If the node or the file
+        system goes down at any point, stack_file_path either still holds its previous
+        content (or does not exist) or holds the complete new stack.
+
+        Without the fsync, the rename can reach the storage before the data does, which
+        leaves a correctly named file with missing data after a crash (this happened on
+        2026-09-20).
 
         Parameters
         ----------
         pspec: PowerSpectra
-            The PowerSpectra object of the new stack to replace the power spectra stack on disk at stack_file_path.
+            The power spectra stack to write.
 
         stack_file_path: str
-            Path to the power spectra stack to be replaced by the new stack.
+            Final path of the stack. An existing file at this path is replaced.
+
+        Raises
+        ------
+        OSError
+            If the written temporary file cannot be read back. stack_file_path is left
+            untouched in that case.
         """
-        log.info(f"Writing new {self.mode} stack for {pspec.ra:.2f} {pspec.dec:.2f}")
-        temp_path = (
-            "/".join(stack_file_path.split("/")[:-1])
-            + f"/{pspec.ra:.2f}_{pspec.dec:.2f}_{self.mode}_temp.hdf5"
+        stack_file_path = os.path.abspath(stack_file_path)
+        stack_dir = os.path.dirname(stack_file_path)
+        temp_path = os.path.join(
+            stack_dir, f"{pspec.ra:.2f}_{pspec.dec:.2f}_{self.mode}_temp.hdf5"
         )
         if os.path.isfile(temp_path):
             log.info(f"Found old temp file {temp_path}. Will remove this file.")
             os.remove(temp_path)
         pspec.write(temp_path, nbit=self.stack_nbit)
-        log.info(
-            f"Deleting the existing {self.mode} power spectra stack '{stack_file_path}'"
+        fsync_path(temp_path)
+        if not PowerSpectra.check_file_keys(temp_path):
+            os.remove(temp_path)
+            raise OSError(
+                f"The newly written stack {temp_path} cannot be read back."
+                f" Keeping the previous file at {stack_file_path}."
+            )
+        log.info(f"Moving the new stack to '{stack_file_path}'")
+        os.replace(temp_path, stack_file_path)
+        fsync_path(stack_dir, directory=True)
+
+    def replace_spectra(self, pspec, stack_file_path, old_stack_file_path=None):
+        """
+        Replace a power spectra stack on disk with the given power spectra stack.
+
+        The new stack is written with write_stack_safely. A different old stack file
+        (stack file names contain the date and number of days) is only deleted after the
+        new stack is safely on disk, so a crash never loses both.
+
+        Parameters
+        ----------
+        pspec: PowerSpectra
+            The new power spectra stack.
+
+        stack_file_path: str
+            Path to write the new stack to. An existing file at this path is replaced.
+
+        old_stack_file_path: str, optional
+            Path of the previous stack if it has a different name. It is deleted after
+            the new stack has been written. Callers that still need to update the
+            database should leave this empty and delete the old stack themselves
+            afterwards (see remove_replaced_stack).
+        """
+        log.info(f"Writing new {self.mode} stack for {pspec.ra:.2f} {pspec.dec:.2f}")
+        self.write_stack_safely(pspec, stack_file_path)
+        if old_stack_file_path:
+            self.remove_replaced_stack(old_stack_file_path, stack_file_path)
+
+    def quarantine_corrupt_stack(
+        self, pspec, stack_file_path, pointing_id, reason, new_stack_started
+    ):
+        """
+        Move a corrupt stack out of the way and report it.
+
+        The file is moved (not deleted) to the folder stack_corrupt next to the stack
+        folder (<stack folder>/../stack_corrupt/), the stack database entry is reset so
+        that a new stack is started, and a message is posted to Slack.
+
+        Parameters
+        ----------
+        pspec: PowerSpectra
+            The spectra that were supposed to be stacked (used for ra/dec and date).
+
+        stack_file_path: str
+            Path of the corrupt stack.
+
+        pointing_id: str
+            Pointing id of the stack database entry.
+
+        reason: str
+            Why the stack is considered corrupt.
+
+        new_stack_started: bool
+            Whether the current spectra start a new stack (only used for the report).
+        """
+        stack_file_path = os.path.abspath(stack_file_path)
+        corrupt_dir = os.path.join(
+            os.path.dirname(os.path.dirname(stack_file_path)), "stack_corrupt"
         )
-        if os.path.isfile(old_stack_file_path):
-            os.remove(old_stack_file_path)
-        log.info(f"Rename the new stack to the rightful path of '{stack_file_path}'")
-        os.rename(temp_path, stack_file_path)
+        os.makedirs(corrupt_dir, exist_ok=True)
+        target = os.path.join(corrupt_dir, os.path.basename(stack_file_path))
+        if os.path.exists(target):
+            stamp = datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y%m%dT%H%M%S"
+            )
+            target = f"{target}.{stamp}"
+        shutil.move(stack_file_path, target)
+        log.error(
+            f"Corrupt {self.mode} stack for {pspec.ra:.2f} {pspec.dec:.2f}: {reason}."
+            f" Moved {stack_file_path} to {target}."
+        )
+        if self.update_db:
+            db_api.update_ps_stack(
+                pointing_id,
+                {
+                    f"datapath_{self.mode}": "",
+                    f"datetimes_{self.mode}": [],
+                    f"num_days_{self.mode}": 0,
+                },
+            )
+        observation_date = (
+            pspec.datetimes[-1].strftime("%Y-%m-%d") if pspec.datetimes else "unknown"
+        )
+        next_step = (
+            "The current observation starts a new stack."
+            if new_stack_started
+            else "The current observation could not be stacked; the next one starts a new"
+            " stack."
+        )
+        message_slack(
+            f":warning: Corrupt {self.mode} power spectra stack for pointing"
+            f" {pspec.ra:.2f} {pspec.dec:.2f} (while stacking the observation of"
+            f" {observation_date}): {reason}.\n"
+            f"Moved `{stack_file_path}` to `{target}`. {next_step}"
+        )
+
+    def remove_replaced_stack(self, old_stack_file_path, stack_file_path):
+        """Delete the previous stack file once its replacement is on disk."""
+        if not old_stack_file_path or not os.path.isfile(old_stack_file_path):
+            return
+        if os.path.abspath(old_stack_file_path) == os.path.abspath(stack_file_path):
+            return
+        log.info(
+            f"Deleting the previous {self.mode} power spectra stack"
+            f" '{old_stack_file_path}'"
+        )
+        os.remove(old_stack_file_path)
 
     def quality_control(self, pspec):
         """
@@ -1074,6 +1259,10 @@ class PowerSpectraStack:
         ==========
         stack_file_path: str
             The path to the power spectra stack which will be locked.
+
+        Calling this while the lock is already held by this object does nothing. FileLock
+        is reentrant: a second acquire would need a second release, so a single
+        unlock_stack would leave the stack locked for other processes.
         """
         if not hasattr(self, "lock"):
             if stack_file_path:
@@ -1084,13 +1273,17 @@ class PowerSpectraStack:
                 log.error("Trying to set a lock but no path to stack provided.")
                 return
 
+        if self.lock.is_locked:
+            log.debug(f"Stack lock at {self.lock.lock_file} is already held.")
+            return
+
         try:
             log.info("Trying to acquire stack lock.")
             self.lock.acquire(poll_interval=1)
             log.info(f"Stack lock acquired at {self.lock.lock_file}")
         except Timeout:
             log.error(
-                "Lock not acquired after {self.max_lock_age} seconds. "
+                f"Lock not acquired after {self.max_lock_age} seconds. "
                 "Will forcefully delete the lock file and try again."
             )
             try:

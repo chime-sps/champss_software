@@ -14,6 +14,7 @@ python = ">=3.10,<3.12"
 rfi-mitigation = {path = "../rfi-mitigation", develop=true}
 sps-common = {path = "../sps-common", develop=true}
 sps-databases = {path = "../sps-databases", develop=true}
+scheduler = {path = "../scheduler", develop=true}
 h5py = "~3.9"
 jplephem = "^2.18"
 numpy = "^1.24.3"

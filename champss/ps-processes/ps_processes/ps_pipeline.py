@@ -6,6 +6,7 @@ from attr import ib as attribute
 from attr import s as attrs
 from attr.validators import instance_of
 from ps_processes import (
+    CorruptStackError,
     FailedChi2TestError,
     IncompleteMonthlyStackError,
     StackNotInDbError,
@@ -183,6 +184,11 @@ class PowerSpectraPipeline:
                 return power_spectra
             else:
                 return None
+        except CorruptStackError as corrupt_e:
+            # The corrupt stack has been moved away and reported. Part of it may
+            # already have been added to power_spectra, so they are not searched.
+            log.error(corrupt_e)
+            return None
 
         return power_spectra_to_search
 
