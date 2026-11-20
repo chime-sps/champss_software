@@ -8,6 +8,7 @@ from beamformer.strategist.strategist import PointingStrategist
 from folding.utilities.utils import candidate_name
 from folding.utilities.alias import get_alias_factors, fold_at_alias
 from sps_pipeline import beamform
+from sps_common.constants import TSAMP
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class Fold:
         filterbank_to_ram=True,
         exact_coords=False,
         coord_path=None,
+        min_profile_bins=16,
     ):
         """
         Initialize Fold object.
@@ -82,6 +84,7 @@ class Fold:
         self.name = name if name else candidate_name(ra, dec)
         self.filterbank_to_ram = filterbank_to_ram
         self.exact_coords = exact_coords
+        self.min_profile_bins = min_profile_bins
 
         # Will be set during execution
         self.ap = None
@@ -89,7 +92,6 @@ class Fold:
         self.archive_fname = None
         self.coord_path = coord_path
         self.num_threads = None
-        self.nchan = None
         self.turns = None
         self.intflag = None
 
@@ -176,11 +178,7 @@ class Fold:
             fname = f"/{self.ra:.02f}_{self.dec:.02f}_{self.f0:.02f}_{self.dm:.02f}_{year}-{month:02}-{day:02}.fil"
             self.fil = self.coord_path + fname
 
-        # Calculate channel requirements based on DM
-        nchan_tier = int(np.ceil(np.log2(self.dm // 212.5 + 1)))
-        self.nchan = 1024 * (2**nchan_tier)
-        self.num_threads = 4 * self.nchan // 1024
-
+        self.num_threads = 4 * max(ap.nchan for ap in self.ap) // 1024
         if not os.path.isfile(self.fil):
             log.info(f"Beamforming {len(self.ap)} sub-pointing(s)...")
             fdmt = True
@@ -193,13 +191,6 @@ class Fold:
 
             # Loop through all active pointings and append them into one filterbank
             for i, active_pointing in enumerate(self.ap):
-                # Adjust nchan if needed
-                if self.nchan < active_pointing.nchan:
-                    log.info(
-                        f"only need nchan = {self.nchan} for dm = {self.dm}, beamforming with"
-                        f" {self.nchan} channels"
-                    )
-                    active_pointing.nchan = self.nchan
 
                 log.info(
                     f"Beamforming sub-pointing {i + 1}/{len(self.ap)} with {self.num_threads} threads"
@@ -254,23 +245,29 @@ class Fold:
             self.intflag = "-L"
             self.turns = 10
 
+        fold_command_list = [
+            "dspsr",
+            "-t",
+            f"{self.num_threads}",
+            f"{self.intflag}",
+            f"{self.turns}",
+            "-A",
+            "-k",
+            "chime",
+            "-E",
+            f"{self.ephem_path}",
+            "-O",
+            f"{self.archive_fname}",
+            f"{self.fil}",
+        ]
+
+        if self.min_profile_bins:
+            if (1 / self.f0 / TSAMP / 1.21) < self.min_profile_bins:
+                fold_command_list.extend(["-b", f"{self.min_profile_bins}"])
+
         log.info("Folding with dspsr...")
         result = subprocess.run(
-            [
-                "dspsr",
-                "-t",
-                f"{self.num_threads}",
-                f"{self.intflag}",
-                f"{self.turns}",
-                "-A",
-                "-k",
-                "chime",
-                "-E",
-                f"{self.ephem_path}",
-                "-O",
-                f"{self.archive_fname}",
-                f"{self.fil}",
-            ],
+            fold_command_list,
             capture_output=True,
             text=True,
         )
