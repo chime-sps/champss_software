@@ -151,7 +151,7 @@ def stack_setup(tmp_path, monkeypatch):
         "update_ps_stack",
         lambda pointing_id, payload: db_calls.append((pointing_id, payload)),
     )
-    monkeypatch.setattr(ps_stack, "notify_slack", slack.append)
+    monkeypatch.setattr(ps_stack, "message_slack", slack.append)
     monkeypatch.setattr(
         PowerSpectraStack, "update_obs_database", lambda self, *args, **kwargs: None
     )

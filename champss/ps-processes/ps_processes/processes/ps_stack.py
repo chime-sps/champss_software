@@ -28,29 +28,12 @@ from ps_processes.utilities.qc import (
     validate_ps_chisqr_outlier_bins,
 )
 from ps_processes.utilities.utilities import check_in_range, grab_metric_history
+from scheduler.workflow import message_slack
 from scipy.stats import median_abs_deviation
 from sps_common.interfaces import PowerSpectra
 from sps_databases import db_api
 
 log = logging.getLogger(__name__)
-
-
-def notify_slack(message):
-    """
-    Post a message to the pipeline alert channel on Slack.
-
-    The Slack helper lives in the scheduler package, which ps_processes does not depend
-    on; if it is not available (or posting fails) the message is only logged.
-    """
-    try:
-        from scheduler.workflow import message_slack
-    except ImportError:
-        log.error(f"Could not post to Slack (scheduler not installed): {message}")
-        return
-    try:
-        message_slack(message)
-    except Exception as error:
-        log.error(f"Could not post to Slack ({error}): {message}")
 
 
 def fsync_path(path, directory=False):
@@ -836,7 +819,7 @@ class PowerSpectraStack:
             else "The current observation could not be stacked; the next one starts a new"
             " stack."
         )
-        notify_slack(
+        message_slack(
             f":warning: Corrupt {self.mode} power spectra stack for pointing"
             f" {pspec.ra:.2f} {pspec.dec:.2f} (while stacking the observation of"
             f" {observation_date}): {reason}.\n"
