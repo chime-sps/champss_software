@@ -636,9 +636,13 @@ class PowerSpectra:
     def make_same_weight(self, min_weight=1.0):
         """Change the weights to have all the same values"""
         fractions = self.get_bin_weights_fraction()
-        factors = 1 / fractions
+        with np.errstate(divide="ignore"):
+            factors = 1 / fractions
         factors[fractions < min_weight] = 0
-        self.power_spectra[:] = self.power_spectra * factors[None, :]
+        # Multiply in place in the dtype of the spectra. The previous
+        # `power_spectra * factors` created a float64 temporary twice the size of
+        # the (float32) spectra, which made large stacks run out of memory.
+        self.power_spectra *= factors.astype(self.power_spectra.dtype)[None, :]
         bad_freq_sample = np.arange(len(self.freq_labels))[factors == 0]
         self.bad_freq_indices = [
             bad_freq_sample,

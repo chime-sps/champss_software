@@ -397,17 +397,29 @@ class StackSearchPipeline:
                 )
                 return None, None
             if self.run_ps_search_monthly:
-                (
-                    monthly_power_spectra_detection_clusters,
-                    monthly_power_spectra_detections,
-                ) = self._ps_search.search(
-                    monthly_power_spectra,
-                    injection_path,
-                    injection_idx,
-                    only_store_injections,
-                    scale_injections,
-                    manual_candidates=manual_candidates,
-                )
+                try:
+                    (
+                        monthly_power_spectra_detection_clusters,
+                        monthly_power_spectra_detections,
+                    ) = self._ps_search.search(
+                        monthly_power_spectra,
+                        injection_path,
+                        injection_idx,
+                        only_store_injections,
+                        scale_injections,
+                        manual_candidates=manual_candidates,
+                    )
+                except Exception:
+                    # The caller never gets the power spectra back, so release their
+                    # shared memory here. Otherwise it stays allocated in long-running
+                    # worker containers, which then run out of memory.
+                    try:
+                        monthly_power_spectra.unlink_shared_memory()
+                    except Exception as unlink_error:
+                        log.warning(
+                            f"Could not unlink shared memory of the stack: {unlink_error}"
+                        )
+                    raise
             else:
                 monthly_power_spectra_detection_clusters = None
         else:

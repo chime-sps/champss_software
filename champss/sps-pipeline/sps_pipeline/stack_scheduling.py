@@ -151,8 +151,10 @@ def find_monthly_search_commands(
     for stack in all_stacks:
         stack_obj = models.PsStack.from_db(stack)
         pointing = stack_obj.pointing(db)
-        ram_requirement = pointing.ram_requirement
-        tier_name, tier_limit = pointing.tier
+        # The stack search needs more memory than the daily processing that
+        # pointing.tier is made for, see models.stack_search_ram_requirement.
+        ram_requirement = pointing.stack_search_ram_requirement
+        tier_name, tier_limit = pointing.stack_search_tier
         threads_reserved = int(tier_limit / 3)
         arguments = {
             "ra": pointing.ra,

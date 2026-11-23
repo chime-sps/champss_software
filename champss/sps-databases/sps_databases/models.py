@@ -127,6 +127,14 @@ class Pointing:
         tier_limit = processing_tier_limits[index]
         return tier_name, tier_limit
 
+    @property
+    def stack_search_ram_requirement(self):
+        return stack_search_ram_requirement(self.maxdm, self.length)
+
+    @property
+    def stack_search_tier(self):
+        return tier_for_ram(self.stack_search_ram_requirement)
+
 
 @attrs
 class Observation:
@@ -862,6 +870,37 @@ class Process:
 
 def ram_requirement(maxdm, ntime):
     return min(100.0, (4 + maxdm * 0.05 + ntime * 1.35e-5))
+
+
+def stack_search_ram_requirement(maxdm, ntime):
+    """
+    Memory (GB) needed by the monthly stack search of a pointing.
+
+    ram_requirement was made for the daily processing and grows little with the
+    size of the stack. The stack search needs memory roughly in proportion to
+    DM trials x frequency bins. Peak memory (process plus shared memory, 8
+    harmonics, convolution widths up to 33, 13 threads) was measured as
+    16.1 GiB for 2559 DM trials and 24.8 GiB for 6372 DM trials with 2**19 bins,
+    i.e. about 10.3 GiB + 2.28 MB per DM trial and 2**19 bins. This model is
+    used with a 30% margin, but never below ram_requirement.
+
+    The number of DM trials is about 9.89 * maxdm; the spectra have half the
+    padded length, 2**20 * max(1, next power of 2 of ntime / 2**20) samples.
+    """
+    n_dm = 9.89 * maxdm
+    ntime_factor = 2 ** np.ceil(np.log2(max(ntime, 1) / 2**20))
+    n_bins = 2**20 * max(ntime_factor, 1) / 2
+    measured_gib = 10.3 + 2.28e-3 * n_dm * n_bins / 2**19
+    estimate_gb = 1.3 * measured_gib * 2**30 / 1e9
+    return min(100.0, max(ram_requirement(maxdm, ntime), estimate_gb))
+
+
+def tier_for_ram(ram):
+    """Name and limit (GB) of the smallest processing tier above ram."""
+    for index, mem_limit in enumerate(processing_tier_limits):
+        if ram < mem_limit:
+            break
+    return processing_tier_names[index], processing_tier_limits[index]
 
 
 @attrs
