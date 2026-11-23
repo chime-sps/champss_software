@@ -253,7 +253,11 @@ cands:
   rfi_filters:
     enabled: True
     flag_as_rfi: False
+    # sigma-vs-DM map for the shape measures and the Gaussian fit: "convolved" (map with
+    # the candidate's convolution width, plain map if there is none) or "plain"
+    curve: convolved
     fit_failed:
+      source: fit  # fit: Gaussian fit to the DM curve of the map above; feature: dm_sigma_FitGauss
       amplitude_rel_err_max: 1.0
     wobbly:
       roughness_min: 0.03

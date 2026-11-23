@@ -9,6 +9,7 @@ import numpy as np
 from attr import attrib, attrs
 from attr.validators import deep_iterable, in_, instance_of
 from candidate_processor.utilities.features import Fit, Mean, Stat
+from candidate_processor.utilities.rfi_filters import candidate_map
 from easydict import EasyDict
 from numpy.lib import recfunctions as rfn
 from sps_common.interfaces.ps_processes import Cluster, PowerSpectraDetectionClusters
@@ -16,7 +17,7 @@ from sps_common.interfaces.single_pointing import (
     SinglePointingCandidate,
     SinglePointingCandidateCollection,
 )
-from numba.typed import List
+from numba.typed import List as NumbaList
 from sps_common.interfaces.utilities import harmonic_sum, sigma_sum_powers
 import ps_processes.processes.ps_search as pss
 
@@ -191,11 +192,25 @@ class FitDataGetter(DataGetter):
             [
                 "dm_sigma",
                 "freq_sigma",
+                "dm_sigma_convolved",
+                "freq_sigma_convolved",
             ]
         )
     )
 
     def get(self, hrc):
+        if self.datacode in ("dm_sigma_convolved", "freq_sigma_convolved"):
+            # Same curves, but from the map with the candidate's convolution width
+            # (falls back to the plain map for candidates without one)
+            found = candidate_map(hrc.dm_freq_sigma, use_convolved=True)
+            if found is None:
+                return None, None, [hrc.dm, hrc.sigma]
+            sigmas, dms, freqs, _ = found
+            if self.datacode == "dm_sigma_convolved":
+                column = (np.abs(freqs - hrc.freq)).argmin()
+                return dms, sigmas[:, column], [hrc.dm, hrc.sigma]
+            row = (np.abs(dms - hrc.dm)).argmin()
+            return freqs, sigmas[row, :], [hrc.freq, hrc.sigma]
         if self.datacode == "dm_sigma":
             best_2d_freq = (np.abs(hrc.dm_freq_sigma["freqs"] - hrc.freq)).argmin()
             xdata = hrc.dm_freq_sigma["dms"]
@@ -658,8 +673,8 @@ class Features:
         dts = []
         for i in range(len(self.generators)):
             val, dt = self.generators[i].make(self.datagetters[i].get(cluster))
-            if (
-                type(val) == list
+            if isinstance(
+                val, list
             ):  # if multiple values output from one FeatureGenerator, e.g. fits
                 if len(val) == len(self._dtype_structure[i]):
                     vals.extend(val)
@@ -937,18 +952,18 @@ class Features:
                         )
                         convolved_ndays = pss.calc_harmonic_sums(
                             pspec_meta_data.freq_bin_weights,
-                            List(prep_convolve[0]),
-                            List(prep_convolve[1]),
-                            List([int(best_nharm)]),
+                            NumbaList(prep_convolve[0]),
+                            NumbaList(prep_convolve[1]),
+                            NumbaList([int(best_nharm)]),
                         )
                         for array_dm_index, dm_index in enumerate(
                             range(dm_idx_min_sigma, dm_idx_max_sigma)
                         ):
                             powers = pss.calc_harmonic_sums(
                                 power_spectra[dm_index],
-                                List(prep_convolve[0]),
-                                List(prep_convolve[1]),
-                                List([int(best_nharm)]),
+                                NumbaList(prep_convolve[0]),
+                                NumbaList(prep_convolve[1]),
+                                NumbaList([int(best_nharm)]),
                             )
                             sigmas = sigma_sum_powers(powers, convolved_ndays)
                             convolve_arr[array_dm_index, :] = sigmas

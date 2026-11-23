@@ -60,7 +60,13 @@ def test_dm_curve_shape_pulsar_vs_wobbly():
 
 
 def test_apply_rfi_filters_flags():
-    config = merged_config({"enabled": True, "one_day_burst": {"enabled": False}})
+    config = merged_config(
+        {
+            "enabled": True,
+            "one_day_burst": {"enabled": False},
+            "fit_failed": {"source": "feature"},
+        }
+    )
     pulsar = make_candidate(pulsar_curve())
     wobbly = make_candidate(wobbly_curve())
     failed_fit = make_candidate(pulsar_curve(), rel_err=2000.0)
@@ -72,6 +78,14 @@ def test_apply_rfi_filters_flags():
     assert failed_fit.rfi_filters["fit_failed"] and not failed_fit.rfi_filters["wobbly"]
     assert manual.rfi_filters == {}
     assert not wobbly.rfi  # flag_as_rfi is off by default
+
+    # default: own Gaussian fit to the (convolved) DM curve instead of the feature;
+    # for a clean pulsar-like curve that fit succeeds
+    default = merged_config({"enabled": True, "one_day_burst": {"enabled": False}})
+    candidate = make_candidate(pulsar_curve(), rel_err=2000.0)
+    apply_rfi_filters([candidate], default)
+    assert not candidate.rfi_filters["fit_failed"]
+    assert candidate.rfi_filters["feature_fit_amplitude_rel_err"] == 2000.0
 
 
 def test_one_day_burst(tmp_path):
@@ -88,3 +102,43 @@ def test_one_day_burst(tmp_path):
     assert candidate.rfi_filters["daily_hit_days"] == 1
     assert candidate.rfi_filters["one_day_burst"]
     assert candidate.rfi
+
+
+def test_convolved_map_and_fit():
+    from candidate_processor.utilities.rfi_filters import candidate_map, fit_dm_curve
+
+    candidate = make_candidate(pulsar_curve())
+    dfs = dict(candidate.dm_freq_sigma)
+    # plain map peaks low, convolved map at the candidate sigma; the convolved
+    # array is allocated larger than the filled DM/frequency range
+    dfs["sigmas"] = dfs["sigmas"] * 0.25
+    conv = np.zeros((dfs["sigmas"].shape[0] + 20, 9))
+    conv[: dfs["sigmas"].shape[0], :7] = np.tile(pulsar_curve()[:, None], (1, 7))
+    dfs["convolve_arr"] = conv
+    dfs["convolve_freqs"] = np.linspace(84.95, 85.05, 7)
+    sigmas, dms, freqs, is_conv = candidate_map(dfs)
+    assert is_conv and sigmas.shape == (301, 7)
+    fit = fit_dm_curve(dfs, 85.0, 15.0, float(pulsar_curve().max()))
+    assert fit["convolved"]
+    assert abs(fit["mu"] - 15.0) < 0.2 and fit["amplitude_rel_err"] < 0.1
+    plain = fit_dm_curve(
+        dfs, 85.0, 15.0, float(pulsar_curve().max()), use_convolved=False
+    )
+    assert not plain["convolved"]
+    # bounded to the candidate sigma, the fit to the low plain map cannot reach it
+    assert plain["amplitude"] > 2 * dfs["sigmas"].max()
+
+
+def test_feature_datagetter_convolved():
+    from types import SimpleNamespace
+
+    from candidate_processor.feature_generator import FitDataGetter
+
+    candidate = make_candidate(pulsar_curve())
+    hrc = SimpleNamespace(
+        dm_freq_sigma=candidate.dm_freq_sigma, freq=85.0, dm=15.0, sigma=20.0
+    )
+    x, y, point = FitDataGetter(datacode="dm_sigma_convolved").get(hrc)
+    assert len(x) == len(y) == 301 and point == [15.0, 20.0]
+    x, y, point = FitDataGetter(datacode="freq_sigma_convolved").get(hrc)
+    assert len(x) == len(y) == 5 and point == [85.0, 20.0]
