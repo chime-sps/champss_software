@@ -1293,6 +1293,8 @@ class PowerSpectraSearch:
                         injection_index,
                         injection_overlap_fraction,
                         cand_description,
+                        # convolve: manual candidates use plain (unconvolved) sums
+                        1,
                     )
                     detections.append(detection)
         return detections
