@@ -40,7 +40,11 @@ from sps_databases import db_api, db_utils, models
 from sps_pipeline.pipeline import default_datpath
 from sps_pipeline.utils import get_pointings_from_list, merge_images
 from sps_pipeline.candidate_viewer import CandidateViewerRegistrar
-from sps_pipeline.stack_scheduling import find_monthly_search_commands
+from sps_pipeline.stack_scheduling import (
+    find_monthly_search_commands,
+    find_pointing_ids,
+    read_pointing_file,
+)
 from scheduler.run_as_service import run_as_service
 from folding.utilities.database import get_mdcand_from_fsdb
 
@@ -539,6 +543,96 @@ def find_all_pipeline_processes(
     )
 
 
+def pipeline_process_query(
+    db,
+    run_stacking,
+    min_ra=0,
+    max_ra=360,
+    min_dec=-30,
+    max_dec=90,
+    date=None,
+    ndays=1,
+    pointing_file=None,
+):
+    """
+    Database query for the processes that run_all_pipeline_processes runs in pipeline
+    mode.
+
+    By default these are the processes in the ra/dec range that are not in a stack yet
+    (when stacking) or not completed (otherwise). With a pointing file, all processes of
+    the listed pointings are selected instead, whatever their status and whether or not
+    they are already in a stack.
+    """
+    if pointing_file:
+        pointing_ids, not_found = find_pointing_ids(
+            db, read_pointing_file(pointing_file)
+        )
+        if not_found:
+            log.warning(
+                f"{len(not_found)} pointings from {pointing_file} are not in the"
+                f" database: {not_found[:20]}"
+            )
+        query = {"pointing_id": {"$in": pointing_ids}}
+    elif run_stacking:
+        query = {
+            "ra": {"$gte": min_ra, "$lte": max_ra},
+            "dec": {"$gte": min_dec, "$lte": max_dec},
+            #    "status": 1,   For now grad all processes which are not
+            #                   in stack and also not are considered RFI
+            "$and": [{"is_in_stack": False}, {"quality_label": {"$ne": False}}],
+            # "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
+        }
+    else:
+        query = {
+            "ra": {"$gte": min_ra, "$lte": max_ra},
+            "dec": {"$gte": min_dec, "$lte": max_dec},
+            "status": {"$ne": 2},
+        }
+    if date:
+        query["datetime"] = {"$gte": date, "$lte": date + dt.timedelta(days=ndays)}
+    return query
+
+
+def find_dates_on_disk(datpath, start_date=None, number_of_days=-1, min_age_days=1.02):
+    """
+    Find the days for which raw data folders (<datpath>/YYYY/MM/DD) exist.
+
+    Parameters
+    ----------
+    datpath: str
+        Raw data folder.
+    start_date: datetime, optional
+        Only days on or after this date are returned.
+    number_of_days: int
+        Return at most this many days (-1: all).
+    min_age_days: float
+        Days younger than this may still be recording and are skipped.
+
+    Returns
+    -------
+    list of timezone-aware datetimes, oldest first
+    """
+    newest = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=min_age_days)
+    dates = []
+    for folder in glob(os.path.join(datpath, "[0-9]" * 4, "[0-9]" * 2, "[0-9]" * 2)):
+        if not os.path.isdir(folder) or not os.listdir(folder):
+            continue
+        year, month, day = folder.rstrip("/").split("/")[-3:]
+        try:
+            date = dt.datetime(int(year), int(month), int(day), tzinfo=pytz.UTC)
+        except ValueError:
+            continue
+        if date > newest:
+            continue
+        if start_date is not None and date < start_date:
+            continue
+        dates.append(date)
+    dates.sort()
+    if number_of_days != -1:
+        dates = dates[:number_of_days]
+    return dates
+
+
 def find_active_pointings(beam, day, strat, full_transit, db_name, db_host, db_port):
     """Helper function to look for active pointings for a single beam."""
     db_utils.connect(host=db_host, port=db_port, name=db_name)
@@ -791,6 +885,17 @@ def deposit_stack_work(workflow_buckets_name, httpcontext, stack_parameters):
     type=str,
     help="Name of the stack run.",
 )
+@click.option(
+    "--pointing-file",
+    default=None,
+    type=str,
+    help=(
+        "Text file with pointings, one 'ra dec' (or 'ra_dec') per line. With --mode"
+        " stack-search only these monthly stacks are searched. With --mode pipeline all"
+        " processes of these pointings in the --date range are run, including ones"
+        " already in a stack (they would be stacked again)."
+    ),
+)
 def run_all_pipeline_processes(
     db_host,
     db_port,
@@ -815,6 +920,7 @@ def run_all_pipeline_processes(
     alert_slack,
     mode,
     stack_name,
+    pointing_file,
 ):
     """Process all unprocessed processes in the database for a given range."""
     date = convert_date_to_datetime(date)
@@ -823,27 +929,33 @@ def run_all_pipeline_processes(
     db = db_utils.connect(host=db_host, port=db_port, name=db_name)
     http = HTTPContext()
     if mode == "pipeline":
-        if run_stacking:
-            query = {
-                "ra": {"$gte": min_ra, "$lte": max_ra},
-                "dec": {"$gte": min_dec, "$lte": max_dec},
-                #    "status": 1,   For now grad all processes which are not
-                #                   in stack and also not are considered RFI
-                "$and": [{"is_in_stack": False}, {"quality_label": {"$ne": False}}],
-                # "nchan": {"$lte": 10000},  # Temporarily filter 16k nchan proc
-            }
-        else:
-            query = {
-                "ra": {"$gte": min_ra, "$lte": max_ra},
-                "dec": {"$gte": min_dec, "$lte": max_dec},
-                "status": {"$ne": 2},
-            }
-        if date:
-            query["datetime"] = {"$gte": date, "$lte": date + dt.timedelta(days=ndays)}
+        query = pipeline_process_query(
+            db,
+            run_stacking,
+            min_ra,
+            max_ra,
+            min_dec,
+            max_dec,
+            date=date,
+            ndays=ndays,
+            pointing_file=pointing_file,
+        )
         all_processes = list(db.processes.find(query))
         if dry_run:
             log.info("Will only print out processes commands without running them.")
         log.info(f"{len(all_processes)} process found.")
+        if pointing_file:
+            already_stacked = sum(bool(p.get("is_in_stack")) for p in all_processes)
+            log.info(
+                f"Pointing file {pointing_file}:"
+                f" {len(query['pointing_id']['$in'])} pointings found,"
+                f" {len(all_processes)} processes in the date range."
+            )
+            if already_stacked and run_stacking:
+                log.warning(
+                    f"{already_stacked} of these processes are already in a stack and"
+                    " will be stacked again."
+                )
 
         if alert_slack:
             time_passed = dt.datetime.now(dt.timezone.utc) - (
@@ -905,6 +1017,7 @@ def run_all_pipeline_processes(
             basepath + f"/stack_runs/{stack_name}/",
             4,
             config_options=pipeline_config_options,
+            pointing_file=pointing_file,
         )
         extra_arguments = parse_pipeline_arguments(pipeline_arguments)
         for process in all_processes:
@@ -1259,6 +1372,18 @@ def run_all_pipeline_processes(
     type=bool,
     help="Create merged plots of the fold and ps representation.",
 )
+@click.option(
+    "--pointing-file",
+    default=None,
+    type=str,
+    help=(
+        "Text file with pointings, one 'ra dec' (or 'ra_dec') per line. With"
+        " --run-stack-search only these monthly stacks are searched. Otherwise these"
+        " pointings are reprocessed on every day with raw data in --datpath (from"
+        " --start-date on, at most --number-of-days days), including observations"
+        " that are already in a stack."
+    ),
+)
 def start_processing_manager(
     db_host,
     db_port,
@@ -1285,6 +1410,7 @@ def start_processing_manager(
     run_stack_search,
     stack_name,
     create_combined_plots,
+    pointing_file,
 ):
     """Manager function containing the multiple processing steps."""
     # atexit.register(remove_processing_services, None, None)
@@ -1310,6 +1436,12 @@ def start_processing_manager(
     date_to_process = start_date
 
     number_of_days_processed = 0
+    if pointing_file and not os.path.isfile(pointing_file):
+        log.error(f"Pointing file {pointing_file} does not exist.")
+        sys.exit(1)
+    # With a pointing file in pipeline mode, the days to process are the days with raw
+    # data on disk (from --start-date on), instead of consecutive days.
+    dates_to_process = None
     if run_stack_search:
         if not stack_name:
             log.info("Please define --stack-name when using --run-stack-search")
@@ -1321,11 +1453,35 @@ def start_processing_manager(
                 "Do you really want to overwrite the previous run?"
                 "Consider a new stack_name argument or remove the old folder."
             )
+    elif pointing_file:
+        dates_to_process = find_dates_on_disk(datpath, start_date, number_of_days)
+        if not dates_to_process:
+            log.error(
+                f"No raw data folders in {datpath} on or after"
+                f" {start_date:%Y/%m/%d}. Nothing to process."
+            )
+            sys.exit(1)
+        date_to_process = dates_to_process[0]
+        message_slack(
+            f"Reprocessing the pointings in {pointing_file} on"
+            f" {len(dates_to_process)} days with raw data on disk"
+            f" ({dates_to_process[0]:%Y/%m/%d} to {dates_to_process[-1]:%Y/%m/%d})."
+        )
+
+    def advance_date(current_date):
+        """Next day to process: next day on disk with a pointing file, else +1 day."""
+        if dates_to_process is not None:
+            later = [date for date in dates_to_process if date > current_date]
+            if later:
+                return later[0]
+        return current_date + dt.timedelta(days=1)
 
     def loop_condition():
         # For now just enale running h stack search once.
         if run_stack_search:
             return number_of_days_processed < 1
+        elif dates_to_process is not None:
+            return number_of_days_processed < len(dates_to_process)
         elif number_of_days != -1:
             # If number_of_days is not -1, then we want to run for a specific number of days
             return number_of_days_processed < number_of_days
@@ -1404,7 +1560,7 @@ def start_processing_manager(
                             " next day"
                         )
                         number_of_days_processed = number_of_days_processed + 1
-                        date_to_process = date_to_process + dt.timedelta(days=1)
+                        date_to_process = advance_date(date_to_process)
                         continue
                     else:
                         message_slack(
@@ -1475,6 +1631,8 @@ def start_processing_manager(
                         )
                     else:
                         pipeline_args.extend(["--mode", "pipeline"])
+                    if pointing_file:
+                        pipeline_args.extend(["--pointing-file", pointing_file])
                     process_ids = run_all_pipeline_processes.main(
                         args=pipeline_args,
                         standalone_mode=False,
@@ -1490,7 +1648,7 @@ def start_processing_manager(
                         )
                         if not len(processed):
                             number_of_days_processed = number_of_days_processed + 1
-                            date_to_process = date_to_process + dt.timedelta(days=1)
+                            date_to_process = advance_date(date_to_process)
                             continue
 
                         overall_time_of_processing = (
@@ -2028,7 +2186,7 @@ def start_processing_manager(
                     sd.commit()
 
             number_of_days_processed = number_of_days_processed + 1
-            date_to_process = date_to_process + dt.timedelta(days=1)
+            date_to_process = advance_date(date_to_process)
 
         except Exception as error:
             message_slack(
@@ -2037,7 +2195,7 @@ def start_processing_manager(
                 " next day."
             )
             number_of_days_processed = number_of_days_processed + 1
-            date_to_process = date_to_process + dt.timedelta(days=1)
+            date_to_process = advance_date(date_to_process)
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -2167,6 +2325,24 @@ def start_processing_manager(
     type=str,
     help="Name of the stack-run",
 )
+@click.option(
+    "--pointing-file",
+    default=None,
+    type=str,
+    help=(
+        "Text file with pointings, one 'ra dec' (or 'ra_dec') per line, passed to the"
+        " manager (see start-processing-manager --help). Best placed inside --basepath,"
+        " otherwise its folder is mounted into the manager container additionally."
+    ),
+)
+@click.option(
+    "--skip-finding-processes/--no-skip-finding-processes",
+    default=False,
+    help=(
+        "Passed to the manager: skip creating the daily processes from the raw data"
+        " (e.g. when rerunning days whose processes already exist)."
+    ),
+)
 def start_processing_services(
     db_host,
     db_port,
@@ -2188,12 +2364,33 @@ def start_processing_services(
     pipeline_config_options,
     run_stack_search,
     stack_name,
+    pointing_file,
+    skip_finding_processes,
 ):
     """Start the processing manager and the cleanup service."""
     # Please run "docker login" in your CLI to allow retrieval of the images
     log.setLevel(logging.INFO)
 
     docker_client = docker.from_env()
+
+    mounts = [
+        f"{datpath}:{datpath}",
+        "/data/chime/sps/logs:/data/chime/sps/logs",
+        f"{basepath}:{basepath}",
+        f"{foldpath}:{foldpath}",
+        # Need this mount so container can access host machine's Docker Client
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "/data/candidate_viewer/champss_candidate_viewer/:/data/candidate_viewer/champss_candidate_viewer/",
+    ]
+    pointing_file_option = ""
+    if pointing_file:
+        pointing_file = os.path.abspath(pointing_file)
+        pointing_file_option = f" --pointing-file {pointing_file}"
+        # The manager container needs to see the file
+        mounted = [m.split(":")[0].rstrip("/") + "/" for m in mounts]
+        if not any(pointing_file.startswith(m) for m in mounted):
+            pointing_folder = os.path.dirname(pointing_file)
+            mounts.append(f"{pointing_folder}:{pointing_folder}")
 
     docker_service_manager = {
         "image": manager_docker_image_name,
@@ -2211,6 +2408,8 @@ def start_processing_services(
             f' --pipeline-arguments "{pipeline_arguments}"'
             f' --pipeline-config-options "{pipeline_config_options}"'
             f" --run-stack-search {run_stack_search} --stack-name {stack_name}"
+            f"{pointing_file_option}"
+            f"{' --skip-finding-processes' if skip_finding_processes else ''}"
         ),
         "mode": docker.types.ServiceMode("replicated", replicas=1),
         "restart_policy": docker.types.RestartPolicy(condition="none", max_attempts=0),
@@ -2219,15 +2418,7 @@ def start_processing_services(
         "constraints": ["node.hostname == sps-archiver1"],
         # Will throw an error if you give two of the same bind mount paths
         # e.g. avoid double-mounting basepath and stackpath when they are the same
-        "mounts": [
-            f"{datpath}:{datpath}",
-            "/data/chime/sps/logs:/data/chime/sps/logs",
-            f"{basepath}:{basepath}",
-            f"{foldpath}:{foldpath}",
-            # Need this mount so container can access host machine's Docker Client
-            "/var/run/docker.sock:/var/run/docker.sock",
-            "/data/candidate_viewer/champss_candidate_viewer/:/data/candidate_viewer/champss_candidate_viewer/",
-        ],
+        "mounts": mounts,
         # An externally created Docker Network that allows these spawned containers
         # to communicate with other containers (MongoDB, Prometheus, etc) that have
         # also been manually added to this network

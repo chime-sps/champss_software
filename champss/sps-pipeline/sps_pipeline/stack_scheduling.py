@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import re
 
 import click
 from scheduler.workflow import (
@@ -7,6 +9,66 @@ from scheduler.workflow import (
     schedule_workflow_job,
 )
 from sps_databases import db_utils, models
+
+log = logging.getLogger(__name__)
+
+
+def read_pointing_file(pointing_file):
+    """
+    Read a list of pointings from a text file.
+
+    One pointing per line, given as "ra dec", "ra_dec" or "ra,dec" (degrees). Empty lines
+    and anything after a "#" are ignored. Further columns are ignored, so stack file names
+    ("<ra>_<dec>_<date>_<ndays>_power_spectra_stack.hdf5") also work.
+
+    Returns:
+        list of (ra, dec) tuples
+    """
+    pointings = []
+    with open(pointing_file) as f:
+        for line_number, line in enumerate(f, 1):
+            line = line.split("#")[0].strip()
+            if not line:
+                continue
+            fields = re.split(r"[\s,_]+", line)
+            try:
+                pointings.append((float(fields[0]), float(fields[1])))
+            except (IndexError, ValueError):
+                raise ValueError(
+                    f"Cannot read ra and dec from line {line_number} of"
+                    f" {pointing_file}: '{line}'"
+                )
+    return pointings
+
+
+def find_pointing_ids(db, pointings, tolerance=0.006):
+    """
+    Find the database ids of the pointings at the given coordinates.
+
+    Coordinates in pointing files are usually rounded to two decimals (as in the file
+    names), so a pointing matches when ra and dec are both within `tolerance` degrees.
+    If several pointings match, the closest one is used.
+
+    Returns:
+        list of pointing ids, list of (ra, dec) that were not found
+    """
+    pointing_ids, not_found = [], []
+    for ra, dec in pointings:
+        matches = list(
+            db.pointings.find(
+                {
+                    "ra": {"$gte": ra - tolerance, "$lte": ra + tolerance},
+                    "dec": {"$gte": dec - tolerance, "$lte": dec + tolerance},
+                },
+                {"_id": 1, "ra": 1, "dec": 1},
+            )
+        )
+        if not matches:
+            not_found.append((ra, dec))
+            continue
+        best = min(matches, key=lambda p: (p["ra"] - ra) ** 2 + (p["dec"] - dec) ** 2)
+        pointing_ids.append(best["_id"])
+    return pointing_ids, not_found
 
 
 # @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -46,9 +108,43 @@ from sps_databases import db_utils, models
 #     type=str,
 #     help="Name of the run",
 # )
-def find_monthly_search_commands(db_port, db_host, db_name, candpath, day_threshold=10, config_options="{}"):
+def find_monthly_search_commands(
+    db_port,
+    db_host,
+    db_name,
+    candpath,
+    day_threshold=10,
+    config_options="{}",
+    pointing_file=None,
+):
+    """
+    Create the arguments for the monthly stack searches.
+
+    By default all monthly stacks with at least day_threshold days are searched. If
+    pointing_file is given, only the stacks of the pointings listed in it are searched
+    (format: see read_pointing_file), e.g. to rerun the searches that failed in a run.
+    """
     db = db_utils.connect(port=db_port, host=db_host, name=db_name)
-    all_stacks = list(db.ps_stacks.find({"num_days_month": {"$gte": day_threshold}}))
+    query = {"num_days_month": {"$gte": day_threshold}}
+    if pointing_file:
+        pointings = read_pointing_file(pointing_file)
+        pointing_ids, not_found = find_pointing_ids(db, pointings)
+        log.info(
+            f"Pointing file {pointing_file}: {len(pointings)} pointings,"
+            f" {len(pointing_ids)} found in the database."
+        )
+        if not_found:
+            log.warning(
+                f"{len(not_found)} pointings from {pointing_file} are not in the"
+                f" database: {not_found[:20]}{' ...' if len(not_found) > 20 else ''}"
+            )
+        query["pointing_id"] = {"$in": pointing_ids}
+    all_stacks = list(db.ps_stacks.find(query))
+    if pointing_file:
+        log.info(
+            f"{len(all_stacks)} of the listed pointings have a monthly stack with at"
+            f" least {day_threshold} days and will be searched."
+        )
 
     all_commands = []
     # options_dict = json.loads(options)
