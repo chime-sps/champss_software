@@ -536,7 +536,7 @@ class Clusterer:
         power_overlap = max(
             intersec_power_1 / total_power_1, intersec_power_2 / total_power_2
         )
-        out_metric = 1 - power_overlap
+        out_metric = max(1 - power_overlap, 0)
         return out_metric
 
     def calculate_metric_power_overlap_array(
@@ -602,7 +602,9 @@ class Clusterer:
                 axis=1,
             ).max(1)
         powers_overlap[np.isnan(powers_overlap)] = 0.0
-        out_metric = 1 - powers_overlap
+        # Rounding can push the overlap slightly above 1; DBSCAN rejects negative
+        # distances.
+        out_metric = np.clip(1 - powers_overlap, 0, None)
         return out_metric
 
     def cluster(

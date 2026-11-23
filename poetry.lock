@@ -977,6 +977,7 @@ click = "^8.1.4"
 msgpack-python = "^0.5.6"
 numpy = "^1.24.3"
 pytz = "^2023.3"
+pyzmq = "^27.1.0"
 setuptools = "^65.6.3"
 sps-common = {path = "../sps-common", develop = true}
 sps-databases = {path = "../sps-databases", develop = true}
@@ -4720,7 +4721,7 @@ version = "27.1.0"
 description = "Python bindings for 0MQ"
 optional = false
 python-versions = ">=3.8"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "pyzmq-27.1.0-cp310-cp310-macosx_10_15_universal2.whl", hash = "sha256:508e23ec9bc44c0005c4946ea013d9317ae00ac67778bd47519fdf5a0e930ff4"},
     {file = "pyzmq-27.1.0-cp310-cp310-manylinux2014_i686.manylinux_2_17_i686.whl", hash = "sha256:507b6f430bdcf0ee48c0d30e734ea89ce5567fd7b8a0f0044a369c176aa44556"},
