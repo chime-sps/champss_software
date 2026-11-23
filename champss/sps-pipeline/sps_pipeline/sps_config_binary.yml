@@ -248,6 +248,22 @@ cands:
           - ndof
           - rms_err
           - diff_from_detection
+  # Flags for interference-like stack candidates, stored in candidate.rfi_filters
+  # (see candidate_processor/utilities/rfi_filters.py). The features array is unchanged.
+  rfi_filters:
+    enabled: True
+    flag_as_rfi: False
+    fit_failed:
+      amplitude_rel_err_max: 1.0
+    wobbly:
+      roughness_min: 0.03
+      min_peaks: 4
+    one_day_burst:
+      enabled: True
+      daily_basepath: null  # default: processed root folder of the stack
+      freq_tolerance: 0.03
+      min_daily_sigma: 6.0
+      min_burst_sigma: 9.0
   arrays:
     pool_bins: 0
     period_factors: 1

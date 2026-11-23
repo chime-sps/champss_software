@@ -103,6 +103,9 @@ class SinglePointingCandidate:
 
     rfi (bool): whether the candidate has been flagged as interference
 
+    rfi_filters (dict): measures and flags of the interference filters
+        (candidate_processor.utilities.rfi_filters), empty if they were not run
+
     harmonics_info (numpy.ndarray): Information about the highest-sigma
         detection of each harmonically related cluster of detections (from which the
         SinglePointingCandidate was derived) This INCLUDES the main detection.
@@ -182,6 +185,9 @@ class SinglePointingCandidate:
         default=[],
     )
     manual_candidate = attrib(type=str, default="")
+    rfi_filters = attrib(
+        type=dict, default=None, converter=converters.default_if_none({})
+    )
     # Note `ra`, `dec`, `obs_id` and `detection_statistic` are populated from
     # `SinglePointingCandidateCollection`.
     # they are attributes here too because multi-pointing then uses the

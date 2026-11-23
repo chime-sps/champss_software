@@ -6,6 +6,7 @@ from os import path
 
 import numpy as np
 from candidate_processor.feature_generator import Features
+from candidate_processor.utilities.rfi_filters import apply_rfi_filters
 from omegaconf import OmegaConf
 from prometheus_client import Summary
 from sps_common.interfaces import PowerSpectraDetectionClusters
@@ -225,6 +226,14 @@ def run_interface(
     spcc = cands_processor.fg.make_single_pointing_candidate_collection(
         psdc, power_spectra
     )
+    rfi_filter_config = cands_processor.config.cands.get("rfi_filters", None)
+    if rfi_filter_config is not None and rfi_filter_config.get("enabled", False):
+        # Daily output lies under the same processed root folder as the stacks
+        apply_rfi_filters(
+            spcc.candidates,
+            OmegaConf.to_container(rfi_filter_config),
+            daily_basepath=stack_root_folder,
+        )
     spcc.write(ps_candidates)
     if injection_path:
         injection_performance = spcc.test_injection_performance()
