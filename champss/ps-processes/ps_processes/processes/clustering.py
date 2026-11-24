@@ -688,6 +688,44 @@ class Clusterer:
             )
             return [], [], self.sigma_detection_threshold
 
+        # Apply the threshold and restrict the number of detections before the dbscan
+        # filter. The filter builds a radius-neighbour graph over all its input
+        # detections, which grows much faster than their number in dense
+        # interference (1.9 million detections of an RFI-heavy stack needed 172 GB
+        # with the filter first and 10 GB with this order).
+        detections = detections_filtered[
+            detections_filtered["sigma"] > self.sigma_detection_threshold
+        ]
+
+        if len(detections) < self.dbscan_min_samples:
+            log.info(
+                f"Only {len(detections)} detections, Clustering will not cluster anything. Return empty"
+            )
+            return [], [], self.sigma_detection_threshold
+
+        # thin down detections if there are too many
+        log.info(
+            "Number of detections over threshold sigma"
+            f" ({self.sigma_detection_threshold}): {len(detections)}"
+        )
+        sig_limit = self.sigma_detection_threshold
+        if len(detections) > self.max_ndetect:
+            log.info(
+                f"The number of detections {len(detections)} is greater than the max"
+                f" for the usual clustering scheme {self.max_ndetect}"
+            )
+            sig_limit = self.sigma_detection_threshold + 1
+            selection = np.where(detections_filtered["sigma"] > sig_limit)[0]
+            while len(selection) > self.max_ndetect:
+                sig_limit += 0.2
+                selection = np.where(detections_filtered["sigma"] > sig_limit)[0]
+            detections = detections_filtered[selection]
+            log.warning(
+                f"The minimum sigma has been raised to {sig_limit} to reduce the number"
+                f" of detections to {len(detections)}"
+            )
+        detections_filtered = detections
+
         if self.use_dbscan_filter:
             log.info("Running dbscan filter")
             data_filter = np.vstack(
@@ -795,37 +833,12 @@ class Clusterer:
             else:
                 log.info("No neighbouring points identified in dbscan filter.")
 
-        detections = detections_filtered[
-            detections_filtered["sigma"] > self.sigma_detection_threshold
-        ]
-
+        detections = detections_filtered
         if len(detections) < self.dbscan_min_samples:
             log.info(
-                f"Only {len(detections)} detections, Clustering will not cluster anything. Return empty"
+                f"Only {len(detections)} detections after the dbscan filter, Clustering will not cluster anything. Return empty"
             )
-            return [], [], self.sigma_detection_threshold
-
-        # thin down detections if there are too many
-        log.info(
-            "Number of detections over threshold sigma"
-            f" ({self.sigma_detection_threshold}): {len(detections)}"
-        )
-        sig_limit = self.sigma_detection_threshold
-        if len(detections) > self.max_ndetect:
-            log.info(
-                f"The number of detections {len(detections)} is greater than the max"
-                f" for the usual clustering scheme {self.max_ndetect}"
-            )
-            sig_limit = self.sigma_detection_threshold + 1
-            selection = np.where(detections_filtered["sigma"] > sig_limit)[0]
-            while len(selection) > self.max_ndetect:
-                sig_limit += 0.2
-                selection = np.where(detections_filtered["sigma"] > sig_limit)[0]
-            detections = detections_filtered[selection]
-            log.warning(
-                f"The minimum sigma has been raised to {sig_limit} to reduce the number"
-                f" of detections to {len(detections)}"
-            )
+            return [], [], sig_limit
         del detections_filtered
 
         # make data products necessary for clustering and making the harmonic metric
