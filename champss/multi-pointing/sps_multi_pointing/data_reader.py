@@ -37,7 +37,13 @@ def read_multi_pointing_candidates(filepath):
     return mp_cands
 
 
-def read_cands_summaries(file, sigma_threshold=0):
+def is_rfi_candidate(candidate):
+    """Whether a SinglePointingCandidate is flagged as interference."""
+    rfi_filters = getattr(candidate, "rfi_filters", None) or {}
+    return bool(candidate.rfi) or bool(rfi_filters.get("flagged", False))
+
+
+def read_cands_summaries(file, sigma_threshold=0, skip_rfi=True):
     """
     Read candidate file and return summaries.
 
@@ -48,6 +54,11 @@ def read_cands_summaries(file, sigma_threshold=0):
     ----------
     file: str
         Path to the SinglePointingCandidateCollection
+    sigma_threshold: float
+        Candidates below this sigma are discarded
+    skip_rfi: bool
+        Discard candidates flagged as interference (candidate.rfi or
+        candidate.rfi_filters["flagged"])
 
     Returns
     -------
@@ -67,6 +78,8 @@ def read_cands_summaries(file, sigma_threshold=0):
                 real_search_indices, spcc.get_real_search_candidates()
             ):
                 if candidate.sigma < sigma_threshold:
+                    continue
+                if skip_rfi and is_rfi_candidate(candidate):
                     continue
                 cand_summary = EasyDict(candidate.summary)
                 cand_summary["file_name"] = file

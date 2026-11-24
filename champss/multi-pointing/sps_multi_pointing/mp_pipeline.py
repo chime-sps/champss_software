@@ -146,6 +146,14 @@ def apply_logging_config(config, log_file="./logs/default.log"):
     help="Sigma threshold under which the single pointing candidates are discarded.",
 )
 @click.option(
+    "--skip-rfi/--no-skip-rfi",
+    default=True,
+    help=(
+        "Discard single pointing candidates flagged as interference (candidate.rfi or"
+        " the rfi_filters of the candidate processor)."
+    ),
+)
+@click.option(
     "--plot-threshold",
     default=0.0,
     type=float,
@@ -214,6 +222,7 @@ def cli(
     db,
     csv,
     sigma_threshold,
+    skip_rfi,
     plot_threshold,
     plot_dm_threshold,
     db_port,
@@ -282,7 +291,9 @@ def cli(
         tqdm.tqdm(
             pool.imap(
                 partial(
-                    data_reader.read_cands_summaries, sigma_threshold=sigma_threshold
+                    data_reader.read_cands_summaries,
+                    sigma_threshold=sigma_threshold,
+                    skip_rfi=skip_rfi,
                 ),
                 files,
             ),
